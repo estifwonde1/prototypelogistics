@@ -352,11 +352,10 @@ Relationships:
 - `Hub has_one :hub_contacts`
 - `Hub has_many :warehouses`
 
-### 2) Hub Geography (`cats_warehouse_hub_geo`)
-- `hub_id` FK -> `cats_warehouse_hubs.id`
-- `address`, `latitude`, `longitude`
+### 2) Hub GPS (shared) (`cats_warehouse_geos`)
+- `geo_id` FK -> `cats_warehouse_geos.id`
 Relationships:
-- `HubGeo belongs_to :hub`
+- `Hub belongs_to :geo`
 
 ### 3) Hub Capacity (`cats_warehouse_hub_capacity`)
 - `hub_id` FK
@@ -407,11 +406,10 @@ Relationships:
 - `Warehouse has_many :stores`
 - `Warehouse has_many :stacking_rules`
 
-### 2) Warehouse Geography (`cats_warehouse_warehouse_geo`)
-- `warehouse_id` FK -> `cats_warehouse_warehouses.id`
-- `address`, `latitude`, `longitude`, `altitude_m`
+### 2) Warehouse GPS (shared) (`cats_warehouse_geos`)
+- `geo_id` FK -> `cats_warehouse_geos.id`
 Relationships:
-- `WarehouseGeo belongs_to :warehouse`
+- `Warehouse belongs_to :geo`
 
 ### 3) Warehouse Capacity (`cats_warehouse_warehouse_capacity`)
 - `warehouse_id` FK
@@ -442,6 +440,28 @@ Relationships:
 
 ### Mapping from Original Warehouse Columns
 All warehouse fields listed in section New: Warehouses map to one of the normalized tables above. The base warehouse table retains only identity, linkage, type/status, and description.
+
+
+## Normalization - Shared GPS Entity
+Use one GPS entity for both hubs and warehouses.
+
+### `cats_warehouse_geos`
+Fields:
+- `id` bigint PK
+- `latitude` float
+- `longitude` float
+- `altitude_m` float (optional)
+- `address` string (optional)
+- `source` string (optional)
+- `captured_at` datetime (optional)
+
+Relationships:
+- `Geo has_one :hub`
+- `Geo has_one :warehouse`
+
+Constraints:
+- Unique `geo_id` on `cats_warehouse_hubs`
+- Unique `geo_id` on `cats_warehouse_warehouses`
 
 ## Normalization - Inspection Model (Breakdown)
 Split inspection header from inspection items and optional inspector profile to reduce duplication.
