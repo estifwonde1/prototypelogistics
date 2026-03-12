@@ -3,7 +3,7 @@ class CreateCatsWarehouseWarehouseCapacity < ActiveRecord::Migration[7.0]
     create_table :cats_warehouse_warehouse_capacity do |t|
       t.references :warehouse,
                    null: false,
-                   foreign_key: {to_table: :cats_warehouse_warehouses}
+                   foreign_key: { to_table: :cats_warehouse_warehouses }
       t.float :total_area_sqm
       t.float :total_storage_capacity_mt
       t.float :usable_storage_capacity_mt

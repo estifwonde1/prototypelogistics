@@ -3,7 +3,7 @@ class CreateCatsWarehouseHubAccess < ActiveRecord::Migration[7.0]
     create_table :cats_warehouse_hub_access do |t|
       t.references :hub,
                    null: false,
-                   foreign_key: {to_table: :cats_warehouse_hubs}
+                   foreign_key: { to_table: :cats_warehouse_hubs }
       t.boolean :has_loading_dock
       t.integer :number_of_loading_docks
       t.string :loading_dock_type

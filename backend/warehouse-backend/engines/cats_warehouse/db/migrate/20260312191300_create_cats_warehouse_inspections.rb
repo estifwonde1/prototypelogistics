@@ -4,11 +4,11 @@ class CreateCatsWarehouseInspections < ActiveRecord::Migration[7.0]
       t.string :reference_no
       t.references :warehouse,
                    null: false,
-                   foreign_key: {to_table: :cats_warehouse_warehouses}
+                   foreign_key: { to_table: :cats_warehouse_warehouses }
       t.date :inspected_on, null: false
       t.references :inspector,
                    null: false,
-                   foreign_key: {to_table: :cats_core_users}
+                   foreign_key: { to_table: :cats_core_users }
       t.references :source, polymorphic: true
       t.string :status, null: false, default: "Draft"
 

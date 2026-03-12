@@ -4,7 +4,7 @@ class CreateCatsWarehouseWarehouseAccess < ActiveRecord::Migration[7.0]
     create_table :cats_warehouse_warehouse_access do |t|
       t.references :warehouse,
                    null: false,
-                   foreign_key: {to_table: :cats_warehouse_warehouses}
+                   foreign_key: { to_table: :cats_warehouse_warehouses }
       t.boolean :has_loading_dock
       t.integer :number_of_loading_docks
       t.string :access_road_type

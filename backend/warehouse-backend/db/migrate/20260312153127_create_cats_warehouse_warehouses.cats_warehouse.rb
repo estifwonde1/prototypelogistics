@@ -4,11 +4,11 @@ class CreateCatsWarehouseWarehouses < ActiveRecord::Migration[7.0]
     create_table :cats_warehouse_warehouses do |t|
       t.references :location,
                    null: false,
-                   foreign_key: {to_table: :cats_core_locations}
+                   foreign_key: { to_table: :cats_core_locations }
       t.references :hub,
-                   foreign_key: {to_table: :cats_warehouse_hubs}
+                   foreign_key: { to_table: :cats_warehouse_hubs }
       t.references :geo,
-                   foreign_key: {to_table: :cats_warehouse_geos}
+                   foreign_key: { to_table: :cats_warehouse_geos }
       t.string :code
       t.string :name, null: false
       t.string :warehouse_type

@@ -3,7 +3,7 @@ class CreateCatsWarehouseHubInfra < ActiveRecord::Migration[7.0]
     create_table :cats_warehouse_hub_infra do |t|
       t.references :hub,
                    null: false,
-                   foreign_key: {to_table: :cats_warehouse_hubs}
+                   foreign_key: { to_table: :cats_warehouse_hubs }
       t.string :floor_type
       t.string :roof_type
       t.boolean :has_ventilation

@@ -3,8 +3,8 @@ require_relative "lib/cats_warehouse/version"
 Gem::Specification.new do |spec|
   spec.name        = "cats_warehouse"
   spec.version     = Cats::Warehouse::VERSION
-  spec.authors     = ["TODO: Write your name"]
-  spec.email       = ["TODO: Write your email address"]
+  spec.authors     = [ "TODO: Write your name" ]
+  spec.email       = [ "TODO: Write your email address" ]
   spec.homepage    = "TODO"
   spec.summary     = "CATS Warehouse engine."
   spec.description = "Warehouse domain engine for CATS."

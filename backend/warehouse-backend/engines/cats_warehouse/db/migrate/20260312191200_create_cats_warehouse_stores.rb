@@ -15,7 +15,7 @@ class CreateCatsWarehouseStores < ActiveRecord::Migration[7.0]
       t.float :gangway_corner_dist
       t.references :warehouse,
                    null: false,
-                   foreign_key: {to_table: :cats_warehouse_warehouses}
+                   foreign_key: { to_table: :cats_warehouse_warehouses }
 
       t.timestamps
     end

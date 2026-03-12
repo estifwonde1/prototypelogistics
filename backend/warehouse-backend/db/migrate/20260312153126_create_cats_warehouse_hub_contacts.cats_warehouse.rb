@@ -4,7 +4,7 @@ class CreateCatsWarehouseHubContacts < ActiveRecord::Migration[7.0]
     create_table :cats_warehouse_hub_contacts do |t|
       t.references :hub,
                    null: false,
-                   foreign_key: {to_table: :cats_warehouse_hubs}
+                   foreign_key: { to_table: :cats_warehouse_hubs }
       t.string :manager_name
       t.string :contact_phone
       t.string :contact_email

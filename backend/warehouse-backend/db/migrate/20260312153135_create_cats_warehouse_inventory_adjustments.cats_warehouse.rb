@@ -9,10 +9,10 @@ class CreateCatsWarehouseInventoryAdjustments < ActiveRecord::Migration[7.0]
       t.string :status, default: "Draft", null: false
       t.references :unit,
                    null: false,
-                   foreign_key: {to_table: :cats_core_unit_of_measures}
+                   foreign_key: { to_table: :cats_core_unit_of_measures }
       t.references :stack,
                    null: false,
-                   foreign_key: {to_table: :cats_warehouse_stacks}
+                   foreign_key: { to_table: :cats_warehouse_stacks }
 
       t.timestamps
     end

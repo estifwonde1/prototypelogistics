@@ -3,7 +3,7 @@ class CreateCatsWarehouseStackingRules < ActiveRecord::Migration[7.0]
     create_table :cats_warehouse_stacking_rules do |t|
       t.references :warehouse,
                    null: false,
-                   foreign_key: {to_table: :cats_warehouse_warehouses}
+                   foreign_key: { to_table: :cats_warehouse_warehouses }
       t.float :distance_from_wall, null: false
       t.float :space_between_stack, null: false
       t.float :distance_from_ceiling, null: false

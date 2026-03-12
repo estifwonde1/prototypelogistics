@@ -3,10 +3,10 @@ class CreateCatsWarehouseInspectionItems < ActiveRecord::Migration[7.0]
     create_table :cats_warehouse_inspection_items do |t|
       t.references :inspection,
                    null: false,
-                   foreign_key: {to_table: :cats_warehouse_inspections}
+                   foreign_key: { to_table: :cats_warehouse_inspections }
       t.references :commodity,
                    null: false,
-                   foreign_key: {to_table: :cats_core_commodities}
+                   foreign_key: { to_table: :cats_core_commodities }
       t.float :quantity_received, null: false
       t.float :quantity_damaged, null: false, default: 0
       t.float :quantity_lost, null: false, default: 0

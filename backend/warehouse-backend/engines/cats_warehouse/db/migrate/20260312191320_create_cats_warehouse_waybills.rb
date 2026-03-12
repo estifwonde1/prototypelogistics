@@ -3,13 +3,13 @@ class CreateCatsWarehouseWaybills < ActiveRecord::Migration[7.0]
     create_table :cats_warehouse_waybills do |t|
       t.string :reference_no
       t.references :dispatch,
-                   foreign_key: {to_table: :cats_core_dispatches}
+                   foreign_key: { to_table: :cats_core_dispatches }
       t.references :source_location,
                    null: false,
-                   foreign_key: {to_table: :cats_core_locations}
+                   foreign_key: { to_table: :cats_core_locations }
       t.references :destination_location,
                    null: false,
-                   foreign_key: {to_table: :cats_core_locations}
+                   foreign_key: { to_table: :cats_core_locations }
       t.date :issued_on, null: false
       t.string :status
 

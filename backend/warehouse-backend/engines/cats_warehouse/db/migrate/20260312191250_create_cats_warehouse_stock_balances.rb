@@ -3,18 +3,18 @@ class CreateCatsWarehouseStockBalances < ActiveRecord::Migration[7.0]
     create_table :cats_warehouse_stock_balances do |t|
       t.references :warehouse,
                    null: false,
-                   foreign_key: {to_table: :cats_warehouse_warehouses}
+                   foreign_key: { to_table: :cats_warehouse_warehouses }
       t.references :store,
-                   foreign_key: {to_table: :cats_warehouse_stores}
+                   foreign_key: { to_table: :cats_warehouse_stores }
       t.references :stack,
-                   foreign_key: {to_table: :cats_warehouse_stacks}
+                   foreign_key: { to_table: :cats_warehouse_stacks }
       t.references :commodity,
                    null: false,
-                   foreign_key: {to_table: :cats_core_commodities}
+                   foreign_key: { to_table: :cats_core_commodities }
       t.float :quantity, null: false
       t.references :unit,
                    null: false,
-                   foreign_key: {to_table: :cats_core_unit_of_measures}
+                   foreign_key: { to_table: :cats_core_unit_of_measures }
 
       t.timestamps
     end
