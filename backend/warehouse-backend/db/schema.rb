@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2024_03_04_145823) do
+ActiveRecord::Schema[7.0].define(version: 2026_03_12_153146) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1005,6 +1005,377 @@ ActiveRecord::Schema[7.0].define(version: 2024_03_04_145823) do
     t.index ["user_id"], name: "user_on_ur_indx"
   end
 
+  create_table "cats_warehouse_geos", force: :cascade do |t|
+    t.float "latitude"
+    t.float "longitude"
+    t.float "altitude_m"
+    t.string "address"
+    t.string "source"
+    t.datetime "captured_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+  end
+
+  create_table "cats_warehouse_gin_items", force: :cascade do |t|
+    t.bigint "gin_id", null: false
+    t.bigint "commodity_id", null: false
+    t.float "quantity", null: false
+    t.bigint "unit_id", null: false
+    t.bigint "store_id"
+    t.bigint "stack_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["commodity_id"], name: "index_cats_warehouse_gin_items_on_commodity_id"
+    t.index ["gin_id"], name: "index_cats_warehouse_gin_items_on_gin_id"
+    t.index ["stack_id"], name: "index_cats_warehouse_gin_items_on_stack_id"
+    t.index ["store_id"], name: "index_cats_warehouse_gin_items_on_store_id"
+    t.index ["unit_id"], name: "index_cats_warehouse_gin_items_on_unit_id"
+  end
+
+  create_table "cats_warehouse_gins", force: :cascade do |t|
+    t.string "reference_no"
+    t.bigint "warehouse_id", null: false
+    t.date "issued_on", null: false
+    t.string "destination_type"
+    t.bigint "destination_id"
+    t.string "status", default: "Draft", null: false
+    t.bigint "issued_by_id", null: false
+    t.bigint "approved_by_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["approved_by_id"], name: "index_cats_warehouse_gins_on_approved_by_id"
+    t.index ["destination_type", "destination_id"], name: "index_cats_warehouse_gins_on_destination"
+    t.index ["issued_by_id"], name: "index_cats_warehouse_gins_on_issued_by_id"
+    t.index ["warehouse_id"], name: "index_cats_warehouse_gins_on_warehouse_id"
+  end
+
+  create_table "cats_warehouse_grn_items", force: :cascade do |t|
+    t.bigint "grn_id", null: false
+    t.bigint "commodity_id", null: false
+    t.float "quantity", null: false
+    t.bigint "unit_id", null: false
+    t.string "quality_status"
+    t.bigint "store_id"
+    t.bigint "stack_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["commodity_id"], name: "index_cats_warehouse_grn_items_on_commodity_id"
+    t.index ["grn_id"], name: "index_cats_warehouse_grn_items_on_grn_id"
+    t.index ["stack_id"], name: "index_cats_warehouse_grn_items_on_stack_id"
+    t.index ["store_id"], name: "index_cats_warehouse_grn_items_on_store_id"
+    t.index ["unit_id"], name: "index_cats_warehouse_grn_items_on_unit_id"
+  end
+
+  create_table "cats_warehouse_grns", force: :cascade do |t|
+    t.string "reference_no"
+    t.bigint "warehouse_id", null: false
+    t.date "received_on", null: false
+    t.string "source_type"
+    t.bigint "source_id"
+    t.string "status", default: "Draft", null: false
+    t.bigint "received_by_id", null: false
+    t.bigint "approved_by_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["approved_by_id"], name: "index_cats_warehouse_grns_on_approved_by_id"
+    t.index ["received_by_id"], name: "index_cats_warehouse_grns_on_received_by_id"
+    t.index ["source_type", "source_id"], name: "index_cats_warehouse_grns_on_source"
+    t.index ["warehouse_id"], name: "index_cats_warehouse_grns_on_warehouse_id"
+  end
+
+  create_table "cats_warehouse_hub_access", force: :cascade do |t|
+    t.bigint "hub_id", null: false
+    t.boolean "has_loading_dock"
+    t.integer "number_of_loading_docks"
+    t.string "loading_dock_type"
+    t.string "access_road_type"
+    t.string "nearest_town"
+    t.float "distance_from_town_km"
+    t.boolean "has_weighbridge"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["hub_id"], name: "index_cats_warehouse_hub_access_on_hub_id"
+  end
+
+  create_table "cats_warehouse_hub_capacity", force: :cascade do |t|
+    t.bigint "hub_id", null: false
+    t.float "total_area_sqm"
+    t.float "total_capacity_mt"
+    t.integer "construction_year"
+    t.string "ownership_type"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["hub_id"], name: "index_cats_warehouse_hub_capacity_on_hub_id"
+  end
+
+  create_table "cats_warehouse_hub_contacts", force: :cascade do |t|
+    t.bigint "hub_id", null: false
+    t.string "manager_name"
+    t.string "contact_phone"
+    t.string "contact_email"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["hub_id"], name: "index_cats_warehouse_hub_contacts_on_hub_id"
+  end
+
+  create_table "cats_warehouse_hub_infra", force: :cascade do |t|
+    t.bigint "hub_id", null: false
+    t.string "floor_type"
+    t.string "roof_type"
+    t.boolean "has_ventilation"
+    t.boolean "has_drainage_system"
+    t.boolean "has_fumigation_facility"
+    t.boolean "has_pest_control"
+    t.boolean "has_fire_extinguisher"
+    t.boolean "has_security_guard"
+    t.string "security_type"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["hub_id"], name: "index_cats_warehouse_hub_infra_on_hub_id"
+  end
+
+  create_table "cats_warehouse_hubs", force: :cascade do |t|
+    t.bigint "location_id", null: false
+    t.bigint "geo_id"
+    t.string "code"
+    t.string "name", null: false
+    t.string "hub_type"
+    t.string "status"
+    t.text "description"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["geo_id"], name: "index_cats_warehouse_hubs_on_geo_id"
+    t.index ["location_id"], name: "index_cats_warehouse_hubs_on_location_id"
+  end
+
+  create_table "cats_warehouse_inspection_items", force: :cascade do |t|
+    t.bigint "inspection_id", null: false
+    t.bigint "commodity_id", null: false
+    t.float "quantity_received", null: false
+    t.float "quantity_damaged", default: 0.0, null: false
+    t.float "quantity_lost", default: 0.0, null: false
+    t.string "quality_status"
+    t.string "packaging_condition"
+    t.text "remarks"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["commodity_id"], name: "index_cats_warehouse_inspection_items_on_commodity_id"
+    t.index ["inspection_id"], name: "index_cats_warehouse_inspection_items_on_inspection_id"
+  end
+
+  create_table "cats_warehouse_inspections", force: :cascade do |t|
+    t.string "reference_no"
+    t.bigint "warehouse_id", null: false
+    t.date "inspected_on", null: false
+    t.bigint "inspector_id", null: false
+    t.string "source_type"
+    t.bigint "source_id"
+    t.string "status", default: "Draft", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["inspector_id"], name: "index_cats_warehouse_inspections_on_inspector_id"
+    t.index ["source_type", "source_id"], name: "index_cats_warehouse_inspections_on_source"
+    t.index ["warehouse_id"], name: "index_cats_warehouse_inspections_on_warehouse_id"
+  end
+
+  create_table "cats_warehouse_inventory_adjustments", force: :cascade do |t|
+    t.string "reference_no"
+    t.float "quantity"
+    t.string "reason_for_adjustment"
+    t.date "adjustment_date", null: false
+    t.string "status", default: "Draft", null: false
+    t.bigint "unit_id", null: false
+    t.bigint "stack_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["stack_id"], name: "index_cats_warehouse_inventory_adjustments_on_stack_id"
+    t.index ["unit_id"], name: "index_cats_warehouse_inventory_adjustments_on_unit_id"
+  end
+
+  create_table "cats_warehouse_stack_transactions", force: :cascade do |t|
+    t.bigint "source_id", null: false
+    t.bigint "destination_id", null: false
+    t.date "transaction_date", null: false
+    t.float "quantity", null: false
+    t.bigint "unit_id", null: false
+    t.string "status", default: "Draft", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["destination_id"], name: "destination_on_cwst_indx"
+    t.index ["source_id"], name: "source_on_cwst_indx"
+    t.index ["unit_id"], name: "unit_on_cwst_indx"
+  end
+
+  create_table "cats_warehouse_stacking_rules", force: :cascade do |t|
+    t.bigint "warehouse_id", null: false
+    t.float "distance_from_wall", null: false
+    t.float "space_between_stack", null: false
+    t.float "distance_from_ceiling", null: false
+    t.float "maximum_height", null: false
+    t.float "maximum_length", null: false
+    t.float "maximum_width", null: false
+    t.float "distance_from_gangway", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["warehouse_id"], name: "index_cats_warehouse_stacking_rules_on_warehouse_id"
+  end
+
+  create_table "cats_warehouse_stacks", force: :cascade do |t|
+    t.string "code"
+    t.float "length", null: false
+    t.float "width", null: false
+    t.float "height", null: false
+    t.float "start_x"
+    t.float "start_y"
+    t.bigint "commodity_id", null: false
+    t.bigint "store_id", null: false
+    t.string "commodity_status", default: "Good", null: false
+    t.string "stack_status", default: "Reserved", null: false
+    t.float "quantity", default: 0.0, null: false
+    t.bigint "unit_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["commodity_id"], name: "index_cats_warehouse_stacks_on_commodity_id"
+    t.index ["store_id"], name: "index_cats_warehouse_stacks_on_store_id"
+    t.index ["unit_id"], name: "index_cats_warehouse_stacks_on_unit_id"
+  end
+
+  create_table "cats_warehouse_stock_balances", force: :cascade do |t|
+    t.bigint "warehouse_id", null: false
+    t.bigint "store_id"
+    t.bigint "stack_id"
+    t.bigint "commodity_id", null: false
+    t.float "quantity", null: false
+    t.bigint "unit_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["commodity_id"], name: "index_cats_warehouse_stock_balances_on_commodity_id"
+    t.index ["stack_id"], name: "index_cats_warehouse_stock_balances_on_stack_id"
+    t.index ["store_id"], name: "index_cats_warehouse_stock_balances_on_store_id"
+    t.index ["unit_id"], name: "index_cats_warehouse_stock_balances_on_unit_id"
+    t.index ["warehouse_id"], name: "index_cats_warehouse_stock_balances_on_warehouse_id"
+  end
+
+  create_table "cats_warehouse_stores", force: :cascade do |t|
+    t.string "code"
+    t.string "name", null: false
+    t.float "length", null: false
+    t.float "width", null: false
+    t.float "height", null: false
+    t.float "usable_space", null: false
+    t.float "available_space", null: false
+    t.boolean "temporary", default: false, null: false
+    t.boolean "has_gangway", default: false, null: false
+    t.float "gangway_length"
+    t.float "gangway_width"
+    t.float "gangway_corner_dist"
+    t.bigint "warehouse_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["warehouse_id"], name: "index_cats_warehouse_stores_on_warehouse_id"
+  end
+
+  create_table "cats_warehouse_warehouse_access", force: :cascade do |t|
+    t.bigint "warehouse_id", null: false
+    t.boolean "has_loading_dock"
+    t.integer "number_of_loading_docks"
+    t.string "access_road_type"
+    t.string "nearest_town"
+    t.float "distance_from_town_km"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["warehouse_id"], name: "index_cats_warehouse_warehouse_access_on_warehouse_id"
+  end
+
+  create_table "cats_warehouse_warehouse_capacity", force: :cascade do |t|
+    t.bigint "warehouse_id", null: false
+    t.float "total_area_sqm"
+    t.float "total_storage_capacity_mt"
+    t.float "usable_storage_capacity_mt"
+    t.integer "no_of_stores"
+    t.integer "construction_year"
+    t.string "ownership_type"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["warehouse_id"], name: "index_cats_warehouse_warehouse_capacity_on_warehouse_id"
+  end
+
+  create_table "cats_warehouse_warehouse_contacts", force: :cascade do |t|
+    t.bigint "warehouse_id", null: false
+    t.string "manager_name"
+    t.string "contact_phone"
+    t.string "contact_email"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["warehouse_id"], name: "index_cats_warehouse_warehouse_contacts_on_warehouse_id"
+  end
+
+  create_table "cats_warehouse_warehouse_infra", force: :cascade do |t|
+    t.bigint "warehouse_id", null: false
+    t.string "floor_type"
+    t.string "roof_type"
+    t.boolean "has_fumigation_facility"
+    t.boolean "has_fire_extinguisher"
+    t.boolean "has_security_guard"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["warehouse_id"], name: "index_cats_warehouse_warehouse_infra_on_warehouse_id"
+  end
+
+  create_table "cats_warehouse_warehouses", force: :cascade do |t|
+    t.bigint "location_id", null: false
+    t.bigint "hub_id"
+    t.bigint "geo_id"
+    t.string "code"
+    t.string "name", null: false
+    t.string "warehouse_type"
+    t.string "status"
+    t.text "description"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["geo_id"], name: "index_cats_warehouse_warehouses_on_geo_id"
+    t.index ["hub_id"], name: "index_cats_warehouse_warehouses_on_hub_id"
+    t.index ["location_id"], name: "index_cats_warehouse_warehouses_on_location_id"
+  end
+
+  create_table "cats_warehouse_waybill_items", force: :cascade do |t|
+    t.bigint "waybill_id", null: false
+    t.bigint "commodity_id", null: false
+    t.float "quantity", null: false
+    t.bigint "unit_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["commodity_id"], name: "index_cats_warehouse_waybill_items_on_commodity_id"
+    t.index ["unit_id"], name: "index_cats_warehouse_waybill_items_on_unit_id"
+    t.index ["waybill_id"], name: "index_cats_warehouse_waybill_items_on_waybill_id"
+  end
+
+  create_table "cats_warehouse_waybill_transport", force: :cascade do |t|
+    t.bigint "waybill_id", null: false
+    t.bigint "transporter_id", null: false
+    t.string "vehicle_plate_no"
+    t.string "driver_name"
+    t.string "driver_phone"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["transporter_id"], name: "index_cats_warehouse_waybill_transport_on_transporter_id"
+    t.index ["waybill_id"], name: "index_cats_warehouse_waybill_transport_on_waybill_id"
+  end
+
+  create_table "cats_warehouse_waybills", force: :cascade do |t|
+    t.string "reference_no"
+    t.bigint "dispatch_id"
+    t.bigint "source_location_id", null: false
+    t.bigint "destination_location_id", null: false
+    t.date "issued_on", null: false
+    t.string "status"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["destination_location_id"], name: "index_cats_warehouse_waybills_on_destination_location_id"
+    t.index ["dispatch_id"], name: "index_cats_warehouse_waybills_on_dispatch_id"
+    t.index ["source_location_id"], name: "index_cats_warehouse_waybills_on_source_location_id"
+  end
+
   add_foreign_key "cats_core_application_settings", "cats_core_application_modules", column: "application_module_id"
   add_foreign_key "cats_core_beneficiaries", "cats_core_beneficiary_categories", column: "beneficiary_category_id"
   add_foreign_key "cats_core_beneficiaries", "cats_core_locations", column: "fdp_id"
@@ -1168,4 +1539,60 @@ ActiveRecord::Schema[7.0].define(version: 2024_03_04_145823) do
   add_foreign_key "cats_core_users", "cats_core_application_modules", column: "application_module_id"
   add_foreign_key "cats_core_users_cats_core_roles", "cats_core_roles", column: "role_id"
   add_foreign_key "cats_core_users_cats_core_roles", "cats_core_users", column: "user_id"
+  add_foreign_key "cats_warehouse_gin_items", "cats_core_commodities", column: "commodity_id"
+  add_foreign_key "cats_warehouse_gin_items", "cats_core_unit_of_measures", column: "unit_id"
+  add_foreign_key "cats_warehouse_gin_items", "cats_warehouse_gins", column: "gin_id"
+  add_foreign_key "cats_warehouse_gin_items", "cats_warehouse_stacks", column: "stack_id"
+  add_foreign_key "cats_warehouse_gin_items", "cats_warehouse_stores", column: "store_id"
+  add_foreign_key "cats_warehouse_gins", "cats_core_users", column: "approved_by_id"
+  add_foreign_key "cats_warehouse_gins", "cats_core_users", column: "issued_by_id"
+  add_foreign_key "cats_warehouse_gins", "cats_warehouse_warehouses", column: "warehouse_id"
+  add_foreign_key "cats_warehouse_grn_items", "cats_core_commodities", column: "commodity_id"
+  add_foreign_key "cats_warehouse_grn_items", "cats_core_unit_of_measures", column: "unit_id"
+  add_foreign_key "cats_warehouse_grn_items", "cats_warehouse_grns", column: "grn_id"
+  add_foreign_key "cats_warehouse_grn_items", "cats_warehouse_stacks", column: "stack_id"
+  add_foreign_key "cats_warehouse_grn_items", "cats_warehouse_stores", column: "store_id"
+  add_foreign_key "cats_warehouse_grns", "cats_core_users", column: "approved_by_id"
+  add_foreign_key "cats_warehouse_grns", "cats_core_users", column: "received_by_id"
+  add_foreign_key "cats_warehouse_grns", "cats_warehouse_warehouses", column: "warehouse_id"
+  add_foreign_key "cats_warehouse_hub_access", "cats_warehouse_hubs", column: "hub_id"
+  add_foreign_key "cats_warehouse_hub_capacity", "cats_warehouse_hubs", column: "hub_id"
+  add_foreign_key "cats_warehouse_hub_contacts", "cats_warehouse_hubs", column: "hub_id"
+  add_foreign_key "cats_warehouse_hub_infra", "cats_warehouse_hubs", column: "hub_id"
+  add_foreign_key "cats_warehouse_hubs", "cats_core_locations", column: "location_id"
+  add_foreign_key "cats_warehouse_hubs", "cats_warehouse_geos", column: "geo_id"
+  add_foreign_key "cats_warehouse_inspection_items", "cats_core_commodities", column: "commodity_id"
+  add_foreign_key "cats_warehouse_inspection_items", "cats_warehouse_inspections", column: "inspection_id"
+  add_foreign_key "cats_warehouse_inspections", "cats_core_users", column: "inspector_id"
+  add_foreign_key "cats_warehouse_inspections", "cats_warehouse_warehouses", column: "warehouse_id"
+  add_foreign_key "cats_warehouse_inventory_adjustments", "cats_core_unit_of_measures", column: "unit_id"
+  add_foreign_key "cats_warehouse_inventory_adjustments", "cats_warehouse_stacks", column: "stack_id"
+  add_foreign_key "cats_warehouse_stack_transactions", "cats_core_unit_of_measures", column: "unit_id"
+  add_foreign_key "cats_warehouse_stack_transactions", "cats_warehouse_stacks", column: "destination_id"
+  add_foreign_key "cats_warehouse_stack_transactions", "cats_warehouse_stacks", column: "source_id"
+  add_foreign_key "cats_warehouse_stacking_rules", "cats_warehouse_warehouses", column: "warehouse_id"
+  add_foreign_key "cats_warehouse_stacks", "cats_core_commodities", column: "commodity_id"
+  add_foreign_key "cats_warehouse_stacks", "cats_core_unit_of_measures", column: "unit_id"
+  add_foreign_key "cats_warehouse_stacks", "cats_warehouse_stores", column: "store_id"
+  add_foreign_key "cats_warehouse_stock_balances", "cats_core_commodities", column: "commodity_id"
+  add_foreign_key "cats_warehouse_stock_balances", "cats_core_unit_of_measures", column: "unit_id"
+  add_foreign_key "cats_warehouse_stock_balances", "cats_warehouse_stacks", column: "stack_id"
+  add_foreign_key "cats_warehouse_stock_balances", "cats_warehouse_stores", column: "store_id"
+  add_foreign_key "cats_warehouse_stock_balances", "cats_warehouse_warehouses", column: "warehouse_id"
+  add_foreign_key "cats_warehouse_stores", "cats_warehouse_warehouses", column: "warehouse_id"
+  add_foreign_key "cats_warehouse_warehouse_access", "cats_warehouse_warehouses", column: "warehouse_id"
+  add_foreign_key "cats_warehouse_warehouse_capacity", "cats_warehouse_warehouses", column: "warehouse_id"
+  add_foreign_key "cats_warehouse_warehouse_contacts", "cats_warehouse_warehouses", column: "warehouse_id"
+  add_foreign_key "cats_warehouse_warehouse_infra", "cats_warehouse_warehouses", column: "warehouse_id"
+  add_foreign_key "cats_warehouse_warehouses", "cats_core_locations", column: "location_id"
+  add_foreign_key "cats_warehouse_warehouses", "cats_warehouse_geos", column: "geo_id"
+  add_foreign_key "cats_warehouse_warehouses", "cats_warehouse_hubs", column: "hub_id"
+  add_foreign_key "cats_warehouse_waybill_items", "cats_core_commodities", column: "commodity_id"
+  add_foreign_key "cats_warehouse_waybill_items", "cats_core_unit_of_measures", column: "unit_id"
+  add_foreign_key "cats_warehouse_waybill_items", "cats_warehouse_waybills", column: "waybill_id"
+  add_foreign_key "cats_warehouse_waybill_transport", "cats_core_transporters", column: "transporter_id"
+  add_foreign_key "cats_warehouse_waybill_transport", "cats_warehouse_waybills", column: "waybill_id"
+  add_foreign_key "cats_warehouse_waybills", "cats_core_dispatches", column: "dispatch_id"
+  add_foreign_key "cats_warehouse_waybills", "cats_core_locations", column: "destination_location_id"
+  add_foreign_key "cats_warehouse_waybills", "cats_core_locations", column: "source_location_id"
 end
