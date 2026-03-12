@@ -1,5 +1,6 @@
 Rails.application.routes.draw do
   mount Cats::Core::Engine => "/cats_core"
+  mount Cats::Warehouse::Engine => "/cats_warehouse"
 
   # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
 

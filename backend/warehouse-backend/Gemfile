@@ -66,3 +66,5 @@ group :development, :test do
   gem "factory_bot_rails"
   gem "simplecov", require: false
 end
+
+gem 'cats_warehouse', path: 'engines\cats_warehouse'
