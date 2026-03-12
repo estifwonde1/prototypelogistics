@@ -1,24 +1,19 @@
-# README
+# Warehouse Backend
 
-This README would normally document whatever steps are necessary to get the
-application up and running.
+**Requirements**
+- Ruby >= 3.2 (see `.ruby-version`)
+- PostgreSQL 13+
 
-Things you may want to cover:
+**Environment Variables**
+- `POSTGRES_USER` (default: `postgres`)
+- `POSTGRES_PASSWORD` (default: empty)
+- `POSTGRES_HOST` (default: `localhost`)
+- `POSTGRES_PORT` (default: `5432`)
 
-* Ruby version
+**Setup**
+1. `bundle install`
+2. `bin/rails db:create db:migrate`
 
-* System dependencies
-
-* Configuration
-
-* Database creation
-
-* Database initialization
-
-* How to run the test suite
-
-* Services (job queues, cache servers, search engines, etc.)
-
-* Deployment instructions
-
-* ...
+**Tests**
+1. `bin/rails db:prepare RAILS_ENV=test`
+2. `bundle exec rspec`

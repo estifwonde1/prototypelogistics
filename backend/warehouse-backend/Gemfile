@@ -1,9 +1,9 @@
 source "https://rubygems.org"
 
 # Bundle edge Rails instead: gem "rails", github: "rails/rails", branch: "main"
-gem "rails", "~> 8.0.4"
-# Use sqlite3 as the database for Active Record
-gem "sqlite3", ">= 2.1"
+gem "rails", "~> 7.0.8"
+# Use PostgreSQL as the database for Active Record
+gem "pg", "~> 1.5"
 # Use the Puma web server [https://github.com/puma/puma]
 gem "puma", ">= 5.0"
 # Build JSON APIs with ease [https://github.com/rails/jbuilder]
@@ -33,7 +33,23 @@ gem "thruster", require: false
 # gem "image_processing", "~> 1.2"
 
 # Use Rack CORS for handling Cross-Origin Resource Sharing (CORS), making cross-origin Ajax possible
-# gem "rack-cors"
+gem "rack-cors"
+
+# Serialization
+gem "active_model_serializers", "~> 0.10.14"
+
+# Authorization
+gem "pundit"
+
+# Background jobs
+gem "sidekiq"
+gem "redis", "~> 5.0"
+
+# Env management
+gem "dotenv-rails", groups: %i[development test]
+
+# CATS Core
+gem "cats_core", "~> 1.5.28"
 
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
@@ -44,4 +60,9 @@ group :development, :test do
 
   # Omakase Ruby styling [https://github.com/rails/rubocop-rails-omakase/]
   gem "rubocop-rails-omakase", require: false
+
+  # Testing
+  gem "rspec-rails"
+  gem "factory_bot_rails"
+  gem "simplecov", require: false
 end

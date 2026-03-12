@@ -6,7 +6,7 @@ This document provides a complete technical plan to build a new Ruby on Rails ba
 ## Project Setup
 ### Rails Version and Initialization
 - Target Rails: 7.0.x (align with existing stack using Rails 7 in the legacy system)
-- Ruby: >= 3.3 (align with existing system)
+- Ruby: >= 3.2 (align with existing system)
 
 Example initialization:
 ```bash
