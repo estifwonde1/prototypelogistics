@@ -5,6 +5,7 @@ import { useForm } from '@mantine/form';
 import { IconAlertCircle } from '@tabler/icons-react';
 import { login } from '../../api/auth';
 import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug, getDefaultRouteForRole } from '../../utils/constants';
 
 function LoginPage() {
   const navigate = useNavigate();
@@ -33,8 +34,9 @@ function LoginPage() {
 
     try {
       const response = await login(values);
-      setAuth(response.token, response.user_id, response.role || 'user');
-      navigate('/');
+      const roleSlug = normalizeRoleSlug(response.role ?? undefined);
+      setAuth(response.token, response.user_id, roleSlug ?? '');
+      navigate(getDefaultRouteForRole(roleSlug));
     } catch (err: any) {
       const errorMessage = err.response?.data?.error?.message || 'Invalid credentials. Please try again.';
       setError(errorMessage);

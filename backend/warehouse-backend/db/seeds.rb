@@ -1,21 +1,24 @@
 puts "Seeding CATS Core and Warehouse data..."
 
 def find_or_create_with(model, attrs, updates = {})
-  record = model.find_or_create_by!(attrs)
-  record.update!(updates) if updates.any?
+  # Merge attrs and updates for find_or_create_by to avoid validation errors
+  all_attrs = attrs.merge(updates)
+  record = model.find_or_initialize_by(attrs)
+  record.assign_attributes(all_attrs)
+  record.save! if record.new_record? || record.changed?
   record
 end
 
 core_module = find_or_create_with(
   Cats::Core::ApplicationModule,
-  {prefix: "core"},
-  {name: "Core"}
+  {prefix: "core", name: "Core"},
+  {}
 )
 
 warehouse_module = find_or_create_with(
   Cats::Core::ApplicationModule,
-  {prefix: "warehouse"},
-  {name: "Warehouse"}
+  {prefix: "warehouse", name: "Warehouse"},
+  {}
 )
 
 roles = {
@@ -374,11 +377,15 @@ commodities = [
 end
 
 transporters = [
-  {code: "TR-001", name: "Alpha Logistics"},
-  {code: "TR-002", name: "Beta Transport"},
-  {code: "TR-003", name: "Gamma Freight"}
+  {code: "TR-001", name: "Alpha Logistics", address: "Addis Ababa, Ethiopia", contact_phone: "0911111111"},
+  {code: "TR-002", name: "Beta Transport", address: "Dire Dawa, Ethiopia", contact_phone: "0922222222"},
+  {code: "TR-003", name: "Gamma Freight", address: "Mekelle, Ethiopia", contact_phone: "0933333333"}
 ].map do |t|
-  find_or_create_with(Cats::Core::Transporter, {code: t[:code]}, {name: t[:name]})
+  find_or_create_with(
+    Cats::Core::Transporter,
+    {code: t[:code]},
+    {name: t[:name], address: t[:address], contact_phone: t[:contact_phone]}
+  )
 end
 
 purchase_order = find_or_create_with(
@@ -451,7 +458,7 @@ dispatch = find_or_create_with(
     unit: units[:kg],
     commodity_status: "Good",
     prepared_by: dispatcher_user,
-    dispatch_status: "Authorized"
+    dispatch_status: "Draft"
   }
 )
 

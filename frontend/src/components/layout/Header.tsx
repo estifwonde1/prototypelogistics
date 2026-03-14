@@ -2,6 +2,7 @@ import { Group, Text, Button, Menu, Avatar, Burger } from '@mantine/core';
 import { IconLogout, IconUser } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
+import { getRoleLabel } from '../../utils/constants';
 
 interface HeaderProps {
   mobileOpened: boolean;
@@ -12,7 +13,7 @@ interface HeaderProps {
 
 export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDesktop }: HeaderProps) {
   const navigate = useNavigate();
-  const { userId, clearAuth } = useAuthStore();
+  const { userId, role, clearAuth } = useAuthStore();
 
   const handleLogout = () => {
     clearAuth();
@@ -42,7 +43,7 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
       <Menu shadow="md" width={200}>
         <Menu.Target>
           <Button variant="subtle" leftSection={<Avatar size="sm" radius="xl" />}>
-            User #{userId}
+            {getRoleLabel(role)} {userId != null && `#${userId}`}
           </Button>
         </Menu.Target>
 

@@ -1,7 +1,7 @@
 import { AppShell as MantineAppShell } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { Outlet } from 'react-router-dom';
 import { Header } from './Header';
+import { RouteGuard } from './RouteGuard';
 import { Sidebar } from './Sidebar';
 
 export function AppShell() {
@@ -32,7 +32,7 @@ export function AppShell() {
       </MantineAppShell.Navbar>
 
       <MantineAppShell.Main>
-        <Outlet />
+        <RouteGuard />
       </MantineAppShell.Main>
     </MantineAppShell>
   );

@@ -13,7 +13,15 @@ module Cats
         end
 
         token = user.signed_id(purpose: "auth", expires_in: 24.hours)
-        render_success({ token: token, user_id: user.id })
+        # Prefer warehouse module role for this app; fallback to first role (e.g. Admin)
+        warehouse_module = Cats::Core::ApplicationModule.find_by(prefix: "warehouse")
+        role_record = if warehouse_module
+                        user.roles.find_by(application_module: warehouse_module)
+                      end
+        role_record ||= user.roles.first
+        role_name = role_record&.name
+
+        render_success({ token: token, user_id: user.id, role: role_name })
       end
     end
   end

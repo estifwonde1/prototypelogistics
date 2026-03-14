@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { Stack, NavLink as MantineNavLink } from '@mantine/core';
 import {
   IconDashboard,
@@ -60,6 +60,7 @@ const navigationGroups: NavGroup[] = [
 
 export function Sidebar({ onLinkClick }: SidebarProps) {
   const { can } = usePermission();
+  const location = useLocation();
 
   return (
     <Stack gap="md" p="md">
@@ -83,23 +84,24 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               defaultOpened
               style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--mantine-color-dimmed)' }}
             >
-              {visibleItems.map((item) => (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  style={{ textDecoration: 'none', color: 'inherit' }}
-                  onClick={onLinkClick}
-                >
-                  {({ isActive }) => (
-                    <MantineNavLink
-                      label={item.label}
-                      leftSection={item.icon}
-                      active={isActive}
-                      variant="subtle"
-                    />
-                  )}
-                </NavLink>
-              ))}
+              {visibleItems.map((item) => {
+                const isActive =
+                  item.path === '/'
+                    ? location.pathname === '/'
+                    : location.pathname.startsWith(item.path);
+                return (
+                  <MantineNavLink
+                    key={item.path}
+                    component={NavLink}
+                    to={item.path}
+                    label={item.label}
+                    leftSection={item.icon}
+                    active={isActive}
+                    variant="subtle"
+                    onClick={onLinkClick}
+                  />
+                );
+              })}
             </MantineNavLink>
           </div>
         );
