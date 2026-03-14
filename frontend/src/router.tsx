@@ -1,6 +1,8 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
+import { Center, Loader } from '@mantine/core';
 import { useAuthStore } from './store/authStore';
+import { AppShell } from './components/layout/AppShell';
 
 // Lazy load pages
 const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
@@ -29,6 +31,13 @@ const WaybillListPage = lazy(() => import('./pages/waybills/WaybillListPage'));
 const WaybillCreatePage = lazy(() => import('./pages/waybills/WaybillCreatePage'));
 const WaybillDetailPage = lazy(() => import('./pages/waybills/WaybillDetailPage'));
 
+// Loading fallback
+const LoadingFallback = () => (
+  <Center h="100vh">
+    <Loader size="lg" />
+  </Center>
+);
+
 // Protected Route Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated());
@@ -37,128 +46,138 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     return <Navigate to="/login" replace />;
   }
   
-  return <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>;
+  return <Suspense fallback={<LoadingFallback />}>{children}</Suspense>;
 };
 
 export const router = createBrowserRouter([
   {
     path: '/login',
     element: (
-      <Suspense fallback={<div>Loading...</div>}>
+      <Suspense fallback={<LoadingFallback />}>
         <LoginPage />
       </Suspense>
     ),
   },
   {
     path: '/',
-    element: <ProtectedRoute><DashboardPage /></ProtectedRoute>,
-  },
-  {
-    path: '/hubs',
-    element: <ProtectedRoute><HubListPage /></ProtectedRoute>,
-  },
-  {
-    path: '/hubs/new',
-    element: <ProtectedRoute><HubFormPage /></ProtectedRoute>,
-  },
-  {
-    path: '/hubs/:id',
-    element: <ProtectedRoute><HubDetailPage /></ProtectedRoute>,
-  },
-  {
-    path: '/hubs/:id/edit',
-    element: <ProtectedRoute><HubFormPage /></ProtectedRoute>,
-  },
-  {
-    path: '/warehouses',
-    element: <ProtectedRoute><WarehouseListPage /></ProtectedRoute>,
-  },
-  {
-    path: '/warehouses/new',
-    element: <ProtectedRoute><WarehouseFormPage /></ProtectedRoute>,
-  },
-  {
-    path: '/warehouses/:id',
-    element: <ProtectedRoute><WarehouseDetailPage /></ProtectedRoute>,
-  },
-  {
-    path: '/warehouses/:id/edit',
-    element: <ProtectedRoute><WarehouseFormPage /></ProtectedRoute>,
-  },
-  {
-    path: '/stores',
-    element: <ProtectedRoute><StoreListPage /></ProtectedRoute>,
-  },
-  {
-    path: '/stores/new',
-    element: <ProtectedRoute><StoreFormPage /></ProtectedRoute>,
-  },
-  {
-    path: '/stores/:id/edit',
-    element: <ProtectedRoute><StoreFormPage /></ProtectedRoute>,
-  },
-  {
-    path: '/stacks',
-    element: <ProtectedRoute><StackListPage /></ProtectedRoute>,
-  },
-  {
-    path: '/stacks/new',
-    element: <ProtectedRoute><StackFormPage /></ProtectedRoute>,
-  },
-  {
-    path: '/stacks/:id/edit',
-    element: <ProtectedRoute><StackFormPage /></ProtectedRoute>,
-  },
-  {
-    path: '/stock-balances',
-    element: <ProtectedRoute><StockBalancePage /></ProtectedRoute>,
-  },
-  {
-    path: '/grns',
-    element: <ProtectedRoute><GrnListPage /></ProtectedRoute>,
-  },
-  {
-    path: '/grns/new',
-    element: <ProtectedRoute><GrnCreatePage /></ProtectedRoute>,
-  },
-  {
-    path: '/grns/:id',
-    element: <ProtectedRoute><GrnDetailPage /></ProtectedRoute>,
-  },
-  {
-    path: '/gins',
-    element: <ProtectedRoute><GinListPage /></ProtectedRoute>,
-  },
-  {
-    path: '/gins/new',
-    element: <ProtectedRoute><GinCreatePage /></ProtectedRoute>,
-  },
-  {
-    path: '/gins/:id',
-    element: <ProtectedRoute><GinDetailPage /></ProtectedRoute>,
-  },
-  {
-    path: '/inspections',
-    element: <ProtectedRoute><InspectionListPage /></ProtectedRoute>,
-  },
-  {
-    path: '/inspections/new',
-    element: <ProtectedRoute><InspectionCreatePage /></ProtectedRoute>,
-  },
-  {
-    path: '/inspections/:id',
-    element: <ProtectedRoute><InspectionDetailPage /></ProtectedRoute>,
-  },
-  {
-    path: '/waybills',
-    element: <ProtectedRoute><WaybillListPage /></ProtectedRoute>,
-  },
-  {
-    path: '/waybills/new',
-    element: <ProtectedRoute><WaybillCreatePage /></ProtectedRoute>,
-  },
-  {
-    path: '/waybills/:id',
-    element: <ProtectedRoute><WaybillDetailPage /></ProtectedRoute>,
+    element: (
+      <ProtectedRoute>
+        <AppShell />
+      </ProtectedRoute>
+    ),
+    children: [
+      {
+        index: true,
+        element: <DashboardPage />,
+      },
+      {
+        path: 'hubs',
+        element: <HubListPage />,
+      },
+      {
+        path: 'hubs/new',
+        element: <HubFormPage />,
+      },
+      {
+        path: 'hubs/:id',
+        element: <HubDetailPage />,
+      },
+      {
+        path: 'hubs/:id/edit',
+        element: <HubFormPage />,
+      },
+      {
+        path: 'warehouses',
+        element: <WarehouseListPage />,
+      },
+      {
+        path: 'warehouses/new',
+        element: <WarehouseFormPage />,
+      },
+      {
+        path: 'warehouses/:id',
+        element: <WarehouseDetailPage />,
+      },
+      {
+        path: 'warehouses/:id/edit',
+        element: <WarehouseFormPage />,
+      },
+      {
+        path: 'stores',
+        element: <StoreListPage />,
+      },
+      {
+        path: 'stores/new',
+        element: <StoreFormPage />,
+      },
+      {
+        path: 'stores/:id/edit',
+        element: <StoreFormPage />,
+      },
+      {
+        path: 'stacks',
+        element: <StackListPage />,
+      },
+      {
+        path: 'stacks/new',
+        element: <StackFormPage />,
+      },
+      {
+        path: 'stacks/:id/edit',
+        element: <StackFormPage />,
+      },
+      {
+        path: 'stock-balances',
+        element: <StockBalancePage />,
+      },
+      {
+        path: 'grns',
+        element: <GrnListPage />,
+      },
+      {
+        path: 'grns/new',
+        element: <GrnCreatePage />,
+      },
+      {
+        path: 'grns/:id',
+        element: <GrnDetailPage />,
+      },
+      {
+        path: 'gins',
+        element: <GinListPage />,
+      },
+      {
+        path: 'gins/new',
+        element: <GinCreatePage />,
+      },
+      {
+        path: 'gins/:id',
+        element: <GinDetailPage />,
+      },
+      {
+        path: 'inspections',
+        element: <InspectionListPage />,
+      },
+      {
+        path: 'inspections/new',
+        element: <InspectionCreatePage />,
+      },
+      {
+        path: 'inspections/:id',
+        element: <InspectionDetailPage />,
+      },
+      {
+        path: 'waybills',
+        element: <WaybillListPage />,
+      },
+      {
+        path: 'waybills/new',
+        element: <WaybillCreatePage />,
+      },
+      {
+        path: 'waybills/:id',
+        element: <WaybillDetailPage />,
+      },
+    ],
   },
 ]);
