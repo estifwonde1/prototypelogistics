@@ -19,7 +19,6 @@ import { IconTrash, IconPlus } from '@tabler/icons-react';
 import { createGrn } from '../../api/grns';
 import { getWarehouses } from '../../api/warehouses';
 import { getStores } from '../../api/stores';
-import { getStacks } from '../../api/stacks';
 import { notifications } from '@mantine/notifications';
 import { QualityStatus } from '../../utils/constants';
 import type { GrnItem } from '../../types/grn';
@@ -54,10 +53,7 @@ function GrnCreatePage() {
     queryFn: getStores,
   });
 
-  const { data: stacks } = useQuery({
-    queryKey: ['stacks'],
-    queryFn: getStacks,
-  });
+  // Removed unused stacks query
 
   const createMutation = useMutation({
     mutationFn: createGrn,
@@ -187,7 +183,7 @@ function GrnCreatePage() {
               label="Received On"
               placeholder="Select date"
               value={receivedOn}
-              onChange={setReceivedOn}
+              onChange={(value) => setReceivedOn(value ? new Date(value) : null)}
               required
             />
             <TextInput

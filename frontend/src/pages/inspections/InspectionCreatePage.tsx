@@ -180,7 +180,7 @@ function InspectionCreatePage() {
               label="Inspected On"
               placeholder="Select date"
               value={inspectedOn}
-              onChange={setInspectedOn}
+              onChange={(value) => setInspectedOn(value ? new Date(value) : null)}
               required
             />
             <TextInput

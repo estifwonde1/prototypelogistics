@@ -19,7 +19,6 @@ import { IconTrash, IconPlus } from '@tabler/icons-react';
 import { createGin } from '../../api/gins';
 import { getWarehouses } from '../../api/warehouses';
 import { getStores } from '../../api/stores';
-import { getStacks } from '../../api/stacks';
 import { notifications } from '@mantine/notifications';
 import type { GinItem } from '../../types/gin';
 
@@ -52,10 +51,7 @@ function GinCreatePage() {
     queryFn: getStores,
   });
 
-  const { data: stacks } = useQuery({
-    queryKey: ['stacks'],
-    queryFn: getStacks,
-  });
+  // Removed unused stacks query
 
   const createMutation = useMutation({
     mutationFn: createGin,
@@ -179,7 +175,7 @@ function GinCreatePage() {
               label="Issued On"
               placeholder="Select date"
               value={issuedOn}
-              onChange={setIssuedOn}
+              onChange={(value) => setIssuedOn(value ? new Date(value) : null)}
               required
             />
             <TextInput

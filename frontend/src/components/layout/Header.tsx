@@ -1,9 +1,16 @@
-import { Group, Text, Button, Menu, Avatar } from '@mantine/core';
+import { Group, Text, Button, Menu, Avatar, Burger } from '@mantine/core';
 import { IconLogout, IconUser } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 
-export function Header() {
+interface HeaderProps {
+  mobileOpened: boolean;
+  desktopOpened: boolean;
+  toggleMobile: () => void;
+  toggleDesktop: () => void;
+}
+
+export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDesktop }: HeaderProps) {
   const navigate = useNavigate();
   const { userId, clearAuth } = useAuthStore();
 
@@ -14,9 +21,23 @@ export function Header() {
 
   return (
     <Group h="100%" px="md" justify="space-between">
-      <Text size="lg" fw={700}>
-        CATS Warehouse Management
-      </Text>
+      <Group>
+        <Burger
+          opened={mobileOpened}
+          onClick={toggleMobile}
+          hiddenFrom="sm"
+          size="sm"
+        />
+        <Burger
+          opened={desktopOpened}
+          onClick={toggleDesktop}
+          visibleFrom="sm"
+          size="sm"
+        />
+        <Text size="lg" fw={700}>
+          CATS Warehouse Management
+        </Text>
+      </Group>
 
       <Menu shadow="md" width={200}>
         <Menu.Target>
