@@ -1,5 +1,354 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  Stack,
+  Title,
+  Button,
+  Group,
+  TextInput,
+  Select,
+  Card,
+  Table,
+  ActionIcon,
+  Text,
+  NumberInput,
+  Textarea,
+} from '@mantine/core';
+import { DateInput } from '@mantine/dates';
+import { IconTrash, IconPlus } from '@tabler/icons-react';
+import { createInspection } from '../../api/inspections';
+import { getWarehouses } from '../../api/warehouses';
+import { notifications } from '@mantine/notifications';
+import { QualityStatus, PackagingCondition } from '../../utils/constants';
+import type { InspectionItem } from '../../types/inspection';
+
 function InspectionCreatePage() {
-  return <div>Inspection Create - Coming in Phase 8</div>;
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  // Form state
+  const [referenceNo, setReferenceNo] = useState('');
+  const [warehouseId, setWarehouseId] = useState<string | null>(null);
+  const [inspectedOn, setInspectedOn] = useState<Date | null>(new Date());
+  const [inspectorId, setInspectorId] = useState('');
+  const [sourceType, setSourceType] = useState('');
+  const [sourceId, setSourceId] = useState('');
+  const [items, setItems] = useState<InspectionItem[]>([
+    {
+      commodity_id: 0,
+      quantity_received: 0,
+      quantity_damaged: 0,
+      quantity_lost: 0,
+      quality_status: QualityStatus.GOOD,
+      packaging_condition: PackagingCondition.INTACT,
+      remarks: '',
+    },
+  ]);
+
+  const { data: warehouses } = useQuery({
+    queryKey: ['warehouses'],
+    queryFn: getWarehouses,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: createInspection,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['inspections'] });
+      notifications.show({
+        title: 'Success',
+        message: 'Inspection created successfully',
+        color: 'green',
+      });
+      navigate(`/inspections/${data.id}`);
+    },
+    onError: (error: any) => {
+      notifications.show({
+        title: 'Error',
+        message: error.response?.data?.error?.message || 'Failed to create inspection',
+        color: 'red',
+      });
+    },
+  });
+
+  const handleAddItem = () => {
+    setItems([
+      ...items,
+      {
+        commodity_id: 0,
+        quantity_received: 0,
+        quantity_damaged: 0,
+        quantity_lost: 0,
+        quality_status: QualityStatus.GOOD,
+        packaging_condition: PackagingCondition.INTACT,
+        remarks: '',
+      },
+    ]);
+  };
+
+  const handleRemoveItem = (index: number) => {
+    setItems(items.filter((_, i) => i !== index));
+  };
+
+  const handleItemChange = (index: number, field: keyof InspectionItem, value: any) => {
+    const newItems = [...items];
+    newItems[index] = { ...newItems[index], [field]: value };
+    setItems(newItems);
+  };
+
+  const handleSubmit = () => {
+    if (!referenceNo || !warehouseId || !inspectedOn) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Please fill in all required fields',
+        color: 'red',
+      });
+      return;
+    }
+
+    if (items.length === 0 || items.some((item) => !item.commodity_id || !item.quantity_received)) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Please add at least one valid item with commodity and quantity received',
+        color: 'red',
+      });
+      return;
+    }
+
+    createMutation.mutate({
+      reference_no: referenceNo,
+      warehouse_id: parseInt(warehouseId),
+      inspected_on: inspectedOn.toISOString().split('T')[0],
+      inspector_id: inspectorId ? parseInt(inspectorId) : undefined,
+      source_type: sourceType || undefined,
+      source_id: sourceId ? parseInt(sourceId) : undefined,
+      inspection_items: items,
+    });
+  };
+
+  const warehouseOptions = warehouses?.map((w) => ({
+    value: w.id.toString(),
+    label: `${w.name} (${w.code})`,
+  }));
+
+  const qualityOptions = Object.entries(QualityStatus).map(([key, value]) => ({
+    value,
+    label: key.charAt(0) + key.slice(1).toLowerCase(),
+  }));
+
+  const packagingOptions = Object.entries(PackagingCondition).map(([key, value]) => ({
+    value,
+    label: key.charAt(0) + key.slice(1).toLowerCase(),
+  }));
+
+  return (
+    <Stack gap="md">
+      <Group justify="space-between">
+        <div>
+          <Title order={2}>Create Inspection</Title>
+          <Text c="dimmed" size="sm">
+            Record quality inspection and assessment
+          </Text>
+        </div>
+      </Group>
+
+      <Card shadow="sm" padding="lg" radius="md" withBorder>
+        <Stack gap="md">
+          <Title order={4}>Header Information</Title>
+
+          <Group grow>
+            <TextInput
+              label="Reference Number"
+              placeholder="INS-2024-001"
+              value={referenceNo}
+              onChange={(e) => setReferenceNo(e.target.value)}
+              required
+            />
+            <Select
+              label="Warehouse"
+              placeholder="Select warehouse"
+              data={warehouseOptions || []}
+              value={warehouseId}
+              onChange={setWarehouseId}
+              searchable
+              required
+            />
+          </Group>
+
+          <Group grow>
+            <DateInput
+              label="Inspected On"
+              placeholder="Select date"
+              value={inspectedOn}
+              onChange={setInspectedOn}
+              required
+            />
+            <TextInput
+              label="Inspector (User ID)"
+              placeholder="Enter inspector user ID"
+              value={inspectorId}
+              onChange={(e) => setInspectorId(e.target.value)}
+            />
+          </Group>
+
+          <Group grow>
+            <TextInput
+              label="Source Type"
+              placeholder="e.g., GRN, Shipment"
+              value={sourceType}
+              onChange={(e) => setSourceType(e.target.value)}
+            />
+            <TextInput
+              label="Source ID"
+              placeholder="Enter source ID"
+              value={sourceId}
+              onChange={(e) => setSourceId(e.target.value)}
+            />
+          </Group>
+        </Stack>
+      </Card>
+
+      <Card shadow="sm" padding="lg" radius="md" withBorder>
+        <Stack gap="md">
+          <Group justify="space-between">
+            <Title order={4}>Inspection Items</Title>
+            <Button
+              leftSection={<IconPlus size={16} />}
+              variant="light"
+              onClick={handleAddItem}
+            >
+              Add Item
+            </Button>
+          </Group>
+
+          <Table.ScrollContainer minWidth={1200}>
+            <Table>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Commodity ID</Table.Th>
+                  <Table.Th>Qty Received</Table.Th>
+                  <Table.Th>Qty Damaged</Table.Th>
+                  <Table.Th>Qty Lost</Table.Th>
+                  <Table.Th>Quality</Table.Th>
+                  <Table.Th>Packaging</Table.Th>
+                  <Table.Th>Remarks</Table.Th>
+                  <Table.Th style={{ width: 50 }}>Actions</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {items.map((item, index) => (
+                  <Table.Tr key={index}>
+                    <Table.Td>
+                      <NumberInput
+                        placeholder="Commodity ID"
+                        value={item.commodity_id || ''}
+                        onChange={(val) =>
+                          handleItemChange(index, 'commodity_id', Number(val))
+                        }
+                        min={1}
+                        hideControls
+                      />
+                    </Table.Td>
+                    <Table.Td>
+                      <NumberInput
+                        placeholder="Received"
+                        value={item.quantity_received || ''}
+                        onChange={(val) =>
+                          handleItemChange(index, 'quantity_received', Number(val))
+                        }
+                        min={0}
+                        hideControls
+                      />
+                    </Table.Td>
+                    <Table.Td>
+                      <NumberInput
+                        placeholder="Damaged"
+                        value={item.quantity_damaged || ''}
+                        onChange={(val) =>
+                          handleItemChange(index, 'quantity_damaged', Number(val))
+                        }
+                        min={0}
+                        hideControls
+                      />
+                    </Table.Td>
+                    <Table.Td>
+                      <NumberInput
+                        placeholder="Lost"
+                        value={item.quantity_lost || ''}
+                        onChange={(val) =>
+                          handleItemChange(index, 'quantity_lost', Number(val))
+                        }
+                        min={0}
+                        hideControls
+                      />
+                    </Table.Td>
+                    <Table.Td>
+                      <Select
+                        placeholder="Quality"
+                        data={qualityOptions}
+                        value={item.quality_status}
+                        onChange={(val) =>
+                          handleItemChange(
+                            index,
+                            'quality_status',
+                            val || QualityStatus.GOOD
+                          )
+                        }
+                      />
+                    </Table.Td>
+                    <Table.Td>
+                      <Select
+                        placeholder="Packaging"
+                        data={packagingOptions}
+                        value={item.packaging_condition}
+                        onChange={(val) =>
+                          handleItemChange(
+                            index,
+                            'packaging_condition',
+                            val || PackagingCondition.INTACT
+                          )
+                        }
+                      />
+                    </Table.Td>
+                    <Table.Td>
+                      <Textarea
+                        placeholder="Remarks"
+                        value={item.remarks || ''}
+                        onChange={(e) =>
+                          handleItemChange(index, 'remarks', e.target.value)
+                        }
+                        rows={1}
+                        autosize
+                      />
+                    </Table.Td>
+                    <Table.Td>
+                      <ActionIcon
+                        color="red"
+                        variant="subtle"
+                        onClick={() => handleRemoveItem(index)}
+                        disabled={items.length === 1}
+                      >
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Stack>
+      </Card>
+
+      <Group justify="flex-end">
+        <Button variant="default" onClick={() => navigate('/inspections')}>
+          Cancel
+        </Button>
+        <Button onClick={handleSubmit} loading={createMutation.isPending}>
+          Create Inspection
+        </Button>
+      </Group>
+    </Stack>
+  );
 }
 
 export default InspectionCreatePage;

@@ -83,9 +83,9 @@ Waybill → WaybillTransport + WaybillItem[]
 | **3** | Warehouse Management | ✅ Completed | Warehouse List, Warehouse Detail, Warehouse Form |
 | **4** | Store & Stack Management | ✅ Completed | Store List, Store Form, Stack List, Stack Form |
 | **5** | Stock & Inventory | ✅ Completed | Stock Balance Dashboard, Stacking Rules |
-| **6** | GRN (Goods Received Notes) | ⬜ Not Started | GRN List, GRN Create, GRN Detail |
-| **7** | GIN (Goods Issue Notes) | ⬜ Not Started | GIN List, GIN Create, GIN Detail |
-| **8** | Inspections | ⬜ Not Started | Inspection List, Inspection Create, Inspection Detail |
+| **6** | GRN (Goods Received Notes) | ✅ Completed | GRN List, GRN Create, GRN Detail |
+| **7** | GIN (Goods Issue Notes) | ✅ Completed | GIN List, GIN Create, GIN Detail |
+| **8** | Inspections | ✅ Completed | Inspection List, Inspection Create, Inspection Detail |
 | **9** | Waybills | ⬜ Not Started | Waybill List, Waybill Create, Waybill Detail |
 | **10** | Integration & Error Handling | ⬜ Not Started | All pages |
 | **11** | Polish, Responsiveness & Deployment | ⬜ Not Started | All pages |
@@ -505,26 +505,26 @@ src/
 > Create, view, and confirm GRNs with line items.
 
 ### 6.1 — TypeScript Types
-- [ ] `types/grn.ts`
+- [x] `types/grn.ts`
   - `Grn` — id, reference_no, warehouse_id, received_on, source_type/id, status, received_by_id, approved_by_id
   - `GrnItem` — id, grn_id, commodity_id, quantity, unit_id, quality_status, store_id, stack_id
 
 ### 6.2 — API Functions
-- [ ] `api/grns.ts`
+- [x] `api/grns.ts`
   - `getGrns()` → GET /grns
   - `getGrn(id)` → GET /grns/:id
   - `createGrn(data)` → POST /grns (payload includes items[])
   - `confirmGrn(id)` → POST /grns/:id/confirm
 
 ### 6.3 — GRN List Page
-- [ ] `pages/grns/GrnListPage.tsx`
+- [x] `pages/grns/GrnListPage.tsx`
   - Table: Reference No, Warehouse, Received On, Source, Status (badge), Received By, Actions
   - Status filter (Draft / Confirmed)
   - "Create GRN" button
   - Row click → detail
 
 ### 6.4 — GRN Create Page
-- [ ] `pages/grns/GrnCreatePage.tsx`
+- [x] `pages/grns/GrnCreatePage.tsx`
   - Header form: warehouse_id (select), received_on (date picker), received_by_id, reference_no, source_type + source_id
   - Line items section (dynamic add/remove):
     - Each item: commodity_id (select), quantity (number), unit_id (select), quality_status (select), store_id (select), stack_id (select)
@@ -534,7 +534,7 @@ src/
   - Success → navigate to GRN detail
 
 ### 6.5 — GRN Detail Page
-- [ ] `pages/grns/GrnDetailPage.tsx`
+- [x] `pages/grns/GrnDetailPage.tsx`
   - Header: Reference no, status badge, warehouse name, received on, received by, source info
   - Items table: Commodity, Quantity, Unit, Quality Status, Store, Stack
   - **Confirm button** (visible only for Draft GRNs, only for admin/warehouse_manager roles)
@@ -550,27 +550,27 @@ src/
 > Create, view, and confirm GINs with line items.
 
 ### 7.1 — TypeScript Types
-- [ ] `types/gin.ts`
+- [x] `types/gin.ts`
   - `Gin` — id, reference_no, warehouse_id, issued_on, destination_type/id, status, issued_by_id, approved_by_id
   - `GinItem` — id, gin_id, commodity_id, quantity, unit_id, store_id, stack_id
 
 ### 7.2 — API Functions
-- [ ] `api/gins.ts`
+- [x] `api/gins.ts`
   - `getGins()`, `getGin(id)`, `createGin(data)`, `confirmGin(id)`
 
 ### 7.3 — GIN List Page
-- [ ] `pages/gins/GinListPage.tsx`
+- [x] `pages/gins/GinListPage.tsx`
   - Table: Reference No, Warehouse, Issued On, Destination, Status, Issued By, Actions
   - Status filter, create button, row click → detail
 
 ### 7.4 — GIN Create Page
-- [ ] `pages/gins/GinCreatePage.tsx`
+- [x] `pages/gins/GinCreatePage.tsx`
   - Header: warehouse_id, issued_on, issued_by_id, reference_no, destination_type + destination_id
   - Line items: commodity_id, quantity, unit_id, store_id, stack_id
   - Dynamic add/remove items
 
 ### 7.5 — GIN Detail Page
-- [ ] `pages/gins/GinDetailPage.tsx`
+- [x] `pages/gins/GinDetailPage.tsx`
   - Header info + items table
   - Confirm button for Draft GINs
 
@@ -583,28 +583,28 @@ src/
 > Create, view, and confirm Inspections with line items (quality checks).
 
 ### 8.1 — TypeScript Types
-- [ ] `types/inspection.ts`
+- [x] `types/inspection.ts`
   - `Inspection` — id, reference_no, warehouse_id, inspected_on, inspector_id, source_type/id, status
   - `InspectionItem` — id, inspection_id, commodity_id, quantity_received, quantity_damaged, quantity_lost, quality_status, packaging_condition, remarks
 
 ### 8.2 — API Functions
-- [ ] `api/inspections.ts`
+- [x] `api/inspections.ts`
   - `getInspections()`, `getInspection(id)`, `createInspection(data)`, `confirmInspection(id)`
 
 ### 8.3 — Inspection List Page
-- [ ] `pages/inspections/InspectionListPage.tsx`
+- [x] `pages/inspections/InspectionListPage.tsx`
   - Table: Reference No, Warehouse, Inspected On, Inspector, Source, Status, Actions
   - Status filter, create button
 
 ### 8.4 — Inspection Create Page
-- [ ] `pages/inspections/InspectionCreatePage.tsx`
+- [x] `pages/inspections/InspectionCreatePage.tsx`
   - Header: warehouse_id, inspected_on, inspector_id, reference_no, source_type + source_id
   - Line items:
     - commodity_id, quantity_received, quantity_damaged, quantity_lost, quality_status (select), packaging_condition (select), remarks (text)
   - Quality/damage fields make this form more complex than GRN/GIN
 
 ### 8.5 — Inspection Detail Page
-- [ ] `pages/inspections/InspectionDetailPage.tsx`
+- [x] `pages/inspections/InspectionDetailPage.tsx`
   - Header info + items table with damage/loss columns highlighted
   - Summary: total received, total damaged, total lost
   - Confirm button
@@ -764,15 +764,15 @@ Use this table to track individual page completion status:
 | 11 | Stack List Page | 4 | ⬜ |
 | 12 | Stack Form Page (Create/Edit) | 4 | ⬜ |
 | 13 | Stock Balance Page | 5 | ✅ |
-| 14 | GRN List Page | 6 | ⬜ |
-| 15 | GRN Create Page | 6 | ⬜ |
-| 16 | GRN Detail Page | 6 | ⬜ |
-| 17 | GIN List Page | 7 | ⬜ |
-| 18 | GIN Create Page | 7 | ⬜ |
-| 19 | GIN Detail Page | 7 | ⬜ |
-| 20 | Inspection List Page | 8 | ⬜ |
-| 21 | Inspection Create Page | 8 | ⬜ |
-| 22 | Inspection Detail Page | 8 | ⬜ |
+| 14 | GRN List Page | 6 | ✅ |
+| 15 | GRN Create Page | 6 | ✅ |
+| 16 | GRN Detail Page | 6 | ✅ |
+| 17 | GIN List Page | 7 | ✅ |
+| 18 | GIN Create Page | 7 | ✅ |
+| 19 | GIN Detail Page | 7 | ✅ |
+| 20 | Inspection List Page | 8 | ✅ |
+| 21 | Inspection Create Page | 8 | ✅ |
+| 22 | Inspection Detail Page | 8 | ✅ |
 | 23 | Waybill List Page | 9 | ⬜ |
 | 24 | Waybill Create Page | 9 | ⬜ |
 | 25 | Waybill Detail Page | 9 | ⬜ |
