@@ -81,7 +81,7 @@ Waybill → WaybillTransport + WaybillItem[]
 | **1** | Authentication & Layout | ✅ Completed | Login, Main Layout, Dashboard |
 | **2** | Hub Management | ✅ Completed | Hub List, Hub Detail, Hub Form |
 | **3** | Warehouse Management | ✅ Completed | Warehouse List, Warehouse Detail, Warehouse Form |
-| **4** | Store & Stack Management | ⬜ Not Started | Store List, Store Form, Stack List, Stack Form |
+| **4** | Store & Stack Management | ✅ Completed | Store List, Store Form, Stack List, Stack Form |
 | **5** | Stock & Inventory | ⬜ Not Started | Stock Balance Dashboard, Stacking Rules |
 | **6** | GRN (Goods Received Notes) | ⬜ Not Started | GRN List, GRN Create, GRN Detail |
 | **7** | GIN (Goods Issue Notes) | ⬜ Not Started | GIN List, GIN Create, GIN Detail |

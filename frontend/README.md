@@ -128,10 +128,29 @@ src/
 - [x] Navigation to related entities (hubs, stores, operations)
 - [x] Recent operations display (GRNs, GINs, Inspections)
 
+## Phase 4 Completion Status ✅
+
+- [x] Store list page with data table
+- [x] Search and warehouse filter functionality
+- [x] Store form for create/edit operations
+- [x] Dimensions fields (length, width, height)
+- [x] Usable and available space tracking
+- [x] Temporary storage toggle
+- [x] Gangway configuration (conditional fields)
+- [x] Stack list page with data table
+- [x] Search and store/warehouse filters
+- [x] Stack form for create/edit operations
+- [x] Position tracking (x, y coordinates)
+- [x] Commodity and unit selection
+- [x] Commodity status and stack status badges
+- [x] Full CRUD operations with React Query
+- [x] Delete confirmation modals
+- [x] Toast notifications for success/error
+
 ## Next Steps
 
-Phase 4: Store & Stack Management
-- Implement store list page with warehouse filter
-- Create store form with dimensions and gangway fields
-- Build stack list page with store/warehouse filters
-- Add stack form with commodity and position fields
+Phase 5: Stock & Inventory
+- Implement stock balance dashboard with summary cards
+- Create filterable stock balance table
+- Add grouping by warehouse or commodity
+- Display current stock levels across all locations
