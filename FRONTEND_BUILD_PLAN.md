@@ -80,7 +80,7 @@ Waybill → WaybillTransport + WaybillItem[]
 | **0** | Cleanup & Foundation | ✅ Completed | — |
 | **1** | Authentication & Layout | ✅ Completed | Login, Main Layout, Dashboard |
 | **2** | Hub Management | ✅ Completed | Hub List, Hub Detail, Hub Form |
-| **3** | Warehouse Management | ⬜ Not Started | Warehouse List, Warehouse Detail, Warehouse Form |
+| **3** | Warehouse Management | ✅ Completed | Warehouse List, Warehouse Detail, Warehouse Form |
 | **4** | Store & Stack Management | ⬜ Not Started | Store List, Store Form, Stack List, Stack Form |
 | **5** | Stock & Inventory | ⬜ Not Started | Stock Balance Dashboard, Stacking Rules |
 | **6** | GRN (Goods Received Notes) | ⬜ Not Started | GRN List, GRN Create, GRN Detail |
@@ -756,9 +756,9 @@ Use this table to track individual page completion status:
 | 3 | Hub List Page | 2 | ✅ |
 | 4 | Hub Detail Page | 2 | ✅ |
 | 5 | Hub Form Page (Create/Edit) | 2 | ✅ |
-| 6 | Warehouse List Page | 3 | ⬜ |
-| 7 | Warehouse Detail Page | 3 | ⬜ |
-| 8 | Warehouse Form Page (Create/Edit) | 3 | ⬜ |
+| 6 | Warehouse List Page | 3 | ✅ |
+| 7 | Warehouse Detail Page | 3 | ✅ |
+| 8 | Warehouse Form Page (Create/Edit) | 3 | ✅ |
 | 9 | Store List Page | 4 | ⬜ |
 | 10 | Store Form Page (Create/Edit) | 4 | ⬜ |
 | 11 | Stack List Page | 4 | ⬜ |
