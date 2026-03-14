@@ -82,7 +82,7 @@ Waybill → WaybillTransport + WaybillItem[]
 | **2** | Hub Management | ✅ Completed | Hub List, Hub Detail, Hub Form |
 | **3** | Warehouse Management | ✅ Completed | Warehouse List, Warehouse Detail, Warehouse Form |
 | **4** | Store & Stack Management | ✅ Completed | Store List, Store Form, Stack List, Stack Form |
-| **5** | Stock & Inventory | ⬜ Not Started | Stock Balance Dashboard, Stacking Rules |
+| **5** | Stock & Inventory | ✅ Completed | Stock Balance Dashboard, Stacking Rules |
 | **6** | GRN (Goods Received Notes) | ⬜ Not Started | GRN List, GRN Create, GRN Detail |
 | **7** | GIN (Goods Issue Notes) | ⬜ Not Started | GIN List, GIN Create, GIN Detail |
 | **8** | Inspections | ⬜ Not Started | Inspection List, Inspection Create, Inspection Detail |
@@ -482,14 +482,14 @@ src/
 > Stock balance viewing and stacking rules management.
 
 ### 5.1 — TypeScript Types
-- [ ] `types/stockBalance.ts` — StockBalance fields
+- [x] `types/stockBalance.ts` — StockBalance fields
 - [ ] `types/stackingRule.ts` — StackingRule fields (if endpoint exists)
 
 ### 5.2 — API Functions
-- [ ] `api/stockBalances.ts` — getStockBalances, getStockBalance
+- [x] `api/stockBalances.ts` — getStockBalances, getStockBalance
 
 ### 5.3 — Stock Balance Dashboard
-- [ ] `pages/stock/StockBalancePage.tsx`
+- [x] `pages/stock/StockBalancePage.tsx`
   - Summary cards: Total stock quantity, number of warehouses with stock, number of commodities
   - Table: Warehouse, Store, Stack, Commodity, Quantity, Unit
   - Filter by warehouse, store, commodity
@@ -763,7 +763,7 @@ Use this table to track individual page completion status:
 | 10 | Store Form Page (Create/Edit) | 4 | ⬜ |
 | 11 | Stack List Page | 4 | ⬜ |
 | 12 | Stack Form Page (Create/Edit) | 4 | ⬜ |
-| 13 | Stock Balance Page | 5 | ⬜ |
+| 13 | Stock Balance Page | 5 | ✅ |
 | 14 | GRN List Page | 6 | ⬜ |
 | 15 | GRN Create Page | 6 | ⬜ |
 | 16 | GRN Detail Page | 6 | ⬜ |
