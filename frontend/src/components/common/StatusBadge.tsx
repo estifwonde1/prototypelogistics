@@ -1,0 +1,33 @@
+import { Badge } from '@mantine/core';
+
+interface StatusBadgeProps {
+  status: string;
+}
+
+export function StatusBadge({ status }: StatusBadgeProps) {
+  const getColor = (status: string) => {
+    const normalized = status.toLowerCase();
+    switch (normalized) {
+      case 'active':
+        return 'green';
+      case 'inactive':
+        return 'gray';
+      case 'maintenance':
+        return 'yellow';
+      case 'draft':
+        return 'blue';
+      case 'confirmed':
+        return 'green';
+      case 'cancelled':
+        return 'red';
+      default:
+        return 'gray';
+    }
+  };
+
+  return (
+    <Badge color={getColor(status)} variant="light">
+      {status}
+    </Badge>
+  );
+}

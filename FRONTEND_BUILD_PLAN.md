@@ -79,7 +79,7 @@ Waybill → WaybillTransport + WaybillItem[]
 |-------|------|--------|-------|
 | **0** | Cleanup & Foundation | ✅ Completed | — |
 | **1** | Authentication & Layout | ✅ Completed | Login, Main Layout, Dashboard |
-| **2** | Hub Management | ⬜ Not Started | Hub List, Hub Detail, Hub Form |
+| **2** | Hub Management | ✅ Completed | Hub List, Hub Detail, Hub Form |
 | **3** | Warehouse Management | ⬜ Not Started | Warehouse List, Warehouse Detail, Warehouse Form |
 | **4** | Store & Stack Management | ⬜ Not Started | Store List, Store Form, Stack List, Stack Form |
 | **5** | Stock & Inventory | ⬜ Not Started | Stock Balance Dashboard, Stacking Rules |
@@ -753,9 +753,9 @@ Use this table to track individual page completion status:
 |---|------|-------|--------|
 | 1 | Login Page | 1 | ✅ |
 | 2 | Dashboard Page | 1 | ✅ |
-| 3 | Hub List Page | 2 | ⬜ |
-| 4 | Hub Detail Page | 2 | ⬜ |
-| 5 | Hub Form Page (Create/Edit) | 2 | ⬜ |
+| 3 | Hub List Page | 2 | ✅ |
+| 4 | Hub Detail Page | 2 | ✅ |
+| 5 | Hub Form Page (Create/Edit) | 2 | ✅ |
 | 6 | Warehouse List Page | 3 | ⬜ |
 | 7 | Warehouse Detail Page | 3 | ⬜ |
 | 8 | Warehouse Form Page (Create/Edit) | 3 | ⬜ |
