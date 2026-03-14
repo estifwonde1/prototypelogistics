@@ -1,6 +1,18 @@
 module Cats
   module Warehouse
     class GrnsController < BaseController
+      def index
+        grns = Grn.includes(:grn_items).order(created_at: :desc)
+        render_success({ grns: grns.as_json(include: :grn_items) })
+      end
+
+      def show
+        grn = Grn.includes(:grn_items).find_by(id: params[:id])
+        return render_error("GRN not found", status: :not_found) unless grn
+
+        render_success({ grn: grn.as_json(include: :grn_items) })
+      end
+
       def create
         payload = grn_params
 

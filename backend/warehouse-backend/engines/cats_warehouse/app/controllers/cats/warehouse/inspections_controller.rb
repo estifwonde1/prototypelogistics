@@ -1,6 +1,18 @@
 module Cats
   module Warehouse
     class InspectionsController < BaseController
+      def index
+        inspections = Inspection.includes(:inspection_items).order(created_at: :desc)
+        render_success({ inspections: inspections.as_json(include: :inspection_items) })
+      end
+
+      def show
+        inspection = Inspection.includes(:inspection_items).find_by(id: params[:id])
+        return render_error("Inspection not found", status: :not_found) unless inspection
+
+        render_success({ inspection: inspection.as_json(include: :inspection_items) })
+      end
+
       def create
         payload = inspection_params
 

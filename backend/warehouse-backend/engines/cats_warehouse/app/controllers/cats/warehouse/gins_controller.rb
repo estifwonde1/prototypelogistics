@@ -1,6 +1,18 @@
 module Cats
   module Warehouse
     class GinsController < BaseController
+      def index
+        gins = Gin.includes(:gin_items).order(created_at: :desc)
+        render_success({ gins: gins.as_json(include: :gin_items) })
+      end
+
+      def show
+        gin = Gin.includes(:gin_items).find_by(id: params[:id])
+        return render_error("GIN not found", status: :not_found) unless gin
+
+        render_success({ gin: gin.as_json(include: :gin_items) })
+      end
+
       def create
         payload = gin_params
 

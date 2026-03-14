@@ -1,6 +1,18 @@
 module Cats
   module Warehouse
     class WaybillsController < BaseController
+      def index
+        waybills = Waybill.includes(:waybill_items, :waybill_transport).order(created_at: :desc)
+        render_success({ waybills: waybills.as_json(include: [ :waybill_items, :waybill_transport ]) })
+      end
+
+      def show
+        waybill = Waybill.includes(:waybill_items, :waybill_transport).find_by(id: params[:id])
+        return render_error("Waybill not found", status: :not_found) unless waybill
+
+        render_success({ waybill: waybill.as_json(include: [ :waybill_items, :waybill_transport ]) })
+      end
+
       def create
         payload = waybill_params
 
