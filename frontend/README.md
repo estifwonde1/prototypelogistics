@@ -1,75 +1,97 @@
-# React + TypeScript + Vite
+# CATS Warehouse Management System - Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 19 + TypeScript + Vite 8 frontend for the CATS Warehouse Management System.
 
-Currently, two official plugins are available:
+## Setup
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
-
-Note: This will impact Vite dev & build performances.
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+1. Install dependencies:
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+2. Create `.env` file (copy from `.env.example`):
+```bash
+cp .env.example .env
 ```
+
+3. Update the API base URL in `.env` if needed:
+```
+VITE_API_BASE_URL=http://localhost:3000/cats_warehouse/v1
+```
+
+## Development
+
+Start the development server:
+```bash
+npm run dev
+```
+
+The app will be available at `http://localhost:5173`
+
+## Build
+
+Build for production:
+```bash
+npm run build
+```
+
+Preview production build:
+```bash
+npm run preview
+```
+
+## Project Structure
+
+```
+src/
+├── api/                    # API client & endpoint functions
+├── components/             # Reusable components
+│   ├── layout/            # Layout components (AppShell, Sidebar, Header)
+│   ├── common/            # Generic components (DataTable, StatusBadge, etc.)
+│   └── forms/             # Shared form components
+├── hooks/                 # Custom React hooks
+├── pages/                 # Page components (one folder per domain)
+├── store/                 # Zustand stores (auth, etc.)
+├── types/                 # TypeScript type definitions
+├── utils/                 # Utility functions
+├── router.tsx             # React Router configuration
+├── App.tsx                # Root app component
+└── main.tsx               # Entry point
+```
+
+## Tech Stack
+
+- React 19
+- TypeScript
+- Vite 8
+- React Router 7
+- Mantine UI
+- TanStack Query (React Query)
+- Zustand (state management)
+- Axios (HTTP client)
+- Day.js (date formatting)
+- Recharts (charts)
+
+## Phase 0 Completion Status ✅
+
+- [x] Backend CORS enabled
+- [x] Boilerplate files removed
+- [x] Core dependencies installed
+- [x] Project structure created
+- [x] Core infrastructure code implemented
+  - [x] API client with auth interceptor
+  - [x] Auth store (Zustand)
+  - [x] Type definitions
+  - [x] Constants and utilities
+  - [x] Router configuration
+  - [x] All API endpoint functions
+  - [x] Placeholder page components
+- [x] Project compiles successfully
+
+## Next Steps
+
+Phase 1: Authentication & Layout
+- Implement login page
+- Create app shell with sidebar navigation
+- Build dashboard page
+- Set up protected routes

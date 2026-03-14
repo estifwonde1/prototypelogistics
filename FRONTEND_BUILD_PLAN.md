@@ -77,7 +77,7 @@ Waybill → WaybillTransport + WaybillItem[]
 
 | Phase | Name | Status | Pages |
 |-------|------|--------|-------|
-| **0** | Cleanup & Foundation | ⬜ Not Started | — |
+| **0** | Cleanup & Foundation | ✅ Completed | — |
 | **1** | Authentication & Layout | ⬜ Not Started | Login, Main Layout, Dashboard |
 | **2** | Hub Management | ⬜ Not Started | Hub List, Hub Detail, Hub Form |
 | **3** | Warehouse Management | ⬜ Not Started | Warehouse List, Warehouse Detail, Warehouse Form |
