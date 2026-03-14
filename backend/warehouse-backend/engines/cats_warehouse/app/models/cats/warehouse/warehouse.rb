@@ -18,6 +18,8 @@ module Cats
       has_many :grns, class_name: "Cats::Warehouse::Grn", dependent: :destroy
       has_many :gins, class_name: "Cats::Warehouse::Gin", dependent: :destroy
       has_many :inspections, class_name: "Cats::Warehouse::Inspection", dependent: :destroy
+
+      validates :name, presence: true
     end
   end
 end

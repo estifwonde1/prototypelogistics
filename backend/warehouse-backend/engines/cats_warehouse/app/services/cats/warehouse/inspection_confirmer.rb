@@ -13,6 +13,8 @@ module Cats
 
           apply_grn_updates if @inspection.source.is_a?(Cats::Warehouse::Grn)
 
+          enqueue_notification("inspection.confirmed", inspection_id: @inspection.id)
+
           @inspection
         end
       end
@@ -62,6 +64,12 @@ module Cats
           unit_id: grn_item.unit_id,
           status: "Confirmed"
         )
+      end
+
+      def enqueue_notification(event, payload)
+        return unless ENV["ENABLE_WAREHOUSE_JOBS"] == "true"
+
+        NotificationJob.perform_later(event, payload)
       end
     end
   end

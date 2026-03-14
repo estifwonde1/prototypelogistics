@@ -2,20 +2,20 @@ module Cats
   module Warehouse
     class InspectionsController < BaseController
       def index
-        inspections = Inspection.includes(:inspection_items).order(created_at: :desc)
-        render_success({ inspections: inspections.as_json(include: :inspection_items) })
+        authorize Inspection
+        render_resource(Inspection.includes(:inspection_items).order(created_at: :desc), each_serializer: InspectionSerializer)
       end
 
       def show
-        inspection = Inspection.includes(:inspection_items).find_by(id: params[:id])
-        return render_error("Inspection not found", status: :not_found) unless inspection
-
-        render_success({ inspection: inspection.as_json(include: :inspection_items) })
+        inspection = Inspection.includes(:inspection_items).find(params[:id])
+        authorize inspection
+        render_resource(inspection, serializer: InspectionSerializer)
       end
 
       def create
         payload = inspection_params
 
+        authorize Inspection
         inspection = InspectionCreator.new(
           warehouse: Warehouse.find(payload[:warehouse_id]),
           inspected_on: payload[:inspected_on],
@@ -26,13 +26,14 @@ module Cats
           status: payload[:status] || "Draft"
         ).call
 
-        render_success({ id: inspection.id }, status: :created)
+        render_resource(inspection, status: :created, serializer: InspectionSerializer)
       end
 
       def confirm
         inspection = Inspection.find(params[:id])
+        authorize inspection, :confirm?
         InspectionConfirmer.new(inspection: inspection).call
-        render_success({ id: inspection.id, status: inspection.status })
+        render_resource(inspection, serializer: InspectionSerializer)
       end
 
       private

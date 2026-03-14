@@ -5,6 +5,8 @@ module Cats
 
       belongs_to :inspection, class_name: "Cats::Warehouse::Inspection"
       belongs_to :commodity, class_name: "Cats::Core::Commodity"
+
+      validates :quantity_received, presence: true
     end
   end
 end

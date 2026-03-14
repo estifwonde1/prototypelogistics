@@ -2,20 +2,20 @@ module Cats
   module Warehouse
     class WaybillsController < BaseController
       def index
-        waybills = Waybill.includes(:waybill_items, :waybill_transport).order(created_at: :desc)
-        render_success({ waybills: waybills.as_json(include: [ :waybill_items, :waybill_transport ]) })
+        authorize Waybill
+        render_resource(Waybill.includes(:waybill_items, :waybill_transport).order(created_at: :desc), each_serializer: WaybillSerializer)
       end
 
       def show
-        waybill = Waybill.includes(:waybill_items, :waybill_transport).find_by(id: params[:id])
-        return render_error("Waybill not found", status: :not_found) unless waybill
-
-        render_success({ waybill: waybill.as_json(include: [ :waybill_items, :waybill_transport ]) })
+        waybill = Waybill.includes(:waybill_items, :waybill_transport).find(params[:id])
+        authorize waybill
+        render_resource(waybill, serializer: WaybillSerializer)
       end
 
       def create
         payload = waybill_params
 
+        authorize Waybill
         waybill = WaybillCreator.new(
           reference_no: payload[:reference_no],
           issued_on: payload[:issued_on],
@@ -27,13 +27,14 @@ module Cats
           status: payload[:status]
         ).call
 
-        render_success({ id: waybill.id }, status: :created)
+        render_resource(waybill, status: :created, serializer: WaybillSerializer)
       end
 
       def confirm
         waybill = Waybill.find(params[:id])
+        authorize waybill, :confirm?
         WaybillConfirmer.new(waybill: waybill).call
-        render_success({ id: waybill.id, status: waybill.status })
+        render_resource(waybill, serializer: WaybillSerializer)
       end
 
       private

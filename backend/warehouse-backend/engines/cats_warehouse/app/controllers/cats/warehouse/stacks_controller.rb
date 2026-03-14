@@ -2,47 +2,34 @@ module Cats
   module Warehouse
     class StacksController < BaseController
       def index
-        stacks = Stack.order(:id)
-        render_success({ stacks: stacks })
+        authorize Stack
+        render_resource(Stack.order(:id), each_serializer: StackSerializer)
       end
 
       def show
-        stack = Stack.find_by(id: params[:id])
-        return render_error("Stack not found", status: :not_found) unless stack
-
-        render_success({ stack: stack })
+        stack = Stack.find(params[:id])
+        authorize stack
+        render_resource(stack, serializer: StackSerializer)
       end
 
       def create
-        stack = Stack.new(stack_params)
-
-        if stack.save
-          render_success({ id: stack.id }, status: :created)
-        else
-          render_error("Failed to create stack", details: stack.errors.full_messages)
-        end
+        authorize Stack
+        stack = Stack.create!(stack_params)
+        render_resource(stack, status: :created, serializer: StackSerializer)
       end
 
       def update
-        stack = Stack.find_by(id: params[:id])
-        return render_error("Stack not found", status: :not_found) unless stack
-
-        if stack.update(stack_params)
-          render_success({ id: stack.id })
-        else
-          render_error("Failed to update stack", details: stack.errors.full_messages)
-        end
+        stack = Stack.find(params[:id])
+        authorize stack
+        stack.update!(stack_params)
+        render_resource(stack, serializer: StackSerializer)
       end
 
       def destroy
-        stack = Stack.find_by(id: params[:id])
-        return render_error("Stack not found", status: :not_found) unless stack
-
-        if stack.destroy
-          render_success({ id: stack.id })
-        else
-          render_error("Failed to delete stack", details: stack.errors.full_messages)
-        end
+        stack = Stack.find(params[:id])
+        authorize stack
+        stack.destroy!
+        render_success({ id: stack.id })
       end
 
       private

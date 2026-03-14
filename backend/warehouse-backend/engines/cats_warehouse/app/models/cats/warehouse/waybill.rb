@@ -9,6 +9,8 @@ module Cats
 
       has_one :waybill_transport, class_name: "Cats::Warehouse::WaybillTransport", dependent: :destroy
       has_many :waybill_items, class_name: "Cats::Warehouse::WaybillItem", dependent: :destroy
+
+      validates :issued_on, presence: true
     end
   end
 end

@@ -21,6 +21,8 @@ module Cats
             apply_stack_transaction(item)
           end
 
+          enqueue_notification("grn.confirmed", grn_id: @grn.id)
+
           @grn
         end
       end
@@ -58,6 +60,12 @@ module Cats
           unit_id: item.unit_id,
           status: "Confirmed"
         )
+      end
+
+      def enqueue_notification(event, payload)
+        return unless ENV["ENABLE_WAREHOUSE_JOBS"] == "true"
+
+        NotificationJob.perform_later(event, payload)
       end
     end
   end

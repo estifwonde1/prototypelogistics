@@ -2,47 +2,34 @@ module Cats
   module Warehouse
     class StoresController < BaseController
       def index
-        stores = Store.order(:id)
-        render_success({ stores: stores })
+        authorize Store
+        render_resource(Store.order(:id), each_serializer: StoreSerializer)
       end
 
       def show
-        store = Store.find_by(id: params[:id])
-        return render_error("Store not found", status: :not_found) unless store
-
-        render_success({ store: store })
+        store = Store.find(params[:id])
+        authorize store
+        render_resource(store, serializer: StoreSerializer)
       end
 
       def create
-        store = Store.new(store_params)
-
-        if store.save
-          render_success({ id: store.id }, status: :created)
-        else
-          render_error("Failed to create store", details: store.errors.full_messages)
-        end
+        authorize Store
+        store = Store.create!(store_params)
+        render_resource(store, status: :created, serializer: StoreSerializer)
       end
 
       def update
-        store = Store.find_by(id: params[:id])
-        return render_error("Store not found", status: :not_found) unless store
-
-        if store.update(store_params)
-          render_success({ id: store.id })
-        else
-          render_error("Failed to update store", details: store.errors.full_messages)
-        end
+        store = Store.find(params[:id])
+        authorize store
+        store.update!(store_params)
+        render_resource(store, serializer: StoreSerializer)
       end
 
       def destroy
-        store = Store.find_by(id: params[:id])
-        return render_error("Store not found", status: :not_found) unless store
-
-        if store.destroy
-          render_success({ id: store.id })
-        else
-          render_error("Failed to delete store", details: store.errors.full_messages)
-        end
+        store = Store.find(params[:id])
+        authorize store
+        store.destroy!
+        render_success({ id: store.id })
       end
 
       private

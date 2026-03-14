@@ -9,6 +9,8 @@ module Cats
       belongs_to :approved_by, class_name: "Cats::Core::User", optional: true
 
       has_many :gin_items, class_name: "Cats::Warehouse::GinItem", dependent: :destroy
+
+      validates :issued_on, presence: true
     end
   end
 end

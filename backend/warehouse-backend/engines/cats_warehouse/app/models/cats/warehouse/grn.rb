@@ -9,6 +9,8 @@ module Cats
       belongs_to :approved_by, class_name: "Cats::Core::User", optional: true
 
       has_many :grn_items, class_name: "Cats::Warehouse::GrnItem", dependent: :destroy
+
+      validates :received_on, presence: true
     end
   end
 end

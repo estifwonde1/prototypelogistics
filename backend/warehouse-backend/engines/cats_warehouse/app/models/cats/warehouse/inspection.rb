@@ -8,6 +8,8 @@ module Cats
       belongs_to :source, polymorphic: true, optional: true
 
       has_many :inspection_items, class_name: "Cats::Warehouse::InspectionItem", dependent: :destroy
+
+      validates :inspected_on, presence: true
     end
   end
 end

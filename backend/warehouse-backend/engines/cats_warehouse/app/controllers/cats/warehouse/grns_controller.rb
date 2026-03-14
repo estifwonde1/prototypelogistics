@@ -2,20 +2,20 @@ module Cats
   module Warehouse
     class GrnsController < BaseController
       def index
-        grns = Grn.includes(:grn_items).order(created_at: :desc)
-        render_success({ grns: grns.as_json(include: :grn_items) })
+        authorize Grn
+        render_resource(Grn.includes(:grn_items).order(created_at: :desc), each_serializer: GrnSerializer)
       end
 
       def show
-        grn = Grn.includes(:grn_items).find_by(id: params[:id])
-        return render_error("GRN not found", status: :not_found) unless grn
-
-        render_success({ grn: grn.as_json(include: :grn_items) })
+        grn = Grn.includes(:grn_items).find(params[:id])
+        authorize grn
+        render_resource(grn, serializer: GrnSerializer)
       end
 
       def create
         payload = grn_params
 
+        authorize Grn
         grn = GrnCreator.new(
           warehouse: Warehouse.find(payload[:warehouse_id]),
           received_on: payload[:received_on],
@@ -26,15 +26,16 @@ module Cats
           status: payload[:status] || "Draft"
         ).call
 
-        render_success({ id: grn.id }, status: :created)
+        render_resource(grn, status: :created, serializer: GrnSerializer)
       end
 
       def confirm
         grn = Grn.find(params[:id])
+        authorize grn, :confirm?
         approved_by = params[:approved_by_id].present? ? Cats::Core::User.find(params[:approved_by_id]) : nil
 
         GrnConfirmer.new(grn: grn, approved_by: approved_by).call
-        render_success({ id: grn.id, status: grn.status })
+        render_resource(grn, serializer: GrnSerializer)
       end
 
       private

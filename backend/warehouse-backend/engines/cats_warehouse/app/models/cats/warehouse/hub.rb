@@ -12,6 +12,8 @@ module Cats
       has_one :hub_contacts, class_name: "Cats::Warehouse::HubContacts", dependent: :destroy
 
       has_many :warehouses, class_name: "Cats::Warehouse::Warehouse", dependent: :nullify
+
+      validates :name, presence: true
     end
   end
 end

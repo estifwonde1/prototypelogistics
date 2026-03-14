@@ -2,20 +2,20 @@ module Cats
   module Warehouse
     class GinsController < BaseController
       def index
-        gins = Gin.includes(:gin_items).order(created_at: :desc)
-        render_success({ gins: gins.as_json(include: :gin_items) })
+        authorize Gin
+        render_resource(Gin.includes(:gin_items).order(created_at: :desc), each_serializer: GinSerializer)
       end
 
       def show
-        gin = Gin.includes(:gin_items).find_by(id: params[:id])
-        return render_error("GIN not found", status: :not_found) unless gin
-
-        render_success({ gin: gin.as_json(include: :gin_items) })
+        gin = Gin.includes(:gin_items).find(params[:id])
+        authorize gin
+        render_resource(gin, serializer: GinSerializer)
       end
 
       def create
         payload = gin_params
 
+        authorize Gin
         gin = GinCreator.new(
           warehouse: Warehouse.find(payload[:warehouse_id]),
           issued_on: payload[:issued_on],
@@ -26,15 +26,16 @@ module Cats
           status: payload[:status] || "Draft"
         ).call
 
-        render_success({ id: gin.id }, status: :created)
+        render_resource(gin, status: :created, serializer: GinSerializer)
       end
 
       def confirm
         gin = Gin.find(params[:id])
+        authorize gin, :confirm?
         approved_by = params[:approved_by_id].present? ? Cats::Core::User.find(params[:approved_by_id]) : nil
 
         GinConfirmer.new(gin: gin, approved_by: approved_by).call
-        render_success({ id: gin.id, status: gin.status })
+        render_resource(gin, serializer: GinSerializer)
       end
 
       private

@@ -8,6 +8,8 @@ module Cats
       belongs_to :stack, class_name: "Cats::Warehouse::Stack", optional: true
       belongs_to :commodity, class_name: "Cats::Core::Commodity"
       belongs_to :unit, class_name: "Cats::Core::UnitOfMeasure"
+
+      validates :quantity, presence: true
     end
   end
 end

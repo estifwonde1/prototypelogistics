@@ -7,6 +7,8 @@ module Cats
 
       has_many :stacks, class_name: "Cats::Warehouse::Stack", dependent: :destroy
       has_many :stock_balances, class_name: "Cats::Warehouse::StockBalance", dependent: :destroy
+
+      validates :name, :length, :width, :height, :usable_space, :available_space, presence: true
     end
   end
 end

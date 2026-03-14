@@ -16,6 +16,8 @@ module Cats
                foreign_key: :destination_id,
                dependent: :nullify
       has_many :stock_balances, class_name: "Cats::Warehouse::StockBalance", dependent: :destroy
+
+      validates :length, :width, :height, presence: true
     end
   end
 end

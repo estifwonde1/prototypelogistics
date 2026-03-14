@@ -2,47 +2,34 @@ module Cats
   module Warehouse
     class WarehousesController < BaseController
       def index
-        warehouses = Warehouse.order(:id)
-        render_success({ warehouses: warehouses })
+        authorize Warehouse
+        render_resource(Warehouse.order(:id), each_serializer: WarehouseSerializer)
       end
 
       def show
-        warehouse = Warehouse.find_by(id: params[:id])
-        return render_error("Warehouse not found", status: :not_found) unless warehouse
-
-        render_success({ warehouse: warehouse })
+        warehouse = Warehouse.find(params[:id])
+        authorize warehouse
+        render_resource(warehouse, serializer: WarehouseSerializer)
       end
 
       def create
-        warehouse = Warehouse.new(warehouse_params)
-
-        if warehouse.save
-          render_success({ id: warehouse.id }, status: :created)
-        else
-          render_error("Failed to create warehouse", details: warehouse.errors.full_messages)
-        end
+        authorize Warehouse
+        warehouse = Warehouse.create!(warehouse_params)
+        render_resource(warehouse, status: :created, serializer: WarehouseSerializer)
       end
 
       def update
-        warehouse = Warehouse.find_by(id: params[:id])
-        return render_error("Warehouse not found", status: :not_found) unless warehouse
-
-        if warehouse.update(warehouse_params)
-          render_success({ id: warehouse.id })
-        else
-          render_error("Failed to update warehouse", details: warehouse.errors.full_messages)
-        end
+        warehouse = Warehouse.find(params[:id])
+        authorize warehouse
+        warehouse.update!(warehouse_params)
+        render_resource(warehouse, serializer: WarehouseSerializer)
       end
 
       def destroy
-        warehouse = Warehouse.find_by(id: params[:id])
-        return render_error("Warehouse not found", status: :not_found) unless warehouse
-
-        if warehouse.destroy
-          render_success({ id: warehouse.id })
-        else
-          render_error("Failed to delete warehouse", details: warehouse.errors.full_messages)
-        end
+        warehouse = Warehouse.find(params[:id])
+        authorize warehouse
+        warehouse.destroy!
+        render_success({ id: warehouse.id })
       end
 
       private
