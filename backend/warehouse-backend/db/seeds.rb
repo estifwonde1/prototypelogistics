@@ -1,8 +1,9 @@
 puts "Seeding CATS Core and Warehouse data..."
 
 def find_or_create_with(model, attrs, updates = {})
-  record = model.find_or_create_by!(attrs)
-  record.update!(updates) if updates.any?
+  record = model.find_or_initialize_by(attrs)
+  record.assign_attributes(updates)
+  record.save!
   record
 end
 
@@ -96,7 +97,7 @@ end
 
 admin_user = find_or_create_with(
   Cats::Core::User,
-  {email: "admin@cats.local"},
+  {email: "admin@cats.com"},
   {
     first_name: "Admin",
     last_name: "User",
@@ -108,7 +109,7 @@ admin_user = find_or_create_with(
 
 warehouse_manager = find_or_create_with(
   Cats::Core::User,
-  {email: "warehouse.manager@cats.local"},
+  {email: "warehouse.manager@cats.com"},
   {
     first_name: "Warehouse",
     last_name: "Manager",
@@ -120,7 +121,7 @@ warehouse_manager = find_or_create_with(
 
 hub_manager = find_or_create_with(
   Cats::Core::User,
-  {email: "hub.manager@cats.local"},
+  {email: "hub.manager@cats.com"},
   {
     first_name: "Hub",
     last_name: "Manager",
@@ -132,7 +133,7 @@ hub_manager = find_or_create_with(
 
 receiver_user = find_or_create_with(
   Cats::Core::User,
-  {email: "receiver@cats.local"},
+  {email: "receiver@cats.com"},
   {
     first_name: "Receiving",
     last_name: "Officer",
@@ -144,7 +145,7 @@ receiver_user = find_or_create_with(
 
 issuer_user = find_or_create_with(
   Cats::Core::User,
-  {email: "issuer@cats.local"},
+  {email: "issuer@cats.com"},
   {
     first_name: "Issuing",
     last_name: "Officer",
@@ -156,7 +157,7 @@ issuer_user = find_or_create_with(
 
 inspector_user = find_or_create_with(
   Cats::Core::User,
-  {email: "inspector@cats.local"},
+  {email: "inspector@cats.com"},
   {
     first_name: "Inspection",
     last_name: "Officer",
@@ -168,7 +169,7 @@ inspector_user = find_or_create_with(
 
 approver_user = find_or_create_with(
   Cats::Core::User,
-  {email: "approver@cats.local"},
+  {email: "approver@cats.com"},
   {
     first_name: "Approver",
     last_name: "Officer",
@@ -180,7 +181,7 @@ approver_user = find_or_create_with(
 
 dispatcher_user = find_or_create_with(
   Cats::Core::User,
-  {email: "dispatcher@cats.local"},
+  {email: "dispatcher@cats.com"},
   {
     first_name: "Dispatch",
     last_name: "Officer",
@@ -374,11 +375,15 @@ commodities = [
 end
 
 transporters = [
-  {code: "TR-001", name: "Alpha Logistics"},
-  {code: "TR-002", name: "Beta Transport"},
-  {code: "TR-003", name: "Gamma Freight"}
+  {code: "TR-001", name: "Alpha Logistics", address: "Addis Ababa", contact_phone: "0910000001"},
+  {code: "TR-002", name: "Beta Transport", address: "Adama", contact_phone: "0910000002"},
+  {code: "TR-003", name: "Gamma Freight", address: "Bishoftu", contact_phone: "0910000003"}
 ].map do |t|
-  find_or_create_with(Cats::Core::Transporter, {code: t[:code]}, {name: t[:name]})
+  find_or_create_with(
+    Cats::Core::Transporter,
+    {code: t[:code]},
+    {name: t[:name], address: t[:address], contact_phone: t[:contact_phone]}
+  )
 end
 
 purchase_order = find_or_create_with(
@@ -451,7 +456,7 @@ dispatch = find_or_create_with(
     unit: units[:kg],
     commodity_status: "Good",
     prepared_by: dispatcher_user,
-    dispatch_status: "Authorized"
+    dispatch_status: Cats::Core::Dispatch::APPROVED
   }
 )
 
