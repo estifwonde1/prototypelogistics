@@ -73,19 +73,12 @@ function StackListPage() {
       deleteMutation.mutate(stackToDelete);
     }
   };
-
-  const filteredStacks = stacks?.filter((stack) => {
-    const matchesSearch = stack.code.toLowerCase().includes(search.toLowerCase());
-    const matchesStore = !storeFilter || stack.store_id?.toString() === storeFilter;
-    
-    let matchesWarehouse = true;
-    if (warehouseFilter) {
-      const store = stores?.find((s) => s.id === stack.store_id);
-      matchesWarehouse = store?.warehouse_id?.toString() === warehouseFilter;
-    }
-    
-    return matchesSearch && matchesStore && matchesWarehouse;
-  });
+const filteredStacks = stacks?.filter((stack) => {
+  const code = stack.code ?? ''; // default to empty string
+  const matchesSearch = code.toLowerCase().includes(search?.toLowerCase() ?? '');
+  const matchesStore = !storeFilter || stack.store_id?.toString() === storeFilter;
+  return matchesSearch && matchesStore;
+});
 
   const storeOptions = stores?.map((store) => ({
     value: store.id.toString(),

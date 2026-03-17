@@ -1,13 +1,15 @@
 import { Badge } from '@mantine/core';
 
 interface StatusBadgeProps {
-  status: string;
+  status?: string | null; // allow null/undefined
 }
 
 export function StatusBadge({ status }: StatusBadgeProps) {
-  const getColor = (status: string) => {
-    const normalized = status.toLowerCase();
-    switch (normalized) {
+  // Normalize status safely
+  const normalized = status?.toLowerCase() ?? 'unknown';
+
+  const getColor = (normalizedStatus: string) => {
+    switch (normalizedStatus) {
       case 'active':
         return 'green';
       case 'inactive':
@@ -26,8 +28,8 @@ export function StatusBadge({ status }: StatusBadgeProps) {
   };
 
   return (
-    <Badge color={getColor(status)} variant="light">
-      {status}
+    <Badge color={getColor(normalized)} variant="light">
+      {status || 'Unknown'}
     </Badge>
   );
 }
