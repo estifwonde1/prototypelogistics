@@ -44,6 +44,7 @@ function WarehouseFormPage() {
       name: '',
       warehouse_type: 'main',
       status: 'active',
+      ownership_type: '',
       description: '',
       hub_id: '',
       location_id: '',
@@ -62,6 +63,7 @@ function WarehouseFormPage() {
         name: warehouse.name,
         warehouse_type: warehouse.warehouse_type,
         status: warehouse.status,
+        ownership_type: warehouse.ownership_type || '',
         description: warehouse.description || '',
         hub_id: warehouse.hub_id?.toString() || '',
         location_id: warehouse.location_id?.toString() || '',
@@ -117,6 +119,7 @@ function WarehouseFormPage() {
       name: values.name,
       warehouse_type: values.warehouse_type,
       status: values.status,
+      ownership_type: values.ownership_type || undefined,
       description: values.description || undefined,
       hub_id: values.hub_id ? Number(values.hub_id) : undefined,
       location_id: values.location_id ? Number(values.location_id) : undefined,
@@ -201,6 +204,18 @@ function WarehouseFormPage() {
                   {...form.getInputProps('status')}
                 />
               </Group>
+
+              <Select
+                label="Ownership Type"
+                placeholder="Select ownership"
+                data={[
+                  { value: 'Addis Ababa Government', label: 'Addis Ababa Government' },
+                  { value: 'Subcity', label: 'Subcity' },
+                  { value: 'Woreda', label: 'Woreda' },
+                  { value: 'hub', label: 'Hub' },
+                ]}
+                {...form.getInputProps('ownership_type')}
+              />
 
               <Select
                 label="Hub"

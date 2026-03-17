@@ -21,7 +21,7 @@ export const usePermission = () => {
     if (!role) return false;
 
     // Admin has full access
-    if (role === 'admin') return true;
+    if (role === 'admin' || role === 'superadmin') return true;
 
     // Hub Manager
     if (role === 'hub_manager') {

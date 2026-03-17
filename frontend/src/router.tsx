@@ -30,6 +30,11 @@ const InspectionDetailPage = lazy(() => import('./pages/inspections/InspectionDe
 const WaybillListPage = lazy(() => import('./pages/waybills/WaybillListPage'));
 const WaybillCreatePage = lazy(() => import('./pages/waybills/WaybillCreatePage'));
 const WaybillDetailPage = lazy(() => import('./pages/waybills/WaybillDetailPage'));
+const AdminUsersPage = lazy(() => import('./pages/admin/users/AdminUsersPage'));
+const UserAssignmentsPage = lazy(() => import('./pages/admin/assignments/UserAssignmentsPage'));
+const LocationsSetupPage = lazy(() => import('./pages/admin/setup/LocationsSetupPage'));
+const HubSetupPage = lazy(() => import('./pages/admin/setup/HubSetupPage'));
+const WarehouseSetupPage = lazy(() => import('./pages/admin/setup/WarehouseSetupPage'));
 
 // Loading fallback
 const LoadingFallback = () => (
@@ -177,6 +182,26 @@ export const router = createBrowserRouter([
       {
         path: 'waybills/:id',
         element: <WaybillDetailPage />,
+      },
+      {
+        path: 'admin/users',
+        element: <AdminUsersPage />,
+      },
+      {
+        path: 'admin/assignments',
+        element: <UserAssignmentsPage />,
+      },
+      {
+        path: 'admin/setup/locations',
+        element: <LocationsSetupPage />,
+      },
+      {
+        path: 'admin/setup/hubs',
+        element: <HubSetupPage />,
+      },
+      {
+        path: 'admin/setup/warehouses',
+        element: <WarehouseSetupPage />,
       },
     ],
   },

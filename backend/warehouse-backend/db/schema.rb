@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_03_12_153146) do
+ActiveRecord::Schema[7.0].define(version: 2026_03_17_121500) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1275,6 +1275,23 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_12_153146) do
     t.index ["warehouse_id"], name: "index_cats_warehouse_stores_on_warehouse_id"
   end
 
+  create_table "cats_warehouse_user_assignments", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.bigint "hub_id"
+    t.bigint "warehouse_id"
+    t.bigint "store_id"
+    t.string "role_name"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["hub_id"], name: "index_cats_warehouse_user_assignments_on_hub_id"
+    t.index ["store_id"], name: "index_cats_warehouse_user_assignments_on_store_id"
+    t.index ["user_id", "hub_id"], name: "cwua_user_hub_idx", unique: true, where: "(hub_id IS NOT NULL)"
+    t.index ["user_id", "store_id"], name: "cwua_user_store_idx", unique: true, where: "(store_id IS NOT NULL)"
+    t.index ["user_id", "warehouse_id"], name: "cwua_user_wh_idx", unique: true, where: "(warehouse_id IS NOT NULL)"
+    t.index ["user_id"], name: "index_cats_warehouse_user_assignments_on_user_id"
+    t.index ["warehouse_id"], name: "index_cats_warehouse_user_assignments_on_warehouse_id"
+  end
+
   create_table "cats_warehouse_warehouse_access", force: :cascade do |t|
     t.bigint "warehouse_id", null: false
     t.boolean "has_loading_dock"
@@ -1333,9 +1350,11 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_12_153146) do
     t.text "description"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "ownership_type"
     t.index ["geo_id"], name: "index_cats_warehouse_warehouses_on_geo_id"
     t.index ["hub_id"], name: "index_cats_warehouse_warehouses_on_hub_id"
     t.index ["location_id"], name: "index_cats_warehouse_warehouses_on_location_id"
+    t.index ["ownership_type"], name: "index_cats_warehouse_warehouses_on_ownership_type"
   end
 
   create_table "cats_warehouse_waybill_items", force: :cascade do |t|
@@ -1580,6 +1599,10 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_12_153146) do
   add_foreign_key "cats_warehouse_stock_balances", "cats_warehouse_stores", column: "store_id"
   add_foreign_key "cats_warehouse_stock_balances", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_stores", "cats_warehouse_warehouses", column: "warehouse_id"
+  add_foreign_key "cats_warehouse_user_assignments", "cats_core_users", column: "user_id"
+  add_foreign_key "cats_warehouse_user_assignments", "cats_warehouse_hubs", column: "hub_id"
+  add_foreign_key "cats_warehouse_user_assignments", "cats_warehouse_stores", column: "store_id"
+  add_foreign_key "cats_warehouse_user_assignments", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_warehouse_access", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_warehouse_capacity", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_warehouse_contacts", "cats_warehouse_warehouses", column: "warehouse_id"

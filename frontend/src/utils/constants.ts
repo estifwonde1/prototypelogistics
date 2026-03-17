@@ -3,6 +3,7 @@ export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localho
 /** Role slugs used by usePermission (must match backend role names normalized) */
 export const ROLES = {
   ADMIN: 'admin',
+  SUPERADMIN: 'superadmin',
   HUB_MANAGER: 'hub_manager',
   WAREHOUSE_MANAGER: 'warehouse_manager',
   STOREKEEPER: 'storekeeper',
@@ -15,6 +16,7 @@ export type RoleSlug = (typeof ROLES)[keyof typeof ROLES];
 /** Human-readable labels for roles (for display in UI) */
 export const ROLE_LABELS: Record<RoleSlug, string> = {
   [ROLES.ADMIN]: 'Admin',
+  [ROLES.SUPERADMIN]: 'Superadmin',
   [ROLES.HUB_MANAGER]: 'Hub Manager',
   [ROLES.WAREHOUSE_MANAGER]: 'Warehouse Manager',
   [ROLES.STOREKEEPER]: 'Storekeeper',
@@ -41,7 +43,9 @@ export function getDefaultRouteForRole(role: RoleSlug | null): string {
   if (!role) return '/';
   switch (role) {
     case ROLES.ADMIN:
-      return '/';
+      return '/admin/users';
+    case ROLES.SUPERADMIN:
+      return '/admin/users';
     case ROLES.HUB_MANAGER:
       return '/hubs';
     case ROLES.WAREHOUSE_MANAGER:

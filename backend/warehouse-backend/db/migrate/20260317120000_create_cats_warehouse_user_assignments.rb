@@ -11,8 +11,8 @@ class CreateCatsWarehouseUserAssignments < ActiveRecord::Migration[7.0]
       t.timestamps
     end
 
-    add_index :cats_warehouse_user_assignments, [:user_id, :hub_id], unique: true, where: "hub_id IS NOT NULL"
-    add_index :cats_warehouse_user_assignments, [:user_id, :warehouse_id], unique: true, where: "warehouse_id IS NOT NULL"
-    add_index :cats_warehouse_user_assignments, [:user_id, :store_id], unique: true, where: "store_id IS NOT NULL"
+    add_index :cats_warehouse_user_assignments, [:user_id, :hub_id], unique: true, where: "hub_id IS NOT NULL", name: "cwua_user_hub_idx"
+    add_index :cats_warehouse_user_assignments, [:user_id, :warehouse_id], unique: true, where: "warehouse_id IS NOT NULL", name: "cwua_user_wh_idx"
+    add_index :cats_warehouse_user_assignments, [:user_id, :store_id], unique: true, where: "store_id IS NOT NULL", name: "cwua_user_store_idx"
   end
 end

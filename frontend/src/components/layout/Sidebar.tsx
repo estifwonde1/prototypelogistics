@@ -11,8 +11,13 @@ import {
   IconFileExport,
   IconClipboardCheck,
   IconTruck,
+  IconUsers,
+  IconUserCheck,
+  IconMapPins,
+  IconBuildingSkyscraper,
 } from '@tabler/icons-react';
 import { usePermission } from '../../hooks/usePermission';
+import { useAuthStore } from '../../store/authStore';
 
 interface NavItem {
   label: string;
@@ -60,11 +65,82 @@ const navigationGroups: NavGroup[] = [
 
 export function Sidebar({ onLinkClick }: SidebarProps) {
   const { can } = usePermission();
+  const role = useAuthStore((state) => state.role);
   const location = useLocation();
+  const isAdmin = role === 'admin' || role === 'superadmin';
 
   return (
     <Stack gap="md" p="md">
-      {navigationGroups.map((group) => {
+      {isAdmin ? (
+        <>
+          <div>
+            <MantineNavLink
+              label="User Management"
+              childrenOffset={0}
+              defaultOpened
+              style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--mantine-color-dimmed)' }}
+            >
+              <MantineNavLink
+                component={NavLink}
+                to="/admin/users"
+                label="Users"
+                leftSection={<IconUsers size={20} />}
+                active={location.pathname.startsWith('/admin/users')}
+                variant="subtle"
+                onClick={onLinkClick}
+              />
+              <MantineNavLink
+                component={NavLink}
+                to="/admin/assignments"
+                label="User Assignments"
+                leftSection={<IconUserCheck size={20} />}
+                active={location.pathname.startsWith('/admin/assignments')}
+                variant="subtle"
+                onClick={onLinkClick}
+              />
+            </MantineNavLink>
+          </div>
+
+          <div>
+            <MantineNavLink
+              label="Setup"
+              childrenOffset={0}
+              defaultOpened
+              style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--mantine-color-dimmed)' }}
+            >
+              <MantineNavLink
+                component={NavLink}
+                to="/admin/setup/locations"
+                label="Locations"
+                leftSection={<IconMapPins size={20} />}
+                active={location.pathname.startsWith('/admin/setup/locations')}
+                variant="subtle"
+                onClick={onLinkClick}
+              />
+              <MantineNavLink
+                component={NavLink}
+                to="/admin/setup/hubs"
+                label="Hubs"
+                leftSection={<IconBuildingSkyscraper size={20} />}
+                active={location.pathname.startsWith('/admin/setup/hubs')}
+                variant="subtle"
+                onClick={onLinkClick}
+              />
+              <MantineNavLink
+                component={NavLink}
+                to="/admin/setup/warehouses"
+                label="Warehouses"
+                leftSection={<IconBuildingWarehouse size={20} />}
+                active={location.pathname.startsWith('/admin/setup/warehouses')}
+                variant="subtle"
+                onClick={onLinkClick}
+              />
+            </MantineNavLink>
+          </div>
+        </>
+      ) : null}
+
+      {!isAdmin && navigationGroups.map((group) => {
         // Filter items based on permissions
         const visibleItems = group.items.filter((item) => {
           // Dashboard is always visible

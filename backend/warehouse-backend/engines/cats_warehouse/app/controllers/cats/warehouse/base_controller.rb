@@ -9,8 +9,10 @@ module Cats
 
       private
 
-      def render_success(data = {}, status: :ok)
-        render json: { success: true, data: data }, status: status
+      def render_success(data = nil, status: :ok, **kwargs)
+        payload = data || {}
+        payload = payload.merge(kwargs) if kwargs.any?
+        render json: { success: true, data: payload }, status: status
       end
 
       def render_error(message, status: :unprocessable_entity, details: nil)

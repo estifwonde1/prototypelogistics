@@ -42,6 +42,7 @@ module Cats
           :code,
           :name,
           :warehouse_type,
+          :ownership_type,
           :status,
           :description
         )
