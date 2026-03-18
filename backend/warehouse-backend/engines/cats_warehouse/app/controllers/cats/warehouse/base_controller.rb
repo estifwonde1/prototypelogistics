@@ -9,8 +9,10 @@ module Cats
 
       private
 
-      def render_success(data = {}, status: :ok)
-        render json: { success: true, data: data }, status: status
+      def render_success(data = nil, status: :ok, **kwargs)
+        payload = data || {}
+        payload = payload.merge(kwargs) if kwargs.any?
+        render json: { success: true, data: payload }, status: status
       end
 
       def render_error(message, status: :unprocessable_entity, details: nil)
@@ -56,6 +58,65 @@ module Cats
             Cats::Core::User.find_by(id: user_id)
           end
         end
+      end
+
+      def admin_user?
+        current_user&.has_role?("Admin") || current_user&.has_role?("Superadmin")
+      end
+
+      def hub_manager?
+        current_user&.has_role?("Hub Manager")
+      end
+
+      def warehouse_manager?
+        current_user&.has_role?("Warehouse Manager")
+      end
+
+      def storekeeper?
+        current_user&.has_role?("Storekeeper")
+      end
+
+      def assigned_hub_ids
+        Cats::Warehouse::UserAssignment.where(user_id: current_user.id, role_name: "Hub Manager").pluck(:hub_id).compact
+      end
+
+      def assigned_warehouse_ids
+        Cats::Warehouse::UserAssignment.where(user_id: current_user.id, role_name: "Warehouse Manager").pluck(:warehouse_id).compact
+      end
+
+      def assigned_store_ids
+        Cats::Warehouse::UserAssignment.where(user_id: current_user.id, role_name: "Storekeeper").pluck(:store_id).compact
+      end
+
+      def warehouses_for_hubs(hub_ids)
+        Cats::Warehouse::Warehouse.where(hub_id: hub_ids).pluck(:id)
+      end
+
+      def stores_for_warehouses(warehouse_ids)
+        Cats::Warehouse::Store.where(warehouse_id: warehouse_ids).pluck(:id)
+      end
+
+      def stacks_for_stores(store_ids)
+        Cats::Warehouse::Stack.where(store_id: store_ids).pluck(:id)
+      end
+
+      def store_ids_for_current_user
+        return nil if admin_user?
+
+        if hub_manager?
+          hub_warehouse_ids = warehouses_for_hubs(assigned_hub_ids)
+          return stores_for_warehouses(hub_warehouse_ids)
+        end
+
+        if warehouse_manager?
+          return stores_for_warehouses(assigned_warehouse_ids)
+        end
+
+        if storekeeper?
+          return assigned_store_ids
+        end
+
+        []
       end
     end
   end

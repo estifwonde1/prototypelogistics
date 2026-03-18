@@ -3,11 +3,11 @@ module Cats
     class GrnsController < BaseController
       def index
         authorize Grn
-        render_resource(Grn.includes(:grn_items).order(created_at: :desc), each_serializer: GrnSerializer)
+        render_resource(scoped_grns.includes(:grn_items).order(created_at: :desc), each_serializer: GrnSerializer)
       end
 
       def show
-        grn = Grn.includes(:grn_items).find(params[:id])
+        grn = scoped_grns.includes(:grn_items).find(params[:id])
         authorize grn
         render_resource(grn, serializer: GrnSerializer)
       end
@@ -30,7 +30,7 @@ module Cats
       end
 
       def confirm
-        grn = Grn.find(params[:id])
+        grn = scoped_grns.find(params[:id])
         authorize grn, :confirm?
         approved_by = params[:approved_by_id].present? ? Cats::Core::User.find(params[:approved_by_id]) : nil
 
@@ -64,6 +64,26 @@ module Cats
         return nil if source_type.blank? || source_id.blank?
 
         source_type.constantize.find(source_id)
+      end
+
+      def scoped_grns
+        return Grn.all if admin_user?
+
+        if hub_manager?
+          hub_warehouse_ids = warehouses_for_hubs(assigned_hub_ids)
+          return Grn.where(warehouse_id: hub_warehouse_ids)
+        end
+
+        if warehouse_manager?
+          return Grn.where(warehouse_id: assigned_warehouse_ids)
+        end
+
+        if storekeeper?
+          store_ids = assigned_store_ids
+          return Grn.joins(:grn_items).where(cats_warehouse_grn_items: { store_id: store_ids }).distinct
+        end
+
+        Grn.none
       end
     end
   end

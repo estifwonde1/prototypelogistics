@@ -1,5 +1,5 @@
 import apiClient from './client';
-import type { Hub } from '../types/hub';
+import type { Hub, HubAccess, HubCapacity, HubContacts, HubInfra } from '../types/hub';
 import type { ApiResponse } from '../types/common';
 
 export const getHubs = async (): Promise<Hub[]> => {
@@ -24,4 +24,44 @@ export const updateHub = async (id: number, data: Partial<Hub>): Promise<Hub> =>
 
 export const deleteHub = async (id: number): Promise<void> => {
   await apiClient.delete(`/hubs/${id}`);
+};
+
+export const updateHubCapacity = async (
+  id: number,
+  data: Partial<HubCapacity>
+): Promise<HubCapacity> => {
+  const response = await apiClient.put<ApiResponse<HubCapacity>>(`/hubs/${id}/capacity`, {
+    payload: data,
+  });
+  return response.data.data;
+};
+
+export const updateHubAccess = async (
+  id: number,
+  data: Partial<HubAccess>
+): Promise<HubAccess> => {
+  const response = await apiClient.put<ApiResponse<HubAccess>>(`/hubs/${id}/access`, {
+    payload: data,
+  });
+  return response.data.data;
+};
+
+export const updateHubInfra = async (
+  id: number,
+  data: Partial<HubInfra>
+): Promise<HubInfra> => {
+  const response = await apiClient.put<ApiResponse<HubInfra>>(`/hubs/${id}/infra`, {
+    payload: data,
+  });
+  return response.data.data;
+};
+
+export const updateHubContacts = async (
+  id: number,
+  data: Partial<HubContacts>
+): Promise<HubContacts> => {
+  const response = await apiClient.put<ApiResponse<HubContacts>>(`/hubs/${id}/contacts`, {
+    payload: data,
+  });
+  return response.data.data;
 };

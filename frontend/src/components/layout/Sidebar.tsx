@@ -1,7 +1,7 @@
+import { useMemo } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { Stack, NavLink as MantineNavLink } from '@mantine/core';
 import {
-  IconDashboard,
   IconBuilding,
   IconBuildingWarehouse,
   IconBox,
@@ -9,16 +9,21 @@ import {
   IconChartBar,
   IconFileImport,
   IconFileExport,
-  IconClipboardCheck,
+  IconUsers,
+  IconUserCheck,
+  IconMapPins,
+  IconBuildingSkyscraper,
+  IconInbox,
   IconTruck,
+  IconReportAnalytics,
 } from '@tabler/icons-react';
-import { usePermission } from '../../hooks/usePermission';
+import { useAuthStore } from '../../store/authStore';
 
 interface NavItem {
   label: string;
   icon: React.ReactNode;
   path: string;
-  resource?: 'hubs' | 'warehouses' | 'stores' | 'stacks' | 'grns' | 'gins' | 'inspections' | 'waybills' | 'stock_balances';
+  resource?: string;
 }
 
 interface NavGroup {
@@ -30,53 +35,151 @@ interface SidebarProps {
   onLinkClick?: () => void;
 }
 
-const navigationGroups: NavGroup[] = [
-  {
-    label: 'Main',
-    items: [
-      { label: 'Dashboard', icon: <IconDashboard size={20} />, path: '/' },
-    ],
-  },
-  {
-    label: 'Management',
-    items: [
-      { label: 'Hubs', icon: <IconBuilding size={20} />, path: '/hubs', resource: 'hubs' },
-      { label: 'Warehouses', icon: <IconBuildingWarehouse size={20} />, path: '/warehouses', resource: 'warehouses' },
-      { label: 'Stores', icon: <IconBox size={20} />, path: '/stores', resource: 'stores' },
-      { label: 'Stacks', icon: <IconStack2 size={20} />, path: '/stacks', resource: 'stacks' },
-      { label: 'Stock Balances', icon: <IconChartBar size={20} />, path: '/stock-balances', resource: 'stock_balances' },
-    ],
-  },
-  {
-    label: 'Operations',
-    items: [
-      { label: 'GRNs', icon: <IconFileImport size={20} />, path: '/grns', resource: 'grns' },
-      { label: 'GINs', icon: <IconFileExport size={20} />, path: '/gins', resource: 'gins' },
-      { label: 'Inspections', icon: <IconClipboardCheck size={20} />, path: '/inspections', resource: 'inspections' },
-      { label: 'Waybills', icon: <IconTruck size={20} />, path: '/waybills', resource: 'waybills' },
-    ],
-  },
-];
-
 export function Sidebar({ onLinkClick }: SidebarProps) {
-  const { can } = usePermission();
+  const role = useAuthStore((state) => state.role);
   const location = useLocation();
+  const isAdmin = role === 'admin' || role === 'superadmin';
+
+  const roleMenus: NavGroup[] = useMemo(() => {
+    if (isAdmin) {
+      return [];
+    }
+
+    if (role === 'hub_manager') {
+      return [
+        {
+          label: 'Hub Management',
+          items: [
+            { label: 'Hubs', icon: <IconBuilding size={20} />, path: '/hubs' },
+            { label: 'Receipts', icon: <IconInbox size={20} />, path: '/receipts' },
+            { label: 'Dispatches', icon: <IconTruck size={20} />, path: '/dispatches' },
+          ],
+        },
+        {
+          label: 'Hub Operations',
+          items: [
+            { label: 'GRN', icon: <IconFileImport size={20} />, path: '/grns' },
+            { label: 'GIN', icon: <IconFileExport size={20} />, path: '/gins' },
+          ],
+        },
+      ];
+    }
+
+    if (role === 'warehouse_manager') {
+      return [
+        {
+          label: 'Warehouse Management',
+          items: [
+            { label: 'Warehouses', icon: <IconBuildingWarehouse size={20} />, path: '/warehouses' },
+            { label: 'Receipts', icon: <IconInbox size={20} />, path: '/receipts' },
+            { label: 'Dispatches', icon: <IconTruck size={20} />, path: '/dispatches' },
+          ],
+        },
+        {
+          label: 'Warehouse Operations',
+          items: [
+            { label: 'GRN', icon: <IconFileImport size={20} />, path: '/grns' },
+            { label: 'GIN', icon: <IconFileExport size={20} />, path: '/gins' },
+          ],
+        },
+      ];
+    }
+
+    if (role === 'storekeeper') {
+      return [
+        {
+          label: 'Store Management',
+          items: [
+            { label: 'Stacks', icon: <IconStack2 size={20} />, path: '/stacks' },
+            { label: 'Stacking', icon: <IconBox size={20} />, path: '/stacks/layout' },
+          ],
+        },
+        {
+          label: 'Reports',
+          items: [
+            { label: 'Bin Card', icon: <IconReportAnalytics size={20} />, path: '/reports/bin-card' },
+            { label: 'Stock Balances', icon: <IconChartBar size={20} />, path: '/stock-balances' },
+          ],
+        },
+      ];
+    }
+
+    return [];
+  }, [isAdmin, role]);
 
   return (
     <Stack gap="md" p="md">
-      {navigationGroups.map((group) => {
-        // Filter items based on permissions
-        const visibleItems = group.items.filter((item) => {
-          // Dashboard is always visible
-          if (!item.resource) return true;
-          // Check if user has read permission for this resource
-          return can(item.resource, 'read');
-        });
+      {isAdmin ? (
+        <>
+          <div>
+            <MantineNavLink
+              label="User Management"
+              childrenOffset={0}
+              defaultOpened
+              style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--mantine-color-dimmed)' }}
+            >
+              <MantineNavLink
+                component={NavLink}
+                to="/admin/users"
+                label="Users"
+                leftSection={<IconUsers size={20} />}
+                active={location.pathname.startsWith('/admin/users')}
+                variant="subtle"
+                onClick={onLinkClick}
+              />
+              <MantineNavLink
+                component={NavLink}
+                to="/admin/assignments"
+                label="User Assignments"
+                leftSection={<IconUserCheck size={20} />}
+                active={location.pathname.startsWith('/admin/assignments')}
+                variant="subtle"
+                onClick={onLinkClick}
+              />
+            </MantineNavLink>
+          </div>
 
-        // Don't render group if no items are visible
-        if (visibleItems.length === 0) return null;
+          <div>
+            <MantineNavLink
+              label="Setup"
+              childrenOffset={0}
+              defaultOpened
+              style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--mantine-color-dimmed)' }}
+            >
+              <MantineNavLink
+                component={NavLink}
+                to="/admin/setup/locations"
+                label="Locations"
+                leftSection={<IconMapPins size={20} />}
+                active={location.pathname.startsWith('/admin/setup/locations')}
+                variant="subtle"
+                onClick={onLinkClick}
+              />
+              <MantineNavLink
+                component={NavLink}
+                to="/admin/setup/hubs"
+                label="Hubs"
+                leftSection={<IconBuildingSkyscraper size={20} />}
+                active={location.pathname.startsWith('/admin/setup/hubs')}
+                variant="subtle"
+                onClick={onLinkClick}
+              />
+              <MantineNavLink
+                component={NavLink}
+                to="/admin/setup/warehouses"
+                label="Warehouses"
+                leftSection={<IconBuildingWarehouse size={20} />}
+                active={location.pathname.startsWith('/admin/setup/warehouses')}
+                variant="subtle"
+                onClick={onLinkClick}
+              />
+            </MantineNavLink>
+          </div>
+        </>
+      ) : null}
 
-        return (
+      {!isAdmin &&
+        roleMenus.map((group) => (
           <div key={group.label}>
             <MantineNavLink
               label={group.label}
@@ -84,11 +187,8 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               defaultOpened
               style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--mantine-color-dimmed)' }}
             >
-              {visibleItems.map((item) => {
-                const isActive =
-                  item.path === '/'
-                    ? location.pathname === '/'
-                    : location.pathname.startsWith(item.path);
+              {group.items.map((item) => {
+                const isActive = location.pathname.startsWith(item.path);
                 return (
                   <MantineNavLink
                     key={item.path}
@@ -104,8 +204,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               })}
             </MantineNavLink>
           </div>
-        );
-      })}
+        ))}
     </Stack>
   );
 }

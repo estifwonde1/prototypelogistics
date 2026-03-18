@@ -3,11 +3,11 @@ module Cats
     class GinsController < BaseController
       def index
         authorize Gin
-        render_resource(Gin.includes(:gin_items).order(created_at: :desc), each_serializer: GinSerializer)
+        render_resource(scoped_gins.includes(:gin_items).order(created_at: :desc), each_serializer: GinSerializer)
       end
 
       def show
-        gin = Gin.includes(:gin_items).find(params[:id])
+        gin = scoped_gins.includes(:gin_items).find(params[:id])
         authorize gin
         render_resource(gin, serializer: GinSerializer)
       end
@@ -30,7 +30,7 @@ module Cats
       end
 
       def confirm
-        gin = Gin.find(params[:id])
+        gin = scoped_gins.find(params[:id])
         authorize gin, :confirm?
         approved_by = params[:approved_by_id].present? ? Cats::Core::User.find(params[:approved_by_id]) : nil
 
@@ -63,6 +63,26 @@ module Cats
         return nil if destination_type.blank? || destination_id.blank?
 
         destination_type.constantize.find(destination_id)
+      end
+
+      def scoped_gins
+        return Gin.all if admin_user?
+
+        if hub_manager?
+          hub_warehouse_ids = warehouses_for_hubs(assigned_hub_ids)
+          return Gin.where(warehouse_id: hub_warehouse_ids)
+        end
+
+        if warehouse_manager?
+          return Gin.where(warehouse_id: assigned_warehouse_ids)
+        end
+
+        if storekeeper?
+          store_ids = assigned_store_ids
+          return Gin.joins(:gin_items).where(cats_warehouse_gin_items: { store_id: store_ids }).distinct
+        end
+
+        Gin.none
       end
     end
   end

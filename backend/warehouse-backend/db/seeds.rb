@@ -45,6 +45,7 @@ admin_user = find_or_create_with(
     first_name: "Mekdes",
     last_name: "Tadesse",
     password: "newpassword123",
+    phone_number: "0911111111",
     application_module: application_module
   }
 )
@@ -57,6 +58,7 @@ superadmin_user = find_or_create_with(
     first_name: "Yonatan",
     last_name: "Bekele",
     password: "newpassword123",
+    phone_number: "0911111112",
     application_module: application_module
   }
 )
@@ -69,6 +71,7 @@ hub_manager_user = find_or_create_with(
     first_name: "Hanna",
     last_name: "Girma",
     password: "newpassword123",
+    phone_number: "0911111113",
     application_module: application_module
   }
 )
@@ -81,6 +84,7 @@ warehouse_manager_user = find_or_create_with(
     first_name: "Samuel",
     last_name: "Alemu",
     password: "newpassword123",
+    phone_number: "0911111114",
     application_module: application_module
   }
 )
@@ -93,10 +97,50 @@ store_keeper_user = find_or_create_with(
     first_name: "Rahel",
     last_name: "Kebede",
     password: "password123",
+    phone_number: "0911111115",
     application_module: application_module
   }
 )
 add_role(store_keeper_user, "Storekeeper")
+
+hub_manager_user_2 = find_or_create_with(
+  Cats::Core::User,
+  { email: "hub_manager2@example.com" },
+  {
+    first_name: "Mulu",
+    last_name: "Asrat",
+    password: "newpassword123",
+    phone_number: "0911111116",
+    application_module: application_module
+  }
+)
+add_role(hub_manager_user_2, "Hub Manager")
+
+warehouse_manager_user_2 = find_or_create_with(
+  Cats::Core::User,
+  { email: "warehouse_manager2@example.com" },
+  {
+    first_name: "Tigist",
+    last_name: "Wondimu",
+    password: "newpassword123",
+    phone_number: "0911111117",
+    application_module: application_module
+  }
+)
+add_role(warehouse_manager_user_2, "Warehouse Manager")
+
+store_keeper_user_2 = find_or_create_with(
+  Cats::Core::User,
+  { email: "store_keeper2@example.com" },
+  {
+    first_name: "Getachew",
+    last_name: "Mekuria",
+    password: "password123",
+    phone_number: "0911111118",
+    application_module: application_module
+  }
+)
+add_role(store_keeper_user_2, "Storekeeper")
 
 puts "Seeding Addis Ababa locations (Region -> Subcity -> Woreda)..."
 region_addis = find_or_create_with(
@@ -138,6 +182,38 @@ woredas = zones.flat_map.with_index do |zone, idx|
   end
 end
 
+fdps = woredas.first(6).map.with_index do |woreda, idx|
+  find_or_create_with(
+    Cats::Core::Location,
+    { code: format("ADD-FDP-%02d", idx + 1) },
+    { name: "FDP #{idx + 1}", location_type: Cats::Core::Location::FDP, parent: woreda }
+  )
+end
+
+hub_locations = [
+  { code: "ADD-HUB-01", name: "Bole Hub", parent: fdps[0] },
+  { code: "ADD-HUB-02", name: "Yeka Hub", parent: fdps[1] },
+  { code: "ADD-HUB-03", name: "Kirkos Hub", parent: fdps[2] }
+].map do |h|
+  find_or_create_with(
+    Cats::Core::Location,
+    { code: h[:code] },
+    { name: h[:name], location_type: Cats::Core::Location::HUB, parent: h[:parent] }
+  )
+end
+
+warehouse_locations = [
+  { code: "ADD-WH-01", name: "Bole Central Warehouse", parent: hub_locations[0] },
+  { code: "ADD-WH-02", name: "Yeka Logistics Warehouse", parent: hub_locations[1] },
+  { code: "ADD-WH-03", name: "Kirkos Storage Warehouse", parent: hub_locations[2] }
+].map do |wh|
+  find_or_create_with(
+    Cats::Core::Location,
+    { code: wh[:code] },
+    { name: wh[:name], location_type: Cats::Core::Location::WAREHOUSE, parent: wh[:parent] }
+  )
+end
+
 puts "Seeding core reference data..."
 units = {
   kg: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "kg" }, { name: "Kilogram", unit_type: Cats::Core::UnitOfMeasure::WEIGHT }),
@@ -146,6 +222,11 @@ units = {
   bag: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "bag" }, { name: "Bag", unit_type: Cats::Core::UnitOfMeasure::ITEM })
 }
 
+currencies = {
+  etb: find_or_create_with(Cats::Core::Currency, { code: "ETB" }, { name: "Ethiopian Birr" })
+}
+
+# Commodity categories (used by donation + commodities)
 commodity_groups = [
   { code: "FOOD", name: "Food" },
   { code: "NONFOOD", name: "Non-Food" }
@@ -382,14 +463,14 @@ hubs.each_with_index do |hub, idx|
   find_or_create_with(
     Cats::Warehouse::HubContacts,
     { hub: hub },
-    { manager_name: hub_manager_user.full_name, contact_phone: "091200000#{idx + 1}" }
+    { manager_name: "#{hub_manager_user.first_name} #{hub_manager_user.last_name}", contact_phone: "091200000#{idx + 1}" }
   )
 end
 
 warehouses = [
-  { code: "ADD-WH-01", name: "Bole Central Warehouse", location: warehouse_locations[0], hub: hubs[0], geo: geos[0] },
-  { code: "ADD-WH-02", name: "Yeka Logistics Warehouse", location: warehouse_locations[1], hub: hubs[1], geo: geos[1] },
-  { code: "ADD-WH-03", name: "Kirkos Storage Warehouse", location: warehouse_locations[2], hub: hubs[2], geo: geos[2] }
+  { code: "ADD-WH-01", name: "Bole Central Warehouse", location: warehouse_locations[0], hub: hubs[0], geo: geos[0], ownership_type: "hub" },
+  { code: "ADD-WH-02", name: "Yeka Logistics Warehouse", location: warehouse_locations[1], hub: hubs[1], geo: geos[1], ownership_type: "hub" },
+  { code: "ADD-WH-03", name: "Kirkos Storage Warehouse", location: warehouse_locations[2], hub: hubs[2], geo: geos[2], ownership_type: "hub" }
 ].map do |w|
   find_or_create_with(
     Cats::Warehouse::Warehouse,
@@ -399,6 +480,7 @@ warehouses = [
       location: w[:location],
       hub: w[:hub],
       geo: w[:geo],
+      ownership_type: w[:ownership_type],
       warehouse_type: "Standard",
       status: "Active",
       description: "Addis Ababa warehouse"
@@ -441,7 +523,7 @@ warehouses.each_with_index do |warehouse, idx|
   find_or_create_with(
     Cats::Warehouse::WarehouseContacts,
     { warehouse: warehouse },
-    { manager_name: warehouse_manager_user.full_name, contact_phone: "091300000#{idx + 1}" }
+    { manager_name: "#{warehouse_manager_user.first_name} #{warehouse_manager_user.last_name}", contact_phone: "091300000#{idx + 1}" }
   )
 end
 
@@ -602,6 +684,21 @@ find_or_create_with(
 find_or_create_with(
   Cats::Warehouse::UserAssignment,
   { user: store_keeper_user, store: stores.first },
+  { role_name: "Storekeeper" }
+)
+find_or_create_with(
+  Cats::Warehouse::UserAssignment,
+  { user: hub_manager_user_2, hub: hubs.second },
+  { role_name: "Hub Manager" }
+)
+find_or_create_with(
+  Cats::Warehouse::UserAssignment,
+  { user: warehouse_manager_user_2, warehouse: warehouses.second },
+  { role_name: "Warehouse Manager" }
+)
+find_or_create_with(
+  Cats::Warehouse::UserAssignment,
+  { user: store_keeper_user_2, store: stores.second },
   { role_name: "Storekeeper" }
 )
 

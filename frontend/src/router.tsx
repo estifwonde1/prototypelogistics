@@ -3,6 +3,8 @@ import { lazy, Suspense } from 'react';
 import { Center, Loader } from '@mantine/core';
 import { useAuthStore } from './store/authStore';
 import { AppShell } from './components/layout/AppShell';
+import { usePermission } from './hooks/usePermission';
+import { AccessDenied } from './components/common/AccessDenied';
 
 // Lazy load pages
 const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
@@ -30,6 +32,15 @@ const InspectionDetailPage = lazy(() => import('./pages/inspections/InspectionDe
 const WaybillListPage = lazy(() => import('./pages/waybills/WaybillListPage'));
 const WaybillCreatePage = lazy(() => import('./pages/waybills/WaybillCreatePage'));
 const WaybillDetailPage = lazy(() => import('./pages/waybills/WaybillDetailPage'));
+const AdminUsersPage = lazy(() => import('./pages/admin/users/AdminUsersPage'));
+const UserAssignmentsPage = lazy(() => import('./pages/admin/assignments/UserAssignmentsPage'));
+const LocationsSetupPage = lazy(() => import('./pages/admin/setup/LocationsSetupPage'));
+const HubSetupPage = lazy(() => import('./pages/admin/setup/HubSetupPage'));
+const WarehouseSetupPage = lazy(() => import('./pages/admin/setup/WarehouseSetupPage'));
+const ReceiptListPage = lazy(() => import('./pages/receipts/ReceiptListPage'));
+const DispatchListPage = lazy(() => import('./pages/dispatches/DispatchListPage'));
+const BinCardReportPage = lazy(() => import('./pages/reports/BinCardReportPage'));
+const StackLayoutPage = lazy(() => import('./pages/stacks/StackLayoutPage'));
 
 // Loading fallback
 const LoadingFallback = () => (
@@ -37,6 +48,10 @@ const LoadingFallback = () => (
     <Loader size="lg" />
   </Center>
 );
+
+type PermissionArgs = Parameters<ReturnType<typeof usePermission>['can']>;
+type PermissionResource = PermissionArgs[0];
+type PermissionAction = PermissionArgs[1];
 
 // Protected Route Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -47,6 +62,30 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   }
   
   return <Suspense fallback={<LoadingFallback />}>{children}</Suspense>;
+};
+
+const RequirePermission = ({
+  resource,
+  action,
+  children,
+}: {
+  resource: PermissionResource;
+  action: PermissionAction;
+  children: React.ReactNode;
+}) => {
+  const { can } = usePermission();
+  if (!can(resource, action)) {
+    return <AccessDenied />;
+  }
+  return <>{children}</>;
+};
+
+const RequireAdmin = ({ children }: { children: React.ReactNode }) => {
+  const role = useAuthStore((state) => state.role);
+  if (role !== 'admin' && role !== 'superadmin') {
+    return <AccessDenied />;
+  }
+  return <>{children}</>;
 };
 
 export const router = createBrowserRouter([
@@ -72,111 +111,291 @@ export const router = createBrowserRouter([
       },
       {
         path: 'hubs',
-        element: <HubListPage />,
+        element: (
+          <RequirePermission resource="hubs" action="read">
+            <HubListPage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'hubs/new',
-        element: <HubFormPage />,
+        element: (
+          <RequirePermission resource="hubs" action="create">
+            <HubFormPage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'hubs/:id',
-        element: <HubDetailPage />,
+        element: (
+          <RequirePermission resource="hubs" action="read">
+            <HubDetailPage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'hubs/:id/edit',
-        element: <HubFormPage />,
+        element: (
+          <RequirePermission resource="hubs" action="update">
+            <HubFormPage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'warehouses',
-        element: <WarehouseListPage />,
+        element: (
+          <RequirePermission resource="warehouses" action="read">
+            <WarehouseListPage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'warehouses/new',
-        element: <WarehouseFormPage />,
+        element: (
+          <RequirePermission resource="warehouses" action="create">
+            <WarehouseFormPage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'warehouses/:id',
-        element: <WarehouseDetailPage />,
+        element: (
+          <RequirePermission resource="warehouses" action="read">
+            <WarehouseDetailPage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'warehouses/:id/edit',
-        element: <WarehouseFormPage />,
+        element: (
+          <RequirePermission resource="warehouses" action="update">
+            <WarehouseFormPage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'stores',
-        element: <StoreListPage />,
+        element: (
+          <RequirePermission resource="stores" action="read">
+            <StoreListPage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'stores/new',
-        element: <StoreFormPage />,
+        element: (
+          <RequirePermission resource="stores" action="create">
+            <StoreFormPage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'stores/:id/edit',
-        element: <StoreFormPage />,
+        element: (
+          <RequirePermission resource="stores" action="update">
+            <StoreFormPage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'stacks',
-        element: <StackListPage />,
+        element: (
+          <RequirePermission resource="stacks" action="read">
+            <StackListPage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'stacks/new',
-        element: <StackFormPage />,
+        element: (
+          <RequirePermission resource="stacks" action="create">
+            <StackFormPage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'stacks/:id/edit',
-        element: <StackFormPage />,
+        element: (
+          <RequirePermission resource="stacks" action="update">
+            <StackFormPage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'stock-balances',
-        element: <StockBalancePage />,
+        element: (
+          <RequirePermission resource="stock_balances" action="read">
+            <StockBalancePage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'grns',
-        element: <GrnListPage />,
+        element: (
+          <RequirePermission resource="grns" action="read">
+            <GrnListPage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'grns/new',
-        element: <GrnCreatePage />,
+        element: (
+          <RequirePermission resource="grns" action="create">
+            <GrnCreatePage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'grns/:id',
-        element: <GrnDetailPage />,
+        element: (
+          <RequirePermission resource="grns" action="read">
+            <GrnDetailPage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'gins',
-        element: <GinListPage />,
+        element: (
+          <RequirePermission resource="gins" action="read">
+            <GinListPage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'gins/new',
-        element: <GinCreatePage />,
+        element: (
+          <RequirePermission resource="gins" action="create">
+            <GinCreatePage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'gins/:id',
-        element: <GinDetailPage />,
+        element: (
+          <RequirePermission resource="gins" action="read">
+            <GinDetailPage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'inspections',
-        element: <InspectionListPage />,
+        element: (
+          <RequirePermission resource="inspections" action="read">
+            <InspectionListPage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'inspections/new',
-        element: <InspectionCreatePage />,
+        element: (
+          <RequirePermission resource="inspections" action="create">
+            <InspectionCreatePage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'inspections/:id',
-        element: <InspectionDetailPage />,
+        element: (
+          <RequirePermission resource="inspections" action="read">
+            <InspectionDetailPage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'waybills',
-        element: <WaybillListPage />,
+        element: (
+          <RequirePermission resource="waybills" action="read">
+            <WaybillListPage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'waybills/new',
-        element: <WaybillCreatePage />,
+        element: (
+          <RequirePermission resource="waybills" action="create">
+            <WaybillCreatePage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'waybills/:id',
-        element: <WaybillDetailPage />,
+        element: (
+          <RequirePermission resource="waybills" action="read">
+            <WaybillDetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'receipts',
+        element: (
+          <RequirePermission resource="receipts" action="read">
+            <ReceiptListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'dispatches',
+        element: (
+          <RequirePermission resource="dispatches" action="read">
+            <DispatchListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'reports/bin-card',
+        element: (
+          <RequirePermission resource="reports" action="read">
+            <BinCardReportPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'stacks/layout',
+        element: (
+          <RequirePermission resource="stacks" action="read">
+            <StackLayoutPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'admin/users',
+        element: (
+          <RequireAdmin>
+            <AdminUsersPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: 'admin/assignments',
+        element: (
+          <RequireAdmin>
+            <UserAssignmentsPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: 'admin/setup/locations',
+        element: (
+          <RequireAdmin>
+            <LocationsSetupPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: 'admin/setup/hubs',
+        element: (
+          <RequireAdmin>
+            <HubSetupPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: 'admin/setup/warehouses',
+        element: (
+          <RequireAdmin>
+            <WarehouseSetupPage />
+          </RequireAdmin>
+        ),
       },
     ],
   },

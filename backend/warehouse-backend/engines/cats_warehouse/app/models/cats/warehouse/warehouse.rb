@@ -20,6 +20,24 @@ module Cats
       has_many :inspections, class_name: "Cats::Warehouse::Inspection", dependent: :destroy
 
       validates :name, presence: true
+      validate :ownership_type_rules
+
+      OWNERSHIP_TYPES = ["hub", "Addis Ababa Government", "Subcity", "Woreda"].freeze
+      private
+
+      def ownership_type_rules
+        return if ownership_type.blank? && hub_id.blank?
+
+        if hub_id.present?
+          errors.add(:ownership_type, "must be 'hub' when warehouse belongs to a hub") if ownership_type != "hub"
+        else
+          return if ownership_type.blank?
+
+          unless OWNERSHIP_TYPES.include?(ownership_type) && ownership_type != "hub"
+            errors.add(:ownership_type, "must be one of: Addis Ababa Government, Subcity, Woreda")
+          end
+        end
+      end
     end
   end
 end

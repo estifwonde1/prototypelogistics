@@ -8,6 +8,7 @@ export interface Warehouse {
   location_id?: number;
   hub_id?: number;
   geo_id?: number;
+  ownership_type?: string;
   capacity?: WarehouseCapacity;
   access?: WarehouseAccess;
   infra?: WarehouseInfra;

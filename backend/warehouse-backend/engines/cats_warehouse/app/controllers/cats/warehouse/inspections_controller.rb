@@ -3,11 +3,11 @@ module Cats
     class InspectionsController < BaseController
       def index
         authorize Inspection
-        render_resource(Inspection.includes(:inspection_items).order(created_at: :desc), each_serializer: InspectionSerializer)
+        render_resource(scoped_inspections.includes(:inspection_items).order(created_at: :desc), each_serializer: InspectionSerializer)
       end
 
       def show
-        inspection = Inspection.includes(:inspection_items).find(params[:id])
+        inspection = scoped_inspections.includes(:inspection_items).find(params[:id])
         authorize inspection
         render_resource(inspection, serializer: InspectionSerializer)
       end
@@ -16,8 +16,9 @@ module Cats
         payload = inspection_params
 
         authorize Inspection
+        warehouse = scoped_warehouses_for_ops.find(payload[:warehouse_id])
         inspection = InspectionCreator.new(
-          warehouse: Warehouse.find(payload[:warehouse_id]),
+          warehouse: warehouse,
           inspected_on: payload[:inspected_on],
           inspector: Cats::Core::User.find(payload[:inspector_id]),
           items: payload[:items],
@@ -30,7 +31,7 @@ module Cats
       end
 
       def confirm
-        inspection = Inspection.find(params[:id])
+        inspection = scoped_inspections.find(params[:id])
         authorize inspection, :confirm?
         InspectionConfirmer.new(inspection: inspection).call
         render_resource(inspection, serializer: InspectionSerializer)
@@ -63,6 +64,51 @@ module Cats
         return nil if source_type.blank? || source_id.blank?
 
         source_type.constantize.find(source_id)
+      end
+
+      def scoped_warehouses_for_ops
+        return Warehouse.all if current_user&.has_role?("Admin") || current_user&.has_role?("Superadmin")
+
+        if current_user&.has_role?("Hub Manager")
+          hub_ids = Cats::Warehouse::UserAssignment.where(user_id: current_user.id, role_name: "Hub Manager").pluck(:hub_id).compact
+          return Warehouse.where(hub_id: hub_ids)
+        end
+
+        if current_user&.has_role?("Warehouse Manager")
+          warehouse_ids = Cats::Warehouse::UserAssignment.where(user_id: current_user.id, role_name: "Warehouse Manager").pluck(:warehouse_id).compact
+          return Warehouse.where(id: warehouse_ids)
+        end
+
+        if current_user&.has_role?("Storekeeper")
+          store_ids = Cats::Warehouse::UserAssignment.where(user_id: current_user.id, role_name: "Storekeeper").pluck(:store_id).compact
+          warehouse_ids = Store.where(id: store_ids).pluck(:warehouse_id)
+          return Warehouse.where(id: warehouse_ids)
+        end
+
+        Warehouse.none
+      end
+
+      def scoped_inspections
+        return Inspection.all if current_user&.has_role?("Admin") || current_user&.has_role?("Superadmin")
+
+        if current_user&.has_role?("Hub Manager")
+          hub_ids = Cats::Warehouse::UserAssignment.where(user_id: current_user.id, role_name: "Hub Manager").pluck(:hub_id).compact
+          warehouse_ids = Warehouse.where(hub_id: hub_ids).pluck(:id)
+          return Inspection.where(warehouse_id: warehouse_ids)
+        end
+
+        if current_user&.has_role?("Warehouse Manager")
+          warehouse_ids = Cats::Warehouse::UserAssignment.where(user_id: current_user.id, role_name: "Warehouse Manager").pluck(:warehouse_id).compact
+          return Inspection.where(warehouse_id: warehouse_ids)
+        end
+
+        if current_user&.has_role?("Storekeeper")
+          store_ids = Cats::Warehouse::UserAssignment.where(user_id: current_user.id, role_name: "Storekeeper").pluck(:store_id).compact
+          warehouse_ids = Store.where(id: store_ids).pluck(:warehouse_id)
+          return Inspection.where(warehouse_id: warehouse_ids)
+        end
+
+        Inspection.none
       end
     end
   end

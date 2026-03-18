@@ -13,6 +13,9 @@ export function RouteGuard() {
   const roleFromStore = useAuthStore((state) => state.role);
 
   const pathSegment = location.pathname.split('/').filter(Boolean)[0];
+  if (pathSegment === 'admin') {
+    return roleFromStore === 'admin' || roleFromStore === 'superadmin' ? <Outlet /> : <Navigate to="/" replace />;
+  }
   const resource = pathSegment ? PATH_SEGMENT_TO_RESOURCE[pathSegment] : null;
 
   // Dashboard (/) or unknown path: allow

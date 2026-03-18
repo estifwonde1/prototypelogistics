@@ -1355,9 +1355,11 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_17_184837) do
     t.text "description"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "ownership_type"
     t.index ["geo_id"], name: "index_cats_warehouse_warehouses_on_geo_id"
     t.index ["hub_id"], name: "index_cats_warehouse_warehouses_on_hub_id"
     t.index ["location_id"], name: "index_cats_warehouse_warehouses_on_location_id"
+    t.index ["ownership_type"], name: "index_cats_warehouse_warehouses_on_ownership_type"
   end
 
   create_table "cats_warehouse_waybill_items", force: :cascade do |t|

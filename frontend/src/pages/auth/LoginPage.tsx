@@ -35,8 +35,9 @@ function LoginPage() {
     try {
       const response = await login(values);
       const roleSlug = normalizeRoleSlug(response.role ?? undefined);
-      setAuth(response.token, response.user_id, roleSlug ?? '');
-      navigate(getDefaultRouteForRole(roleSlug));
+      const safeRole = roleSlug ?? 'admin';
+      setAuth(response.token, response.user_id, safeRole);
+      navigate(getDefaultRouteForRole(safeRole));
     } catch (err: any) {
       const errorMessage = err.response?.data?.error?.message || 'Invalid credentials. Please try again.';
       setError(errorMessage);

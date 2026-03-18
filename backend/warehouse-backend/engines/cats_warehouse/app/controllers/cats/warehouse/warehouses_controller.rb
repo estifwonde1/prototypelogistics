@@ -3,11 +3,11 @@ module Cats
     class WarehousesController < BaseController
       def index
         authorize Warehouse
-        render_resource(Warehouse.order(:id), each_serializer: WarehouseSerializer)
+        render_resource(scoped_warehouses.order(:id), each_serializer: WarehouseSerializer)
       end
 
       def show
-        warehouse = Warehouse.find(params[:id])
+        warehouse = scoped_warehouses.find(params[:id])
         authorize warehouse
         render_resource(warehouse, serializer: WarehouseSerializer)
       end
@@ -19,14 +19,14 @@ module Cats
       end
 
       def update
-        warehouse = Warehouse.find(params[:id])
+        warehouse = scoped_warehouses.find(params[:id])
         authorize warehouse
         warehouse.update!(warehouse_params)
         render_resource(warehouse, serializer: WarehouseSerializer)
       end
 
       def destroy
-        warehouse = Warehouse.find(params[:id])
+        warehouse = scoped_warehouses.find(params[:id])
         authorize warehouse
         warehouse.destroy!
         render_success({ id: warehouse.id })
@@ -42,9 +42,25 @@ module Cats
           :code,
           :name,
           :warehouse_type,
+          :ownership_type,
           :status,
           :description
         )
+      end
+
+      def scoped_warehouses
+        return Warehouse.all if admin_user?
+
+        if hub_manager?
+          hub_warehouse_ids = warehouses_for_hubs(assigned_hub_ids)
+          return Warehouse.where(id: hub_warehouse_ids)
+        end
+
+        if warehouse_manager?
+          return Warehouse.where(id: assigned_warehouse_ids)
+        end
+
+        Warehouse.none
       end
     end
   end

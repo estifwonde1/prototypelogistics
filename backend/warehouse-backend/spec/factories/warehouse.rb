@@ -31,4 +31,10 @@ FactoryBot.define do
     height { 2 }
     quantity { 10 }
   end
+
+  factory :cats_warehouse_user_assignment, class: "Cats::Warehouse::UserAssignment" do
+    user { association :cats_core_user, role_name: "Warehouse Manager" }
+    warehouse { association :cats_warehouse_warehouse }
+    role_name { "Warehouse Manager" }
+  end
 end

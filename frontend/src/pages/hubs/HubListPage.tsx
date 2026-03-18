@@ -12,13 +12,15 @@ import {
   Modal,
   Text,
 } from '@mantine/core';
-import { IconPlus, IconSearch, IconEye, IconEdit, IconTrash } from '@tabler/icons-react';
+import { IconPlus, IconSearch, IconEdit, IconTrash } from '@tabler/icons-react';
 import { getHubs, deleteHub } from '../../api/hubs';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
 import { notifications } from '@mantine/notifications';
+import { usePermission } from '../../hooks/usePermission';
+import { useAuthStore } from '../../store/authStore';
 
 function HubListPage() {
   const navigate = useNavigate();
@@ -26,6 +28,12 @@ function HubListPage() {
   const [search, setSearch] = useState('');
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [hubToDelete, setHubToDelete] = useState<number | null>(null);
+  const { can } = usePermission();
+  const role = useAuthStore((state) => state.role);
+  const isHubManager = role === 'hub_manager';
+  const canCreate = can('hubs', 'create');
+  const canUpdate = can('hubs', 'update');
+  const canDelete = can('hubs', 'delete');
 
   const { data: hubs, isLoading, error, refetch } = useQuery({
     queryKey: ['hubs'],
@@ -87,9 +95,11 @@ function HubListPage() {
             Manage regional, zonal, and woreda hubs
           </Text>
         </div>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => navigate('/hubs/new')}>
-          Create Hub
-        </Button>
+        {canCreate && (
+          <Button leftSection={<IconPlus size={16} />} onClick={() => navigate('/hubs/new')}>
+            Create Hub
+          </Button>
+        )}
       </Group>
 
       <TextInput
@@ -105,7 +115,7 @@ function HubListPage() {
           title="No hubs found"
           description={search ? 'Try adjusting your search' : 'Get started by creating your first hub'}
           action={
-            !search
+            !search && canCreate
               ? {
                   label: 'Create Hub',
                   onClick: () => navigate('/hubs/new'),
@@ -142,30 +152,30 @@ function HubListPage() {
                   <Table.Td>{hub.location_id || '-'}</Table.Td>
                   <Table.Td>
                     <Group gap="xs" justify="flex-end" onClick={(e) => e.stopPropagation()}>
-                      <ActionIcon
-                        variant="subtle"
-                        color="blue"
-                        onClick={() => navigate(`/hubs/${hub.id}`)}
-                      >
-                        <IconEye size={16} />
-                      </ActionIcon>
-                      <ActionIcon
-                        variant="subtle"
-                        color="gray"
-                        onClick={() => navigate(`/hubs/${hub.id}/edit`)}
-                      >
-                        <IconEdit size={16} />
-                      </ActionIcon>
-                      <ActionIcon
-                        variant="subtle"
-                        color="red"
-                        onClick={() => {
-                          setHubToDelete(hub.id);
-                          setDeleteModalOpen(true);
-                        }}
-                      >
-                        <IconTrash size={16} />
-                      </ActionIcon>
+                      <Button size="xs" variant="light" onClick={() => navigate(`/hubs/${hub.id}`)}>
+                        Details
+                      </Button>
+                      {canUpdate && !isHubManager && (
+                        <ActionIcon
+                          variant="subtle"
+                          color="gray"
+                          onClick={() => navigate(`/hubs/${hub.id}/edit`)}
+                        >
+                          <IconEdit size={16} />
+                        </ActionIcon>
+                      )}
+                      {canDelete && !isHubManager && (
+                        <ActionIcon
+                          variant="subtle"
+                          color="red"
+                          onClick={() => {
+                            setHubToDelete(hub.id);
+                            setDeleteModalOpen(true);
+                          }}
+                        >
+                          <IconTrash size={16} />
+                        </ActionIcon>
+                      )}
                     </Group>
                   </Table.Td>
                 </Table.Tr>
