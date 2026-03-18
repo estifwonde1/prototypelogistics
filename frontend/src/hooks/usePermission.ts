@@ -37,10 +37,20 @@ export const usePermission = () => {
 
     // Hub Manager
     if (role === 'hub_manager') {
-      const allowedResources: Resource[] = ['hubs', 'receipts', 'dispatches', 'grns', 'gins'];
+      const allowedResources: Resource[] = [
+        'hubs',
+        'warehouses',
+        'receipts',
+        'dispatches',
+        'grns',
+        'gins',
+      ];
       if (!allowedResources.includes(resource)) return false;
       if (resource === 'hubs') {
         return action === 'read' || action === 'update';
+      }
+      if (resource === 'warehouses') {
+        return action === 'read' || action === 'create' || action === 'update';
       }
       return action === 'read' || action === 'create';
     }
