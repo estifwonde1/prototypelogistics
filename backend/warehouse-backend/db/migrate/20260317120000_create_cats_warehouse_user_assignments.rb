@@ -11,8 +11,20 @@ class CreateCatsWarehouseUserAssignments < ActiveRecord::Migration[7.0]
       t.timestamps
     end
 
-    add_index :cats_warehouse_user_assignments, [:user_id, :hub_id], unique: true, where: "hub_id IS NOT NULL"
-    add_index :cats_warehouse_user_assignments, [:user_id, :warehouse_id], unique: true, where: "warehouse_id IS NOT NULL"
-    add_index :cats_warehouse_user_assignments, [:user_id, :store_id], unique: true, where: "store_id IS NOT NULL"
+    # Shortened index names to avoid PostgreSQL 63-character limit
+    add_index :cats_warehouse_user_assignments, [:user_id, :hub_id],
+              unique: true,
+              where: "hub_id IS NOT NULL",
+              name: "idx_cwua_user_hub"
+
+    add_index :cats_warehouse_user_assignments, [:user_id, :warehouse_id],
+              unique: true,
+              where: "warehouse_id IS NOT NULL",
+              name: "idx_cwua_user_warehouse"
+
+    add_index :cats_warehouse_user_assignments, [:user_id, :store_id],
+              unique: true,
+              where: "store_id IS NOT NULL",
+              name: "idx_cwua_user_store"
   end
 end

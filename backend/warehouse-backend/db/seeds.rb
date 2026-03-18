@@ -153,23 +153,30 @@ commodity_groups = [
   find_or_create_with(Cats::Core::CommodityCategory, { code: group[:code] }, { name: group[:name] })
 end
 
+# Step 1: Make sure there is a project to attach commodities to
+project = Cats::Core::Project.first_or_create!(
+  name: "Default Project"
+)
+
+# Step 2: Create commodities
 commodities = [
-  { batch_no: "ADD-RICE-001", name: "Rice", category: commodity_groups[0], unit: units[:kg] },
-  { batch_no: "ADD-WHEAT-001", name: "Wheat Flour", category: commodity_groups[0], unit: units[:kg] },
-  { batch_no: "ADD-OIL-001", name: "Cooking Oil", category: commodity_groups[0], unit: units[:l] },
-  { batch_no: "ADD-BEAN-001", name: "Beans", category: commodity_groups[0], unit: units[:kg] },
-  { batch_no: "ADD-SOAP-001", name: "Soap Bars", category: commodity_groups[1], unit: units[:pcs] },
-  { batch_no: "ADD-BLANKET-001", name: "Blankets", category: commodity_groups[1], unit: units[:pcs] },
-  { batch_no: "ADD-JERRYCAN-001", name: "Jerry Cans", category: commodity_groups[1], unit: units[:pcs] },
-  { batch_no: "ADD-BAG-001", name: "Storage Bags", category: commodity_groups[1], unit: units[:bag] }
+  { batch_no: "ADD-RICE-001", description: "Rice", category: commodity_groups[0], unit: units[:kg] },
+  { batch_no: "ADD-WHEAT-001", description: "Wheat Flour", category: commodity_groups[0], unit: units[:kg] },
+  { batch_no: "ADD-OIL-001", description: "Cooking Oil", category: commodity_groups[0], unit: units[:l] },
+  { batch_no: "ADD-BEAN-001", description: "Beans", category: commodity_groups[0], unit: units[:kg] },
+  { batch_no: "ADD-SOAP-001", description: "Soap Bars", category: commodity_groups[1], unit: units[:pcs] },
+  { batch_no: "ADD-BLANKET-001", description: "Blankets", category: commodity_groups[1], unit: units[:pcs] },
+  { batch_no: "ADD-JERRYCAN-001", description: "Jerry Cans", category: commodity_groups[1], unit: units[:pcs] },
+  { batch_no: "ADD-BAG-001", description: "Storage Bags", category: commodity_groups[1], unit: units[:bag] }
 ].map do |c|
   find_or_create_with(
     Cats::Core::Commodity,
     { batch_no: c[:batch_no] },
     {
-      name: c[:name],
-      commodity_category: c[:category],
+      name: c[:description],
+      commodity_category_id: c[:category].id,
       unit_of_measure: c[:unit],
+      project_id: project.id,   # <-- add this line
       quantity: 1000,
       best_use_before: Date.today + 365,
       status: Cats::Core::Commodity::DRAFT,
@@ -190,6 +197,63 @@ transporters = [
   )
 end
 
+# Ensure donor and funding records exist before records that depend on them
+etb_currency = Cats::Core::Currency.find_or_create_by!(code: "ETB", name: "Ethiopian Birr")
+
+donor = find_or_create_with(
+  Cats::Core::Donor,
+  { code: "ADD-RELIEF-DESK" },
+  { name: "Addis Relief Desk" }
+)
+
+cash_donation = find_or_create_with(
+  Cats::Core::CashDonation,
+  { reference_no: "CD-ADD-001" },
+  {
+    donor: donor,
+    amount: 100_000,
+    donated_on: Date.today - 5,
+    currency: etb_currency,
+    description: "Seed funding for Addis Ababa warehouse records"
+  }
+)
+
+fdps = [
+  { code: "ADD-FDP-01", name: "Addis Ketema FDP", parent: woredas[0] },
+  { code: "ADD-FDP-02", name: "Bole FDP", parent: woredas[10] },
+  { code: "ADD-FDP-03", name: "Kirkos FDP", parent: woredas[20] }
+].map do |fdp|
+  find_or_create_with(
+    Cats::Core::Location,
+    { code: fdp[:code] },
+    { name: fdp[:name], location_type: Cats::Core::Location::FDP, parent: fdp[:parent] }
+  )
+end
+
+hub_locations = [
+  { code: "ADD-HUB-01", name: "Bole Hub", parent: fdps[0] },
+  { code: "ADD-HUB-02", name: "Yeka Hub", parent: fdps[1] },
+  { code: "ADD-HUB-03", name: "Kirkos Hub", parent: fdps[2] }
+].map do |h|
+  find_or_create_with(
+    Cats::Core::Location,
+    { code: h[:code] },
+    { name: h[:name], location_type: Cats::Core::Location::HUB, parent: h[:parent] }
+  )
+end
+
+warehouse_locations = [
+  { code: "ADD-WH-01", name: "Bole Central Warehouse", parent: hub_locations[0] },
+  { code: "ADD-WH-02", name: "Yeka Logistics Warehouse", parent: hub_locations[1] },
+  { code: "ADD-WH-03", name: "Kirkos Storage Warehouse", parent: hub_locations[2] }
+].map do |wh|
+  find_or_create_with(
+    Cats::Core::Location,
+    { code: wh[:code] },
+    { name: wh[:name], location_type: Cats::Core::Location::WAREHOUSE, parent: wh[:parent] }
+  )
+end
+
 purchase_orders = [
   { reference_no: "PO-ADD-001", supplier: "Addis Grain Suppliers", commodity_category: commodity_groups[0], unit: units[:kg], quantity: 20_000, price: 32.5 },
   { reference_no: "PO-ADD-002", supplier: "Sheger Non-Food Traders", commodity_category: commodity_groups[1], unit: units[:pcs], quantity: 5_000, price: 15.0 }
@@ -201,8 +265,9 @@ purchase_orders = [
       order_date: Date.today - 7,
       supplier: po[:supplier],
       purchase_type: Cats::Core::PurchaseOrder::LOCAL,
+      cash_donation: cash_donation,
       commodity_category: po[:commodity_category],
-      currency: Cats::Core::Currency.find_or_create_by!(code: "ETB", name: "Ethiopian Birr"),
+      currency: etb_currency,
       unit: po[:unit],
       quantity: po[:quantity],
       price: po[:price]
@@ -210,19 +275,28 @@ purchase_orders = [
   )
 end
 
+# Now create GiftCertificate
 gift_certificates = [
-  { reference_no: "GC-ADD-001", customs_office: "Addis Ababa", requested_by: "Addis Relief Desk", commodity_category: commodity_groups[1], unit: units[:pcs], quantity: 1500 }
+  {
+    reference_no: "GC-ADD-001",
+    customs_office: "Addis Ababa",
+    requested_by: "Addis Relief Desk",
+    commodity_category: commodity_groups[1],
+    unit: units[:pcs],
+    quantity: 1500
+  }
 ].map do |gc|
   find_or_create_with(
     Cats::Core::GiftCertificate,
     { reference_no: gc[:reference_no] },
     {
+      cash_donation_id: cash_donation.id,
       gift_date: Date.today - 3,
       requested_by: gc[:requested_by],
       customs_office: gc[:customs_office],
-      commodity_category: gc[:commodity_category],
+      commodity_category_id: gc[:commodity_category].id,
       unit: gc[:unit],
-      currency: Cats::Core::Currency.find_or_create_by!(code: "ETB", name: "Ethiopian Birr"),
+      currency: etb_currency,
       quantity: gc[:quantity],
       destination_warehouse: warehouse_locations.first
     }
@@ -274,30 +348,6 @@ dispatch = find_or_create_with(
 )
 
 puts "Seeding warehouse structures..."
-hub_locations = [
-  { code: "ADD-HUB-01", name: "Bole Hub", parent: fdps[0] },
-  { code: "ADD-HUB-02", name: "Yeka Hub", parent: fdps[1] },
-  { code: "ADD-HUB-03", name: "Kirkos Hub", parent: fdps[2] }
-].map do |h|
-  find_or_create_with(
-    Cats::Core::Location,
-    { code: h[:code] },
-    { name: h[:name], location_type: Cats::Core::Location::HUB, parent: h[:parent] }
-  )
-end
-
-warehouse_locations = [
-  { code: "ADD-WH-01", name: "Bole Central Warehouse", parent: hub_locations[0] },
-  { code: "ADD-WH-02", name: "Yeka Logistics Warehouse", parent: hub_locations[1] },
-  { code: "ADD-WH-03", name: "Kirkos Storage Warehouse", parent: hub_locations[2] }
-].map do |wh|
-  find_or_create_with(
-    Cats::Core::Location,
-    { code: wh[:code] },
-    { name: wh[:name], location_type: Cats::Core::Location::WAREHOUSE, parent: wh[:parent] }
-  )
-end
-
 geos = [
   { latitude: 8.995, longitude: 38.789, address: "Bole, Addis Ababa" },
   { latitude: 9.005, longitude: 38.765, address: "Yeka, Addis Ababa" },

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_03_12_153146) do
+ActiveRecord::Schema[7.0].define(version: 2026_03_17_184837) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -106,6 +106,9 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_12_153146) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.string "status", default: "Draft", null: false
+    t.string "name"
+    t.bigint "commodity_category_id"
+    t.index ["commodity_category_id"], name: "index_cats_core_commodities_on_commodity_category_id"
     t.index ["package_unit_id"], name: "pu_on_commodity_indx"
     t.index ["project_id"], name: "project_on_commodity_indx"
     t.index ["unit_of_measure_id"], name: "uom_on_commodities_indx"
@@ -290,6 +293,8 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_12_153146) do
     t.string "customs_office", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "cash_donation_id"
+    t.index ["cash_donation_id"], name: "index_cats_core_gift_certificates_on_cash_donation_id"
     t.index ["commodity_category_id"], name: "gc_on_cc_indx"
     t.index ["currency_id"], name: "currency_on_gc_indx"
     t.index ["destination_warehouse_id"], name: "dw_on_gc_indx"
@@ -1275,6 +1280,23 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_12_153146) do
     t.index ["warehouse_id"], name: "index_cats_warehouse_stores_on_warehouse_id"
   end
 
+  create_table "cats_warehouse_user_assignments", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.bigint "hub_id"
+    t.bigint "warehouse_id"
+    t.bigint "store_id"
+    t.string "role_name"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["hub_id"], name: "index_cats_warehouse_user_assignments_on_hub_id"
+    t.index ["store_id"], name: "index_cats_warehouse_user_assignments_on_store_id"
+    t.index ["user_id", "hub_id"], name: "idx_cwua_user_hub", unique: true, where: "(hub_id IS NOT NULL)"
+    t.index ["user_id", "store_id"], name: "idx_cwua_user_store", unique: true, where: "(store_id IS NOT NULL)"
+    t.index ["user_id", "warehouse_id"], name: "idx_cwua_user_warehouse", unique: true, where: "(warehouse_id IS NOT NULL)"
+    t.index ["user_id"], name: "index_cats_warehouse_user_assignments_on_user_id"
+    t.index ["warehouse_id"], name: "index_cats_warehouse_user_assignments_on_warehouse_id"
+  end
+
   create_table "cats_warehouse_warehouse_access", force: :cascade do |t|
     t.bigint "warehouse_id", null: false
     t.boolean "has_loading_dock"
@@ -1386,6 +1408,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_12_153146) do
   add_foreign_key "cats_core_beneficiary_round_plan_items", "cats_core_round_plan_items", column: "round_plan_item_id"
   add_foreign_key "cats_core_cash_donations", "cats_core_currencies", column: "currency_id"
   add_foreign_key "cats_core_cash_donations", "cats_core_donors", column: "donor_id"
+  add_foreign_key "cats_core_commodities", "cats_core_commodity_categories", column: "commodity_category_id"
   add_foreign_key "cats_core_commodities", "cats_core_projects", column: "project_id"
   add_foreign_key "cats_core_commodities", "cats_core_unit_of_measures", column: "package_unit_id"
   add_foreign_key "cats_core_commodities", "cats_core_unit_of_measures", column: "unit_of_measure_id"
@@ -1417,6 +1440,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_12_153146) do
   add_foreign_key "cats_core_dispatches", "cats_core_transporters", column: "transporter_id"
   add_foreign_key "cats_core_dispatches", "cats_core_unit_of_measures", column: "unit_id"
   add_foreign_key "cats_core_dispatches", "cats_core_users", column: "prepared_by_id"
+  add_foreign_key "cats_core_gift_certificates", "cats_core_cash_donations", column: "cash_donation_id"
   add_foreign_key "cats_core_gift_certificates", "cats_core_commodity_categories", column: "commodity_category_id"
   add_foreign_key "cats_core_gift_certificates", "cats_core_currencies", column: "currency_id"
   add_foreign_key "cats_core_gift_certificates", "cats_core_locations", column: "destination_warehouse_id"
@@ -1580,6 +1604,10 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_12_153146) do
   add_foreign_key "cats_warehouse_stock_balances", "cats_warehouse_stores", column: "store_id"
   add_foreign_key "cats_warehouse_stock_balances", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_stores", "cats_warehouse_warehouses", column: "warehouse_id"
+  add_foreign_key "cats_warehouse_user_assignments", "cats_core_users", column: "user_id"
+  add_foreign_key "cats_warehouse_user_assignments", "cats_warehouse_hubs", column: "hub_id"
+  add_foreign_key "cats_warehouse_user_assignments", "cats_warehouse_stores", column: "store_id"
+  add_foreign_key "cats_warehouse_user_assignments", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_warehouse_access", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_warehouse_capacity", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_warehouse_contacts", "cats_warehouse_warehouses", column: "warehouse_id"
