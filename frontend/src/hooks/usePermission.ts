@@ -1,6 +1,18 @@
 import { useAuthStore } from '../store/authStore';
 
-type Resource = 'hubs' | 'warehouses' | 'stores' | 'stacks' | 'grns' | 'gins' | 'inspections' | 'waybills' | 'stock_balances';
+type Resource =
+  | 'hubs'
+  | 'warehouses'
+  | 'stores'
+  | 'stacks'
+  | 'grns'
+  | 'gins'
+  | 'inspections'
+  | 'waybills'
+  | 'stock_balances'
+  | 'receipts'
+  | 'dispatches'
+  | 'reports';
 type Action = 'read' | 'create' | 'update' | 'delete' | 'confirm';
 
 /**
@@ -25,20 +37,39 @@ export const usePermission = () => {
 
     // Hub Manager
     if (role === 'hub_manager') {
-      return resource === 'hubs';
+      const allowedResources: Resource[] = ['hubs', 'receipts', 'dispatches', 'grns', 'gins'];
+      if (!allowedResources.includes(resource)) return false;
+      if (resource === 'hubs') {
+        return action === 'read' || action === 'update';
+      }
+      return action === 'read' || action === 'create';
     }
 
     // Warehouse Manager
     if (role === 'warehouse_manager') {
-      const allowedResources: Resource[] = ['warehouses', 'stores', 'stacks', 'grns', 'gins', 'inspections', 'waybills', 'stock_balances'];
-      return allowedResources.includes(resource);
+      const allowedResources: Resource[] = [
+        'warehouses',
+        'stores',
+        'stacks',
+        'grns',
+        'gins',
+        'receipts',
+        'dispatches',
+        'stock_balances',
+      ];
+      if (!allowedResources.includes(resource)) return false;
+      if (resource === 'warehouses') {
+        return action === 'read' || action === 'update';
+      }
+      return true;
     }
 
     // Storekeeper
     if (role === 'storekeeper') {
-      const allowedResources: Resource[] = ['stores', 'stacks', 'grns', 'gins', 'stock_balances'];
+      const allowedResources: Resource[] = ['stores', 'stacks', 'stock_balances', 'reports'];
       if (!allowedResources.includes(resource)) return false;
-      // Can only read and create, not update or delete
+      // Can read/create; allow updating stacks
+      if (resource === 'stacks' && action === 'update') return true;
       return action === 'read' || action === 'create';
     }
 

@@ -13,7 +13,7 @@ import {
   Text,
   Select,
 } from '@mantine/core';
-import { IconPlus, IconSearch, IconEye, IconEdit, IconTrash } from '@tabler/icons-react';
+import { IconPlus, IconSearch, IconEdit, IconTrash } from '@tabler/icons-react';
 import { getWarehouses, deleteWarehouse } from '../../api/warehouses';
 import { getHubs } from '../../api/hubs';
 import { StatusBadge } from '../../components/common/StatusBadge';
@@ -21,6 +21,8 @@ import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
 import { notifications } from '@mantine/notifications';
+import { usePermission } from '../../hooks/usePermission';
+import { useAuthStore } from '../../store/authStore';
 
 function WarehouseListPage() {
   const navigate = useNavigate();
@@ -29,6 +31,12 @@ function WarehouseListPage() {
   const [hubFilter, setHubFilter] = useState<string | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [warehouseToDelete, setWarehouseToDelete] = useState<number | null>(null);
+  const { can } = usePermission();
+  const role = useAuthStore((state) => state.role);
+  const isWarehouseManager = role === 'warehouse_manager';
+  const canCreate = can('warehouses', 'create');
+  const canUpdate = can('warehouses', 'update');
+  const canDelete = can('warehouses', 'delete');
 
   const { data: warehouses, isLoading, error, refetch } = useQuery({
     queryKey: ['warehouses'],
@@ -102,12 +110,14 @@ function WarehouseListPage() {
             Manage main, satellite, and temporary warehouses
           </Text>
         </div>
-        <Button
-          leftSection={<IconPlus size={16} />}
-          onClick={() => navigate('/warehouses/new')}
-        >
-          Create Warehouse
-        </Button>
+        {canCreate && (
+          <Button
+            leftSection={<IconPlus size={16} />}
+            onClick={() => navigate('/warehouses/new')}
+          >
+            Create Warehouse
+          </Button>
+        )}
       </Group>
 
       <Group>
@@ -137,7 +147,7 @@ function WarehouseListPage() {
               : 'Get started by creating your first warehouse'
           }
           action={
-            !search && !hubFilter
+            !search && !hubFilter && canCreate
               ? {
                   label: 'Create Warehouse',
                   onClick: () => navigate('/warehouses/new'),
@@ -180,30 +190,34 @@ function WarehouseListPage() {
                     <Table.Td>{warehouse.location_id || '-'}</Table.Td>
                     <Table.Td>
                       <Group gap="xs" justify="flex-end" onClick={(e) => e.stopPropagation()}>
-                        <ActionIcon
-                          variant="subtle"
-                          color="blue"
+                        <Button
+                          size="xs"
+                          variant="light"
                           onClick={() => navigate(`/warehouses/${warehouse.id}`)}
                         >
-                          <IconEye size={16} />
-                        </ActionIcon>
-                        <ActionIcon
-                          variant="subtle"
-                          color="gray"
-                          onClick={() => navigate(`/warehouses/${warehouse.id}/edit`)}
-                        >
-                          <IconEdit size={16} />
-                        </ActionIcon>
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          onClick={() => {
-                            setWarehouseToDelete(warehouse.id);
-                            setDeleteModalOpen(true);
-                          }}
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
+                          Details
+                        </Button>
+                        {canUpdate && !isWarehouseManager && (
+                          <ActionIcon
+                            variant="subtle"
+                            color="gray"
+                            onClick={() => navigate(`/warehouses/${warehouse.id}/edit`)}
+                          >
+                            <IconEdit size={16} />
+                          </ActionIcon>
+                        )}
+                        {canDelete && !isWarehouseManager && (
+                          <ActionIcon
+                            variant="subtle"
+                            color="red"
+                            onClick={() => {
+                              setWarehouseToDelete(warehouse.id);
+                              setDeleteModalOpen(true);
+                            }}
+                          >
+                            <IconTrash size={16} />
+                          </ActionIcon>
+                        )}
                       </Group>
                     </Table.Td>
                   </Table.Tr>

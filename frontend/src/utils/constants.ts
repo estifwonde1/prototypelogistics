@@ -62,7 +62,21 @@ export function getDefaultRouteForRole(role: RoleSlug | null): string {
 }
 
 /** Map URL path segment (first segment) to permission resource for route guard */
-export const PATH_SEGMENT_TO_RESOURCE: Record<string, 'hubs' | 'warehouses' | 'stores' | 'stacks' | 'stock_balances' | 'grns' | 'gins' | 'inspections' | 'waybills'> = {
+export const PATH_SEGMENT_TO_RESOURCE: Record<
+  string,
+  | 'hubs'
+  | 'warehouses'
+  | 'stores'
+  | 'stacks'
+  | 'stock_balances'
+  | 'grns'
+  | 'gins'
+  | 'inspections'
+  | 'waybills'
+  | 'receipts'
+  | 'dispatches'
+  | 'reports'
+> = {
   hubs: 'hubs',
   warehouses: 'warehouses',
   stores: 'stores',
@@ -72,6 +86,9 @@ export const PATH_SEGMENT_TO_RESOURCE: Record<string, 'hubs' | 'warehouses' | 's
   gins: 'gins',
   inspections: 'inspections',
   waybills: 'waybills',
+  receipts: 'receipts',
+  dispatches: 'dispatches',
+  reports: 'reports',
 };
 
 export const HubType = {

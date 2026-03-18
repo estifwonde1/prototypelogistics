@@ -1,5 +1,11 @@
 import apiClient from './client';
-import type { Warehouse } from '../types/warehouse';
+import type {
+  Warehouse,
+  WarehouseAccess,
+  WarehouseCapacity,
+  WarehouseContacts,
+  WarehouseInfra,
+} from '../types/warehouse';
 import type { ApiResponse } from '../types/common';
 
 export const getWarehouses = async (): Promise<Warehouse[]> => {
@@ -24,4 +30,48 @@ export const updateWarehouse = async (id: number, data: Partial<Warehouse>): Pro
 
 export const deleteWarehouse = async (id: number): Promise<void> => {
   await apiClient.delete(`/warehouses/${id}`);
+};
+
+export const updateWarehouseCapacity = async (
+  id: number,
+  data: Partial<WarehouseCapacity>
+): Promise<WarehouseCapacity> => {
+  const response = await apiClient.put<ApiResponse<WarehouseCapacity>>(
+    `/warehouses/${id}/capacity`,
+    { payload: data }
+  );
+  return response.data.data;
+};
+
+export const updateWarehouseAccess = async (
+  id: number,
+  data: Partial<WarehouseAccess>
+): Promise<WarehouseAccess> => {
+  const response = await apiClient.put<ApiResponse<WarehouseAccess>>(
+    `/warehouses/${id}/access`,
+    { payload: data }
+  );
+  return response.data.data;
+};
+
+export const updateWarehouseInfra = async (
+  id: number,
+  data: Partial<WarehouseInfra>
+): Promise<WarehouseInfra> => {
+  const response = await apiClient.put<ApiResponse<WarehouseInfra>>(
+    `/warehouses/${id}/infra`,
+    { payload: data }
+  );
+  return response.data.data;
+};
+
+export const updateWarehouseContacts = async (
+  id: number,
+  data: Partial<WarehouseContacts>
+): Promise<WarehouseContacts> => {
+  const response = await apiClient.put<ApiResponse<WarehouseContacts>>(
+    `/warehouses/${id}/contacts`,
+    { payload: data }
+  );
+  return response.data.data;
 };

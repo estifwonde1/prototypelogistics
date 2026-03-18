@@ -17,11 +17,23 @@ Cats::Warehouse::Engine.routes.draw do
     get "locations/stores", to: "locations#stores"
     post "locations", to: "locations#create"
 
-    resources :hubs, only: [ :index, :show, :create, :update, :destroy ]
-    resources :warehouses, only: [ :index, :show, :create, :update, :destroy ]
+    resources :hubs, only: [ :index, :show, :create, :update, :destroy ] do
+      resource :capacity, only: [ :show, :create, :update ], controller: "hub_capacities"
+      resource :access, only: [ :show, :create, :update ], controller: "hub_accesses"
+      resource :infra, only: [ :show, :create, :update ], controller: "hub_infras"
+      resource :contacts, only: [ :show, :create, :update ], controller: "hub_contacts"
+    end
+    resources :warehouses, only: [ :index, :show, :create, :update, :destroy ] do
+      resource :capacity, only: [ :show, :create, :update ], controller: "warehouse_capacities"
+      resource :access, only: [ :show, :create, :update ], controller: "warehouse_accesses"
+      resource :infra, only: [ :show, :create, :update ], controller: "warehouse_infras"
+      resource :contacts, only: [ :show, :create, :update ], controller: "warehouse_contacts"
+    end
     resources :stores, only: [ :index, :show, :create, :update, :destroy ]
     resources :stacks, only: [ :index, :show, :create, :update, :destroy ]
     resources :stock_balances, only: [ :index, :show ]
+    resources :receipts, only: [ :index, :show ]
+    resources :dispatches, only: [ :index, :show ]
 
     resources :grns, only: [ :index, :show, :create ] do
       post :confirm, on: :member
@@ -35,5 +47,7 @@ Cats::Warehouse::Engine.routes.draw do
     resources :waybills, only: [ :index, :show, :create ] do
       post :confirm, on: :member
     end
+
+    get "reports/bin_card", to: "reports#bin_card"
   end
 end

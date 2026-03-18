@@ -31,7 +31,7 @@ module Cats
       private
 
       def admin?
-        user&.has_role?("Admin")
+        user&.has_role?("Admin") || user&.has_role?("Superadmin")
       end
 
       def hub_manager?

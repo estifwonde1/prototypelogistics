@@ -10,11 +10,11 @@ module Cats
       end
 
       def create?
-        admin? || warehouse_manager?
+        admin? || warehouse_manager? || storekeeper?
       end
 
       def update?
-        admin? || warehouse_manager?
+        admin? || warehouse_manager? || storekeeper?
       end
 
       def destroy?
