@@ -3,24 +3,32 @@ import type { Hub, HubAccess, HubCapacity, HubContacts, HubInfra } from '../type
 import type { ApiResponse } from '../types/common';
 import { createGeo, updateGeo, type GeoPayload } from './geos';
 
+const normalizeHub = (hub: any): Hub => ({
+  ...hub,
+  capacity: hub.capacity ?? hub.hub_capacity,
+  access: hub.access ?? hub.hub_access,
+  infra: hub.infra ?? hub.hub_infra,
+  contacts: hub.contacts ?? hub.hub_contacts,
+});
+
 export const getHubs = async (): Promise<Hub[]> => {
   const response = await apiClient.get<ApiResponse<Hub[]>>('/hubs');
-  return response.data.data;
+  return response.data.data.map((hub) => normalizeHub(hub));
 };
 
 export const getHub = async (id: number): Promise<Hub> => {
   const response = await apiClient.get<ApiResponse<Hub>>(`/hubs/${id}`);
-  return response.data.data;
+  return normalizeHub(response.data.data);
 };
 
 export const createHub = async (data: Partial<Hub>): Promise<Hub> => {
   const response = await apiClient.post<ApiResponse<Hub>>('/hubs', { payload: data });
-  return response.data.data;
+  return normalizeHub(response.data.data);
 };
 
 export const updateHub = async (id: number, data: Partial<Hub>): Promise<Hub> => {
   const response = await apiClient.put<ApiResponse<Hub>>(`/hubs/${id}`, { payload: data });
-  return response.data.data;
+  return normalizeHub(response.data.data);
 };
 
 export const deleteHub = async (id: number): Promise<void> => {
