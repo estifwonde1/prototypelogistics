@@ -8,11 +8,20 @@ export interface Warehouse {
   location_id?: number;
   hub_id?: number;
   geo_id?: number;
+  geo?: WarehouseGeo;
   ownership_type?: string;
   capacity?: WarehouseCapacity;
   access?: WarehouseAccess;
   infra?: WarehouseInfra;
   contacts?: WarehouseContacts;
+}
+
+export interface WarehouseGeo {
+  id: number;
+  latitude?: number;
+  longitude?: number;
+  altitude_m?: number;
+  address?: string;
 }
 
 export interface WarehouseCapacity {

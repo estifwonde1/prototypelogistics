@@ -1,6 +1,7 @@
 import apiClient from './client';
 import type { Hub, HubAccess, HubCapacity, HubContacts, HubInfra } from '../types/hub';
 import type { ApiResponse } from '../types/common';
+import { createGeo, updateGeo, type GeoPayload } from './geos';
 
 export const getHubs = async (): Promise<Hub[]> => {
   const response = await apiClient.get<ApiResponse<Hub[]>>('/hubs');
@@ -24,6 +25,20 @@ export const updateHub = async (id: number, data: Partial<Hub>): Promise<Hub> =>
 
 export const deleteHub = async (id: number): Promise<void> => {
   await apiClient.delete(`/hubs/${id}`);
+};
+
+export const updateHubGps = async (
+  hubId: number,
+  geoId: number | undefined,
+  data: GeoPayload
+): Promise<Hub> => {
+  let geo;
+  if (geoId) {
+    geo = await updateGeo(geoId, data);
+  } else {
+    geo = await createGeo(data);
+  }
+  return updateHub(hubId, { geo_id: geo.id });
 };
 
 export const updateHubCapacity = async (

@@ -7,6 +7,7 @@ import type {
   WarehouseInfra,
 } from '../types/warehouse';
 import type { ApiResponse } from '../types/common';
+import { createGeo, updateGeo, type GeoPayload } from './geos';
 
 export const getWarehouses = async (): Promise<Warehouse[]> => {
   const response = await apiClient.get<ApiResponse<Warehouse[]>>('/warehouses');
@@ -30,6 +31,20 @@ export const updateWarehouse = async (id: number, data: Partial<Warehouse>): Pro
 
 export const deleteWarehouse = async (id: number): Promise<void> => {
   await apiClient.delete(`/warehouses/${id}`);
+};
+
+export const updateWarehouseGps = async (
+  warehouseId: number,
+  geoId: number | undefined,
+  data: GeoPayload
+): Promise<Warehouse> => {
+  let geo;
+  if (geoId) {
+    geo = await updateGeo(geoId, data);
+  } else {
+    geo = await createGeo(data);
+  }
+  return updateWarehouse(warehouseId, { geo_id: geo.id });
 };
 
 export const updateWarehouseCapacity = async (
