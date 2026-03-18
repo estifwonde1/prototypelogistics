@@ -7,6 +7,7 @@ module Cats
       has_one :warehouse_access, serializer: WarehouseAccessSerializer
       has_one :warehouse_infra, serializer: WarehouseInfraSerializer
       has_one :warehouse_contacts, serializer: WarehouseContactsSerializer
+      has_one :geo, serializer: GeoSerializer
     end
   end
 end

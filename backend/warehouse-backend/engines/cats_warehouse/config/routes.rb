@@ -17,6 +17,8 @@ Cats::Warehouse::Engine.routes.draw do
     get "locations/stores", to: "locations#stores"
     post "locations", to: "locations#create"
 
+    resources :geos, only: [ :create, :update ]
+
     resources :hubs, only: [ :index, :show, :create, :update, :destroy ] do
       resource :capacity, only: [ :show, :create, :update ], controller: "hub_capacities"
       resource :access, only: [ :show, :create, :update ], controller: "hub_accesses"

@@ -7,6 +7,7 @@ module Cats
       has_one :hub_access, serializer: HubAccessSerializer
       has_one :hub_infra, serializer: HubInfraSerializer
       has_one :hub_contacts, serializer: HubContactsSerializer
+      has_one :geo, serializer: GeoSerializer
     end
   end
 end

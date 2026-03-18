@@ -7,10 +7,19 @@ export interface Hub {
   description?: string;
   location_id?: number;
   geo_id?: number;
+  geo?: HubGeo;
   capacity?: HubCapacity;
   access?: HubAccess;
   infra?: HubInfra;
   contacts?: HubContacts;
+}
+
+export interface HubGeo {
+  id: number;
+  latitude?: number;
+  longitude?: number;
+  altitude_m?: number;
+  address?: string;
 }
 
 export interface HubCapacity {
