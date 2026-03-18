@@ -2,7 +2,7 @@ module Cats
   module Warehouse
     class GinPolicy < ApplicationPolicy
       def index?
-        admin? || warehouse_manager? || storekeeper?
+        admin? || hub_manager? || warehouse_manager? || storekeeper?
       end
 
       def show?

@@ -43,6 +43,10 @@ module Cats
             find_or_create_with(Cats::Warehouse::UserAssignment, attrs)
           end
 
+          if role_name == "Hub Manager"
+            assignments.each { |assignment| sync_hub_manager_contacts!(user, assignment.hub_id) }
+          end
+
           render_success(assignments: assignments.map { |a| assignment_payload(a) }, status: :created)
         end
 
@@ -66,7 +70,10 @@ module Cats
             create_ids = ids - existing_ids
             delete_ids = existing_ids - ids
             Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name, hub_id: delete_ids).delete_all if delete_ids.any?
-            create_ids.each { |id| find_or_create_with(Cats::Warehouse::UserAssignment, user: user, role_name: role_name, hub_id: id) }
+            create_ids.each do |id|
+              find_or_create_with(Cats::Warehouse::UserAssignment, user: user, role_name: role_name, hub_id: id)
+            end
+            ids.each { |id| sync_hub_manager_contacts!(user, id) }
           when "Warehouse Manager"
             existing_ids = Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name).pluck(:warehouse_id)
             create_ids = ids - existing_ids
@@ -139,6 +146,21 @@ module Cats
           record = model.find_or_initialize_by(attrs)
           record.save! if record.new_record?
           record
+        end
+
+        def sync_hub_manager_contacts!(user, hub_id)
+          return if hub_id.blank?
+
+          hub = Cats::Warehouse::Hub.find_by(id: hub_id)
+          return unless hub
+
+          contacts = hub.hub_contacts || Cats::Warehouse::HubContacts.new(hub: hub)
+          manager_name = [user.first_name, user.last_name].compact.join(" ").strip
+          manager_name = user.email if manager_name.empty?
+          contacts.manager_name = manager_name
+          contacts.contact_phone = user.phone_number if user.phone_number.present?
+          contacts.contact_email = user.email if user.email.present?
+          contacts.save!
         end
       end
     end
