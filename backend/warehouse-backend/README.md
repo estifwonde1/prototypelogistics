@@ -9,6 +9,7 @@
 - `POSTGRES_PASSWORD` (default: empty)
 - `POSTGRES_HOST` (default: `localhost`)
 - `POSTGRES_PORT` (default: `5432`)
+- `POSTGRES_DB` (default: `cats_warehouse_development`)
 
 **Setup**
 1. `bundle install`

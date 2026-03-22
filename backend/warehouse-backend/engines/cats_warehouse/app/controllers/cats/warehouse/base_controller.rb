@@ -4,6 +4,7 @@ module Cats
       before_action :authenticate_user!
       after_action :verify_authorized
       rescue_from ActiveRecord::RecordNotFound, with: :render_not_found
+      rescue_from ActiveRecord::RecordInvalid, with: :render_record_invalid
       rescue_from ActionController::ParameterMissing, with: :render_bad_request
       rescue_from Pundit::NotAuthorizedError, with: :render_forbidden
 
@@ -36,6 +37,10 @@ module Cats
 
       def render_bad_request(error)
         render_error(error.message, status: :bad_request)
+      end
+
+      def render_record_invalid(error)
+        render_error(error.record.errors.full_messages.to_sentence, status: :unprocessable_entity, details: error.record.errors.to_hash)
       end
 
       def render_forbidden(_error)

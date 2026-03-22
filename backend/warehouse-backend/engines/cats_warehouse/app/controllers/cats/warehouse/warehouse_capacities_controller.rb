@@ -30,8 +30,7 @@ module Cats
           :total_storage_capacity_mt,
           :usable_storage_capacity_mt,
           :no_of_stores,
-          :construction_year,
-          :ownership_type
+          :construction_year
         )
       end
 

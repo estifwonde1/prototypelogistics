@@ -20,10 +20,9 @@ Cats::Warehouse::Engine.routes.draw do
     resources :geos, only: [ :create, :update ]
 
     resources :hubs, only: [ :index, :show, :create, :update, :destroy ] do
-      resource :capacity, only: [ :show, :create, :update ], controller: "hub_capacities"
+      resource :capacity, only: [ :show ], controller: "hub_capacities"
       resource :access, only: [ :show, :create, :update ], controller: "hub_accesses"
-      resource :infra, only: [ :show, :create, :update ], controller: "hub_infras"
-      resource :contacts, only: [ :show, :create, :update ], controller: "hub_contacts"
+      resource :contacts, only: [ :show ], controller: "hub_contacts"
     end
     resources :warehouses, only: [ :index, :show, :create, :update, :destroy ] do
       resource :capacity, only: [ :show, :create, :update ], controller: "warehouse_capacities"

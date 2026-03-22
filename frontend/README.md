@@ -45,7 +45,7 @@ cp .env.example .env
 
 Edit `.env` and set your API base URL:
 ```env
-VITE_API_BASE_URL=http://localhost:3000/cats_warehouse/v1
+VITE_API_BASE_URL=/cats_warehouse/v1
 ```
 
 3. **Start development server:**
@@ -68,7 +68,7 @@ The app will be available at `http://localhost:5173`
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `VITE_API_BASE_URL` | Backend API base URL | `http://localhost:3000/cats_warehouse/v1` |
+| `VITE_API_BASE_URL` | Backend API base URL | `/cats_warehouse/v1` |
 | `VITE_ENV` | Environment name | `development` |
 
 ## Project Structure

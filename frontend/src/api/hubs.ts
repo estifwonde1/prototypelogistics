@@ -51,11 +51,9 @@ export const updateHubGps = async (
 
 export const updateHubCapacity = async (
   id: number,
-  data: Partial<HubCapacity>
+  _data: Partial<HubCapacity>
 ): Promise<HubCapacity> => {
-  const response = await apiClient.put<ApiResponse<HubCapacity>>(`/hubs/${id}/capacity`, {
-    payload: data,
-  });
+  const response = await apiClient.get<ApiResponse<HubCapacity>>(`/hubs/${id}/capacity`);
   return response.data.data;
 };
 
@@ -81,10 +79,8 @@ export const updateHubInfra = async (
 
 export const updateHubContacts = async (
   id: number,
-  data: Partial<HubContacts>
+  _data: Partial<HubContacts>
 ): Promise<HubContacts> => {
-  const response = await apiClient.put<ApiResponse<HubContacts>>(`/hubs/${id}/contacts`, {
-    payload: data,
-  });
-  return response.data.data;
+  const response = await apiClient.get<ApiResponse<{ hub_contacts: HubContacts }>>(`/hubs/${id}/contacts`);
+  return response.data.data.hub_contacts;
 };

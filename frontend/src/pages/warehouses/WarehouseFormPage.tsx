@@ -19,7 +19,7 @@ import { getHubs } from '../../api/hubs';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { notifications } from '@mantine/notifications';
-import type { Warehouse } from '../../types/warehouse';
+import type { WarehouseUpsertPayload } from '../../types/warehouse';
 
 function WarehouseFormPage() {
   const { id } = useParams<{ id: string }>();
@@ -93,7 +93,7 @@ function WarehouseFormPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data: Partial<Warehouse>) => updateWarehouse(Number(id), data),
+    mutationFn: (data: WarehouseUpsertPayload) => updateWarehouse(Number(id), data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['warehouses'] });
       queryClient.invalidateQueries({ queryKey: ['warehouses', id] });
@@ -114,7 +114,7 @@ function WarehouseFormPage() {
   });
 
   const handleSubmit = (values: typeof form.values) => {
-    const payload: Partial<Warehouse> = {
+    const payload: WarehouseUpsertPayload = {
       code: values.code,
       name: values.name,
       warehouse_type: values.warehouse_type,

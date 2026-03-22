@@ -5,7 +5,6 @@ import {
   APIProvider,
   Map,
   AdvancedMarker,
-  useMap,
   useMapsLibrary,
 } from '@vis.gl/react-google-maps';
 
@@ -27,14 +26,13 @@ interface MapPickerProps {
 }
 
 function MapPicker({ initialLat, initialLng, onSelect }: MapPickerProps) {
-  const map = useMap();
   const geocodingLib = useMapsLibrary('geocoding');
   const [marker, setMarker] = useState<{ lat: number; lng: number } | null>(
     initialLat && initialLng ? { lat: initialLat, lng: initialLng } : null
   );
 
   const handleMapClick = useCallback(
-    (e: google.maps.MapMouseEvent) => {
+    (e: any) => {
       if (!e.latLng) return;
       const lat = e.latLng.lat();
       const lng = e.latLng.lng();
@@ -42,7 +40,7 @@ function MapPicker({ initialLat, initialLng, onSelect }: MapPickerProps) {
 
       if (geocodingLib) {
         const geocoder = new geocodingLib.Geocoder();
-        geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+        geocoder.geocode({ location: { lat, lng } }, (results: any, status: any) => {
           const address =
             status === 'OK' && results?.[0] ? results[0].formatted_address : undefined;
           onSelect({ lat, lng, address });

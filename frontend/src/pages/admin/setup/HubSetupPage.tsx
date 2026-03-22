@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  Alert,
   Stack,
   Title,
   Group,
@@ -18,10 +19,14 @@ import { createHub } from '../../../api/hubs';
 import { getRegions, getZones, getWoredas } from '../../../api/locations';
 import { LoadingState } from '../../../components/common/LoadingState';
 import { ErrorState } from '../../../components/common/ErrorState';
+import { resolveLocationContextFromQuery } from '../../../utils/locationContext';
 
 export default function HubSetupPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const inheritedContext = resolveLocationContextFromQuery(searchParams);
+  const isInheritedFromLocationPage = !!inheritedContext.woredaId;
   const [regionId, setRegionId] = useState<string | null>(null);
   const [zoneId, setZoneId] = useState<string | null>(null);
   const [woredaId, setWoredaId] = useState<string | null>(null);
@@ -51,16 +56,24 @@ export default function HubSetupPage() {
   }, [regions, regionId]);
 
   useEffect(() => {
+    if (isInheritedFromLocationPage) {
+      if (inheritedContext.zoneId) setZoneId(String(inheritedContext.zoneId));
+      return;
+    }
     if (zones && zones.length > 0) {
       setZoneId((prev) => prev || String(zones[0].id));
     }
-  }, [zones]);
+  }, [zones, isInheritedFromLocationPage, inheritedContext.zoneId]);
 
   useEffect(() => {
+    if (isInheritedFromLocationPage) {
+      if (inheritedContext.woredaId) setWoredaId(String(inheritedContext.woredaId));
+      return;
+    }
     if (woredas && woredas.length > 0) {
       setWoredaId((prev) => prev || String(woredas[0].id));
     }
-  }, [woredas]);
+  }, [woredas, isInheritedFromLocationPage, inheritedContext.woredaId]);
 
   const form = useForm({
     initialValues: {
@@ -106,6 +119,18 @@ export default function HubSetupPage() {
     [woredas]
   );
 
+  const displayedZoneOptions = useMemo(() => {
+    if (!isInheritedFromLocationPage || !inheritedContext.zoneId || !inheritedContext.subcityName) return zoneOptions;
+    if (zoneOptions.some((option) => option.value === String(inheritedContext.zoneId))) return zoneOptions;
+    return [{ value: String(inheritedContext.zoneId), label: inheritedContext.subcityName }, ...zoneOptions];
+  }, [isInheritedFromLocationPage, inheritedContext, zoneOptions]);
+
+  const displayedWoredaOptions = useMemo(() => {
+    if (!isInheritedFromLocationPage || !inheritedContext.woredaId || !inheritedContext.woredaName) return woredaOptions;
+    if (woredaOptions.some((option) => option.value === String(inheritedContext.woredaId))) return woredaOptions;
+    return [{ value: String(inheritedContext.woredaId), label: inheritedContext.woredaName }, ...woredaOptions];
+  }, [isInheritedFromLocationPage, inheritedContext, woredaOptions]);
+
   if (regionsLoading) return <LoadingState message="Loading regions..." />;
   if (regionsError) return <ErrorState message="Failed to load regions" />;
 
@@ -133,6 +158,12 @@ export default function HubSetupPage() {
       <Card withBorder padding="lg">
         <form onSubmit={form.onSubmit(handleSubmit)}>
           <Stack gap="md">
+            {isInheritedFromLocationPage && (
+              <Alert color="blue" variant="light">
+                Subcity and woreda were selected on the location page and are locked for this hub.
+              </Alert>
+            )}
+
             <Group grow>
               <TextInput label="Code" placeholder="HUB-001" required {...form.getInputProps('code')} />
               <TextInput label="Name" placeholder="Bole Hub" required {...form.getInputProps('name')} />
@@ -163,17 +194,19 @@ export default function HubSetupPage() {
               <Select label="Region" data={regionOptions} value={regionId} onChange={setRegionId} disabled />
               <Select
                 label="Subcity"
-                data={zoneOptions}
+                data={displayedZoneOptions}
                 value={zoneId}
                 onChange={setZoneId}
-                disabled={zonesLoading}
+                disabled={zonesLoading || isInheritedFromLocationPage}
+                description={isInheritedFromLocationPage ? inheritedContext.subcityName || 'Inherited from location page' : undefined}
               />
               <Select
                 label="Woreda"
-                data={woredaOptions}
+                data={displayedWoredaOptions}
                 value={woredaId}
                 onChange={setWoredaId}
-                disabled={woredasLoading}
+                disabled={woredasLoading || isInheritedFromLocationPage}
+                description={isInheritedFromLocationPage ? inheritedContext.woredaName || 'Inherited from location page' : undefined}
               />
             </Group>
 
@@ -186,7 +219,15 @@ export default function HubSetupPage() {
               {createdHubId && (
                 <Button
                   variant="light"
-                  onClick={() => navigate(`/admin/setup/warehouses?hub_id=${createdHubId}`)}
+                  onClick={() =>
+                    navigate(
+                      `/admin/setup/warehouses?hub_id=${createdHubId}&zone_id=${zoneId ?? ''}&woreda_id=${woredaId ?? ''}&subcity_name=${encodeURIComponent(
+                        zoneOptions.find((option) => option.value === zoneId)?.label || ''
+                      )}&woreda_name=${encodeURIComponent(
+                        woredaOptions.find((option) => option.value === woredaId)?.label || ''
+                      )}`
+                    )
+                  }
                 >
                   Create Warehouse Under Hub
                 </Button>

@@ -60,6 +60,13 @@ export default function LocationsSetupPage() {
   if (regionsLoading) return <LoadingState message="Loading regions..." />;
   if (regionsError) return <ErrorState message="Failed to load regions" />;
 
+  const selectedSubcityName = zoneOptions.find((option) => option.value === zoneId)?.label || '';
+  const selectedWoredaName =
+    woredas?.find((woreda) => String(woreda.id) === woredaId)?.name || '';
+  const inheritedQuery = `zone_id=${zoneId ?? ''}&woreda_id=${woredaId ?? ''}&subcity_name=${encodeURIComponent(
+    selectedSubcityName
+  )}&woreda_name=${encodeURIComponent(selectedWoredaName)}`;
+
   return (
     <Stack gap="md">
       <div>
@@ -98,10 +105,14 @@ export default function LocationsSetupPage() {
         </Group>
 
         <Group mt="md" justify="flex-end">
-          <Button onClick={() => navigate('/admin/setup/hubs')} disabled={!woredaId}>
+          <Button onClick={() => navigate(`/admin/setup/hubs?${inheritedQuery}`)} disabled={!woredaId}>
             Create Hub
           </Button>
-          <Button onClick={() => navigate('/admin/setup/warehouses')} disabled={!woredaId} variant="light">
+          <Button
+            onClick={() => navigate(`/admin/setup/warehouses?${inheritedQuery}`)}
+            disabled={!woredaId}
+            variant="light"
+          >
             Create Warehouse
           </Button>
         </Group>

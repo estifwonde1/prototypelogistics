@@ -14,14 +14,19 @@ module Cats
 
       def create
         authorize Warehouse
-        warehouse = Warehouse.create!(warehouse_params)
+        warehouse = Warehouse.new(warehouse_params)
+        attach_rental_agreement!(warehouse)
+        warehouse.save!
         render_resource(warehouse, status: :created, serializer: WarehouseSerializer)
       end
 
       def update
         warehouse = scoped_warehouses.find(params[:id])
         authorize warehouse
-        warehouse.update!(warehouse_params)
+        warehouse.assign_attributes(warehouse_params)
+        attach_rental_agreement!(warehouse)
+        warehouse.rental_agreement_document.purge if warehouse.ownership_type_self_owned? && warehouse.rental_agreement_document.attached?
+        warehouse.save!
         render_resource(warehouse, serializer: WarehouseSerializer)
       end
 
@@ -42,10 +47,20 @@ module Cats
           :code,
           :name,
           :warehouse_type,
+          :managed_under,
           :ownership_type,
           :status,
-          :description
+          :description,
+          :rental_agreement_document,
+          :rental_agreement_document_signed_id
         )
+      end
+
+      def attach_rental_agreement!(warehouse)
+        return unless warehouse_params[:rental_agreement_document].present? || warehouse_params[:rental_agreement_document_signed_id].present?
+
+        attachment = warehouse_params[:rental_agreement_document] || warehouse_params[:rental_agreement_document_signed_id]
+        warehouse.rental_agreement_document.attach(attachment)
       end
 
       def scoped_warehouses

@@ -14,6 +14,30 @@ module Cats
       has_many :warehouses, class_name: "Cats::Warehouse::Warehouse", dependent: :nullify
 
       validates :name, presence: true
+
+      def assigned_hub_manager
+        assignment = UserAssignment.includes(:user)
+                                   .where(hub_id: id, role_name: "Hub Manager")
+                                   .order(:id)
+                                   .first
+        assignment&.user
+      end
+
+      def live_hub_contact_payload
+        user = assigned_hub_manager
+        fallback = hub_contacts
+
+        manager_name = [user&.first_name, user&.last_name].compact.join(" ").strip
+        manager_name = user&.email if manager_name.blank?
+
+        {
+          id: fallback&.id,
+          hub_id: id,
+          manager_name: manager_name.presence || fallback&.manager_name,
+          contact_phone: user&.phone_number.presence || fallback&.contact_phone,
+          contact_email: user&.email.presence || fallback&.contact_email
+        }
+      end
     end
   end
 end

@@ -1,4 +1,8 @@
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/cats_warehouse/v1';
+const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+const defaultApiBaseUrl =
+  import.meta.env.DEV ? '/cats_warehouse/v1' : 'http://localhost:3000/cats_warehouse/v1';
+
+export const API_BASE_URL = configuredApiBaseUrl || defaultApiBaseUrl;
 
 /** Role slugs used by usePermission (must match backend role names normalized) */
 export const ROLES = {

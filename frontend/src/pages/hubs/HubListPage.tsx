@@ -132,7 +132,6 @@ function HubListPage() {
                 <Table.Th>Name</Table.Th>
                 <Table.Th>Type</Table.Th>
                 <Table.Th>Status</Table.Th>
-                <Table.Th>Location ID</Table.Th>
                 <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>
               </Table.Tr>
             </Table.Thead>
@@ -149,7 +148,6 @@ function HubListPage() {
                   <Table.Td>
                     <StatusBadge status={hub.status} />
                   </Table.Td>
-                  <Table.Td>{hub.location_id || '-'}</Table.Td>
                   <Table.Td>
                     <Group gap="xs" justify="flex-end" onClick={(e) => e.stopPropagation()}>
                       <Button size="xs" variant="light" onClick={() => navigate(`/hubs/${hub.id}`)}>

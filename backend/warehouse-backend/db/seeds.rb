@@ -234,9 +234,30 @@ commodity_groups = [
   find_or_create_with(Cats::Core::CommodityCategory, { code: group[:code] }, { name: group[:name] })
 end
 
-# Step 1: Make sure there is a project to attach commodities to
-project = Cats::Core::Project.first_or_create!(
-  name: "Default Project"
+# Ensure donor exists before records that depend on it
+donor = find_or_create_with(
+  Cats::Core::Donor,
+  { code: "ADD-RELIEF-DESK" },
+  { name: "Addis Relief Desk" }
+)
+
+# Step 1: Make sure there is a program/project to attach commodities to
+program = find_or_create_with(
+  Cats::Core::Program,
+  { code: "DEFAULT-PROGRAM" },
+  { name: "Default Program", description: "Default program for warehouse seed data" }
+)
+
+project = find_or_create_with(
+  Cats::Core::Project,
+  { code: "DEFAULT-PROJECT" },
+  {
+    description: "Default project for warehouse seed data",
+    program_id: program.id,
+    source: donor,
+    year: Date.current.year,
+    implementing_agency: "CATS"
+  }
 )
 
 # Step 2: Create commodities
@@ -278,14 +299,8 @@ transporters = [
   )
 end
 
-# Ensure donor and funding records exist before records that depend on them
+# Ensure funding records exist before records that depend on them
 etb_currency = Cats::Core::Currency.find_or_create_by!(code: "ETB", name: "Ethiopian Birr")
-
-donor = find_or_create_with(
-  Cats::Core::Donor,
-  { code: "ADD-RELIEF-DESK" },
-  { name: "Addis Relief Desk" }
-)
 
 cash_donation = find_or_create_with(
   Cats::Core::CashDonation,

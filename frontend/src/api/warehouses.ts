@@ -1,6 +1,7 @@
 import apiClient from './client';
 import type {
   Warehouse,
+  WarehouseUpsertPayload,
   WarehouseAccess,
   WarehouseCapacity,
   WarehouseContacts,
@@ -9,24 +10,48 @@ import type {
 import type { ApiResponse } from '../types/common';
 import { createGeo, updateGeo, type GeoPayload } from './geos';
 
+const normalizeWarehouse = (warehouse: any): Warehouse => ({
+  ...warehouse,
+  capacity: warehouse.capacity ?? warehouse.warehouse_capacity,
+  access: warehouse.access ?? warehouse.warehouse_access,
+  infra: warehouse.infra ?? warehouse.warehouse_infra,
+  contacts: warehouse.contacts ?? warehouse.warehouse_contacts,
+});
+
+const toWarehouseRequestBody = (data: WarehouseUpsertPayload) => {
+  const hasBinaryPayload = Object.values(data).some((value) => value instanceof File);
+
+  if (!hasBinaryPayload) {
+    return { payload: data };
+  }
+
+  const formData = new FormData();
+  Object.entries(data).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    formData.append(`payload[${key}]`, value);
+  });
+
+  return formData;
+};
+
 export const getWarehouses = async (): Promise<Warehouse[]> => {
   const response = await apiClient.get<ApiResponse<Warehouse[]>>('/warehouses');
-  return response.data.data;
+  return response.data.data.map((warehouse: any) => normalizeWarehouse(warehouse));
 };
 
 export const getWarehouse = async (id: number): Promise<Warehouse> => {
   const response = await apiClient.get<ApiResponse<Warehouse>>(`/warehouses/${id}`);
-  return response.data.data;
+  return normalizeWarehouse(response.data.data);
 };
 
-export const createWarehouse = async (data: Partial<Warehouse>): Promise<Warehouse> => {
-  const response = await apiClient.post<ApiResponse<Warehouse>>('/warehouses', { payload: data });
-  return response.data.data;
+export const createWarehouse = async (data: WarehouseUpsertPayload): Promise<Warehouse> => {
+  const response = await apiClient.post<ApiResponse<Warehouse>>('/warehouses', toWarehouseRequestBody(data));
+  return normalizeWarehouse(response.data.data);
 };
 
-export const updateWarehouse = async (id: number, data: Partial<Warehouse>): Promise<Warehouse> => {
-  const response = await apiClient.put<ApiResponse<Warehouse>>(`/warehouses/${id}`, { payload: data });
-  return response.data.data;
+export const updateWarehouse = async (id: number, data: WarehouseUpsertPayload): Promise<Warehouse> => {
+  const response = await apiClient.put<ApiResponse<Warehouse>>(`/warehouses/${id}`, toWarehouseRequestBody(data));
+  return normalizeWarehouse(response.data.data);
 };
 
 export const deleteWarehouse = async (id: number): Promise<void> => {

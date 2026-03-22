@@ -9,11 +9,36 @@ export interface Warehouse {
   hub_id?: number;
   geo_id?: number;
   geo?: WarehouseGeo;
+  managed_under?: string;
   ownership_type?: string;
   capacity?: WarehouseCapacity;
   access?: WarehouseAccess;
   infra?: WarehouseInfra;
   contacts?: WarehouseContacts;
+  rental_agreement_document?: UploadedDocument | null;
+}
+
+export interface UploadedDocument {
+  id: number;
+  filename: string;
+  content_type?: string;
+  byte_size?: number;
+  signed_id?: string;
+}
+
+export interface WarehouseUpsertPayload {
+  code?: string;
+  name?: string;
+  warehouse_type?: string;
+  status?: string;
+  description?: string;
+  location_id?: number;
+  hub_id?: number;
+  geo_id?: number;
+  managed_under?: string;
+  ownership_type?: string;
+  rental_agreement_document?: File | null;
+  rental_agreement_document_signed_id?: string;
 }
 
 export interface WarehouseGeo {
