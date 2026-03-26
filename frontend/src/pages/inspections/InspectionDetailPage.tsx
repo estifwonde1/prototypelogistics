@@ -1,5 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import {
   Stack,
   Title,
@@ -22,6 +23,7 @@ import { StatusBadge } from '../../components/common/StatusBadge';
 import { notifications } from '@mantine/notifications';
 import { DocumentStatus } from '../../utils/constants';
 import { useState, useMemo } from 'react';
+import type { ApiError } from '../../types/common';
 
 function InspectionDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -42,9 +44,14 @@ function InspectionDetailPage() {
 
   const confirmMutation = useMutation({
     mutationFn: confirmInspection,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['inspection', id] });
-      queryClient.invalidateQueries({ queryKey: ['inspections'] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['inspection', id] }),
+        queryClient.invalidateQueries({ queryKey: ['inspections'] }),
+        queryClient.invalidateQueries({ queryKey: ['stockBalances'] }),
+        queryClient.invalidateQueries({ queryKey: ['reports', 'bin-card'] }),
+        queryClient.invalidateQueries({ queryKey: ['stacks'] }),
+      ]);
       notifications.show({
         title: 'Success',
         message: 'Inspection confirmed successfully',
@@ -52,10 +59,12 @@ function InspectionDetailPage() {
       });
       setConfirmModalOpen(false);
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifications.show({
         title: 'Error',
-        message: error.response?.data?.error?.message || 'Failed to confirm inspection',
+        message:
+          (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) ||
+          'Failed to confirm inspection',
         color: 'red',
       });
     },

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import {
   Stack,
   Title,
@@ -19,11 +20,21 @@ import { DateInput } from '@mantine/dates';
 import { IconTrash, IconPlus } from '@tabler/icons-react';
 import { createInspection } from '../../api/inspections';
 import { getWarehouses } from '../../api/warehouses';
+import { getReceipts } from '../../api/receipts';
+import { getWaybills } from '../../api/waybills';
+import { getGrns } from '../../api/grns';
 import { notifications } from '@mantine/notifications';
 import { QualityStatus, PackagingCondition } from '../../utils/constants';
 import type { InspectionItem } from '../../types/inspection';
+import type { ApiError } from '../../types/common';
 
 function InspectionCreatePage() {
+  const sourceTypeOptions = [
+    { value: 'Receipt', label: 'Receipt' },
+    { value: 'Waybill', label: 'Waybill' },
+    { value: 'Grn', label: 'GRN' },
+  ];
+
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -51,6 +62,21 @@ function InspectionCreatePage() {
     queryFn: getWarehouses,
   });
 
+  const { data: receipts = [] } = useQuery({
+    queryKey: ['receipts'],
+    queryFn: getReceipts,
+  });
+
+  const { data: waybills = [] } = useQuery({
+    queryKey: ['waybills'],
+    queryFn: getWaybills,
+  });
+
+  const { data: grns = [] } = useQuery({
+    queryKey: ['grns'],
+    queryFn: getGrns,
+  });
+
   const createMutation = useMutation({
     mutationFn: createInspection,
     onSuccess: (data) => {
@@ -62,10 +88,12 @@ function InspectionCreatePage() {
       });
       navigate(`/inspections/${data.id}`);
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifications.show({
         title: 'Error',
-        message: error.response?.data?.error?.message || 'Failed to create inspection',
+        message:
+          (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) ||
+          'Failed to create inspection',
         color: 'red',
       });
     },
@@ -90,7 +118,11 @@ function InspectionCreatePage() {
     setItems(items.filter((_, i) => i !== index));
   };
 
-  const handleItemChange = (index: number, field: keyof InspectionItem, value: any) => {
+  const handleItemChange = <K extends keyof InspectionItem>(
+    index: number,
+    field: K,
+    value: InspectionItem[K]
+  ) => {
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
     setItems(newItems);
@@ -115,6 +147,15 @@ function InspectionCreatePage() {
       return;
     }
 
+    if ((sourceType && !sourceId) || (!sourceType && sourceId)) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Source type and source ID must be provided together.',
+        color: 'red',
+      });
+      return;
+    }
+
     createMutation.mutate({
       reference_no: referenceNo,
       warehouse_id: parseInt(warehouseId),
@@ -122,7 +163,7 @@ function InspectionCreatePage() {
       inspector_id: inspectorId ? parseInt(inspectorId) : undefined,
       source_type: sourceType || undefined,
       source_id: sourceId ? parseInt(sourceId) : undefined,
-      inspection_items: items,
+      items,
     });
   };
 
@@ -130,6 +171,24 @@ function InspectionCreatePage() {
     value: w.id.toString(),
     label: `${w.name} (${w.code})`,
   }));
+
+  const sourceOptions =
+    sourceType === 'Receipt'
+      ? receipts.map((receipt) => ({
+          value: receipt.id.toString(),
+          label: `${receipt.reference_no || 'Receipt'} (#${receipt.id})`,
+        }))
+      : sourceType === 'Waybill'
+        ? waybills.map((waybill) => ({
+            value: waybill.id.toString(),
+            label: `${waybill.reference_no || 'Waybill'} (#${waybill.id})`,
+          }))
+        : sourceType === 'Grn'
+          ? grns.map((grn) => ({
+              value: grn.id.toString(),
+              label: `${grn.reference_no || 'GRN'} (#${grn.id})`,
+            }))
+          : [];
 
   const qualityOptions = Object.entries(QualityStatus).map(([key, value]) => ({
     value,
@@ -192,17 +251,47 @@ function InspectionCreatePage() {
           </Group>
 
           <Group grow>
-            <TextInput
+            <Select
               label="Source Type"
-              placeholder="e.g., GRN, Shipment"
+              placeholder="Select source type"
+              data={sourceTypeOptions}
               value={sourceType}
-              onChange={(e) => setSourceType(e.target.value)}
+              onChange={(value) => {
+                setSourceType(value || '');
+                setSourceId('');
+              }}
+              clearable
             />
-            <TextInput
-              label="Source ID"
-              placeholder="Enter source ID"
-              value={sourceId}
-              onChange={(e) => setSourceId(e.target.value)}
+            <Select
+              label="Source Reference"
+              placeholder={sourceType ? 'Select source reference' : 'Select source type first'}
+              data={sourceOptions}
+              value={sourceId || null}
+              onChange={(value) => {
+                const nextSourceId = value || '';
+                setSourceId(nextSourceId);
+
+                if (sourceType !== 'Grn' || !nextSourceId) return;
+
+                const selectedGrn = grns.find((grn) => grn.id === Number(nextSourceId));
+                if (!selectedGrn) return;
+
+                setWarehouseId(String(selectedGrn.warehouse_id));
+                setItems(
+                  selectedGrn.grn_items.map((item) => ({
+                    commodity_id: item.commodity_id,
+                    quantity_received: item.quantity,
+                    quantity_damaged: 0,
+                    quantity_lost: 0,
+                    quality_status: item.quality_status || QualityStatus.GOOD,
+                    packaging_condition: PackagingCondition.INTACT,
+                    remarks: '',
+                  }))
+                );
+              }}
+              searchable
+              clearable
+              disabled={!sourceType}
             />
           </Group>
         </Stack>

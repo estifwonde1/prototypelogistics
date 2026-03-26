@@ -7,7 +7,12 @@
 
 Rails.application.config.middleware.insert_before 0, Rack::Cors do
   allow do
-    origins "http://localhost:5173"
+    configured_origins = ENV.fetch("ALLOWED_ORIGINS", "")
+      .split(",")
+      .map(&:strip)
+      .reject(&:blank?)
+
+    origins(*configured_origins.presence || ["http://localhost:5173"])
 
     resource "*",
       headers: %w[Authorization Content-Type X-User-Id],

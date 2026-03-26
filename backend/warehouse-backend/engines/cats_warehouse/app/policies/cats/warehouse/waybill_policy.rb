@@ -1,8 +1,14 @@
 module Cats
   module Warehouse
     class WaybillPolicy < ApplicationPolicy
+      class Scope < Scope
+        def resolve
+          DocumentScopeQuery.new(user: user, scope: scope).call
+        end
+      end
+
       def index?
-        admin? || warehouse_manager? || dispatcher?
+        admin? || hub_manager? || warehouse_manager? || storekeeper?
       end
 
       def show?
@@ -10,11 +16,11 @@ module Cats
       end
 
       def create?
-        admin? || warehouse_manager? || dispatcher?
+        admin? || hub_manager? || warehouse_manager?
       end
 
       def confirm?
-        admin? || warehouse_manager? || dispatcher?
+        admin? || hub_manager? || warehouse_manager?
       end
     end
   end

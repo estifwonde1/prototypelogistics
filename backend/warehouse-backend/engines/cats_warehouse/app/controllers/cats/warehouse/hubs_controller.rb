@@ -3,11 +3,11 @@ module Cats
     class HubsController < BaseController
       def index
         authorize Hub
-        render_resource(scoped_hubs.order(:id), each_serializer: HubSerializer)
+        render_resource(policy_scope(Hub).order(:id), each_serializer: HubSerializer)
       end
 
       def show
-        hub = scoped_hubs.find(params[:id])
+        hub = policy_scope(Hub).find(params[:id])
         authorize hub
         render_resource(hub, serializer: HubSerializer)
       end
@@ -19,14 +19,14 @@ module Cats
       end
 
       def update
-        hub = scoped_hubs.find(params[:id])
+        hub = policy_scope(Hub).find(params[:id])
         authorize hub
         hub.update!(hub_params)
         render_resource(hub, serializer: HubSerializer)
       end
 
       def destroy
-        hub = scoped_hubs.find(params[:id])
+        hub = policy_scope(Hub).find(params[:id])
         authorize hub
         hub.destroy!
         render_success({ id: hub.id })
@@ -44,13 +44,6 @@ module Cats
           :status,
           :description
         )
-      end
-
-      def scoped_hubs
-        return Hub.all if admin_user?
-        return Hub.where(id: assigned_hub_ids) if hub_manager?
-
-        Hub.none
       end
     end
   end

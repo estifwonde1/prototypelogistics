@@ -41,9 +41,15 @@ apiClient.interceptors.response.use(
     }
 
     const { status, data } = error.response;
+    const requestUrl = String(error.config?.url || '');
+    const isAuthLoginRequest = requestUrl.includes('/auth/login');
 
     switch (status) {
       case 401:
+        if (isAuthLoginRequest) {
+          return Promise.reject(error);
+        }
+
         // Unauthorized - clear auth and redirect to login
         notifications.show({
           title: 'Session Expired',

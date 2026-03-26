@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -33,6 +34,7 @@ function WarehouseDetailPage() {
   const queryClient = useQueryClient();
   const { can } = usePermission();
   const canEdit = can('warehouses', 'update');
+  const canReadHubs = can('hubs', 'read');
   const role = useAuthStore((state) => state.role);
   const isAdmin = role === 'admin' || role === 'superadmin';
 
@@ -49,7 +51,7 @@ function WarehouseDetailPage() {
     enabled: !!id,
   });
 
-  const { data: hubs } = useQuery({ queryKey: ['hubs'], queryFn: getHubs });
+  const { data: hubs } = useQuery({ queryKey: ['hubs'], queryFn: getHubs, enabled: canReadHubs });
   const { data: stores } = useQuery({ queryKey: ['stores'], queryFn: getStores });
   const { data: stockBalances } = useQuery({ queryKey: ['stockBalances'], queryFn: getStockBalances });
   const { data: grns } = useQuery({ queryKey: ['grns'], queryFn: getGrns });
@@ -297,10 +299,10 @@ function WarehouseDetailPage() {
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
                   <Text size="sm" c="dimmed">Hub</Text>
-                  {hub ? (
+                  {canReadHubs && hub ? (
                     <Anchor onClick={() => navigate(`/hubs/${hub.id}`)} fw={500}>{hub.name}</Anchor>
                   ) : (
-                    <Text fw={500}>-</Text>
+                    <Text fw={500}>{warehouse.hub_id || '-'}</Text>
                   )}
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -20,12 +21,15 @@ import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { notifications } from '@mantine/notifications';
 import type { WarehouseUpsertPayload } from '../../types/warehouse';
+import { usePermission } from '../../hooks/usePermission';
 
 function WarehouseFormPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const isEdit = !!id;
+  const { can } = usePermission();
+  const canReadHubs = can('hubs', 'read');
 
   const { data: warehouse, isLoading } = useQuery({
     queryKey: ['warehouses', id],
@@ -36,6 +40,7 @@ function WarehouseFormPage() {
   const { data: hubs } = useQuery({
     queryKey: ['hubs'],
     queryFn: getHubs,
+    enabled: canReadHubs,
   });
 
   const form = useForm({
@@ -217,14 +222,16 @@ function WarehouseFormPage() {
                 {...form.getInputProps('ownership_type')}
               />
 
-              <Select
-                label="Hub"
-                placeholder="Select hub"
-                data={hubOptions || []}
-                searchable
-                clearable
-                {...form.getInputProps('hub_id')}
-              />
+              {canReadHubs && (
+                <Select
+                  label="Hub"
+                  placeholder="Select hub"
+                  data={hubOptions || []}
+                  searchable
+                  clearable
+                  {...form.getInputProps('hub_id')}
+                />
+              )}
 
               <Textarea
                 label="Description"

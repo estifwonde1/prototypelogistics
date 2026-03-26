@@ -89,20 +89,33 @@ export default function BinCardReportPage() {
               <Table.Th>Quantity</Table.Th>
               <Table.Th>Unit</Table.Th>
               <Table.Th>Reference</Table.Th>
+              <Table.Th>Commodity</Table.Th>
+              <Table.Th>Location</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
             {entries?.map((e) => {
-              const isIn = e.destination_id && (!e.source_id || e.destination_id !== e.source_id);
-              const isOut = e.source_id && (!e.destination_id || e.destination_id !== e.source_id);
+              const isIn = e.movement_type === 'inbound' || (!e.movement_type && e.destination_id && !e.source_id);
+              const isOut = e.movement_type === 'outbound' || (!e.movement_type && e.source_id && !e.destination_id);
+              const referenceLabel = [e.reference_type, e.reference_no].filter(Boolean).join(' • ') || '-';
+              const locationLabel =
+                (isIn
+                  ? [e.destination_warehouse_name, e.destination_store_name, e.destination_stack_code]
+                  : [e.source_warehouse_name, e.source_store_name, e.source_stack_code]
+                )
+                  .filter(Boolean)
+                  .join(' / ') || '-';
+              const unitLabel = e.unit_abbreviation || e.unit_name || e.unit_id || '-';
               return (
                 <Table.Tr key={e.id}>
                   <Table.Td>{new Date(e.transaction_date).toLocaleDateString()}</Table.Td>
                   <Table.Td>{isIn ? e.quantity : '-'}</Table.Td>
                   <Table.Td>{isOut ? e.quantity : '-'}</Table.Td>
                   <Table.Td>{e.quantity}</Table.Td>
-                  <Table.Td>{e.unit_id ?? '-'}</Table.Td>
-                  <Table.Td>{e.reference_no || '-'}</Table.Td>
+                  <Table.Td>{String(unitLabel)}</Table.Td>
+                  <Table.Td>{referenceLabel}</Table.Td>
+                  <Table.Td>{e.commodity_name || e.commodity_id || '-'}</Table.Td>
+                  <Table.Td>{locationLabel}</Table.Td>
                 </Table.Tr>
               );
             })}

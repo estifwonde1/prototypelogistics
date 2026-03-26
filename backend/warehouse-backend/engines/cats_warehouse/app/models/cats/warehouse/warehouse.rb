@@ -33,6 +33,7 @@ module Cats
       validates :ownership_type, presence: true, inclusion: { in: ownership_types.keys }
       validate :ownership_type_rules
       validate :rental_document_required_for_rental
+      validate :hub_location_consistency, if: -> { hub.present? && location_id.present? }
 
       after_commit :recalculate_related_hub_capacities
 
@@ -66,6 +67,12 @@ module Cats
         return if rental_agreement_document.attached?
 
         errors.add(:rental_agreement_document, "must be attached for rental warehouses")
+      end
+
+      def hub_location_consistency
+        return if location_id == hub.location_id
+
+        errors.add(:location_id, "must match the selected hub location")
       end
 
       def recalculate_related_hub_capacities

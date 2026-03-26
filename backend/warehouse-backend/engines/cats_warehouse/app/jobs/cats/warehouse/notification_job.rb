@@ -4,7 +4,7 @@ module Cats
       queue_as :default
 
       def perform(event, payload = {})
-        Rails.logger.info({ event: event, payload: payload }.to_json)
+        NotificationDelivery.new(event: event, payload: payload).call
       end
     end
   end

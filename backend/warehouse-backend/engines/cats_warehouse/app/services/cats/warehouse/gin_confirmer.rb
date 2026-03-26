@@ -7,7 +7,7 @@ module Cats
       end
 
       def call
-        raise ArgumentError, "GIN is already confirmed" if @gin.status == "Confirmed"
+        @gin.ensure_confirmable!
 
         Gin.transaction do
           @gin.update!(
@@ -16,9 +16,12 @@ module Cats
           )
 
           @gin.gin_items.find_each do |item|
-            apply_stock_balance(item)
-            apply_stack_quantity(item)
-            apply_stack_transaction(item)
+            InventoryLedger.apply_issue!(
+              warehouse: @gin.warehouse,
+              item: item,
+              transaction_date: @gin.issued_on,
+              reference: @gin
+            )
           end
 
           enqueue_notification("gin.confirmed", gin_id: @gin.id)
@@ -28,40 +31,6 @@ module Cats
       end
 
       private
-
-      def apply_stock_balance(item)
-        balance = StockBalance.find_or_initialize_by(
-          warehouse_id: @gin.warehouse_id,
-          store_id: item.store_id,
-          stack_id: item.stack_id,
-          commodity_id: item.commodity_id,
-          unit_id: item.unit_id
-        )
-        balance.quantity = balance.quantity.to_f - item.quantity.to_f
-        balance.save!
-      end
-
-      def apply_stack_quantity(item)
-        return unless item.stack_id
-
-        stack = Stack.lock.find(item.stack_id)
-        stack.quantity = stack.quantity.to_f - item.quantity.to_f
-        stack.save!
-      end
-
-      def apply_stack_transaction(item)
-        return unless item.stack_id
-
-        StackTransaction.create!(
-          source_id: item.stack_id,
-          destination_id: item.stack_id,
-          transaction_date: @gin.issued_on,
-          quantity: item.quantity,
-          unit_id: item.unit_id,
-          status: "Confirmed"
-        )
-      end
-
       def enqueue_notification(event, payload)
         return unless ENV["ENABLE_WAREHOUSE_JOBS"] == "true"
 

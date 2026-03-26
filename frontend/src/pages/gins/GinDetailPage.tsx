@@ -1,5 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import {
   Stack,
   Title,
@@ -20,6 +21,7 @@ import { StatusBadge } from '../../components/common/StatusBadge';
 import { notifications } from '@mantine/notifications';
 import { DocumentStatus } from '../../utils/constants';
 import { useState } from 'react';
+import type { ApiError } from '../../types/common';
 
 function GinDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -40,10 +42,14 @@ function GinDetailPage() {
 
   const confirmMutation = useMutation({
     mutationFn: confirmGin,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['gin', id] });
-      queryClient.invalidateQueries({ queryKey: ['gins'] });
-      queryClient.invalidateQueries({ queryKey: ['stockBalances'] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['gin', id] }),
+        queryClient.invalidateQueries({ queryKey: ['gins'] }),
+        queryClient.invalidateQueries({ queryKey: ['stockBalances'] }),
+        queryClient.invalidateQueries({ queryKey: ['reports', 'bin-card'] }),
+        queryClient.invalidateQueries({ queryKey: ['stacks'] }),
+      ]);
       notifications.show({
         title: 'Success',
         message: 'GIN confirmed successfully',
@@ -51,10 +57,12 @@ function GinDetailPage() {
       });
       setConfirmModalOpen(false);
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifications.show({
         title: 'Error',
-        message: error.response?.data?.error?.message || 'Failed to confirm GIN',
+        message:
+          (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) ||
+          'Failed to confirm GIN',
         color: 'red',
       });
     },

@@ -1,7 +1,7 @@
 import { useLocation, Navigate, Outlet } from 'react-router-dom';
 import { usePermission } from '../../hooks/usePermission';
 import { useAuthStore } from '../../store/authStore';
-import { getDefaultRouteForRole, PATH_SEGMENT_TO_RESOURCE, type RoleSlug } from '../../utils/constants';
+import { getDefaultRouteForRole, PATH_SEGMENT_TO_RESOURCE, type RoleSlug } from '../../contracts/warehouse';
 
 /**
  * Protects routes by role: if the current path maps to a resource the user

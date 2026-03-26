@@ -18,6 +18,7 @@ import { getStacks } from '../../api/stacks';
 import { getGrns } from '../../api/grns';
 import { getGins } from '../../api/gins';
 import { getInspections } from '../../api/inspections';
+import { usePermission } from '../../hooks/usePermission';
 
 interface StatCardProps {
   title: string;
@@ -46,10 +47,13 @@ function StatCard({ title, value, icon, loading }: StatCardProps) {
 
 function DashboardPage() {
   const navigate = useNavigate();
+  const { can } = usePermission();
+  const canReadHubs = can('hubs', 'read');
 
   const { data: hubs, isLoading: hubsLoading } = useQuery({
     queryKey: ['hubs'],
     queryFn: getHubs,
+    enabled: canReadHubs,
   });
 
   const { data: warehouses, isLoading: warehousesLoading } = useQuery({
@@ -102,9 +106,9 @@ function DashboardPage() {
         <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }}>
           <StatCard
             title="Total Hubs"
-            value={hubs?.length || 0}
+            value={canReadHubs ? hubs?.length || 0 : 'N/A'}
             icon={<IconBuilding size={32} />}
-            loading={hubsLoading}
+            loading={canReadHubs && hubsLoading}
           />
           <StatCard
             title="Total Warehouses"

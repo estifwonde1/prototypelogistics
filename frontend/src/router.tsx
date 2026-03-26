@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { Center, Loader } from '@mantine/core';
@@ -5,6 +6,7 @@ import { useAuthStore } from './store/authStore';
 import { AppShell } from './components/layout/AppShell';
 import { usePermission } from './hooks/usePermission';
 import { AccessDenied } from './components/common/AccessDenied';
+import { getDefaultRouteForRole, type RoleSlug } from './contracts/warehouse';
 
 // Lazy load pages
 const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
@@ -88,6 +90,17 @@ const RequireAdmin = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+const EntryRoute = () => {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated());
+  const role = useAuthStore((state) => state.role);
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <Navigate to={getDefaultRouteForRole((role as RoleSlug | null) ?? null)} replace />;
+};
+
 export const router = createBrowserRouter([
   {
     path: '/login',
@@ -107,6 +120,10 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
+        element: <EntryRoute />,
+      },
+      {
+        path: 'dashboard',
         element: <DashboardPage />,
       },
       {

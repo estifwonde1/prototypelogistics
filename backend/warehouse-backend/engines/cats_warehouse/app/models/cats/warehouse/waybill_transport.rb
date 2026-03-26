@@ -7,6 +7,7 @@ module Cats
       belongs_to :transporter, class_name: "Cats::Core::Transporter"
 
       validates :transporter, presence: true
+      validates :vehicle_plate_no, :driver_name, :driver_phone, presence: true
     end
   end
 end

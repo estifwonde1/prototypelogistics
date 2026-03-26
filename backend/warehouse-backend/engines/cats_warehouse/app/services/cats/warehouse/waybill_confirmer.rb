@@ -6,7 +6,7 @@ module Cats
       end
 
       def call
-        raise ArgumentError, "Waybill is already confirmed" if @waybill.status == "Confirmed"
+        @waybill.ensure_confirmable!
 
         Waybill.transaction do
           @waybill.update!(status: "Confirmed")

@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import {
   Stack,
   Title,
   Button,
   Group,
   TextInput,
+  Select,
   Card,
   Table,
   ActionIcon,
@@ -16,8 +18,11 @@ import {
 import { DateInput } from '@mantine/dates';
 import { IconTrash, IconPlus } from '@tabler/icons-react';
 import { createWaybill } from '../../api/waybills';
+import { getWarehouses } from '../../api/warehouses';
 import { notifications } from '@mantine/notifications';
 import type { WaybillItem, WaybillTransport } from '../../types/waybill';
+import { DocumentStatus } from '../../utils/constants';
+import type { ApiError } from '../../types/common';
 
 function WaybillCreatePage() {
   const navigate = useNavigate();
@@ -26,8 +31,8 @@ function WaybillCreatePage() {
   // Form state - Header
   const [referenceNo, setReferenceNo] = useState('');
   const [issuedOn, setIssuedOn] = useState<Date | null>(new Date());
-  const [sourceLocationId, setSourceLocationId] = useState('');
-  const [destinationLocationId, setDestinationLocationId] = useState('');
+  const [sourceWarehouseId, setSourceWarehouseId] = useState<string | null>(null);
+  const [destinationWarehouseId, setDestinationWarehouseId] = useState<string | null>(null);
   const [dispatchId, setDispatchId] = useState('');
 
   // Form state - Transport
@@ -45,6 +50,32 @@ function WaybillCreatePage() {
     },
   ]);
 
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ['warehouses'],
+    queryFn: getWarehouses,
+  });
+
+  const availableWarehouses = warehouses
+    .filter((warehouse) => warehouse.location_id)
+    .map((warehouse) => ({
+      warehouse,
+      value: String(warehouse.id),
+      label: `${warehouse.code} - ${warehouse.name}`,
+    }));
+
+  const sourceWarehouseOptions = availableWarehouses
+    .filter((option) => option.value !== destinationWarehouseId)
+    .map(({ value, label }) => ({ value, label }));
+
+  const destinationWarehouseOptions = availableWarehouses
+    .filter((option) => option.value !== sourceWarehouseId)
+    .map(({ value, label }) => ({ value, label }));
+
+  const sourceWarehouse = warehouses.find((warehouse) => String(warehouse.id) === sourceWarehouseId);
+  const destinationWarehouse = warehouses.find(
+    (warehouse) => String(warehouse.id) === destinationWarehouseId
+  );
+
   const createMutation = useMutation({
     mutationFn: createWaybill,
     onSuccess: (data) => {
@@ -56,10 +87,12 @@ function WaybillCreatePage() {
       });
       navigate(`/waybills/${data.id}`);
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifications.show({
         title: 'Error',
-        message: error.response?.data?.error?.message || 'Failed to create waybill',
+        message:
+          (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) ||
+          'Failed to create waybill',
         color: 'red',
       });
     },
@@ -80,14 +113,18 @@ function WaybillCreatePage() {
     setItems(items.filter((_, i) => i !== index));
   };
 
-  const handleItemChange = (index: number, field: keyof WaybillItem, value: any) => {
+  const handleItemChange = <K extends keyof WaybillItem>(
+    index: number,
+    field: K,
+    value: WaybillItem[K]
+  ) => {
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
     setItems(newItems);
   };
 
   const handleSubmit = () => {
-    if (!referenceNo || !issuedOn || !sourceLocationId || !destinationLocationId) {
+    if (!referenceNo || !issuedOn || !sourceWarehouseId || !destinationWarehouseId) {
       notifications.show({
         title: 'Validation Error',
         message: 'Please fill in all required header fields',
@@ -114,6 +151,24 @@ function WaybillCreatePage() {
       return;
     }
 
+    if (sourceWarehouseId === destinationWarehouseId) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Destination warehouse must differ from source warehouse.',
+        color: 'red',
+      });
+      return;
+    }
+
+    if (!sourceWarehouse?.location_id || !destinationWarehouse?.location_id) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Selected warehouses must have valid locations before creating a waybill.',
+        color: 'red',
+      });
+      return;
+    }
+
     const transport: WaybillTransport = {
       transporter_id: parseInt(transporterId),
       vehicle_plate_no: vehiclePlateNo,
@@ -124,11 +179,12 @@ function WaybillCreatePage() {
     createMutation.mutate({
       reference_no: referenceNo,
       issued_on: issuedOn.toISOString().split('T')[0],
-      source_location_id: parseInt(sourceLocationId),
-      destination_location_id: parseInt(destinationLocationId),
+      source_location_id: sourceWarehouse.location_id,
+      destination_location_id: destinationWarehouse.location_id,
       dispatch_id: dispatchId ? parseInt(dispatchId) : undefined,
-      waybill_transport: transport,
-      waybill_items: items,
+      status: DocumentStatus.DRAFT,
+      transport,
+      items,
     });
   };
 
@@ -165,18 +221,22 @@ function WaybillCreatePage() {
           </Group>
 
           <Group grow>
-            <TextInput
-              label="Source Location ID"
-              placeholder="Enter source location ID"
-              value={sourceLocationId}
-              onChange={(e) => setSourceLocationId(e.target.value)}
+            <Select
+              label="Source Warehouse"
+              placeholder="Select source warehouse"
+              data={sourceWarehouseOptions}
+              value={sourceWarehouseId}
+              onChange={setSourceWarehouseId}
+              searchable
               required
             />
-            <TextInput
-              label="Destination Location ID"
-              placeholder="Enter destination location ID"
-              value={destinationLocationId}
-              onChange={(e) => setDestinationLocationId(e.target.value)}
+            <Select
+              label="Destination Warehouse"
+              placeholder="Select destination warehouse"
+              data={destinationWarehouseOptions}
+              value={destinationWarehouseId}
+              onChange={setDestinationWarehouseId}
+              searchable
               required
             />
           </Group>

@@ -1,5 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import {
   Stack,
   Title,
@@ -20,6 +21,7 @@ import { StatusBadge } from '../../components/common/StatusBadge';
 import { notifications } from '@mantine/notifications';
 import { DocumentStatus } from '../../utils/constants';
 import { useState } from 'react';
+import type { ApiError } from '../../types/common';
 
 function WaybillDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -45,10 +47,12 @@ function WaybillDetailPage() {
       });
       setConfirmModalOpen(false);
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifications.show({
         title: 'Error',
-        message: error.response?.data?.error?.message || 'Failed to confirm waybill',
+        message:
+          (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) ||
+          'Failed to confirm waybill',
         color: 'red',
       });
     },

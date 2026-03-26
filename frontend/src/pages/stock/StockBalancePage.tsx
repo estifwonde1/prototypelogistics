@@ -57,10 +57,18 @@ function StockBalancePage() {
 
     return stockBalances.filter((balance) => {
       const matchesWarehouse = !warehouseFilter || balance.warehouse_id.toString() === warehouseFilter;
+      const searchTerm = search.trim().toLowerCase();
       const matchesSearch =
-        search === '' ||
-        balance.commodity_id.toString().includes(search) ||
-        balance.warehouse_id.toString().includes(search);
+        searchTerm === '' ||
+        balance.commodity_id.toString().includes(searchTerm) ||
+        balance.warehouse_id.toString().includes(searchTerm) ||
+        balance.commodity_name?.toLowerCase().includes(searchTerm) ||
+        balance.commodity_batch_no?.toLowerCase().includes(searchTerm) ||
+        balance.warehouse_name?.toLowerCase().includes(searchTerm) ||
+        balance.warehouse_code?.toLowerCase().includes(searchTerm) ||
+        balance.store_name?.toLowerCase().includes(searchTerm) ||
+        balance.store_code?.toLowerCase().includes(searchTerm) ||
+        balance.stack_code?.toLowerCase().includes(searchTerm);
       return matchesWarehouse && matchesSearch;
     });
   }, [stockBalances, warehouseFilter, search]);
@@ -111,23 +119,31 @@ function StockBalancePage() {
         <Table striped highlightOnHover>
           <Table.Thead>
             <Table.Tr>
-              <Table.Th>Warehouse ID</Table.Th>
-              <Table.Th>Store ID</Table.Th>
-              <Table.Th>Stack ID</Table.Th>
-              <Table.Th>Commodity ID</Table.Th>
+              <Table.Th>Warehouse</Table.Th>
+              <Table.Th>Store</Table.Th>
+              <Table.Th>Stack</Table.Th>
+              <Table.Th>Commodity</Table.Th>
               <Table.Th>Quantity</Table.Th>
-              <Table.Th>Unit ID</Table.Th>
+              <Table.Th>Unit</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
             {balances.map((balance) => (
               <Table.Tr key={balance.id}>
-                <Table.Td>{balance.warehouse_id}</Table.Td>
-                <Table.Td>{balance.store_id || '-'}</Table.Td>
-                <Table.Td>{balance.stack_id || '-'}</Table.Td>
-                <Table.Td>{balance.commodity_id}</Table.Td>
+                <Table.Td>
+                  {balance.warehouse_name
+                    ? `${balance.warehouse_name}${balance.warehouse_code ? ` (${balance.warehouse_code})` : ''}`
+                    : balance.warehouse_id}
+                </Table.Td>
+                <Table.Td>
+                  {balance.store_name
+                    ? `${balance.store_name}${balance.store_code ? ` (${balance.store_code})` : ''}`
+                    : balance.store_id || '-'}
+                </Table.Td>
+                <Table.Td>{balance.stack_code || balance.stack_id || '-'}</Table.Td>
+                <Table.Td>{balance.commodity_name || balance.commodity_batch_no || balance.commodity_id}</Table.Td>
                 <Table.Td style={{ fontWeight: 600 }}>{balance.quantity.toLocaleString()}</Table.Td>
-                <Table.Td>{balance.unit_id}</Table.Td>
+                <Table.Td>{balance.unit_abbreviation || balance.unit_name || balance.unit_id}</Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>
@@ -195,7 +211,7 @@ function StockBalancePage() {
       {/* Filters */}
       <Group>
         <TextInput
-          placeholder="Search by commodity or warehouse ID..."
+          placeholder="Search by commodity, warehouse, store, or stack..."
           leftSection={<IconSearch size={16} />}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -246,7 +262,7 @@ function StockBalancePage() {
                 ? warehouse
                   ? `${warehouse.name} (${warehouse.code})`
                   : `Warehouse ID: ${key}`
-                : `Commodity ID: ${key}`;
+                : balances[0]?.commodity_name || balances[0]?.commodity_batch_no || `Commodity ID: ${key}`;
             const totalQty = balances.reduce((sum, b) => sum + b.quantity, 0);
             return (
               <Card key={key} shadow="sm" padding="lg" radius="md" withBorder>

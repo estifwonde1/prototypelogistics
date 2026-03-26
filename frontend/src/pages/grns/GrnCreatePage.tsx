@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import {
   Stack,
   Title,
@@ -13,17 +14,29 @@ import {
   ActionIcon,
   Text,
   NumberInput,
+  Alert,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { IconTrash, IconPlus } from '@tabler/icons-react';
 import { createGrn } from '../../api/grns';
+import { getReceipts } from '../../api/receipts';
+import { getWaybills } from '../../api/waybills';
 import { getWarehouses } from '../../api/warehouses';
 import { getStores } from '../../api/stores';
+import { getStacks } from '../../api/stacks';
 import { notifications } from '@mantine/notifications';
 import { QualityStatus } from '../../utils/constants';
+import { getGrns } from '../../api/grns';
 import type { GrnItem } from '../../types/grn';
+import type { ApiError } from '../../types/common';
 
 function GrnCreatePage() {
+  const sourceTypeOptions = [
+    { value: 'Receipt', label: 'Receipt' },
+    { value: 'Waybill', label: 'Waybill' },
+    { value: 'Grn', label: 'GRN' },
+  ];
+
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -53,7 +66,25 @@ function GrnCreatePage() {
     queryFn: getStores,
   });
 
-  // Removed unused stacks query
+  const { data: stacks = [] } = useQuery({
+    queryKey: ['stacks'],
+    queryFn: getStacks,
+  });
+
+  const { data: receipts = [] } = useQuery({
+    queryKey: ['receipts'],
+    queryFn: getReceipts,
+  });
+
+  const { data: waybills = [] } = useQuery({
+    queryKey: ['waybills'],
+    queryFn: getWaybills,
+  });
+
+  const { data: grns = [] } = useQuery({
+    queryKey: ['grns'],
+    queryFn: getGrns,
+  });
 
   const createMutation = useMutation({
     mutationFn: createGrn,
@@ -66,10 +97,12 @@ function GrnCreatePage() {
       });
       navigate(`/grns/${data.id}`);
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       notifications.show({
         title: 'Error',
-        message: error.response?.data?.error?.message || 'Failed to create GRN',
+        message:
+          (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) ||
+          'Failed to create GRN',
         color: 'red',
       });
     },
@@ -91,14 +124,21 @@ function GrnCreatePage() {
     setItems(items.filter((_, i) => i !== index));
   };
 
-  const handleItemChange = (index: number, field: keyof GrnItem, value: any) => {
+  const handleItemChange = <K extends keyof GrnItem>(
+    index: number,
+    field: K,
+    value: GrnItem[K]
+  ) => {
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
     setItems(newItems);
   };
 
   const handleSubmit = () => {
-    if (!referenceNo || !warehouseId || !receivedOn) {
+    const effectiveWarehouseId =
+      warehouseId ?? (warehouseOptions.length === 1 ? warehouseOptions[0].value : null);
+
+    if (!referenceNo || !effectiveWarehouseId || !receivedOn) {
       notifications.show({
         title: 'Validation Error',
         message: 'Please fill in all required fields',
@@ -116,21 +156,36 @@ function GrnCreatePage() {
       return;
     }
 
+    if ((sourceType && !sourceId) || (!sourceType && sourceId)) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Source type and source ID must be provided together.',
+        color: 'red',
+      });
+      return;
+    }
+
     createMutation.mutate({
       reference_no: referenceNo,
-      warehouse_id: parseInt(warehouseId),
+      warehouse_id: parseInt(effectiveWarehouseId),
       received_on: receivedOn.toISOString().split('T')[0],
       received_by_id: receivedById ? parseInt(receivedById) : undefined,
       source_type: sourceType || undefined,
       source_id: sourceId ? parseInt(sourceId) : undefined,
-      grn_items: items,
+      items,
     });
   };
 
-  const warehouseOptions = warehouses?.map((w) => ({
-    value: w.id.toString(),
-    label: `${w.name} (${w.code})`,
-  }));
+  const warehouseOptions =
+    warehouses && warehouses.length > 0
+      ? warehouses.map((w) => ({
+          value: w.id.toString(),
+          label: `${w.name} (${w.code})`,
+        }))
+      : Array.from(new Set((stores ?? []).map((store) => store.warehouse_id))).map((id) => ({
+          value: id.toString(),
+          label: `Warehouse #${id}`,
+        }));
 
   const storeOptions = stores
     ?.filter((s) => !warehouseId || s.warehouse_id.toString() === warehouseId)
@@ -139,10 +194,86 @@ function GrnCreatePage() {
       label: `${s.name} (${s.code})`,
     }));
 
+  const availableStoreIds = new Set(
+    (stores ?? [])
+      .filter((store) => !warehouseId || store.warehouse_id.toString() === warehouseId)
+      .map((store) => store.id)
+  );
+
   const qualityOptions = Object.entries(QualityStatus).map(([key, value]) => ({
     value,
     label: key.charAt(0) + key.slice(1).toLowerCase(),
   }));
+
+  const stackOptionsForItem = (storeId?: number) =>
+    stacks
+      .filter((stack) => availableStoreIds.has(stack.store_id))
+      .filter((stack) => !storeId || stack.store_id === storeId)
+      .map((stack) => ({
+        value: stack.id.toString(),
+        label: `${stack.code} (#${stack.id})`,
+      }));
+
+  const sourceOptions =
+    sourceType === 'Receipt'
+      ? receipts.map((receipt) => ({
+          value: receipt.id.toString(),
+          label: `${receipt.reference_no || 'Receipt'} (#${receipt.id})`,
+        }))
+      : sourceType === 'Waybill'
+        ? waybills.map((waybill) => ({
+            value: waybill.id.toString(),
+            label: `${waybill.reference_no || 'Waybill'} (#${waybill.id})`,
+          }))
+        : sourceType === 'Grn'
+          ? grns.map((grn) => ({
+              value: grn.id.toString(),
+              label: `${grn.reference_no || 'GRN'} (#${grn.id})`,
+        }))
+          : [];
+
+  const selectedReceipt = sourceType === 'Receipt' ? receipts.find((receipt) => receipt.id === Number(sourceId)) : undefined;
+  const selectedWaybill = sourceType === 'Waybill' ? waybills.find((waybill) => waybill.id === Number(sourceId)) : undefined;
+  const selectedSourceGrn = sourceType === 'Grn' ? grns.find((grn) => grn.id === Number(sourceId)) : undefined;
+
+  const sourceItemOptions =
+    sourceType === 'Receipt'
+      ? selectedReceipt && selectedReceipt.commodity_id
+        ? [
+            {
+              value: `${selectedReceipt.commodity_id}:${selectedReceipt.unit_id}`,
+              label: `${selectedReceipt.commodity_name || `Commodity #${selectedReceipt.commodity_id}`} | ${selectedReceipt.quantity.toLocaleString()} ${selectedReceipt.unit_abbreviation || selectedReceipt.unit_name || `Unit #${selectedReceipt.unit_id}`}`,
+            },
+          ]
+        : []
+      : sourceType === 'Waybill'
+      ? (selectedWaybill?.waybill_items ?? []).map((item) => ({
+          value: `${item.commodity_id}:${item.unit_id}`,
+          label: `Commodity #${item.commodity_id} | ${item.quantity.toLocaleString()} Unit #${item.unit_id}`,
+        }))
+      : sourceType === 'Grn'
+        ? (selectedSourceGrn?.grn_items ?? []).map((item) => ({
+            value: `${item.commodity_id}:${item.unit_id}`,
+            label: `Commodity #${item.commodity_id} | ${item.quantity.toLocaleString()} Unit #${item.unit_id}`,
+          }))
+        : [];
+
+  const sourceItems =
+    sourceType === 'Receipt'
+      ? selectedReceipt && selectedReceipt.commodity_id
+        ? [
+            {
+              commodity_id: selectedReceipt.commodity_id,
+              unit_id: selectedReceipt.unit_id,
+              quantity: selectedReceipt.quantity,
+            },
+          ]
+        : []
+      : sourceType === 'Waybill'
+      ? selectedWaybill?.waybill_items ?? []
+      : sourceType === 'Grn'
+        ? selectedSourceGrn?.grn_items ?? []
+        : [];
 
   return (
     <Stack gap="md">
@@ -171,8 +302,17 @@ function GrnCreatePage() {
               label="Warehouse"
               placeholder="Select warehouse"
               data={warehouseOptions || []}
-              value={warehouseId}
-              onChange={setWarehouseId}
+              value={warehouseId ?? (warehouseOptions.length === 1 ? warehouseOptions[0].value : null)}
+              onChange={(value) => {
+                setWarehouseId(value);
+                setItems((currentItems) =>
+                  currentItems.map((item) => ({
+                    ...item,
+                    store_id: undefined,
+                    stack_id: undefined,
+                  }))
+                );
+              }}
               searchable
               required
             />
@@ -195,17 +335,29 @@ function GrnCreatePage() {
           </Group>
 
           <Group grow>
-            <TextInput
+            <Select
               label="Source Type"
-              placeholder="e.g., Purchase Order, Transfer"
+              placeholder="Select source type"
+              data={sourceTypeOptions}
               value={sourceType}
-              onChange={(e) => setSourceType(e.target.value)}
+              onChange={(value) => {
+                setSourceType(value || '');
+                setSourceId('');
+              }}
+              clearable
             />
-            <TextInput
-              label="Source ID"
-              placeholder="Enter source ID"
-              value={sourceId}
-              onChange={(e) => setSourceId(e.target.value)}
+            <Select
+              label="Source Reference"
+              placeholder={sourceType ? 'Select source reference' : 'Select source type first'}
+              data={sourceOptions}
+              value={sourceId || null}
+              onChange={(value) => {
+                const nextSourceId = value || '';
+                setSourceId(nextSourceId);
+              }}
+              searchable
+              clearable
+              disabled={!sourceType}
             />
           </Group>
         </Stack>
@@ -224,16 +376,20 @@ function GrnCreatePage() {
             </Button>
           </Group>
 
+          <Alert color="blue" variant="light">
+            Source-backed item selection is available for receipts, waybills, and source GRNs. When a source item is selected, commodity and unit are filled from that source to reduce manual entry.
+          </Alert>
+
           <Table.ScrollContainer minWidth={800}>
             <Table>
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th>Commodity ID</Table.Th>
+                  <Table.Th>Commodity</Table.Th>
                   <Table.Th>Quantity</Table.Th>
-                  <Table.Th>Unit ID</Table.Th>
+                  <Table.Th>Unit</Table.Th>
                   <Table.Th>Quality Status</Table.Th>
                   <Table.Th>Store</Table.Th>
-                  <Table.Th>Stack ID</Table.Th>
+                  <Table.Th>Stack</Table.Th>
                   <Table.Th style={{ width: 50 }}>Actions</Table.Th>
                 </Table.Tr>
               </Table.Thead>
@@ -241,15 +397,48 @@ function GrnCreatePage() {
                 {items.map((item, index) => (
                   <Table.Tr key={index}>
                     <Table.Td>
-                      <NumberInput
-                        placeholder="Commodity ID"
-                        value={item.commodity_id || ''}
-                        onChange={(val) =>
-                          handleItemChange(index, 'commodity_id', Number(val))
-                        }
-                        min={1}
-                        hideControls
-                      />
+                      {sourceItemOptions.length > 0 ? (
+                        <Select
+                          placeholder="Select source item"
+                          data={sourceItemOptions}
+                          value={
+                            item.commodity_id && item.unit_id
+                              ? `${item.commodity_id}:${item.unit_id}`
+                              : null
+                          }
+                          onChange={(value) => {
+                            if (!value) {
+                              handleItemChange(index, 'commodity_id', 0);
+                              handleItemChange(index, 'unit_id', 0);
+                              return;
+                            }
+
+                            const [commodityId, unitId] = value.split(':');
+                            const sourceItem = sourceItems.find(
+                              (entry) =>
+                                entry.commodity_id === Number(commodityId) &&
+                                entry.unit_id === Number(unitId)
+                            );
+                            handleItemChange(index, 'commodity_id', Number(commodityId));
+                            handleItemChange(index, 'unit_id', Number(unitId));
+                            if (!item.quantity && sourceItem) {
+                              handleItemChange(index, 'quantity', Number(sourceItem.quantity));
+                            }
+                          }}
+                          searchable
+                          clearable
+                        />
+                      ) : (
+                        <NumberInput
+                          placeholder="Commodity ID"
+                          value={item.commodity_id || ''}
+                          onChange={(val) =>
+                            handleItemChange(index, 'commodity_id', Number(val))
+                          }
+                          min={1}
+                          hideControls
+                        />
+                      )}
                     </Table.Td>
                     <Table.Td>
                       <NumberInput
@@ -261,13 +450,23 @@ function GrnCreatePage() {
                       />
                     </Table.Td>
                     <Table.Td>
-                      <NumberInput
-                        placeholder="Unit ID"
-                        value={item.unit_id || ''}
-                        onChange={(val) => handleItemChange(index, 'unit_id', Number(val))}
-                        min={1}
-                        hideControls
-                      />
+                      {sourceItemOptions.length > 0 || selectedReceipt ? (
+                        <Text size="sm">
+                          {item.unit_id
+                            ? `Unit #${item.unit_id}`
+                            : selectedReceipt?.unit_id
+                              ? `Unit #${selectedReceipt.unit_id}`
+                              : '-'}
+                        </Text>
+                      ) : (
+                        <NumberInput
+                          placeholder="Unit ID"
+                          value={item.unit_id || ''}
+                          onChange={(val) => handleItemChange(index, 'unit_id', Number(val))}
+                          min={1}
+                          hideControls
+                        />
+                      )}
                     </Table.Td>
                     <Table.Td>
                       <Select
@@ -284,22 +483,32 @@ function GrnCreatePage() {
                         placeholder="Store"
                         data={storeOptions || []}
                         value={item.store_id?.toString() || null}
-                        onChange={(val) =>
-                          handleItemChange(index, 'store_id', val ? parseInt(val) : undefined)
-                        }
+                        onChange={(val) => {
+                          const nextStoreId = val ? parseInt(val) : undefined;
+                          handleItemChange(index, 'store_id', nextStoreId);
+                          handleItemChange(index, 'stack_id', undefined);
+                        }}
                         searchable
                         clearable
                       />
                     </Table.Td>
                     <Table.Td>
-                      <NumberInput
-                        placeholder="Stack ID"
-                        value={item.stack_id || ''}
-                        onChange={(val) =>
-                          handleItemChange(index, 'stack_id', val ? Number(val) : undefined)
-                        }
-                        min={1}
-                        hideControls
+                      <Select
+                        placeholder="Stack"
+                        data={stackOptionsForItem(item.store_id)}
+                        value={item.stack_id?.toString() || null}
+                        onChange={(val) => {
+                          const nextStackId = val ? parseInt(val) : undefined;
+                          const selectedStack = stacks.find((stack) => stack.id === nextStackId);
+                          handleItemChange(index, 'stack_id', nextStackId);
+
+                          if (selectedStack) {
+                            handleItemChange(index, 'commodity_id', selectedStack.commodity_id);
+                            handleItemChange(index, 'unit_id', selectedStack.unit_id);
+                          }
+                        }}
+                        searchable
+                        clearable
                       />
                     </Table.Td>
                     <Table.Td>

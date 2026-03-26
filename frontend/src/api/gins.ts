@@ -1,6 +1,7 @@
 import apiClient from './client';
-import type { Gin } from '../types/gin';
+import type { Gin, GinItem } from '../types/gin';
 import type { ApiResponse } from '../types/common';
+import { toCreateGinRequest, type CreateGinRequest } from '../contracts/documents';
 
 export const getGins = async (): Promise<Gin[]> => {
   const response = await apiClient.get<ApiResponse<Gin[]>>('/gins');
@@ -12,8 +13,10 @@ export const getGin = async (id: number): Promise<Gin> => {
   return response.data.data;
 };
 
-export const createGin = async (data: Partial<Gin>): Promise<Gin> => {
-  const response = await apiClient.post<ApiResponse<Gin>>('/gins', { payload: data });
+export const createGin = async (
+  data: CreateGinRequest | (Partial<Gin> & { items?: GinItem[] })
+): Promise<Gin> => {
+  const response = await apiClient.post<ApiResponse<Gin>>('/gins', { payload: toCreateGinRequest(data) });
   return response.data.data;
 };
 

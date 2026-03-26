@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_03_21_101000) do
+ActiveRecord::Schema[7.0].define(version: 2026_03_24_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1226,14 +1226,16 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_21_101000) do
   end
 
   create_table "cats_warehouse_stack_transactions", force: :cascade do |t|
-    t.bigint "source_id", null: false
-    t.bigint "destination_id", null: false
+    t.bigint "source_id"
+    t.bigint "destination_id"
     t.date "transaction_date", null: false
     t.float "quantity", null: false
     t.bigint "unit_id", null: false
     t.string "status", default: "Draft", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "reference_type"
+    t.bigint "reference_id"
     t.index ["destination_id"], name: "destination_on_cwst_indx"
     t.index ["source_id"], name: "source_on_cwst_indx"
     t.index ["unit_id"], name: "unit_on_cwst_indx"
@@ -1271,6 +1273,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_21_101000) do
     t.index ["commodity_id"], name: "index_cats_warehouse_stacks_on_commodity_id"
     t.index ["store_id"], name: "index_cats_warehouse_stacks_on_store_id"
     t.index ["unit_id"], name: "index_cats_warehouse_stacks_on_unit_id"
+    t.check_constraint "quantity >= 0::double precision", name: "cw_stacks_quantity_non_negative"
   end
 
   create_table "cats_warehouse_stock_balances", force: :cascade do |t|
@@ -1282,11 +1285,13 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_21_101000) do
     t.bigint "unit_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.index "warehouse_id, COALESCE(store_id, ('-1'::integer)::bigint), COALESCE(stack_id, ('-1'::integer)::bigint), commodity_id, unit_id", name: "idx_cats_warehouse_stock_balances_unique_dimension", unique: true
     t.index ["commodity_id"], name: "index_cats_warehouse_stock_balances_on_commodity_id"
     t.index ["stack_id"], name: "index_cats_warehouse_stock_balances_on_stack_id"
     t.index ["store_id"], name: "index_cats_warehouse_stock_balances_on_store_id"
     t.index ["unit_id"], name: "index_cats_warehouse_stock_balances_on_unit_id"
     t.index ["warehouse_id"], name: "index_cats_warehouse_stock_balances_on_warehouse_id"
+    t.check_constraint "quantity >= 0::double precision", name: "cw_stock_balances_quantity_non_negative"
   end
 
   create_table "cats_warehouse_stores", force: :cascade do |t|

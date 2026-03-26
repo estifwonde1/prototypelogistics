@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -37,6 +38,7 @@ function WarehouseListPage() {
   const canCreate = can('warehouses', 'create');
   const canUpdate = can('warehouses', 'update');
   const canDelete = can('warehouses', 'delete');
+  const canReadHubs = can('hubs', 'read');
 
   const { data: warehouses, isLoading, error, refetch } = useQuery({
     queryKey: ['warehouses'],
@@ -46,6 +48,7 @@ function WarehouseListPage() {
   const { data: hubs } = useQuery({
     queryKey: ['hubs'],
     queryFn: getHubs,
+    enabled: canReadHubs,
   });
 
   const deleteMutation = useMutation({
@@ -128,14 +131,16 @@ function WarehouseListPage() {
           onChange={(e) => setSearch(e.target.value)}
           style={{ flex: 1, maxWidth: 400 }}
         />
-        <Select
-          placeholder="Filter by hub"
-          data={hubOptions || []}
-          value={hubFilter}
-          onChange={setHubFilter}
-          clearable
-          style={{ width: 250 }}
-        />
+        {canReadHubs && (
+          <Select
+            placeholder="Filter by hub"
+            data={hubOptions || []}
+            value={hubFilter}
+            onChange={setHubFilter}
+            clearable
+            style={{ width: 250 }}
+          />
+        )}
       </Group>
 
       {filteredWarehouses && filteredWarehouses.length === 0 ? (

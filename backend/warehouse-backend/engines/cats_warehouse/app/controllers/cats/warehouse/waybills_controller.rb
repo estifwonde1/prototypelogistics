@@ -3,11 +3,11 @@ module Cats
     class WaybillsController < BaseController
       def index
         authorize Waybill
-        render_resource(scoped_waybills.includes(:waybill_items, :waybill_transport).order(created_at: :desc), each_serializer: WaybillSerializer)
+        render_resource(policy_scope(Waybill).includes(:waybill_items, :waybill_transport).order(created_at: :desc), each_serializer: WaybillSerializer)
       end
 
       def show
-        waybill = scoped_waybills.includes(:waybill_items, :waybill_transport).find(params[:id])
+        waybill = policy_scope(Waybill).includes(:waybill_items, :waybill_transport).find(params[:id])
         authorize waybill
         render_resource(waybill, serializer: WaybillSerializer)
       end
@@ -31,7 +31,7 @@ module Cats
       end
 
       def confirm
-        waybill = scoped_waybills.find(params[:id])
+        waybill = policy_scope(Waybill).find(params[:id])
         authorize waybill, :confirm?
         WaybillConfirmer.new(waybill: waybill).call
         render_resource(waybill, serializer: WaybillSerializer)
@@ -40,7 +40,13 @@ module Cats
       private
 
       def waybill_params
-        params.require(:payload).permit(
+        payload = normalize_payload_aliases(
+          params.require(:payload),
+          items: :waybill_items,
+          transport: :waybill_transport
+        )
+
+        payload.permit(
           :reference_no,
           :issued_on,
           :source_location_id,
@@ -65,32 +71,6 @@ module Cats
         return nil if dispatch_id.blank?
 
         Cats::Core::Dispatch.find(dispatch_id)
-      end
-
-      def scoped_waybills
-        return Waybill.all if current_user&.has_role?("Admin") || current_user&.has_role?("Superadmin")
-
-        if current_user&.has_role?("Hub Manager")
-          hub_ids = Cats::Warehouse::UserAssignment.where(user_id: current_user.id, role_name: "Hub Manager").pluck(:hub_id).compact
-          warehouse_ids = Warehouse.where(hub_id: hub_ids).pluck(:id)
-          location_ids = Warehouse.where(id: warehouse_ids).pluck(:location_id)
-          return Waybill.where(source_location_id: location_ids).or(Waybill.where(destination_location_id: location_ids))
-        end
-
-        if current_user&.has_role?("Warehouse Manager")
-          warehouse_ids = Cats::Warehouse::UserAssignment.where(user_id: current_user.id, role_name: "Warehouse Manager").pluck(:warehouse_id).compact
-          location_ids = Warehouse.where(id: warehouse_ids).pluck(:location_id)
-          return Waybill.where(source_location_id: location_ids).or(Waybill.where(destination_location_id: location_ids))
-        end
-
-        if current_user&.has_role?("Storekeeper")
-          store_ids = Cats::Warehouse::UserAssignment.where(user_id: current_user.id, role_name: "Storekeeper").pluck(:store_id).compact
-          warehouse_ids = Store.where(id: store_ids).pluck(:warehouse_id)
-          location_ids = Warehouse.where(id: warehouse_ids).pluck(:location_id)
-          return Waybill.where(source_location_id: location_ids).or(Waybill.where(destination_location_id: location_ids))
-        end
-
-        Waybill.none
       end
     end
   end

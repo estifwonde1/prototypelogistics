@@ -50,6 +50,13 @@ module Cats
 
       private
 
+      def fetch_id(value)
+        return value.id if value.respond_to?(:id)
+        return value if value.present?
+
+        raise ArgumentError, "location is required"
+      end
+
       def fetch_id_from(hash, key)
         value = hash[key] || hash[:"#{key}_id"]
         return value&.id if value.respond_to?(:id)

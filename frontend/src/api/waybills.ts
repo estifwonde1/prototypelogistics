@@ -1,6 +1,7 @@
 import apiClient from './client';
-import type { Waybill } from '../types/waybill';
+import type { Waybill, WaybillItem, WaybillTransport } from '../types/waybill';
 import type { ApiResponse } from '../types/common';
+import { toCreateWaybillRequest, type CreateWaybillRequest } from '../contracts/documents';
 
 export const getWaybills = async (): Promise<Waybill[]> => {
   const response = await apiClient.get<ApiResponse<Waybill[]>>('/waybills');
@@ -12,8 +13,12 @@ export const getWaybill = async (id: number): Promise<Waybill> => {
   return response.data.data;
 };
 
-export const createWaybill = async (data: Partial<Waybill>): Promise<Waybill> => {
-  const response = await apiClient.post<ApiResponse<Waybill>>('/waybills', { payload: data });
+export const createWaybill = async (
+  data: CreateWaybillRequest | (Partial<Waybill> & { items?: WaybillItem[]; transport?: WaybillTransport })
+): Promise<Waybill> => {
+  const response = await apiClient.post<ApiResponse<Waybill>>('/waybills', {
+    payload: toCreateWaybillRequest(data),
+  });
   return response.data.data;
 };
 

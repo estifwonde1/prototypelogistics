@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useCallback } from 'react';
 import { Modal, Button, Group, Text, Stack, TextInput, Alert } from '@mantine/core';
 import { IconMapPin, IconAlertCircle } from '@tabler/icons-react';

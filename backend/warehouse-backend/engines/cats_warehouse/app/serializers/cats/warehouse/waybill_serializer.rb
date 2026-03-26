@@ -5,6 +5,10 @@ module Cats
                  :issued_on, :status, :created_at, :updated_at
       has_one :waybill_transport, serializer: WaybillTransportSerializer
       has_many :waybill_items, serializer: WaybillItemSerializer
+
+      def status
+        object[:status].to_s.titleize
+      end
     end
   end
 end

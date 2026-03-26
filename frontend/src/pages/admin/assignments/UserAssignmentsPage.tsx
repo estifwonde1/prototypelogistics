@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMemo, useState } from 'react';
 import { Stack, Title, Group, Select, MultiSelect, Button, Table, Badge } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';

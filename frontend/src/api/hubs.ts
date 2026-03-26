@@ -3,7 +3,14 @@ import type { Hub, HubAccess, HubCapacity, HubContacts, HubInfra } from '../type
 import type { ApiResponse } from '../types/common';
 import { createGeo, updateGeo, type GeoPayload } from './geos';
 
-const normalizeHub = (hub: any): Hub => ({
+type HubApiRecord = Hub & {
+  hub_capacity?: Hub['capacity'];
+  hub_access?: Hub['access'];
+  hub_infra?: Hub['infra'];
+  hub_contacts?: Hub['contacts'];
+};
+
+const normalizeHub = (hub: HubApiRecord): Hub => ({
   ...hub,
   capacity: hub.capacity ?? hub.hub_capacity,
   access: hub.access ?? hub.hub_access,
@@ -50,8 +57,7 @@ export const updateHubGps = async (
 };
 
 export const updateHubCapacity = async (
-  id: number,
-  _data: Partial<HubCapacity>
+  id: number
 ): Promise<HubCapacity> => {
   const response = await apiClient.get<ApiResponse<HubCapacity>>(`/hubs/${id}/capacity`);
   return response.data.data;
@@ -78,8 +84,7 @@ export const updateHubInfra = async (
 };
 
 export const updateHubContacts = async (
-  id: number,
-  _data: Partial<HubContacts>
+  id: number
 ): Promise<HubContacts> => {
   const response = await apiClient.get<ApiResponse<{ hub_contacts: HubContacts }>>(`/hubs/${id}/contacts`);
   return response.data.data.hub_contacts;

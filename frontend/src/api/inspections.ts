@@ -1,6 +1,7 @@
 import apiClient from './client';
-import type { Inspection } from '../types/inspection';
+import type { Inspection, InspectionItem } from '../types/inspection';
 import type { ApiResponse } from '../types/common';
+import { toCreateInspectionRequest, type CreateInspectionRequest } from '../contracts/documents';
 
 export const getInspections = async (): Promise<Inspection[]> => {
   const response = await apiClient.get<ApiResponse<Inspection[]>>('/inspections');
@@ -12,8 +13,12 @@ export const getInspection = async (id: number): Promise<Inspection> => {
   return response.data.data;
 };
 
-export const createInspection = async (data: Partial<Inspection>): Promise<Inspection> => {
-  const response = await apiClient.post<ApiResponse<Inspection>>('/inspections', { payload: data });
+export const createInspection = async (
+  data: CreateInspectionRequest | (Partial<Inspection> & { items?: InspectionItem[] })
+): Promise<Inspection> => {
+  const response = await apiClient.post<ApiResponse<Inspection>>('/inspections', {
+    payload: toCreateInspectionRequest(data),
+  });
   return response.data.data;
 };
 

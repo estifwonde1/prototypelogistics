@@ -10,7 +10,14 @@ import type {
 import type { ApiResponse } from '../types/common';
 import { createGeo, updateGeo, type GeoPayload } from './geos';
 
-const normalizeWarehouse = (warehouse: any): Warehouse => ({
+type WarehouseApiRecord = Warehouse & {
+  warehouse_capacity?: Warehouse['capacity'];
+  warehouse_access?: Warehouse['access'];
+  warehouse_infra?: Warehouse['infra'];
+  warehouse_contacts?: Warehouse['contacts'];
+};
+
+const normalizeWarehouse = (warehouse: WarehouseApiRecord): Warehouse => ({
   ...warehouse,
   capacity: warehouse.capacity ?? warehouse.warehouse_capacity,
   access: warehouse.access ?? warehouse.warehouse_access,
@@ -36,7 +43,7 @@ const toWarehouseRequestBody = (data: WarehouseUpsertPayload) => {
 
 export const getWarehouses = async (): Promise<Warehouse[]> => {
   const response = await apiClient.get<ApiResponse<Warehouse[]>>('/warehouses');
-  return response.data.data.map((warehouse: any) => normalizeWarehouse(warehouse));
+  return response.data.data.map((warehouse) => normalizeWarehouse(warehouse as WarehouseApiRecord));
 };
 
 export const getWarehouse = async (id: number): Promise<Warehouse> => {

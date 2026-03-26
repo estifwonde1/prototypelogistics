@@ -7,7 +7,7 @@ export interface ApiError {
   success: false;
   error: {
     message: string;
-    details?: string[];
+    details?: Record<string, unknown> | string[];
   };
 }
 

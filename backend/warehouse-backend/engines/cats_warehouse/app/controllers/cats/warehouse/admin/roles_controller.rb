@@ -12,7 +12,7 @@ module Cats
         private
 
         def application_module
-          @application_module ||= Cats::Core::ApplicationModule.find_by(prefix: "CATS-WH")
+          @application_module ||= warehouse_module
         end
 
         def role_payload(role)

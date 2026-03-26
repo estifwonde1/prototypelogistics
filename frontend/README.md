@@ -48,6 +48,8 @@ Edit `.env` and set your API base URL:
 VITE_API_BASE_URL=/cats_warehouse/v1
 ```
 
+Outside development, `VITE_API_BASE_URL` is required and the app no longer falls back to a localhost production URL.
+
 3. **Start development server:**
 ```bash
 npm run dev
@@ -68,7 +70,7 @@ The app will be available at `http://localhost:5173`
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `VITE_API_BASE_URL` | Backend API base URL | `/cats_warehouse/v1` |
+| `VITE_API_BASE_URL` | Backend API base URL | `/cats_warehouse/v1` in dev only |
 | `VITE_ENV` | Environment name | `development` |
 
 ## Project Structure

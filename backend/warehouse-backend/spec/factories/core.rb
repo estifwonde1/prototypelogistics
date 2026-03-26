@@ -40,4 +40,33 @@ FactoryBot.define do
     quantity { 100 }
     best_use_before { Date.today + 365 }
   end
+
+  factory :cats_core_user, class: "Cats::Core::User" do
+    transient do
+      role_name { nil }
+    end
+
+    first_name { "Test" }
+    last_name { generate(:core_name) }
+    email { "user#{SecureRandom.hex(4)}@example.com" }
+    phone_number { "0919000000" }
+    password { "Password1!" }
+    password_confirmation { "Password1!" }
+    active { true }
+    application_module do
+      Cats::Core::ApplicationModule.find_or_create_by!(prefix: Cats::Warehouse::WarehouseModule::PREFIX) do |record|
+        record.name = "Warehouse"
+      end
+    end
+
+    after(:create) do |user, evaluator|
+      next if evaluator.role_name.blank?
+
+      role = Cats::Core::Role.find_or_create_by!(
+        name: evaluator.role_name,
+        application_module: user.application_module
+      )
+      user.roles << role unless user.roles.include?(role)
+    end
+  end
 end
