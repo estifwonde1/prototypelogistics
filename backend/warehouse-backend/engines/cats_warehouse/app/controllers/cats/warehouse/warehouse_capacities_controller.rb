@@ -28,7 +28,6 @@ module Cats
         params.require(:payload).permit(
           :total_area_sqm,
           :total_storage_capacity_mt,
-          :usable_storage_capacity_mt,
           :no_of_stores,
           :construction_year
         )

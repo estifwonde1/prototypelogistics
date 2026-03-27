@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect */
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Alert,
   Button,
@@ -39,6 +39,7 @@ const OWNERSHIP_TYPE_OPTIONS = [
 ];
 
 export default function WarehouseSetupPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const hubIdParam = searchParams.get('hub_id');
@@ -137,11 +138,17 @@ export default function WarehouseSetupPage() {
 
   const createMutation = useMutation({
     mutationFn: createWarehouse,
-    onSuccess: () => {
+    onSuccess: (createdWarehouse) => {
       queryClient.invalidateQueries({ queryKey: ['warehouses'] });
       notifications.show({ title: 'Success', message: 'Warehouse created', color: 'green' });
       form.reset();
       setRentalAgreementFile(null);
+      if (hubId) {
+        navigate(`/hubs/${hubId}?tab=warehouses`);
+        return;
+      }
+
+      navigate(`/warehouses/${createdWarehouse.id}`);
     },
     onError: (error: any) => {
       notifications.show({

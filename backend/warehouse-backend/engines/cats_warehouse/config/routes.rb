@@ -15,6 +15,7 @@ Cats::Warehouse::Engine.routes.draw do
     get "locations/hubs", to: "locations#hubs"
     get "locations/warehouses", to: "locations#warehouses"
     get "locations/stores", to: "locations#stores"
+    get "reference_data/facility_options", to: "reference_data#facility_options"
     post "locations", to: "locations#create"
 
     resources :geos, only: [ :create, :update ]

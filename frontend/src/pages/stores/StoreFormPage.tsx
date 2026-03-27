@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect */
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Stack,
@@ -26,8 +26,10 @@ import type { Store } from '../../types/store';
 function StoreFormPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const isEdit = !!id;
+  const preselectedWarehouseId = searchParams.get('warehouse_id');
   const [hasGangway, setHasGangway] = useState(false);
 
   const { data: store, isLoading } = useQuery({
@@ -55,7 +57,7 @@ function StoreFormPage() {
       gangway_length: 0,
       gangway_width: 0,
       gangway_height: 0,
-      warehouse_id: '',
+      warehouse_id: preselectedWarehouseId || '',
     },
     validate: {
       name: (value) => (!value ? 'Name is required' : null),
@@ -211,6 +213,7 @@ function StoreFormPage() {
                 required
                 searchable
                 data={warehouseOptions || []}
+                disabled={!!preselectedWarehouseId && !isEdit}
                 {...form.getInputProps('warehouse_id')}
               />
 

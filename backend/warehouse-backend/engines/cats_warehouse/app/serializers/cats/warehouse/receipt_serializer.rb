@@ -6,6 +6,7 @@ module Cats
                  :receipt_authorization_id,
                  :commodity_id,
                  :commodity_name,
+                 :commodity_code,
                  :commodity_status,
                  :commodity_grade,
                  :quantity,
@@ -22,6 +23,10 @@ module Cats
 
       def commodity_name
         dispatch_plan_item&.commodity&.[](:name) || dispatch_plan_item&.commodity&.batch_no
+      end
+
+      def commodity_code
+        dispatch_plan_item&.commodity&.[](:code)
       end
 
       def unit_name

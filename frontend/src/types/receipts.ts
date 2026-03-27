@@ -4,6 +4,7 @@ export interface Receipt {
   receipt_authorization_id: number;
   commodity_id?: number | null;
   commodity_name?: string | null;
+  commodity_code?: string | null;
   commodity_status: string;
   commodity_grade?: string | null;
   quantity: number;

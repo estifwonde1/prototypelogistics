@@ -6,7 +6,11 @@ export interface Warehouse {
   status: string;
   description?: string;
   location_id?: number;
+  location_name?: string;
+  subcity_name?: string;
+  woreda_name?: string;
   hub_id?: number;
+  hub_name?: string;
   geo_id?: number;
   geo?: WarehouseGeo;
   managed_under?: string;
@@ -57,7 +61,6 @@ export interface WarehouseCapacity {
   usable_storage_capacity_mt?: number;
   no_of_stores?: number;
   construction_year?: number;
-  ownership_type?: string;
 }
 
 export interface WarehouseAccess {
@@ -65,6 +68,7 @@ export interface WarehouseAccess {
   warehouse_id: number;
   has_loading_dock?: boolean;
   number_of_loading_docks?: number;
+  loading_dock_type?: string;
   access_road_type?: string;
   nearest_town?: string;
   distance_from_town_km?: number;

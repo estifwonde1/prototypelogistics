@@ -14,6 +14,8 @@ export interface InspectionItem {
   id?: number;
   inspection_id?: number;
   commodity_id: number;
+  commodity_name?: string;
+  commodity_code?: string;
   quantity_received: number;
   quantity_damaged?: number;
   quantity_lost?: number;

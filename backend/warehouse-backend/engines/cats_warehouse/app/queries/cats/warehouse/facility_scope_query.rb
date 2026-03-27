@@ -43,7 +43,7 @@ module Cats
       def warehouses_scope
         return scoped_relation if access.admin?
         return scoped_relation.where(hub_id: access.assigned_hub_ids) if access.hub_manager?
-        return scoped_relation if access.warehouse_manager?
+        return scoped_relation.where(id: access.accessible_warehouse_ids) if access.warehouse_manager?
         return scoped_relation.where(id: access.accessible_warehouse_ids) if access.storekeeper?
 
         scoped_relation.none

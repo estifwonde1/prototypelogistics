@@ -132,13 +132,13 @@ function WaybillDetailPage() {
               <Text size="sm" c="dimmed">
                 Source Location
               </Text>
-              <Text fw={600}>Location {waybill.source_location_id}</Text>
+              <Text fw={600}>{waybill.source_location_name || `Location ${waybill.source_location_id}`}</Text>
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 6 }}>
               <Text size="sm" c="dimmed">
                 Destination Location
               </Text>
-              <Text fw={600}>Location {waybill.destination_location_id}</Text>
+              <Text fw={600}>{waybill.destination_location_name || `Location ${waybill.destination_location_id}`}</Text>
             </Grid.Col>
             {waybill.dispatch_id && (
               <Grid.Col span={{ base: 12, sm: 6 }}>
@@ -201,19 +201,19 @@ function WaybillDetailPage() {
               <Table striped highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
-                    <Table.Th>Commodity ID</Table.Th>
+                    <Table.Th>Commodity</Table.Th>
                     <Table.Th>Quantity</Table.Th>
-                    <Table.Th>Unit ID</Table.Th>
+                    <Table.Th>Unit</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
                   {waybill.waybill_items.map((item, index) => (
                     <Table.Tr key={item.id || index}>
-                      <Table.Td>{item.commodity_id}</Table.Td>
+                      <Table.Td>{item.commodity_name || item.commodity_code || item.commodity_id}</Table.Td>
                       <Table.Td style={{ fontWeight: 600 }}>
                         {item.quantity.toLocaleString()}
                       </Table.Td>
-                      <Table.Td>{item.unit_id}</Table.Td>
+                      <Table.Td>{item.unit_abbreviation || item.unit_name || item.unit_id}</Table.Td>
                     </Table.Tr>
                   ))}
                 </Table.Tbody>

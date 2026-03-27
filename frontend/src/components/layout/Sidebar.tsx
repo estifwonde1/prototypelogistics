@@ -56,8 +56,8 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
       label: 'Setup',
       items: [
         { label: 'Locations', icon: <IconMapPins size={20} />, path: '/admin/setup/locations' },
-        { label: 'Hubs', icon: <IconBuildingSkyscraper size={20} />, path: '/admin/setup/hubs' },
-        { label: 'Warehouses', icon: <IconBuildingWarehouse size={20} />, path: '/admin/setup/warehouses' },
+        { label: 'Create Hub', icon: <IconBuildingSkyscraper size={20} />, path: '/admin/setup/hubs' },
+        { label: 'Create Warehouse', icon: <IconBuildingWarehouse size={20} />, path: '/admin/setup/warehouses' },
       ],
     },
   ];
@@ -193,7 +193,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
   });
 
   return (
-    <Stack gap="md" p="md">
+    <Stack
+      gap="md"
+      p="md"
+      h="calc(100dvh - 60px)"
+      style={{ overflowY: 'auto', overflowX: 'hidden' }}
+    >
       {isAdmin &&
         [...adminMenus, ...(isSuperAdmin ? superAdminMenus : [])]
           .map(filterGroupItems)

@@ -6,6 +6,9 @@ export interface Hub {
   status: string;
   description?: string;
   location_id?: number;
+  location_name?: string;
+  subcity_name?: string;
+  woreda_name?: string;
   geo_id?: number;
   geo?: HubGeo;
   capacity?: HubCapacity;

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -24,7 +24,6 @@ import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { deleteHub, getHub, updateHubAccess, updateHubGps } from '../../api/hubs';
 import { createWarehouse, getWarehouses } from '../../api/warehouses';
-import { getRegions, getWoredas, getZones } from '../../api/locations';
 import { ErrorState } from '../../components/common/ErrorState';
 import { GpsMapModal } from '../../components/common/GpsMapModal';
 import { LoadingState } from '../../components/common/LoadingState';
@@ -32,17 +31,21 @@ import { RentalAgreementUpload } from '../../components/common/RentalAgreementUp
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { usePermission } from '../../hooks/usePermission';
 import { useAuthStore } from '../../store/authStore';
+import { getFacilityOptions } from '../../api/referenceData';
 
 function HubDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { can } = usePermission();
   const role = useAuthStore((state) => state.role);
 
   const canEdit = can('hubs', 'update');
+  const canCreateWarehouse = can('warehouses', 'create');
   const isAdmin = role === 'admin' || role === 'superadmin';
   const isHubManager = role === 'hub_manager';
+  const activeTab = searchParams.get('tab') || 'overview';
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [accessModalOpen, setAccessModalOpen] = useState(false);
@@ -61,25 +64,9 @@ function HubDetailPage() {
     queryFn: getWarehouses,
   });
 
-  const { data: ownershipContext } = useQuery({
-    queryKey: ['hub-location-context', hub?.location_id],
-    enabled: !!hub?.location_id,
-    queryFn: async () => {
-      const regions = await getRegions();
-      const addis = regions.find((region) => region.name.toLowerCase().includes('addis'));
-      if (!addis) return { subcityName: undefined, woredaName: undefined };
-
-      const zones = await getZones(addis.id);
-      for (const zone of zones) {
-        const woredas = await getWoredas(zone.id);
-        const match = woredas.find((woreda) => woreda.id === hub?.location_id);
-        if (match) {
-          return { subcityName: zone.name, woredaName: match.name };
-        }
-      }
-
-      return { subcityName: undefined, woredaName: undefined };
-    },
+  const { data: facilityOptions } = useQuery({
+    queryKey: ['reference-data', 'facility-options'],
+    queryFn: getFacilityOptions,
   });
 
   const toNumber = (value: number | '' | null | undefined) =>
@@ -199,13 +186,13 @@ function HubDetailPage() {
         rental_agreement_document:
           payload.ownership_type === 'rental' ? rentalAgreementFile : null,
       }),
-    onSuccess: (warehouse) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['warehouses'] });
       notifications.show({ title: 'Success', message: 'Warehouse created', color: 'green' });
       warehouseForm.reset();
       setRentalAgreementFile(null);
       setCreateWarehouseModalOpen(false);
-      navigate(`/warehouses/${warehouse.id}`);
+      navigate(`/hubs/${id}?tab=warehouses`);
     },
     onError: (mutationError: any) => {
       notifications.show({
@@ -247,7 +234,7 @@ function HubDetailPage() {
         )}
       </Group>
 
-      <Tabs defaultValue="overview">
+      <Tabs value={activeTab} onChange={(value) => setSearchParams(value ? { tab: value } : {})}>
         <Tabs.List>
           <Tabs.Tab value="overview">Overview</Tabs.Tab>
           <Tabs.Tab value="capacity">Capacity</Tabs.Tab>
@@ -281,11 +268,11 @@ function HubDetailPage() {
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
                   <Text size="sm" c="dimmed">Subcity</Text>
-                  <Text fw={500}>{ownershipContext?.subcityName || 'Inherited location'}</Text>
+                  <Text fw={500}>{hub.subcity_name || '-'}</Text>
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
                   <Text size="sm" c="dimmed">Woreda</Text>
-                  <Text fw={500}>{ownershipContext?.woredaName || 'Inherited location'}</Text>
+                  <Text fw={500}>{hub.woreda_name || hub.location_name || '-'}</Text>
                 </Grid.Col>
                 {hub.description && (
                   <Grid.Col span={12}>
@@ -433,7 +420,7 @@ function HubDetailPage() {
           </Card>
         </Tabs.Panel>
 
-        {(isHubManager || isAdmin) && (
+        {(isHubManager || isAdmin) && canCreateWarehouse && (
           <Tabs.Panel value="warehouses" pt="md">
             <Group justify="space-between" mb="sm">
               <Title order={4}>Warehouses</Title>
@@ -503,10 +490,10 @@ function HubDetailPage() {
             {accessForm.values.has_loading_dock && (
               <>
                 <NumberInput label="Number of Loading Docks" min={0} {...accessForm.getInputProps('number_of_loading_docks')} />
-                <TextInput label="Loading Dock Type" {...accessForm.getInputProps('loading_dock_type')} />
+                <Select label="Loading Dock Type" data={facilityOptions?.loading_dock_type || []} {...accessForm.getInputProps('loading_dock_type')} />
               </>
             )}
-            <TextInput label="Access Road Type" {...accessForm.getInputProps('access_road_type')} />
+            <Select label="Access Road Type" data={facilityOptions?.access_road_type || []} {...accessForm.getInputProps('access_road_type')} />
             <TextInput label="Nearest Town" {...accessForm.getInputProps('nearest_town')} />
             <NumberInput label="Distance from Town (km)" min={0} {...accessForm.getInputProps('distance_from_town_km')} />
             <Switch label="Has Weighbridge" {...accessForm.getInputProps('has_weighbridge', { type: 'checkbox' })} />

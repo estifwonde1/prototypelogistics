@@ -8,6 +8,10 @@ export interface Dispatch {
   driver_phone: string;
   quantity: number;
   unit_id: number;
+  unit_name?: string | null;
+  unit_abbreviation?: string | null;
+  commodity_name?: string | null;
+  commodity_code?: string | null;
   commodity_status: string;
   remark?: string | null;
   prepared_by_id: number;

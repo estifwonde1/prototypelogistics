@@ -165,11 +165,11 @@ const filteredStacks = stacks?.filter((stack) => {
               <Table.Tr>
                 <Table.Th>Code</Table.Th>
                 <Table.Th>Store</Table.Th>
-                <Table.Th>Commodity ID</Table.Th>
+                <Table.Th>Commodity</Table.Th>
                 <Table.Th>Dimensions (L×W×H)</Table.Th>
                 <Table.Th>Position (X, Y)</Table.Th>
                 <Table.Th>Quantity</Table.Th>
-                <Table.Th>Unit ID</Table.Th>
+                <Table.Th>Unit</Table.Th>
                 <Table.Th>Commodity Status</Table.Th>
                 <Table.Th>Stack Status</Table.Th>
                 <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>
@@ -182,7 +182,7 @@ const filteredStacks = stacks?.filter((stack) => {
                   <Table.Tr key={stack.id}>
                     <Table.Td>{stack.code}</Table.Td>
                     <Table.Td>{store?.name || '-'}</Table.Td>
-                    <Table.Td>{stack.commodity_id}</Table.Td>
+                    <Table.Td>{stack.commodity_name || stack.commodity_code || stack.commodity_id}</Table.Td>
                     <Table.Td>
                       {stack.length}×{stack.width}×{stack.height}m
                     </Table.Td>
@@ -190,7 +190,7 @@ const filteredStacks = stacks?.filter((stack) => {
                       ({stack.start_x}, {stack.start_y})
                     </Table.Td>
                     <Table.Td>{stack.quantity}</Table.Td>
-                    <Table.Td>{stack.unit_id}</Table.Td>
+                    <Table.Td>{stack.unit_abbreviation || stack.unit_name || stack.unit_id}</Table.Td>
                     <Table.Td>
                       <StatusBadge status={stack.commodity_status} />
                     </Table.Td>

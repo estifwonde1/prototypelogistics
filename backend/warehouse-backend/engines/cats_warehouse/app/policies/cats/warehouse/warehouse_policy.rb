@@ -16,7 +16,7 @@ module Cats
       end
 
       def create?
-        admin? || hub_manager? || warehouse_manager?
+        admin? || hub_manager?
       end
 
       def update?

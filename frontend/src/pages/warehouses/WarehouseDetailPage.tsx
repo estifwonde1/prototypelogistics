@@ -27,6 +27,7 @@ import { formatDate } from '../../utils/formatters';
 import { useForm } from '@mantine/form';
 import { usePermission } from '../../hooks/usePermission';
 import { useAuthStore } from '../../store/authStore';
+import { getFacilityOptions } from '../../api/referenceData';
 
 function WarehouseDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -35,6 +36,7 @@ function WarehouseDetailPage() {
   const { can } = usePermission();
   const canEdit = can('warehouses', 'update');
   const canReadHubs = can('hubs', 'read');
+  const canCreateStores = can('stores', 'create');
   const role = useAuthStore((state) => state.role);
   const isAdmin = role === 'admin' || role === 'superadmin';
 
@@ -57,6 +59,10 @@ function WarehouseDetailPage() {
   const { data: grns } = useQuery({ queryKey: ['grns'], queryFn: getGrns });
   const { data: gins } = useQuery({ queryKey: ['gins'], queryFn: getGins });
   const { data: inspections } = useQuery({ queryKey: ['inspections'], queryFn: getInspections });
+  const { data: facilityOptions } = useQuery({
+    queryKey: ['reference-data', 'facility-options'],
+    queryFn: getFacilityOptions,
+  });
 
   const deleteMutation = useMutation({
     mutationFn: deleteWarehouse,
@@ -77,7 +83,6 @@ function WarehouseDetailPage() {
     initialValues: {
       total_area_sqm: '' as number | '',
       total_storage_capacity_mt: '' as number | '',
-      usable_storage_capacity_mt: '' as number | '',
       no_of_stores: '' as number | '',
       construction_year: '' as number | '',
       ownership_type: '',
@@ -117,15 +122,14 @@ function WarehouseDetailPage() {
     capacityForm.setValues({
       total_area_sqm: warehouse.capacity?.total_area_sqm ?? '',
       total_storage_capacity_mt: warehouse.capacity?.total_storage_capacity_mt ?? '',
-      usable_storage_capacity_mt: warehouse.capacity?.usable_storage_capacity_mt ?? '',
       no_of_stores: warehouse.capacity?.no_of_stores ?? '',
       construction_year: warehouse.capacity?.construction_year ?? '',
-      ownership_type: warehouse.capacity?.ownership_type || '',
+      ownership_type: warehouse.ownership_type || '',
     });
     accessForm.setValues({
       has_loading_dock: !!warehouse.access?.has_loading_dock,
       number_of_loading_docks: warehouse.access?.number_of_loading_docks ?? '',
-      loading_dock_type: (warehouse.access as any)?.loading_dock_type || '',
+      loading_dock_type: warehouse.access?.loading_dock_type || '',
       access_road_type: warehouse.access?.access_road_type || '',
       nearest_town: warehouse.access?.nearest_town || '',
       distance_from_town_km: warehouse.access?.distance_from_town_km ?? '',
@@ -149,10 +153,8 @@ function WarehouseDetailPage() {
       updateWarehouseCapacity(Number(id), {
         total_area_sqm: toNumber(payload.total_area_sqm),
         total_storage_capacity_mt: toNumber(payload.total_storage_capacity_mt),
-        usable_storage_capacity_mt: toNumber(payload.usable_storage_capacity_mt),
         no_of_stores: toNumber(payload.no_of_stores),
         construction_year: toNumber(payload.construction_year),
-        ownership_type: payload.ownership_type || undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['warehouses', id] });
@@ -169,6 +171,7 @@ function WarehouseDetailPage() {
       updateWarehouseAccess(Number(id), {
         has_loading_dock: payload.has_loading_dock,
         number_of_loading_docks: toNumber(payload.number_of_loading_docks),
+        loading_dock_type: payload.loading_dock_type || undefined,
         access_road_type: payload.access_road_type || undefined,
         nearest_town: payload.nearest_town || undefined,
         distance_from_town_km: toNumber(payload.distance_from_town_km),
@@ -302,7 +305,7 @@ function WarehouseDetailPage() {
                   {canReadHubs && hub ? (
                     <Anchor onClick={() => navigate(`/hubs/${hub.id}`)} fw={500}>{hub.name}</Anchor>
                   ) : (
-                    <Text fw={500}>{warehouse.hub_id || '-'}</Text>
+                    <Text fw={500}>{warehouse.hub_name || warehouse.hub_id || '-'}</Text>
                   )}
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
@@ -310,8 +313,12 @@ function WarehouseDetailPage() {
                   <Text fw={500} tt="capitalize">{warehouse.ownership_type || '-'}</Text>
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
-                  <Text size="sm" c="dimmed">Location ID</Text>
-                  <Text fw={500}>{warehouse.location_id || '-'}</Text>
+                  <Text size="sm" c="dimmed">Subcity</Text>
+                  <Text fw={500}>{warehouse.subcity_name || '-'}</Text>
+                </Grid.Col>
+                <Grid.Col span={{ base: 12, md: 6 }}>
+                  <Text size="sm" c="dimmed">Woreda</Text>
+                  <Text fw={500}>{warehouse.woreda_name || warehouse.location_name || '-'}</Text>
                 </Grid.Col>
                 {warehouse.description && (
                   <Grid.Col span={12}>
@@ -381,7 +388,7 @@ function WarehouseDetailPage() {
                   <Text fw={500}>{warehouse.capacity.total_storage_capacity_mt ?? '-'}</Text>
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
-                  <Text size="sm" c="dimmed">Usable Storage Capacity (MT)</Text>
+                  <Text size="sm" c="dimmed">Usable Capacity (MT)</Text>
                   <Text fw={500}>{warehouse.capacity.usable_storage_capacity_mt ?? '-'}</Text>
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
@@ -394,7 +401,7 @@ function WarehouseDetailPage() {
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
                   <Text size="sm" c="dimmed">Ownership Type</Text>
-                  <Text fw={500} tt="capitalize">{warehouse.capacity.ownership_type || '-'}</Text>
+                  <Text fw={500} tt="capitalize">{warehouse.ownership_type || '-'}</Text>
                 </Grid.Col>
               </Grid>
             ) : (
@@ -425,6 +432,12 @@ function WarehouseDetailPage() {
                   <Grid.Col span={{ base: 12, md: 6 }}>
                     <Text size="sm" c="dimmed">Number of Loading Docks</Text>
                     <Text fw={500}>{warehouse.access.number_of_loading_docks ?? '-'}</Text>
+                  </Grid.Col>
+                )}
+                {warehouse.access.has_loading_dock && (
+                  <Grid.Col span={{ base: 12, md: 6 }}>
+                    <Text size="sm" c="dimmed">Loading Dock Type</Text>
+                    <Text fw={500}>{warehouse.access.loading_dock_type || '-'}</Text>
                   </Grid.Col>
                 )}
                 <Grid.Col span={{ base: 12, md: 6 }}>
@@ -525,6 +538,14 @@ function WarehouseDetailPage() {
 
         {/* Stores Tab */}
         <Tabs.Panel value="stores" pt="md">
+          <Group justify="space-between" mb="sm">
+            <Title order={4}>Stores</Title>
+            {canCreateStores && (
+              <Button size="xs" onClick={() => navigate(`/stores/new?warehouse_id=${warehouse.id}`)}>
+                Create Store
+              </Button>
+            )}
+          </Group>
           <Card withBorder>
             {warehouseStores && warehouseStores.length > 0 ? (
               <Stack gap="sm">
@@ -555,21 +576,21 @@ function WarehouseDetailPage() {
               <Table>
                 <Table.Thead>
                   <Table.Tr>
-                    <Table.Th>Commodity ID</Table.Th>
-                    <Table.Th>Store ID</Table.Th>
-                    <Table.Th>Stack ID</Table.Th>
+                    <Table.Th>Commodity</Table.Th>
+                    <Table.Th>Store</Table.Th>
+                    <Table.Th>Stack</Table.Th>
                     <Table.Th>Quantity</Table.Th>
-                    <Table.Th>Unit ID</Table.Th>
+                    <Table.Th>Unit</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
                   {warehouseStock.map((stock) => (
                     <Table.Tr key={stock.id}>
-                      <Table.Td>{stock.commodity_id}</Table.Td>
-                      <Table.Td>{stock.store_id || '-'}</Table.Td>
-                      <Table.Td>{stock.stack_id || '-'}</Table.Td>
+                      <Table.Td>{stock.commodity_name || stock.commodity_batch_no || stock.commodity_id}</Table.Td>
+                      <Table.Td>{stock.store_name || stock.store_code || stock.store_id || '-'}</Table.Td>
+                      <Table.Td>{stock.stack_code || stock.stack_id || '-'}</Table.Td>
                       <Table.Td>{stock.quantity}</Table.Td>
-                      <Table.Td>{stock.unit_id}</Table.Td>
+                      <Table.Td>{stock.unit_abbreviation || stock.unit_name || stock.unit_id}</Table.Td>
                     </Table.Tr>
                   ))}
                 </Table.Tbody>
@@ -675,20 +696,17 @@ function WarehouseDetailPage() {
           <Stack gap="md">
             <NumberInput label="Total Area (sqm)" min={0} {...capacityForm.getInputProps('total_area_sqm')} />
             <NumberInput label="Total Storage Capacity (MT)" min={0} {...capacityForm.getInputProps('total_storage_capacity_mt')} />
-            <NumberInput label="Usable Storage Capacity (MT)" min={0} {...capacityForm.getInputProps('usable_storage_capacity_mt')} />
+            <TextInput
+              label="Usable Capacity (calculated)"
+              value={
+                warehouse.capacity?.usable_storage_capacity_mt !== undefined
+                  ? String(warehouse.capacity.usable_storage_capacity_mt)
+                  : ''
+              }
+              readOnly
+            />
             <NumberInput label="Number of Stores" min={0} {...capacityForm.getInputProps('no_of_stores')} />
             <NumberInput label="Construction Year" min={1900} max={new Date().getFullYear()} {...capacityForm.getInputProps('construction_year')} />
-            <Select
-              label="Ownership Type"
-              placeholder="Select ownership"
-              clearable
-              data={[
-                { value: 'hub', label: 'Hub' },
-                { value: 'government', label: 'Government' },
-                { value: 'private', label: 'Private' },
-              ]}
-              {...capacityForm.getInputProps('ownership_type')}
-            />
             <Group justify="flex-end">
               <Button variant="default" onClick={() => setCapacityModalOpen(false)}>Cancel</Button>
               <Button type="submit" loading={updateCapacityMutation.isPending}>Save</Button>
@@ -705,11 +723,11 @@ function WarehouseDetailPage() {
             {accessForm.values.has_loading_dock && (
               <>
                 <NumberInput label="Number of Loading Docks" min={0} {...accessForm.getInputProps('number_of_loading_docks')} />
-                <TextInput label="Loading Dock Type" {...accessForm.getInputProps('loading_dock_type')} />
+                <Select label="Loading Dock Type" data={facilityOptions?.loading_dock_type || []} {...accessForm.getInputProps('loading_dock_type')} />
               </>
             )}
             <Divider />
-            <TextInput label="Access Road Type" {...accessForm.getInputProps('access_road_type')} />
+            <Select label="Access Road Type" data={facilityOptions?.access_road_type || []} {...accessForm.getInputProps('access_road_type')} />
             <TextInput label="Nearest Town" {...accessForm.getInputProps('nearest_town')} />
             <NumberInput label="Distance from Town (km)" min={0} {...accessForm.getInputProps('distance_from_town_km')} />
             <Group justify="flex-end">
@@ -724,8 +742,8 @@ function WarehouseDetailPage() {
       <Modal opened={infraModalOpen} onClose={() => setInfraModalOpen(false)} title="Edit Infrastructure" centered>
         <form onSubmit={infraForm.onSubmit((values) => updateInfraMutation.mutate(values))}>
           <Stack gap="md">
-            <TextInput label="Floor Type" {...infraForm.getInputProps('floor_type')} />
-            <TextInput label="Roof Type" {...infraForm.getInputProps('roof_type')} />
+            <Select label="Floor Type" data={facilityOptions?.floor_type || []} {...infraForm.getInputProps('floor_type')} />
+            <Select label="Roof Type" data={facilityOptions?.roof_type || []} {...infraForm.getInputProps('roof_type')} />
             <Switch label="Has Fumigation Facility" {...infraForm.getInputProps('has_fumigation_facility', { type: 'checkbox' })} />
             <Switch label="Has Fire Extinguisher" {...infraForm.getInputProps('has_fire_extinguisher', { type: 'checkbox' })} />
             <Switch label="Has Security Guard" {...infraForm.getInputProps('has_security_guard', { type: 'checkbox' })} />

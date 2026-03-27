@@ -27,10 +27,10 @@ export default function ReceiptListPage() {
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Reference</Table.Th>
+              <Table.Th>Commodity</Table.Th>
               <Table.Th>Commodity Status</Table.Th>
               <Table.Th>Quantity</Table.Th>
               <Table.Th>Unit</Table.Th>
-              <Table.Th>Receipt Auth</Table.Th>
               <Table.Th>Created</Table.Th>
             </Table.Tr>
           </Table.Thead>
@@ -38,10 +38,10 @@ export default function ReceiptListPage() {
             {receipts?.map((r) => (
               <Table.Tr key={r.id}>
                 <Table.Td>{r.reference_no || '-'}</Table.Td>
+                <Table.Td>{r.commodity_name || r.commodity_code || '-'}</Table.Td>
                 <Table.Td>{r.commodity_status}</Table.Td>
                 <Table.Td>{r.quantity}</Table.Td>
-                <Table.Td>{r.unit_id}</Table.Td>
-                <Table.Td>{r.receipt_authorization_id}</Table.Td>
+                <Table.Td>{r.unit_abbreviation || r.unit_name || r.unit_id}</Table.Td>
                 <Table.Td>{new Date(r.created_at).toLocaleDateString()}</Table.Td>
               </Table.Tr>
             ))}

@@ -3,7 +3,9 @@ export interface Waybill {
   reference_no: string;
   dispatch_id?: number;
   source_location_id: number;
+  source_location_name?: string;
   destination_location_id: number;
+  destination_location_name?: string;
   issued_on: string;
   status: string;
   waybill_transport?: WaybillTransport;
@@ -23,6 +25,10 @@ export interface WaybillItem {
   id?: number;
   waybill_id?: number;
   commodity_id: number;
+  commodity_name?: string;
+  commodity_code?: string;
   quantity: number;
   unit_id: number;
+  unit_name?: string;
+  unit_abbreviation?: string;
 }

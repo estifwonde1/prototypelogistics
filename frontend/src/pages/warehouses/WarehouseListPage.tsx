@@ -170,7 +170,8 @@ function WarehouseListPage() {
                 <Table.Th>Type</Table.Th>
                 <Table.Th>Status</Table.Th>
                 <Table.Th>Hub</Table.Th>
-                <Table.Th>Location ID</Table.Th>
+                <Table.Th>Subcity</Table.Th>
+                <Table.Th>Woreda</Table.Th>
                 <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>
               </Table.Tr>
             </Table.Thead>
@@ -191,8 +192,9 @@ function WarehouseListPage() {
                     <Table.Td>
                       <StatusBadge status={warehouse.status} />
                     </Table.Td>
-                    <Table.Td>{hub?.name || '-'}</Table.Td>
-                    <Table.Td>{warehouse.location_id || '-'}</Table.Td>
+                    <Table.Td>{warehouse.hub_name || hub?.name || '-'}</Table.Td>
+                    <Table.Td>{warehouse.subcity_name || '-'}</Table.Td>
+                    <Table.Td>{warehouse.woreda_name || warehouse.location_name || '-'}</Table.Td>
                     <Table.Td>
                       <Group gap="xs" justify="flex-end" onClick={(e) => e.stopPropagation()}>
                         <Button

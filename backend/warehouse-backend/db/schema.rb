@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_03_24_120000) do
+ActiveRecord::Schema[7.0].define(version: 2026_03_27_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1339,6 +1339,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_24_120000) do
     t.float "distance_from_town_km"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "loading_dock_type"
     t.index ["warehouse_id"], name: "index_cats_warehouse_warehouse_access_on_warehouse_id"
   end
 

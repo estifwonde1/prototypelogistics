@@ -14,7 +14,7 @@ module Cats
 
       def create
         authorize Warehouse
-        warehouse = Warehouse.new(warehouse_params)
+        warehouse = build_warehouse_for_create
         attach_rental_agreement!(warehouse)
         warehouse.save!
         render_resource(warehouse, status: :created, serializer: WarehouseSerializer)
@@ -39,6 +39,17 @@ module Cats
 
       private
 
+      def build_warehouse_for_create
+        if warehouse_params[:hub_id].present?
+          hub = policy_scope(Hub).find(warehouse_params[:hub_id])
+          Warehouse.new(warehouse_params.except(:hub_id).merge(hub: hub))
+        else
+          raise Pundit::NotAuthorizedError, "Not authorized" unless current_access.admin?
+
+          Warehouse.new(warehouse_params)
+        end
+      end
+
       def warehouse_params
         params.require(:payload).permit(
           :location_id,
@@ -61,6 +72,10 @@ module Cats
 
         attachment = warehouse_params[:rental_agreement_document] || warehouse_params[:rental_agreement_document_signed_id]
         warehouse.rental_agreement_document.attach(attachment)
+      end
+
+      def current_access
+        @current_access ||= AccessContext.new(user: current_user)
       end
 
     end

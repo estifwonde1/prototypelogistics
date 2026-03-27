@@ -28,6 +28,7 @@ module Cats
         params.require(:payload).permit(
           :has_loading_dock,
           :number_of_loading_docks,
+          :loading_dock_type,
           :access_road_type,
           :nearest_town,
           :distance_from_town_km

@@ -274,7 +274,7 @@ function InspectionCreatePage() {
                 if (sourceType !== 'Grn' || !nextSourceId) return;
 
                 const selectedGrn = grns.find((grn) => grn.id === Number(nextSourceId));
-                if (!selectedGrn) return;
+                if (!selectedGrn?.grn_items) return;
 
                 setWarehouseId(String(selectedGrn.warehouse_id));
                 setItems(

@@ -33,8 +33,8 @@ function WaybillListPage() {
   const filteredWaybills = waybills?.filter((waybill) => {
     const matchesSearch =
       waybill.reference_no.toLowerCase().includes(search.toLowerCase()) ||
-      waybill.source_location_id.toString().includes(search) ||
-      waybill.destination_location_id.toString().includes(search);
+      (waybill.source_location_name || '').toLowerCase().includes(search.toLowerCase()) ||
+      (waybill.destination_location_name || '').toLowerCase().includes(search.toLowerCase());
     const matchesStatus = !statusFilter || waybill.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -132,8 +132,8 @@ function WaybillListPage() {
                   onClick={() => navigate(`/waybills/${waybill.id}`)}
                 >
                   <Table.Td style={{ fontWeight: 600 }}>{waybill.reference_no}</Table.Td>
-                  <Table.Td>Location {waybill.source_location_id}</Table.Td>
-                  <Table.Td>Location {waybill.destination_location_id}</Table.Td>
+                  <Table.Td>{waybill.source_location_name || `Location ${waybill.source_location_id}`}</Table.Td>
+                  <Table.Td>{waybill.destination_location_name || `Location ${waybill.destination_location_id}`}</Table.Td>
                   <Table.Td>
                     {new Date(waybill.issued_on).toLocaleDateString()}
                   </Table.Td>

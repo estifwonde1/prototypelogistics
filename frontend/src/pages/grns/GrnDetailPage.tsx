@@ -185,22 +185,22 @@ function GrnDetailPage() {
               <Table striped highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
-                    <Table.Th>Commodity ID</Table.Th>
+                    <Table.Th>Commodity</Table.Th>
                     <Table.Th>Quantity</Table.Th>
-                    <Table.Th>Unit ID</Table.Th>
+                    <Table.Th>Unit</Table.Th>
                     <Table.Th>Quality Status</Table.Th>
-                    <Table.Th>Store ID</Table.Th>
-                    <Table.Th>Stack ID</Table.Th>
+                    <Table.Th>Store</Table.Th>
+                    <Table.Th>Stack</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
                   {grn.grn_items.map((item, index) => (
                     <Table.Tr key={item.id || index}>
-                      <Table.Td>{item.commodity_id}</Table.Td>
+                      <Table.Td>{item.commodity_name || item.commodity_code || item.commodity_id}</Table.Td>
                       <Table.Td style={{ fontWeight: 600 }}>
                         {item.quantity.toLocaleString()}
                       </Table.Td>
-                      <Table.Td>{item.unit_id}</Table.Td>
+                      <Table.Td>{item.unit_abbreviation || item.unit_name || item.unit_id}</Table.Td>
                       <Table.Td>
                         <Badge
                           color={
@@ -215,8 +215,8 @@ function GrnDetailPage() {
                           {item.quality_status}
                         </Badge>
                       </Table.Td>
-                      <Table.Td>{item.store_id || '-'}</Table.Td>
-                      <Table.Td>{item.stack_id || '-'}</Table.Td>
+                      <Table.Td>{item.store_name || item.store_code || item.store_id || '-'}</Table.Td>
+                      <Table.Td>{item.stack_name || item.stack_code || item.stack_id || '-'}</Table.Td>
                     </Table.Tr>
                   ))}
                 </Table.Tbody>
