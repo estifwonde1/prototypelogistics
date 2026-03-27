@@ -474,7 +474,7 @@ end
 hubs.each_with_index do |hub, idx|
   find_or_create_with(Cats::Warehouse::HubCapacity, { hub: hub }, { total_area_sqm: 1500 + idx * 100, total_capacity_mt: 800 + idx * 50 })
   find_or_create_with(Cats::Warehouse::HubAccess, { hub: hub }, { has_loading_dock: true, number_of_loading_docks: 2 })
-  find_or_create_with(Cats::Warehouse::HubInfra, { hub: hub }, { floor_type: "Concrete", roof_type: "Metal", has_ventilation: true })
+  find_or_create_with(Cats::Warehouse::HubInfra, { hub: hub }, { floor_type: "concrete", roof_type: "sheet_metal", has_ventilation: true })
   find_or_create_with(
     Cats::Warehouse::HubContacts,
     { hub: hub },
@@ -483,9 +483,9 @@ hubs.each_with_index do |hub, idx|
 end
 
 warehouses = [
-  { code: "ADD-WH-01", name: "Bole Central Warehouse", location: warehouse_locations[0], hub: hubs[0], geo: geos[0], ownership_type: "hub" },
-  { code: "ADD-WH-02", name: "Yeka Logistics Warehouse", location: warehouse_locations[1], hub: hubs[1], geo: geos[1], ownership_type: "hub" },
-  { code: "ADD-WH-03", name: "Kirkos Storage Warehouse", location: warehouse_locations[2], hub: hubs[2], geo: geos[2], ownership_type: "hub" }
+  { code: "ADD-WH-01", name: "Bole Central Warehouse", location: warehouse_locations[0], hub: hubs[0], geo: geos[0] },
+  { code: "ADD-WH-02", name: "Yeka Logistics Warehouse", location: warehouse_locations[1], hub: hubs[1], geo: geos[1] },
+  { code: "ADD-WH-03", name: "Kirkos Storage Warehouse", location: warehouse_locations[2], hub: hubs[2], geo: geos[2] }
 ].map do |w|
   find_or_create_with(
     Cats::Warehouse::Warehouse,
@@ -495,7 +495,8 @@ warehouses = [
       location: w[:location],
       hub: w[:hub],
       geo: w[:geo],
-      ownership_type: w[:ownership_type],
+      ownership_type: "self_owned",
+      managed_under: "Hub",
       warehouse_type: "Standard",
       status: "Active",
       description: "Addis Ababa warehouse"
@@ -508,9 +509,9 @@ warehouses.each_with_index do |warehouse, idx|
     Cats::Warehouse::WarehouseCapacity,
     { warehouse: warehouse },
     {
-      total_area_sqm: 3000 + idx * 200,
-      total_storage_capacity_mt: 1500 + idx * 100,
-      usable_storage_capacity_mt: 1200 + idx * 80,
+      total_area_sqm: 10000 + idx * 500,
+      total_storage_capacity_mt: 100000 + idx * 1000,
+      usable_storage_capacity_mt: 80000 + idx * 1000,
       no_of_stores: 2,
       ownership_type: "Government"
     }
@@ -521,15 +522,15 @@ warehouses.each_with_index do |warehouse, idx|
     {
       has_loading_dock: true,
       number_of_loading_docks: 1,
-      access_road_type: "Paved"
+      access_road_type: "asphalt"
     }
   )
   find_or_create_with(
     Cats::Warehouse::WarehouseInfra,
     { warehouse: warehouse },
     {
-      floor_type: "Concrete",
-      roof_type: "Metal",
+      floor_type: "concrete",
+      roof_type: "sheet_metal",
       has_fumigation_facility: true,
       has_fire_extinguisher: true,
       has_security_guard: true
