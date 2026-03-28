@@ -22,10 +22,13 @@ import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
 import { notifications } from '@mantine/notifications';
+import { usePermission } from '../../hooks/usePermission';
 
 function StoreListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { can } = usePermission();
+  const canCreateStores = can('stores', 'create');
   const [search, setSearch] = useState('');
   const [warehouseFilter, setWarehouseFilter] = useState<string | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -100,9 +103,11 @@ function StoreListPage() {
             Manage storage spaces within warehouses
           </Text>
         </div>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => navigate('/stores/new')}>
-          Create Store
-        </Button>
+        {canCreateStores && (
+          <Button leftSection={<IconPlus size={16} />} onClick={() => navigate('/stores/new')}>
+            Create Store
+          </Button>
+        )}
       </Group>
 
       <Group>
@@ -132,7 +137,7 @@ function StoreListPage() {
               : 'Get started by creating your first store'
           }
           action={
-            !search && !warehouseFilter
+            !search && !warehouseFilter && canCreateStores
               ? {
                   label: 'Create Store',
                   onClick: () => navigate('/stores/new'),
@@ -148,9 +153,9 @@ function StoreListPage() {
                 <Table.Th>Code</Table.Th>
                 <Table.Th>Name</Table.Th>
                 <Table.Th>Warehouse</Table.Th>
-                <Table.Th>Dimensions (L×W×H)</Table.Th>
-                <Table.Th>Usable Space</Table.Th>
-                <Table.Th>Available Space</Table.Th>
+                <Table.Th>Dimensions (LxWxH)</Table.Th>
+                <Table.Th>Usable Area</Table.Th>
+                <Table.Th>Total Area</Table.Th>
                 <Table.Th>Type</Table.Th>
                 <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>
               </Table.Tr>
@@ -162,12 +167,12 @@ function StoreListPage() {
                   <Table.Tr key={store.id}>
                     <Table.Td>{store.code}</Table.Td>
                     <Table.Td>{store.name}</Table.Td>
-                    <Table.Td>{warehouse?.name || '-'}</Table.Td>
+                    <Table.Td>{store.warehouse_name || warehouse?.name || '-'}</Table.Td>
                     <Table.Td>
-                      {store.length}×{store.width}×{store.height}m
+                      {store.length} x {store.width} x {store.height} m
                     </Table.Td>
-                    <Table.Td>{store.usable_space} m³</Table.Td>
-                    <Table.Td>{store.available_space} m³</Table.Td>
+                    <Table.Td>{store.usable_area_m2 ?? store.usable_space} m²</Table.Td>
+                    <Table.Td>{store.total_area_m2 ?? store.available_space} m²</Table.Td>
                     <Table.Td>
                       <Badge color={store.temporary ? 'yellow' : 'blue'}>
                         {store.temporary ? 'Temporary' : 'Permanent'}

@@ -59,6 +59,9 @@ export interface WarehouseCapacity {
   total_area_sqm?: number;
   total_storage_capacity_mt?: number;
   usable_storage_capacity_mt?: number;
+  length_m?: number;
+  width_m?: number;
+  height_m?: number;
   no_of_stores?: number;
   construction_year?: number;
 }

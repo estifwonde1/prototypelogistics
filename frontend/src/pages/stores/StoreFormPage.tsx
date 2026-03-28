@@ -13,15 +13,20 @@ import {
   Switch,
   Card,
   Text,
+  Grid,
+  Alert,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { IconArrowLeft, IconDeviceFloppy } from '@tabler/icons-react';
+import { IconArrowLeft, IconDeviceFloppy, IconInfoCircle } from '@tabler/icons-react';
 import { getStore, createStore, updateStore } from '../../api/stores';
-import { getWarehouses } from '../../api/warehouses';
+import { getWarehouse, getWarehouses } from '../../api/warehouses';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
+import { AccessDenied } from '../../components/common/AccessDenied';
 import { notifications } from '@mantine/notifications';
 import type { Store } from '../../types/store';
+import type { Warehouse } from '../../types/warehouse';
+import { usePermission } from '../../hooks/usePermission';
 
 function StoreFormPage() {
   const { id } = useParams<{ id: string }>();
@@ -29,8 +34,14 @@ function StoreFormPage() {
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const isEdit = !!id;
+  const { can } = usePermission();
+  const canCreateStores = can('stores', 'create');
+  const canUpdateStores = can('stores', 'update');
   const preselectedWarehouseId = searchParams.get('warehouse_id');
   const [hasGangway, setHasGangway] = useState(false);
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState<number | null>(
+    preselectedWarehouseId ? Number(preselectedWarehouseId) : null
+  );
 
   const { data: store, isLoading } = useQuery({
     queryKey: ['stores', id],
@@ -43,30 +54,41 @@ function StoreFormPage() {
     queryFn: getWarehouses,
   });
 
+  const { data: selectedWarehouse } = useQuery({
+    queryKey: ['warehouses', selectedWarehouseId],
+    queryFn: () => getWarehouse(selectedWarehouseId as number),
+    enabled: selectedWarehouseId !== null,
+  });
+
   const form = useForm({
     initialValues: {
       code: '',
       name: '',
-      length: 0,
-      width: 0,
-      height: 0,
-      usable_space: 0,
-      available_space: 0,
+      length: 2,
+      width: 2,
+      height: 1,
       temporary: false,
       has_gangway: false,
       gangway_length: 0,
       gangway_width: 0,
-      gangway_height: 0,
       warehouse_id: preselectedWarehouseId || '',
     },
+    validateInputOnChange: ['length', 'width', 'height', 'warehouse_id'],
     validate: {
       name: (value) => (!value ? 'Name is required' : null),
       code: (value) => (!value ? 'Code is required' : null),
-      length: (value) => (value <= 0 ? 'Length must be greater than 0' : null),
-      width: (value) => (value <= 0 ? 'Width must be greater than 0' : null),
-      height: (value) => (value <= 0 ? 'Height must be greater than 0' : null),
-      usable_space: (value) => (value <= 0 ? 'Usable space must be greater than 0' : null),
-      available_space: (value) => (value < 0 ? 'Available space cannot be negative' : null),
+      length: (value) => {
+        if (value < 2) return 'Length must be at least 2 meters';
+        return validateWarehouseLength(value, selectedWarehouse);
+      },
+      width: (value) => {
+        if (value < 2) return 'Width must be at least 2 meters';
+        return validateWarehouseWidth(value, selectedWarehouse);
+      },
+      height: (value) => {
+        if (value <= 0) return 'Height must be greater than 0';
+        return validateWarehouseHeight(value, selectedWarehouse);
+      },
       warehouse_id: (value) => (!value ? 'Warehouse is required' : null),
     },
   });
@@ -79,18 +101,23 @@ function StoreFormPage() {
         length: store.length,
         width: store.width,
         height: store.height,
-        usable_space: store.usable_space,
-        available_space: store.available_space,
         temporary: store.temporary,
         has_gangway: store.has_gangway,
         gangway_length: store.gangway_length || 0,
         gangway_width: store.gangway_width || 0,
-        gangway_height: store.gangway_height || 0,
         warehouse_id: store.warehouse_id.toString(),
       });
       setHasGangway(store.has_gangway);
+      setSelectedWarehouseId(store.warehouse_id);
     }
   }, [store]);
+
+  useEffect(() => {
+    if (!selectedWarehouse) return;
+    form.validateField('length');
+    form.validateField('width');
+    form.validateField('height');
+  }, [selectedWarehouse]);
 
   const createMutation = useMutation({
     mutationFn: createStore,
@@ -140,8 +167,6 @@ function StoreFormPage() {
       length: values.length,
       width: values.width,
       height: values.height,
-      usable_space: values.usable_space,
-      available_space: values.available_space,
       temporary: values.temporary,
       has_gangway: values.has_gangway,
       warehouse_id: Number(values.warehouse_id),
@@ -150,7 +175,6 @@ function StoreFormPage() {
     if (values.has_gangway) {
       payload.gangway_length = values.gangway_length;
       payload.gangway_width = values.gangway_width;
-      payload.gangway_height = values.gangway_height;
     }
 
     if (isEdit) {
@@ -164,6 +188,30 @@ function StoreFormPage() {
     value: warehouse.id.toString(),
     label: `${warehouse.name} (${warehouse.code})`,
   }));
+
+  const maximumLength = selectedWarehouse?.capacity?.length_m
+    ? selectedWarehouse.capacity.length_m
+    : undefined;
+  const maximumWidth = selectedWarehouse?.capacity?.width_m
+    ? selectedWarehouse.capacity.width_m
+    : undefined;
+  const maximumHeight =
+    selectedWarehouse?.capacity?.height_m !== null &&
+    selectedWarehouse?.capacity?.height_m !== undefined
+      ? selectedWarehouse.capacity.height_m
+      : undefined;
+  const availableSpace = computeAvailableSpace(form.values.length, form.values.width);
+  const usableSpace = computeUsableSpace(form.values.length, form.values.width);
+  const hasWarehouseDimensionLimits =
+    maximumLength !== undefined || maximumWidth !== undefined || maximumHeight !== undefined;
+
+  if (!isEdit && !canCreateStores) {
+    return <AccessDenied />;
+  }
+
+  if (isEdit && !canUpdateStores) {
+    return <AccessDenied />;
+  }
 
   if (isEdit && isLoading) {
     return <LoadingState message="Loading store..." />;
@@ -214,8 +262,33 @@ function StoreFormPage() {
                 searchable
                 data={warehouseOptions || []}
                 disabled={!!preselectedWarehouseId && !isEdit}
-                {...form.getInputProps('warehouse_id')}
+                value={form.values.warehouse_id}
+                onChange={(value) => {
+                  form.setFieldValue('warehouse_id', value || '');
+                  setSelectedWarehouseId(value ? Number(value) : null);
+                }}
+                error={form.errors.warehouse_id}
               />
+
+              {selectedWarehouse && (
+                <Card withBorder padding="sm" bg="gray.0">
+                  <Stack gap={4}>
+                    <Text fw={600} size="sm">
+                      Warehouse Reference
+                    </Text>
+                    <Grid>
+                      <Grid.Col span={{ base: 12, md: 6 }}>
+                        <Text size="sm">Total Area: {selectedWarehouse.capacity?.total_area_sqm ?? '-'} m²</Text>
+                      </Grid.Col>
+                      <Grid.Col span={{ base: 12, md: 6 }}>
+                        <Text size="sm">
+                          Capacity: {selectedWarehouse.capacity?.total_storage_capacity_mt ?? '-'} m³
+                        </Text>
+                      </Grid.Col>
+                    </Grid>
+                  </Stack>
+                </Card>
+              )}
 
               <Group grow>
                 <Switch
@@ -231,21 +304,39 @@ function StoreFormPage() {
             <Stack gap="md">
               <Title order={4}>Dimensions</Title>
 
+              <Alert icon={<IconInfoCircle size={16} />} color="blue" variant="light">
+                {hasWarehouseDimensionLimits ? (
+                  <Text size="sm">
+                    Maximum Length = {maximumLength ?? '-'} m, Maximum Width = {maximumWidth ?? '-'} m,
+                    Maximum Height = {maximumHeight ?? '-'} m
+                  </Text>
+                ) : (
+                  <Text size="sm">
+                    Total Area and Usable Area are calculated automatically from the store length and width.
+                  </Text>
+                )}
+                <Text size="xs" c="dimmed">
+                  Total Area = length x width. Usable Area = (length - 2) x (width - 2).
+                </Text>
+              </Alert>
+
               <Group grow>
                 <NumberInput
                   label="Length (m)"
                   placeholder="0"
                   required
-                  min={0}
+                  min={2}
                   decimalScale={2}
+                  description={hasWarehouseDimensionLimits && maximumLength !== undefined ? `Maximum allowed: ${maximumLength} m` : undefined}
                   {...form.getInputProps('length')}
                 />
                 <NumberInput
                   label="Width (m)"
                   placeholder="0"
                   required
-                  min={0}
+                  min={2}
                   decimalScale={2}
+                  description={hasWarehouseDimensionLimits && maximumWidth !== undefined ? `Maximum allowed: ${maximumWidth} m` : undefined}
                   {...form.getInputProps('width')}
                 />
                 <NumberInput
@@ -254,27 +345,20 @@ function StoreFormPage() {
                   required
                   min={0}
                   decimalScale={2}
+                  description={hasWarehouseDimensionLimits && maximumHeight !== undefined ? `Maximum allowed: ${maximumHeight} m` : undefined}
                   {...form.getInputProps('height')}
                 />
               </Group>
 
               <Group grow>
-                <NumberInput
-                  label="Usable Space (m³)"
-                  placeholder="0"
-                  required
-                  min={0}
-                  decimalScale={2}
-                  {...form.getInputProps('usable_space')}
-                />
-                <NumberInput
-                  label="Available Space (m³)"
-                  placeholder="0"
-                  required
-                  min={0}
-                  decimalScale={2}
-                  {...form.getInputProps('available_space')}
-                />
+                <Card withBorder padding="sm">
+                  <Text size="xs" c="dimmed">Usable Area (m²)</Text>
+                  <Text fw={600}>{usableSpace.toFixed(2)}</Text>
+                </Card>
+                <Card withBorder padding="sm">
+                  <Text size="xs" c="dimmed">Total Area (m²)</Text>
+                  <Text fw={600}>{availableSpace.toFixed(2)}</Text>
+                </Card>
               </Group>
             </Stack>
           </Card>
@@ -313,13 +397,6 @@ function StoreFormPage() {
                       decimalScale={2}
                       {...form.getInputProps('gangway_width')}
                     />
-                    <NumberInput
-                      label="Gangway Height (m)"
-                      placeholder="0"
-                      min={0}
-                      decimalScale={2}
-                      {...form.getInputProps('gangway_height')}
-                    />
                   </Group>
                 </>
               )}
@@ -342,6 +419,39 @@ function StoreFormPage() {
       </form>
     </Stack>
   );
+}
+
+function computeAvailableSpace(length: number, width: number) {
+  return Math.max(length, 0) * Math.max(width, 0);
+}
+
+function computeUsableSpace(length: number, width: number) {
+  if (length < 2 || width < 2) return 0;
+  return (length - 2) * (width - 2);
+}
+
+function validateWarehouseLength(value: number, warehouse: Warehouse | undefined) {
+  const maxLength = warehouse?.capacity?.length_m;
+  if (typeof maxLength === 'number' && value > maxLength) {
+    return `Length must not exceed ${maxLength} meters`;
+  }
+  return null;
+}
+
+function validateWarehouseWidth(value: number, warehouse: Warehouse | undefined) {
+  const maxWidth = warehouse?.capacity?.width_m;
+  if (typeof maxWidth === 'number' && value > maxWidth) {
+    return `Width must not exceed ${maxWidth} meters`;
+  }
+  return null;
+}
+
+function validateWarehouseHeight(value: number, warehouse: Warehouse | undefined) {
+  const maxHeight = warehouse?.capacity?.height_m;
+  if (typeof maxHeight === 'number' && value > maxHeight) {
+    return `Height must not exceed ${maxHeight} meters`;
+  }
+  return null;
 }
 
 export default StoreFormPage;

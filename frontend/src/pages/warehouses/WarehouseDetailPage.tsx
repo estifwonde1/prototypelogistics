@@ -83,6 +83,9 @@ function WarehouseDetailPage() {
     initialValues: {
       total_area_sqm: '' as number | '',
       total_storage_capacity_mt: '' as number | '',
+      length_m: '' as number | '',
+      width_m: '' as number | '',
+      height_m: '' as number | '',
       no_of_stores: '' as number | '',
       construction_year: '' as number | '',
       ownership_type: '',
@@ -122,6 +125,9 @@ function WarehouseDetailPage() {
     capacityForm.setValues({
       total_area_sqm: warehouse.capacity?.total_area_sqm ?? '',
       total_storage_capacity_mt: warehouse.capacity?.total_storage_capacity_mt ?? '',
+      length_m: warehouse.capacity?.length_m ?? '',
+      width_m: warehouse.capacity?.width_m ?? '',
+      height_m: warehouse.capacity?.height_m ?? '',
       no_of_stores: warehouse.capacity?.no_of_stores ?? '',
       construction_year: warehouse.capacity?.construction_year ?? '',
       ownership_type: warehouse.ownership_type || '',
@@ -153,6 +159,9 @@ function WarehouseDetailPage() {
       updateWarehouseCapacity(Number(id), {
         total_area_sqm: toNumber(payload.total_area_sqm),
         total_storage_capacity_mt: toNumber(payload.total_storage_capacity_mt),
+        length_m: toNumber(payload.length_m),
+        width_m: toNumber(payload.width_m),
+        height_m: toNumber(payload.height_m),
         no_of_stores: toNumber(payload.no_of_stores),
         construction_year: toNumber(payload.construction_year),
       }),
@@ -390,6 +399,18 @@ function WarehouseDetailPage() {
                 <Grid.Col span={{ base: 12, md: 6 }}>
                   <Text size="sm" c="dimmed">Usable Capacity (MT)</Text>
                   <Text fw={500}>{warehouse.capacity.usable_storage_capacity_mt ?? '-'}</Text>
+                </Grid.Col>
+                <Grid.Col span={{ base: 12, md: 4 }}>
+                  <Text size="sm" c="dimmed">Length (m)</Text>
+                  <Text fw={500}>{warehouse.capacity.length_m ?? '-'}</Text>
+                </Grid.Col>
+                <Grid.Col span={{ base: 12, md: 4 }}>
+                  <Text size="sm" c="dimmed">Width (m)</Text>
+                  <Text fw={500}>{warehouse.capacity.width_m ?? '-'}</Text>
+                </Grid.Col>
+                <Grid.Col span={{ base: 12, md: 4 }}>
+                  <Text size="sm" c="dimmed">Height (m)</Text>
+                  <Text fw={500}>{warehouse.capacity.height_m ?? '-'}</Text>
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
                   <Text size="sm" c="dimmed">Number of Stores</Text>
@@ -695,7 +716,12 @@ function WarehouseDetailPage() {
         <form onSubmit={capacityForm.onSubmit((values) => updateCapacityMutation.mutate(values))}>
           <Stack gap="md">
             <NumberInput label="Total Area (sqm)" min={0} {...capacityForm.getInputProps('total_area_sqm')} />
-            <NumberInput label="Total Storage Capacity (MT)" min={0} {...capacityForm.getInputProps('total_storage_capacity_mt')} />
+            <NumberInput label="Total Storage Capacity (m³)" min={0} {...capacityForm.getInputProps('total_storage_capacity_mt')} />
+            <Group grow>
+              <NumberInput label="Length (m)" min={2} {...capacityForm.getInputProps('length_m')} />
+              <NumberInput label="Width (m)" min={2} {...capacityForm.getInputProps('width_m')} />
+              <NumberInput label="Height (m)" min={0} {...capacityForm.getInputProps('height_m')} />
+            </Group>
             <TextInput
               label="Usable Capacity (calculated)"
               value={

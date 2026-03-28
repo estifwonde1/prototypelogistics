@@ -11,6 +11,9 @@ module Cats
       before_destroy :store_hub_id
       after_commit :recalculate_hub_capacity
 
+      validates :length_m, :width_m, numericality: { greater_than_or_equal_to: 2 }, allow_nil: true
+      validates :height_m, numericality: { greater_than: 0 }, allow_nil: true
+
       private
 
       def derive_usable_storage_capacity

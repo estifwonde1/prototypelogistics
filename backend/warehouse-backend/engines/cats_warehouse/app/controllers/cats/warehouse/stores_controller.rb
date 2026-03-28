@@ -14,14 +14,19 @@ module Cats
 
       def create
         authorize Store
-        store = Store.create!(store_params)
+        store = build_store_for_create
+        store.save!
         render_resource(store, status: :created, serializer: StoreSerializer)
       end
 
       def update
         store = policy_scope(Store).find(params[:id])
         authorize store
-        store.update!(store_params)
+        store.assign_attributes(store_params.except(:warehouse_id))
+        if store_params[:warehouse_id].present?
+          store.warehouse = policy_scope(Warehouse).find(store_params[:warehouse_id])
+        end
+        store.save!
         render_resource(store, serializer: StoreSerializer)
       end
 
@@ -33,6 +38,11 @@ module Cats
       end
 
       private
+
+      def build_store_for_create
+        warehouse = policy_scope(Warehouse).find(store_params[:warehouse_id])
+        Store.new(store_params.except(:warehouse_id).merge(warehouse: warehouse))
+      end
 
       def store_params
         params.require(:payload).permit(
