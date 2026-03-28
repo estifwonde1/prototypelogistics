@@ -6,7 +6,7 @@ module Cats
       end
 
       def call
-        raise ArgumentError, "Inspection is already confirmed" if @inspection.status == "Confirmed"
+        @inspection.ensure_confirmable!
 
         Inspection.transaction do
           @inspection.update!(status: "Confirmed")
@@ -35,34 +35,36 @@ module Cats
           loss_qty = item.quantity_damaged.to_f + item.quantity_lost.to_f
           next unless loss_qty.positive?
 
+          ensure_available_stock!(grn_item, loss_qty)
           apply_stock_loss(grn_item, loss_qty)
         end
       end
 
-      def apply_stock_loss(grn_item, loss_qty)
-        balance = StockBalance.find_or_initialize_by(
+      def ensure_available_stock!(grn_item, loss_qty)
+        available_quantity = Cats::Warehouse::StockBalance.find_by(
           warehouse_id: @inspection.warehouse_id,
           store_id: grn_item.store_id,
           stack_id: grn_item.stack_id,
           commodity_id: grn_item.commodity_id,
           unit_id: grn_item.unit_id
+        )&.quantity.to_f
+
+        return if available_quantity >= loss_qty
+
+        @inspection.errors.add(
+          :base,
+          "Inspection adjustment exceeds available stock for commodity #{grn_item.commodity_id}"
         )
-        balance.quantity = balance.quantity.to_f - loss_qty
-        balance.save!
+        raise ActiveRecord::RecordInvalid, @inspection
+      end
 
-        return unless grn_item.stack_id
-
-        stack = Stack.lock.find(grn_item.stack_id)
-        stack.quantity = stack.quantity.to_f - loss_qty
-        stack.save!
-
-        StackTransaction.create!(
-          source_id: grn_item.stack_id,
-          destination_id: grn_item.stack_id,
+      def apply_stock_loss(grn_item, loss_qty)
+        InventoryLedger.apply_adjustment!(
+          warehouse: @inspection.warehouse,
+          item: grn_item,
+          quantity_delta: -loss_qty,
           transaction_date: @inspection.inspected_on,
-          quantity: loss_qty,
-          unit_id: grn_item.unit_id,
-          status: "Confirmed"
+          reference: @inspection
         )
       end
 

@@ -1,8 +1,14 @@
 module Cats
   module Warehouse
     class StorePolicy < ApplicationPolicy
+      class Scope < Scope
+        def resolve
+          FacilityScopeQuery.new(user: user, scope: scope).call
+        end
+      end
+
       def index?
-        admin? || warehouse_manager? || storekeeper?
+        admin? || hub_manager? || warehouse_manager? || storekeeper?
       end
 
       def show?

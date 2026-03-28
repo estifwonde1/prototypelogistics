@@ -3,11 +3,11 @@ module Cats
     class GrnsController < BaseController
       def index
         authorize Grn
-        render_resource(Grn.includes(:grn_items).order(created_at: :desc), each_serializer: GrnSerializer)
+        render_resource(policy_scope(Grn).includes(:grn_items).order(created_at: :desc), each_serializer: GrnSerializer)
       end
 
       def show
-        grn = Grn.includes(:grn_items).find(params[:id])
+        grn = policy_scope(Grn).includes(:grn_items).find(params[:id])
         authorize grn
         render_resource(grn, serializer: GrnSerializer)
       end
@@ -17,11 +17,11 @@ module Cats
 
         authorize Grn
         grn = GrnCreator.new(
-          warehouse: Warehouse.find(payload[:warehouse_id]),
+          warehouse: accessible_document_warehouse_scope.find(payload[:warehouse_id]),
           received_on: payload[:received_on],
           received_by: Cats::Core::User.find(payload[:received_by_id]),
           items: payload[:items],
-          source: resolve_source(payload[:source_type], payload[:source_id]),
+          source: PolymorphicReferenceResolver.resolve_source(payload[:source_type], payload[:source_id]),
           reference_no: payload[:reference_no],
           status: payload[:status] || "Draft"
         ).call
@@ -30,7 +30,7 @@ module Cats
       end
 
       def confirm
-        grn = Grn.find(params[:id])
+        grn = policy_scope(Grn).find(params[:id])
         authorize grn, :confirm?
         approved_by = params[:approved_by_id].present? ? Cats::Core::User.find(params[:approved_by_id]) : nil
 
@@ -41,7 +41,9 @@ module Cats
       private
 
       def grn_params
-        params.require(:payload).permit(
+        payload = normalize_payload_aliases(params.require(:payload), items: :grn_items)
+
+        payload.permit(
           :warehouse_id,
           :received_on,
           :received_by_id,
@@ -60,11 +62,6 @@ module Cats
         )
       end
 
-      def resolve_source(source_type, source_id)
-        return nil if source_type.blank? || source_id.blank?
-
-        source_type.constantize.find(source_id)
-      end
     end
   end
 end

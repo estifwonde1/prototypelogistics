@@ -3,13 +3,9 @@ module RequestHelpers
     JSON.parse(response.body)
   end
 
-  def auth_headers(role: "Admin", user: nil)
-    user ||= create(:cats_core_user, role_name: role)
-    token = user.signed_id(purpose: "auth", expires_in: 1.hour)
-    {
-      "Authorization" => "Bearer #{token}",
-      "Content-Type" => "application/json"
-    }
+  def auth_headers(role: "Admin")
+    user = create(:cats_core_user, role_name: role)
+    { "Authorization" => "Bearer #{user.signed_id(purpose: "auth", expires_in: 1.hour)}" }
   end
 end
 

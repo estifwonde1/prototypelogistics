@@ -3,11 +3,11 @@ module Cats
     class WaybillsController < BaseController
       def index
         authorize Waybill
-        render_resource(Waybill.includes(:waybill_items, :waybill_transport).order(created_at: :desc), each_serializer: WaybillSerializer)
+        render_resource(policy_scope(Waybill).includes(:waybill_items, :waybill_transport).order(created_at: :desc), each_serializer: WaybillSerializer)
       end
 
       def show
-        waybill = Waybill.includes(:waybill_items, :waybill_transport).find(params[:id])
+        waybill = policy_scope(Waybill).includes(:waybill_items, :waybill_transport).find(params[:id])
         authorize waybill
         render_resource(waybill, serializer: WaybillSerializer)
       end
@@ -31,7 +31,7 @@ module Cats
       end
 
       def confirm
-        waybill = Waybill.find(params[:id])
+        waybill = policy_scope(Waybill).find(params[:id])
         authorize waybill, :confirm?
         WaybillConfirmer.new(waybill: waybill).call
         render_resource(waybill, serializer: WaybillSerializer)
@@ -40,7 +40,13 @@ module Cats
       private
 
       def waybill_params
-        params.require(:payload).permit(
+        payload = normalize_payload_aliases(
+          params.require(:payload),
+          items: :waybill_items,
+          transport: :waybill_transport
+        )
+
+        payload.permit(
           :reference_no,
           :issued_on,
           :source_location_id,

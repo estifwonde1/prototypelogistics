@@ -3,11 +3,11 @@ module Cats
     class StacksController < BaseController
       def index
         authorize Stack
-        render_resource(Stack.order(:id), each_serializer: StackSerializer)
+        render_resource(policy_scope(Stack).order(:id), each_serializer: StackSerializer)
       end
 
       def show
-        stack = Stack.find(params[:id])
+        stack = policy_scope(Stack).find(params[:id])
         authorize stack
         render_resource(stack, serializer: StackSerializer)
       end
@@ -19,14 +19,14 @@ module Cats
       end
 
       def update
-        stack = Stack.find(params[:id])
+        stack = policy_scope(Stack).find(params[:id])
         authorize stack
         stack.update!(stack_params)
         render_resource(stack, serializer: StackSerializer)
       end
 
       def destroy
-        stack = Stack.find(params[:id])
+        stack = policy_scope(Stack).find(params[:id])
         authorize stack
         stack.destroy!
         render_success({ id: stack.id })
@@ -50,6 +50,7 @@ module Cats
           :unit_id
         )
       end
+
     end
   end
 end

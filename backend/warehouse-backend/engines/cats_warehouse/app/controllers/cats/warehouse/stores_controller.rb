@@ -3,11 +3,11 @@ module Cats
     class StoresController < BaseController
       def index
         authorize Store
-        render_resource(Store.order(:id), each_serializer: StoreSerializer)
+        render_resource(policy_scope(Store).order(:id), each_serializer: StoreSerializer)
       end
 
       def show
-        store = Store.find(params[:id])
+        store = policy_scope(Store).find(params[:id])
         authorize store
         render_resource(store, serializer: StoreSerializer)
       end
@@ -19,14 +19,14 @@ module Cats
       end
 
       def update
-        store = Store.find(params[:id])
+        store = policy_scope(Store).find(params[:id])
         authorize store
         store.update!(store_params)
         render_resource(store, serializer: StoreSerializer)
       end
 
       def destroy
-        store = Store.find(params[:id])
+        store = policy_scope(Store).find(params[:id])
         authorize store
         store.destroy!
         render_success({ id: store.id })
@@ -41,8 +41,6 @@ module Cats
           :length,
           :width,
           :height,
-          :usable_space,
-          :available_space,
           :temporary,
           :has_gangway,
           :gangway_length,

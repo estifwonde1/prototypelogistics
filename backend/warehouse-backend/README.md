@@ -9,6 +9,11 @@
 - `POSTGRES_PASSWORD` (default: empty)
 - `POSTGRES_HOST` (default: `localhost`)
 - `POSTGRES_PORT` (default: `5432`)
+- `POSTGRES_DB` (default: `cats_warehouse_development`)
+- `ALLOWED_ORIGINS` (comma-separated CORS allowlist; required outside local dev)
+- `APP_HOST` (canonical host for staging/production links)
+- `RAILS_LOG_LEVEL` (optional log level override)
+- `NOTIFICATION_WEBHOOK_URL` (optional outbound warehouse notification target)
 
 **Setup**
 1. `bundle install`
@@ -16,8 +21,9 @@
 
 **Docker (Production-like)**
 1. Set `RAILS_MASTER_KEY` (from `config/master.key`) in your environment.
-2. `docker compose up --build`
-3. App will be available at `http://localhost:3000`
+2. Set `ALLOWED_ORIGINS` and `APP_HOST` for the target environment.
+3. `docker compose up --build`
+4. App will be available at `http://localhost:3000`
 
 **Tests**
 1. `bin/rails db:prepare RAILS_ENV=test`

@@ -2,7 +2,7 @@ require "rails_helper"
 
 RSpec.describe "Cats Warehouse Stacks", type: :request do
   it "supports CRUD" do
-    headers = auth_headers(role: "Storekeeper")
+    headers = auth_headers(role: "Admin")
     store = create(:cats_warehouse_store)
     commodity = create(:cats_core_commodity)
     unit = create(:cats_core_unit_of_measure)
@@ -26,7 +26,7 @@ RSpec.describe "Cats Warehouse Stacks", type: :request do
 
     get "/cats_warehouse/v1/stacks/#{stack_id}", headers: headers
     expect(response).to have_http_status(:ok)
-    expect(json_response.dig("data", "stack", "id")).to eq(stack_id)
+    expect(json_response.dig("data", "id")).to eq(stack_id)
 
     patch "/cats_warehouse/v1/stacks/#{stack_id}",
           params: { payload: { stack_status: "In Use" } },

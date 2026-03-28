@@ -67,4 +67,4 @@ group :development, :test do
   gem "simplecov", require: false
 end
 
-gem "cats_warehouse", path: 'engines\cats_warehouse'
+gem "cats_warehouse", path: 'engines/cats_warehouse'

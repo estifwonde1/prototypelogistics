@@ -3,11 +3,11 @@ module Cats
     class InspectionsController < BaseController
       def index
         authorize Inspection
-        render_resource(Inspection.includes(:inspection_items).order(created_at: :desc), each_serializer: InspectionSerializer)
+        render_resource(policy_scope(Inspection).includes(:inspection_items).order(created_at: :desc), each_serializer: InspectionSerializer)
       end
 
       def show
-        inspection = Inspection.includes(:inspection_items).find(params[:id])
+        inspection = policy_scope(Inspection).includes(:inspection_items).find(params[:id])
         authorize inspection
         render_resource(inspection, serializer: InspectionSerializer)
       end
@@ -16,12 +16,13 @@ module Cats
         payload = inspection_params
 
         authorize Inspection
+        warehouse = policy_scope(Warehouse).find(payload[:warehouse_id])
         inspection = InspectionCreator.new(
-          warehouse: Warehouse.find(payload[:warehouse_id]),
+          warehouse: warehouse,
           inspected_on: payload[:inspected_on],
           inspector: Cats::Core::User.find(payload[:inspector_id]),
           items: payload[:items],
-          source: resolve_source(payload[:source_type], payload[:source_id]),
+          source: PolymorphicReferenceResolver.resolve_source(payload[:source_type], payload[:source_id]),
           reference_no: payload[:reference_no],
           status: payload[:status] || "Draft"
         ).call
@@ -30,7 +31,7 @@ module Cats
       end
 
       def confirm
-        inspection = Inspection.find(params[:id])
+        inspection = policy_scope(Inspection).find(params[:id])
         authorize inspection, :confirm?
         InspectionConfirmer.new(inspection: inspection).call
         render_resource(inspection, serializer: InspectionSerializer)
@@ -39,7 +40,9 @@ module Cats
       private
 
       def inspection_params
-        params.require(:payload).permit(
+        payload = normalize_payload_aliases(params.require(:payload), items: :inspection_items)
+
+        payload.permit(
           :warehouse_id,
           :inspected_on,
           :inspector_id,
@@ -59,11 +62,6 @@ module Cats
         )
       end
 
-      def resolve_source(source_type, source_id)
-        return nil if source_type.blank? || source_id.blank?
-
-        source_type.constantize.find(source_id)
-      end
     end
   end
 end

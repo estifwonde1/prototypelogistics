@@ -1,0 +1,96 @@
+openapi: 3.1.0
+info:
+  title: CATS Warehouse Phase 0 Contract Lock
+  version: 1.0.0
+  description: Canonical Phase 0 API contract baseline for the warehouse module.
+servers:
+  - url: /cats_warehouse/v1
+components:
+  schemas:
+    SuccessEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        data: {}
+    ErrorEnvelope:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          const: false
+        error:
+          type: object
+          required: [message]
+          properties:
+            message:
+              type: string
+            details:
+              type: object
+    LoginRequest:
+      type: object
+      required: [payload]
+      properties:
+        payload:
+          type: object
+          required: [email, password]
+          properties:
+            email:
+              type: string
+            password:
+              type: string
+    LoginResponseData:
+      type: object
+      required: [token, user_id, role]
+      properties:
+        token:
+          type: string
+        user_id:
+          type: integer
+        role:
+          type: string
+          enum: [Admin, Superadmin, Hub Manager, Warehouse Manager, Storekeeper, Inspector, Dispatcher]
+    DocumentStatus:
+      type: string
+      enum: [Draft, Confirmed]
+    DocumentItem:
+      type: object
+      required: [commodity_id, quantity, unit_id]
+      properties:
+        commodity_id:
+          type: integer
+        quantity:
+          type: number
+        unit_id:
+          type: integer
+    WaybillTransport:
+      type: object
+      required: [transporter_id, vehicle_plate_no, driver_name, driver_phone]
+      properties:
+        transporter_id:
+          type: integer
+        vehicle_plate_no:
+          type: string
+        driver_name:
+          type: string
+        driver_phone:
+          type: string
+paths:
+  /auth/login:
+    post:
+      summary: Login and return a warehouse-scoped role contract.
+  /grns:
+    post:
+      summary: Create GRN using canonical payload.items contract.
+  /gins:
+    post:
+      summary: Create GIN using canonical payload.items contract.
+  /inspections:
+    post:
+      summary: Create inspection using canonical payload.items contract.
+  /waybills:
+    post:
+      summary: Create waybill using canonical payload.items and payload.transport contract.

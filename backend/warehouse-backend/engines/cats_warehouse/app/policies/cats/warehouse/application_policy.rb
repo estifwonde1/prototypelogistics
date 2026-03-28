@@ -3,6 +3,19 @@ module Cats
     class ApplicationPolicy
       attr_reader :user, :record
 
+      class Scope
+        attr_reader :user, :scope
+
+        def initialize(user, scope)
+          @user = user
+          @scope = scope
+        end
+
+        def resolve
+          scope.none
+        end
+      end
+
       def initialize(user, record)
         @user = user
         @record = record
@@ -31,7 +44,7 @@ module Cats
       private
 
       def admin?
-        user&.has_role?("Admin")
+        user&.has_role?("Admin") || user&.has_role?("Superadmin")
       end
 
       def hub_manager?

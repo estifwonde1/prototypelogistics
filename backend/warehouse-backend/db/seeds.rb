@@ -1,372 +1,285 @@
-puts "Seeding CATS Core and Warehouse data..."
+puts "Seeding CATS Warehouse (Addis Ababa only)..."
 
 def find_or_create_with(model, attrs, updates = {})
   record = model.find_or_initialize_by(attrs)
-  record.assign_attributes(updates)
-  record.save!
+  record.assign_attributes(attrs.merge(updates))
+  record.save! if record.new_record? || record.changed?
   record
 end
 
-core_module = find_or_create_with(
-  Cats::Core::ApplicationModule,
-  {prefix: "core"},
-  {name: "Core"}
-)
+def add_role(user, role_name)
+  user.add_role(role_name)
+  user
+end
 
-warehouse_module = find_or_create_with(
+puts "Creating application module and roles..."
+application_module = find_or_create_with(
   Cats::Core::ApplicationModule,
-  {prefix: "warehouse"},
-  {name: "Warehouse"}
+  { prefix: "CATS-WH" },
+  { name: "CATS Warehouse" }
 )
 
 roles = {
-  admin: find_or_create_with(Cats::Core::Role, {name: "Admin", application_module: core_module}),
-  hub_manager: find_or_create_with(Cats::Core::Role, {name: "Hub Manager", application_module: warehouse_module}),
-  warehouse_manager: find_or_create_with(Cats::Core::Role, {name: "Warehouse Manager", application_module: warehouse_module}),
-  storekeeper: find_or_create_with(Cats::Core::Role, {name: "Storekeeper", application_module: warehouse_module}),
-  inspector: find_or_create_with(Cats::Core::Role, {name: "Inspector", application_module: warehouse_module}),
-  dispatcher: find_or_create_with(Cats::Core::Role, {name: "Dispatcher", application_module: warehouse_module})
+  hub_manager: find_or_create_with(Cats::Core::Role, { name: "Hub Manager", application_module: application_module }),
+  warehouse_manager: find_or_create_with(Cats::Core::Role, { name: "Warehouse Manager", application_module: application_module }),
+  store_keeper: find_or_create_with(Cats::Core::Role, { name: "Storekeeper", application_module: application_module }),
+  admin: find_or_create_with(Cats::Core::Role, { name: "Admin", application_module: application_module }),
+  superadmin: find_or_create_with(Cats::Core::Role, { name: "Superadmin", application_module: application_module })
 }
 
-admin_menu = find_or_create_with(
-  Cats::Core::Menu,
-  {label: "Administration", application_module: core_module},
-  {icon: "settings"}
-)
+puts "Creating notification rules..."
+find_or_create_with(Cats::Core::NotificationRule, { code: "allocation" }, { roles: %w[Warehouse\ Manager Hub\ Manager] })
+find_or_create_with(Cats::Core::NotificationRule, { code: "dispatch" }, { roles: %w[Warehouse\ Manager Hub\ Manager] })
+receipt_auth_rule = Cats::Core::NotificationRule.find_or_initialize_by(code: "receipt_authorization")
+receipt_auth_rule.roles = %w[Warehouse\ Manager Hub\ Manager]
+receipt_auth_rule.save! if receipt_auth_rule.new_record? || receipt_auth_rule.changed?
+dispatch_auth_rule = Cats::Core::NotificationRule.find_or_initialize_by(code: "dispatch_authorization")
+dispatch_auth_rule.roles = %w[Warehouse\ Manager Hub\ Manager]
+dispatch_auth_rule.save! if dispatch_auth_rule.new_record? || dispatch_auth_rule.changed?
 
-warehouse_menu = find_or_create_with(
-  Cats::Core::Menu,
-  {label: "Warehouse", application_module: warehouse_module},
-  {icon: "warehouse"}
-)
-
-admin_user_item = find_or_create_with(
-  Cats::Core::MenuItem,
-  {menu: admin_menu, label: "User Management", route: "/admin/users"},
-  {icon: "users"}
-)
-admin_location_item = find_or_create_with(
-  Cats::Core::MenuItem,
-  {menu: admin_menu, label: "Locations", route: "/admin/locations"},
-  {icon: "map"}
-)
-
-warehouse_items = [
-  {label: "Hubs", route: "/cats_warehouse/v1/hubs", icon: "hub"},
-  {label: "Warehouses", route: "/cats_warehouse/v1/warehouses", icon: "warehouse"},
-  {label: "Stores", route: "/cats_warehouse/v1/stores", icon: "store"},
-  {label: "Stacks", route: "/cats_warehouse/v1/stacks", icon: "layers"},
-  {label: "GRNs", route: "/cats_warehouse/v1/grns", icon: "download"},
-  {label: "GINs", route: "/cats_warehouse/v1/gins", icon: "upload"},
-  {label: "Inspections", route: "/cats_warehouse/v1/inspections", icon: "check"},
-  {label: "Waybills", route: "/cats_warehouse/v1/waybills", icon: "truck"},
-  {label: "Stock Balances", route: "/cats_warehouse/v1/stock_balances", icon: "box"}
-].map do |item|
-  find_or_create_with(Cats::Core::MenuItem, {menu: warehouse_menu, label: item[:label], route: item[:route]}, {icon: item[:icon]})
-end
-
-admin_role_menu = find_or_create_with(Cats::Core::RoleMenu, {role: roles[:admin], menu: admin_menu})
-admin_role_menu.menu_items << admin_user_item unless admin_role_menu.menu_items.exists?(admin_user_item.id)
-admin_role_menu.menu_items << admin_location_item unless admin_role_menu.menu_items.exists?(admin_location_item.id)
-
-hub_manager_role_menu = find_or_create_with(Cats::Core::RoleMenu, {role: roles[:hub_manager], menu: warehouse_menu})
-hub_items = warehouse_items.select { |i| i.label == "Hubs" }
-hub_items.each do |item|
-  hub_manager_role_menu.menu_items << item unless hub_manager_role_menu.menu_items.exists?(item.id)
-end
-
-warehouse_role_menu = find_or_create_with(Cats::Core::RoleMenu, {role: roles[:warehouse_manager], menu: warehouse_menu})
-warehouse_items.reject { |i| i.label == "Hubs" }.each do |item|
-  warehouse_role_menu.menu_items << item unless warehouse_role_menu.menu_items.exists?(item.id)
-end
-
-storekeeper_role_menu = find_or_create_with(Cats::Core::RoleMenu, {role: roles[:storekeeper], menu: warehouse_menu})
-warehouse_items.select { |i| %w[Stores Stacks GRNs GINs Stock\ Balances].include?(i.label) }.each do |item|
-  storekeeper_role_menu.menu_items << item unless storekeeper_role_menu.menu_items.exists?(item.id)
-end
-
-inspector_role_menu = find_or_create_with(Cats::Core::RoleMenu, {role: roles[:inspector], menu: warehouse_menu})
-warehouse_items.select { |i| %w[Inspections GRNs].include?(i.label) }.each do |item|
-  inspector_role_menu.menu_items << item unless inspector_role_menu.menu_items.exists?(item.id)
-end
-
-dispatcher_role_menu = find_or_create_with(Cats::Core::RoleMenu, {role: roles[:dispatcher], menu: warehouse_menu})
-warehouse_items.select { |i| %w[Waybills GINs].include?(i.label) }.each do |item|
-  dispatcher_role_menu.menu_items << item unless dispatcher_role_menu.menu_items.exists?(item.id)
-end
-
+puts "Creating users..."
 admin_user = find_or_create_with(
   Cats::Core::User,
-  {email: "admin@cats.com"},
+  { email: "admin@example.com" },
   {
-    first_name: "Admin",
-    last_name: "User",
-    password: "Password1!",
-    active: true,
-    application_module: core_module
+    first_name: "Mekdes",
+    last_name: "Tadesse",
+    password: "newpassword123",
+    phone_number: "0911111111",
+    application_module: application_module
   }
 )
+add_role(admin_user, "Admin")
 
-warehouse_manager = find_or_create_with(
+superadmin_user = find_or_create_with(
   Cats::Core::User,
-  {email: "warehouse.manager@cats.com"},
+  { email: "superadmin@example.com" },
   {
-    first_name: "Warehouse",
-    last_name: "Manager",
-    password: "Password1!",
-    active: true,
-    application_module: warehouse_module
+    first_name: "Yonatan",
+    last_name: "Bekele",
+    password: "newpassword123",
+    phone_number: "0911111112",
+    application_module: application_module
   }
 )
+add_role(superadmin_user, "Superadmin")
 
-hub_manager = find_or_create_with(
+hub_manager_user = find_or_create_with(
   Cats::Core::User,
-  {email: "hub.manager@cats.com"},
+  { email: "hub_manager@example.com" },
   {
-    first_name: "Hub",
-    last_name: "Manager",
-    password: "Password1!",
-    active: true,
-    application_module: warehouse_module
+    first_name: "Hanna",
+    last_name: "Girma",
+    password: "newpassword123",
+    phone_number: "0911111113",
+    application_module: application_module
   }
 )
+add_role(hub_manager_user, "Hub Manager")
 
-receiver_user = find_or_create_with(
+warehouse_manager_user = find_or_create_with(
   Cats::Core::User,
-  {email: "receiver@cats.com"},
+  { email: "warehouse_manager@example.com" },
   {
-    first_name: "Receiving",
-    last_name: "Officer",
-    password: "Password1!",
-    active: true,
-    application_module: warehouse_module
+    first_name: "Samuel",
+    last_name: "Alemu",
+    password: "newpassword123",
+    phone_number: "0911111114",
+    application_module: application_module
   }
 )
+add_role(warehouse_manager_user, "Warehouse Manager")
 
-issuer_user = find_or_create_with(
+store_keeper_user = find_or_create_with(
   Cats::Core::User,
-  {email: "issuer@cats.com"},
+  { email: "store_keeper@example.com" },
   {
-    first_name: "Issuing",
-    last_name: "Officer",
-    password: "Password1!",
-    active: true,
-    application_module: warehouse_module
+    first_name: "Rahel",
+    last_name: "Kebede",
+    password: "password123",
+    phone_number: "0911111115",
+    application_module: application_module
   }
 )
+add_role(store_keeper_user, "Storekeeper")
 
-inspector_user = find_or_create_with(
+hub_manager_user_2 = find_or_create_with(
   Cats::Core::User,
-  {email: "inspector@cats.com"},
+  { email: "hub_manager2@example.com" },
   {
-    first_name: "Inspection",
-    last_name: "Officer",
-    password: "Password1!",
-    active: true,
-    application_module: warehouse_module
+    first_name: "Mulu",
+    last_name: "Asrat",
+    password: "newpassword123",
+    phone_number: "0911111116",
+    application_module: application_module
   }
 )
+add_role(hub_manager_user_2, "Hub Manager")
 
-approver_user = find_or_create_with(
+warehouse_manager_user_2 = find_or_create_with(
   Cats::Core::User,
-  {email: "approver@cats.com"},
+  { email: "warehouse_manager2@example.com" },
   {
-    first_name: "Approver",
-    last_name: "Officer",
-    password: "Password1!",
-    active: true,
-    application_module: warehouse_module
+    first_name: "Tigist",
+    last_name: "Wondimu",
+    password: "newpassword123",
+    phone_number: "0911111117",
+    application_module: application_module
   }
 )
+add_role(warehouse_manager_user_2, "Warehouse Manager")
 
-dispatcher_user = find_or_create_with(
+store_keeper_user_2 = find_or_create_with(
   Cats::Core::User,
-  {email: "dispatcher@cats.com"},
+  { email: "store_keeper2@example.com" },
   {
-    first_name: "Dispatch",
-    last_name: "Officer",
-    password: "Password1!",
-    active: true,
-    application_module: warehouse_module
+    first_name: "Getachew",
+    last_name: "Mekuria",
+    password: "password123",
+    phone_number: "0911111118",
+    application_module: application_module
   }
 )
+add_role(store_keeper_user_2, "Storekeeper")
 
-{
-  admin_user => roles[:admin],
-  hub_manager => roles[:hub_manager],
-  warehouse_manager => roles[:warehouse_manager],
-  receiver_user => roles[:storekeeper],
-  issuer_user => roles[:storekeeper],
-  inspector_user => roles[:inspector],
-  approver_user => roles[:warehouse_manager],
-  dispatcher_user => roles[:dispatcher]
-}.each do |user, role|
-  user.roles << role unless user.roles.exists?(role.id)
-end
-
-region_1 = find_or_create_with(
+puts "Seeding Addis Ababa locations (Region -> Subcity -> Woreda)..."
+region_addis = find_or_create_with(
   Cats::Core::Location,
-  {code: "REG-001"},
-  {name: "Region Alpha", location_type: Cats::Core::Location::REGION}
-)
-zone_1 = find_or_create_with(
-  Cats::Core::Location,
-  {code: "ZON-001"},
-  {name: "Zone Alpha-1", location_type: Cats::Core::Location::ZONE, parent: region_1}
-)
-woreda_1 = find_or_create_with(
-  Cats::Core::Location,
-  {code: "WOR-001"},
-  {name: "Woreda Alpha-1", location_type: Cats::Core::Location::WOREDA, parent: zone_1}
-)
-fdp_1 = find_or_create_with(
-  Cats::Core::Location,
-  {code: "FDP-001"},
-  {name: "FDP Alpha-1", location_type: Cats::Core::Location::FDP, parent: woreda_1}
+  { code: "ADD-REG" },
+  { name: "Addis Ababa", location_type: Cats::Core::Location::REGION }
 )
 
-region_2 = find_or_create_with(
-  Cats::Core::Location,
-  {code: "REG-002"},
-  {name: "Region Beta", location_type: Cats::Core::Location::REGION}
-)
-zone_2 = find_or_create_with(
-  Cats::Core::Location,
-  {code: "ZON-002"},
-  {name: "Zone Beta-1", location_type: Cats::Core::Location::ZONE, parent: region_2}
-)
-woreda_2 = find_or_create_with(
-  Cats::Core::Location,
-  {code: "WOR-002"},
-  {name: "Woreda Beta-1", location_type: Cats::Core::Location::WOREDA, parent: zone_2}
-)
-fdp_2 = find_or_create_with(
-  Cats::Core::Location,
-  {code: "FDP-002"},
-  {name: "FDP Beta-1", location_type: Cats::Core::Location::FDP, parent: woreda_2}
-)
-
-hub_location_1 = find_or_create_with(
-  Cats::Core::Location,
-  {code: "HUB-001"},
-  {name: "Hub Alpha", location_type: Cats::Core::Location::HUB, parent: fdp_1}
-)
-hub_location_2 = find_or_create_with(
-  Cats::Core::Location,
-  {code: "HUB-002"},
-  {name: "Hub Beta", location_type: Cats::Core::Location::HUB, parent: fdp_2}
-)
-hub_location_3 = find_or_create_with(
-  Cats::Core::Location,
-  {code: "HUB-003"},
-  {name: "Hub Gamma", location_type: Cats::Core::Location::HUB, parent: fdp_1}
-)
-
-warehouse_location_1 = find_or_create_with(
-  Cats::Core::Location,
-  {code: "WH-001"},
-  {name: "Warehouse A", location_type: Cats::Core::Location::WAREHOUSE, parent: hub_location_1}
-)
-warehouse_location_2 = find_or_create_with(
-  Cats::Core::Location,
-  {code: "WH-002"},
-  {name: "Warehouse B", location_type: Cats::Core::Location::WAREHOUSE, parent: hub_location_1}
-)
-warehouse_location_3 = find_or_create_with(
-  Cats::Core::Location,
-  {code: "WH-003"},
-  {name: "Warehouse C", location_type: Cats::Core::Location::WAREHOUSE, parent: hub_location_2}
-)
-warehouse_location_4 = find_or_create_with(
-  Cats::Core::Location,
-  {code: "WH-004"},
-  {name: "Warehouse D", location_type: Cats::Core::Location::WAREHOUSE, parent: hub_location_3}
-)
-
-units = {
-  kg: find_or_create_with(Cats::Core::UnitOfMeasure, {abbreviation: "kg"}, {name: "Kilogram", unit_type: Cats::Core::UnitOfMeasure::WEIGHT}),
-  mt: find_or_create_with(Cats::Core::UnitOfMeasure, {abbreviation: "mt"}, {name: "Metric Ton", unit_type: Cats::Core::UnitOfMeasure::WEIGHT}),
-  bag: find_or_create_with(Cats::Core::UnitOfMeasure, {abbreviation: "bag"}, {name: "Bag", unit_type: Cats::Core::UnitOfMeasure::ITEM}),
-  pcs: find_or_create_with(Cats::Core::UnitOfMeasure, {abbreviation: "pcs"}, {name: "Pieces", unit_type: Cats::Core::UnitOfMeasure::ITEM}),
-  l: find_or_create_with(Cats::Core::UnitOfMeasure, {abbreviation: "l"}, {name: "Liter", unit_type: Cats::Core::UnitOfMeasure::VOLUME}),
-  ctn: find_or_create_with(Cats::Core::UnitOfMeasure, {abbreviation: "ctn"}, {name: "Carton", unit_type: Cats::Core::UnitOfMeasure::ITEM})
+subcity_woredas = {
+  "Addis Ketema" => 14,
+  "Akaki Kality" => 13,
+  "Arada" => 10,
+  "Bole" => 14,
+  "Gullele" => 10,
+  "Kirkos" => 11,
+  "Kolfe Keranyo" => 15,
+  "Lemi Kura" => 10,
+  "Lideta" => 10,
+  "Nifas Silk Lafto" => 12,
+  "Yeka" => 12
 }
 
-categories = [
-  {code: "CEREAL", name: "Cereals"},
-  {code: "PULSE", name: "Pulses"},
-  {code: "NONFOOD", name: "Non-Food Items"}
-].map do |cat|
-  find_or_create_with(Cats::Core::CommodityCategory, {code: cat[:code]}, {name: cat[:name]})
+zones = subcity_woredas.keys.map.with_index do |name, idx|
+  find_or_create_with(
+    Cats::Core::Location,
+    { code: format("ADD-Z%02d", idx + 1) },
+    { name: name, location_type: Cats::Core::Location::ZONE, parent: region_addis }
+  )
 end
 
-donor = find_or_create_with(Cats::Core::Donor, {code: "DON-001"}, {name: "Sample Donor"})
+woredas = zones.flat_map.with_index do |zone, idx|
+  count = subcity_woredas[zone.name]
+  (1..count).map do |w|
+    find_or_create_with(
+      Cats::Core::Location,
+      { code: format("ADD-W%02d-%02d", idx + 1, w) },
+      { name: "Woreda #{w}", location_type: Cats::Core::Location::WOREDA, parent: zone }
+    )
+  end
+end
+
+fdps = woredas.first(6).map.with_index do |woreda, idx|
+  find_or_create_with(
+    Cats::Core::Location,
+    { code: format("ADD-FDP-%02d", idx + 1) },
+    { name: "FDP #{idx + 1}", location_type: Cats::Core::Location::FDP, parent: woreda }
+  )
+end
+
+hub_locations = [
+  { code: "ADD-HUB-01", name: "Bole Hub", parent: fdps[0] },
+  { code: "ADD-HUB-02", name: "Yeka Hub", parent: fdps[1] },
+  { code: "ADD-HUB-03", name: "Kirkos Hub", parent: fdps[2] }
+].map do |h|
+  find_or_create_with(
+    Cats::Core::Location,
+    { code: h[:code] },
+    { name: h[:name], location_type: Cats::Core::Location::HUB, parent: h[:parent] }
+  )
+end
+
+warehouse_locations = [
+  { code: "ADD-WH-01", name: "Bole Central Warehouse", parent: hub_locations[0] },
+  { code: "ADD-WH-02", name: "Yeka Logistics Warehouse", parent: hub_locations[1] },
+  { code: "ADD-WH-03", name: "Kirkos Storage Warehouse", parent: hub_locations[2] }
+].map do |wh|
+  find_or_create_with(
+    Cats::Core::Location,
+    { code: wh[:code] },
+    { name: wh[:name], location_type: Cats::Core::Location::WAREHOUSE, parent: wh[:parent] }
+  )
+end
+
+puts "Seeding core reference data..."
+units = {
+  kg: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "kg" }, { name: "Kilogram", unit_type: Cats::Core::UnitOfMeasure::WEIGHT }),
+  l: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "l" }, { name: "Liter", unit_type: Cats::Core::UnitOfMeasure::VOLUME }),
+  pcs: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "pcs" }, { name: "Pieces", unit_type: Cats::Core::UnitOfMeasure::ITEM }),
+  bag: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "bag" }, { name: "Bag", unit_type: Cats::Core::UnitOfMeasure::ITEM })
+}
 
 currencies = {
-  usd: find_or_create_with(Cats::Core::Currency, {code: "USD"}, {name: "US Dollar"}),
-  etb: find_or_create_with(Cats::Core::Currency, {code: "ETB"}, {name: "Ethiopian Birr"})
+  etb: find_or_create_with(Cats::Core::Currency, { code: "ETB" }, { name: "Ethiopian Birr" })
 }
 
-cash_donation = find_or_create_with(
-  Cats::Core::CashDonation,
-  {reference_no: "CD-001"},
-  {
-    donated_on: Date.today - 30,
-    donor: donor,
-    currency: currencies[:usd],
-    amount: 100_000
-  }
+# Commodity categories (used by donation + commodities)
+commodity_groups = [
+  { code: "FOOD", name: "Food" },
+  { code: "NONFOOD", name: "Non-Food" }
+].map do |group|
+  find_or_create_with(Cats::Core::CommodityCategory, { code: group[:code] }, { name: group[:name] })
+end
+
+# Ensure donor exists before records that depend on it
+donor = find_or_create_with(
+  Cats::Core::Donor,
+  { code: "ADD-RELIEF-DESK" },
+  { name: "Addis Relief Desk" }
 )
 
-commodity_donation = find_or_create_with(
-  Cats::Core::CommodityDonation,
-  {reference_no: "CMD-001"},
-  {
-    donated_on: Date.today - 30,
-    donor: donor,
-    commodity_category: categories[0],
-    unit: units[:kg],
-    quantity: 50_000
-  }
-)
-
+# Step 1: Make sure there is a program/project to attach commodities to
 program = find_or_create_with(
   Cats::Core::Program,
-  {code: "PRG-001"},
-  {name: "Relief Program"}
+  { code: "DEFAULT-PROGRAM" },
+  { name: "Default Program", description: "Default program for warehouse seed data" }
 )
 
 project = find_or_create_with(
   Cats::Core::Project,
-  {code: "PRJ-001"},
+  { code: "DEFAULT-PROJECT" },
   {
-    description: "Relief Project",
-    source: commodity_donation,
-    program: program,
-    year: Date.today.year,
+    description: "Default project for warehouse seed data",
+    program_id: program.id,
+    source: donor,
+    year: Date.current.year,
     implementing_agency: "CATS"
   }
 )
 
+# Step 2: Create commodities
 commodities = [
-  {batch_no: "COM-001", quantity: 5000, unit: units[:kg]},
-  {batch_no: "COM-002", quantity: 3000, unit: units[:kg]},
-  {batch_no: "COM-003", quantity: 2000, unit: units[:kg]},
-  {batch_no: "COM-004", quantity: 1500, unit: units[:mt]},
-  {batch_no: "COM-005", quantity: 1200, unit: units[:mt]},
-  {batch_no: "COM-006", quantity: 800, unit: units[:bag]},
-  {batch_no: "COM-007", quantity: 600, unit: units[:bag]},
-  {batch_no: "COM-008", quantity: 400, unit: units[:pcs]},
-  {batch_no: "COM-009", quantity: 300, unit: units[:pcs]},
-  {batch_no: "COM-010", quantity: 250, unit: units[:ctn]}
+  { batch_no: "ADD-RICE-001", description: "Rice", category: commodity_groups[0], unit: units[:kg] },
+  { batch_no: "ADD-WHEAT-001", description: "Wheat Flour", category: commodity_groups[0], unit: units[:kg] },
+  { batch_no: "ADD-OIL-001", description: "Cooking Oil", category: commodity_groups[0], unit: units[:l] },
+  { batch_no: "ADD-BEAN-001", description: "Beans", category: commodity_groups[0], unit: units[:kg] },
+  { batch_no: "ADD-SOAP-001", description: "Soap Bars", category: commodity_groups[1], unit: units[:pcs] },
+  { batch_no: "ADD-BLANKET-001", description: "Blankets", category: commodity_groups[1], unit: units[:pcs] },
+  { batch_no: "ADD-JERRYCAN-001", description: "Jerry Cans", category: commodity_groups[1], unit: units[:pcs] },
+  { batch_no: "ADD-BAG-001", description: "Storage Bags", category: commodity_groups[1], unit: units[:bag] }
 ].map do |c|
   find_or_create_with(
     Cats::Core::Commodity,
-    {batch_no: c[:batch_no]},
+    { batch_no: c[:batch_no] },
     {
+      name: c[:description],
+      commodity_category_id: c[:category].id,
       unit_of_measure: c[:unit],
-      project: project,
-      quantity: c[:quantity],
+      project_id: project.id,   # <-- add this line
+      quantity: 1000,
       best_use_before: Date.today + 365,
       status: Cats::Core::Commodity::DRAFT,
       arrival_status: Cats::Core::Commodity::AT_SOURCE
@@ -374,69 +287,139 @@ commodities = [
   )
 end
 
+puts "Seeding transporters, purchase orders, and gift certificates..."
 transporters = [
-  {code: "TR-001", name: "Alpha Logistics", address: "Addis Ababa", contact_phone: "0910000001"},
-  {code: "TR-002", name: "Beta Transport", address: "Adama", contact_phone: "0910000002"},
-  {code: "TR-003", name: "Gamma Freight", address: "Bishoftu", contact_phone: "0910000003"}
+  { code: "ADD-TR-01", name: "Addis Transport PLC", address: "Bole, Addis Ababa", contact_phone: "0911000001" },
+  { code: "ADD-TR-02", name: "Sheger Logistics", address: "Yeka, Addis Ababa", contact_phone: "0911000002" }
 ].map do |t|
   find_or_create_with(
     Cats::Core::Transporter,
-    {code: t[:code]},
-    {name: t[:name], address: t[:address], contact_phone: t[:contact_phone]}
+    { code: t[:code] },
+    { name: t[:name], address: t[:address], contact_phone: t[:contact_phone] }
   )
 end
 
-purchase_order = find_or_create_with(
-  Cats::Core::PurchaseOrder,
-  {reference_no: "PO-001"},
+# Ensure funding records exist before records that depend on them
+etb_currency = Cats::Core::Currency.find_or_create_by!(code: "ETB", name: "Ethiopian Birr")
+
+cash_donation = find_or_create_with(
+  Cats::Core::CashDonation,
+  { reference_no: "CD-ADD-001" },
   {
-    order_date: Date.today - 15,
-    supplier: "Global Supplier",
-    purchase_type: Cats::Core::PurchaseOrder::LOCAL,
-    commodity_category: categories[1],
-    currency: currencies[:usd],
-    unit: units[:kg],
-    quantity: 10_000,
-    price: 2.5,
-    cash_donation: cash_donation
+    donor: donor,
+    amount: 100_000,
+    donated_on: Date.today - 5,
+    currency: etb_currency,
+    description: "Seed funding for Addis Ababa warehouse records"
   }
 )
 
-gift_certificate = find_or_create_with(
-  Cats::Core::GiftCertificate,
-  {reference_no: "GC-001"},
+fdps = [
+  { code: "ADD-FDP-01", name: "Addis Ketema FDP", parent: woredas[0] },
+  { code: "ADD-FDP-02", name: "Bole FDP", parent: woredas[10] },
+  { code: "ADD-FDP-03", name: "Kirkos FDP", parent: woredas[20] }
+].map do |fdp|
+  find_or_create_with(
+    Cats::Core::Location,
+    { code: fdp[:code] },
+    { name: fdp[:name], location_type: Cats::Core::Location::FDP, parent: fdp[:parent] }
+  )
+end
+
+hub_locations = [
+  { code: "ADD-HUB-01", name: "Bole Hub", parent: fdps[0] },
+  { code: "ADD-HUB-02", name: "Yeka Hub", parent: fdps[1] },
+  { code: "ADD-HUB-03", name: "Kirkos Hub", parent: fdps[2] }
+].map do |h|
+  find_or_create_with(
+    Cats::Core::Location,
+    { code: h[:code] },
+    { name: h[:name], location_type: Cats::Core::Location::HUB, parent: h[:parent] }
+  )
+end
+
+warehouse_locations = [
+  { code: "ADD-WH-01", name: "Bole Central Warehouse", parent: hub_locations[0] },
+  { code: "ADD-WH-02", name: "Yeka Logistics Warehouse", parent: hub_locations[1] },
+  { code: "ADD-WH-03", name: "Kirkos Storage Warehouse", parent: hub_locations[2] }
+].map do |wh|
+  find_or_create_with(
+    Cats::Core::Location,
+    { code: wh[:code] },
+    { name: wh[:name], location_type: Cats::Core::Location::WAREHOUSE, parent: wh[:parent] }
+  )
+end
+
+purchase_orders = [
+  { reference_no: "PO-ADD-001", supplier: "Addis Grain Suppliers", commodity_category: commodity_groups[0], unit: units[:kg], quantity: 20_000, price: 32.5 },
+  { reference_no: "PO-ADD-002", supplier: "Sheger Non-Food Traders", commodity_category: commodity_groups[1], unit: units[:pcs], quantity: 5_000, price: 15.0 }
+].map do |po|
+  find_or_create_with(
+    Cats::Core::PurchaseOrder,
+    { reference_no: po[:reference_no] },
+    {
+      order_date: Date.today - 7,
+      supplier: po[:supplier],
+      purchase_type: Cats::Core::PurchaseOrder::LOCAL,
+      cash_donation: cash_donation,
+      commodity_category: po[:commodity_category],
+      currency: etb_currency,
+      unit: po[:unit],
+      quantity: po[:quantity],
+      price: po[:price]
+    }
+  )
+end
+
+# Now create GiftCertificate
+gift_certificates = [
   {
-    gift_date: Date.today - 10,
-    requested_by: "Relief Team",
-    customs_office: "Addis",
-    commodity_category: categories[2],
+    reference_no: "GC-ADD-001",
+    customs_office: "Addis Ababa",
+    requested_by: "Addis Relief Desk",
+    commodity_category: commodity_groups[1],
     unit: units[:pcs],
-    currency: currencies[:etb],
-    quantity: 1000,
-    destination_warehouse: warehouse_location_1
+    quantity: 1500
   }
-)
+].map do |gc|
+  find_or_create_with(
+    Cats::Core::GiftCertificate,
+    { reference_no: gc[:reference_no] },
+    {
+      cash_donation_id: cash_donation.id,
+      gift_date: Date.today - 3,
+      requested_by: gc[:requested_by],
+      customs_office: gc[:customs_office],
+      commodity_category_id: gc[:commodity_category].id,
+      unit: gc[:unit],
+      currency: etb_currency,
+      quantity: gc[:quantity],
+      destination_warehouse: warehouse_locations.first
+    }
+  )
+end
 
+puts "Seeding dispatch (requires dispatch plan item by DB constraint)..."
 dispatch_plan = find_or_create_with(
   Cats::Core::DispatchPlan,
-  {reference_no: "DP-001"},
+  { reference_no: "DP-ADD-001" },
   {
-    description: "Sample Dispatch Plan",
+    description: "Addis Ababa Dispatch Plan",
     status: "Approved",
-    prepared_by: dispatcher_user,
-    approved_by: approver_user
+    prepared_by: admin_user,
+    approved_by: admin_user
   }
 )
 
 dispatch_plan_item = find_or_create_with(
   Cats::Core::DispatchPlanItem,
-  {reference_no: "DPI-001"},
+  { reference_no: "DPI-ADD-001" },
   {
     dispatch_plan: dispatch_plan,
-    source: warehouse_location_1,
-    destination: fdp_2,
+    source: warehouse_locations.first,
+    destination: fdps.last,
     commodity: commodities.first,
-    quantity: 500,
+    quantity: 200,
     unit: units[:kg],
     commodity_status: "Good",
     status: "Authorized"
@@ -445,74 +428,78 @@ dispatch_plan_item = find_or_create_with(
 
 dispatch = find_or_create_with(
   Cats::Core::Dispatch,
-  {reference_no: "DISP-001"},
+  { reference_no: "DISP-ADD-001" },
   {
     dispatch_plan_item: dispatch_plan_item,
     transporter: transporters.first,
-    plate_no: "ABC-1234",
-    driver_name: "Driver One",
-    driver_phone: "0912345678",
-    quantity: 500,
+    plate_no: "AA-12345",
+    driver_name: "Tesfaye Kebede",
+    driver_phone: "0915000001",
+    quantity: 200,
     unit: units[:kg],
     commodity_status: "Good",
-    prepared_by: dispatcher_user,
-    dispatch_status: Cats::Core::Dispatch::APPROVED
+    prepared_by: admin_user,
+    dispatch_status: Cats::Core::Dispatch::DRAFT
   }
 )
 
+puts "Seeding warehouse structures..."
 geos = [
-  {latitude: 9.0, longitude: 38.7, address: "Addis Ababa"},
-  {latitude: 8.9, longitude: 38.8, address: "Sululta"},
-  {latitude: 9.1, longitude: 38.6, address: "Bishoftu"},
-  {latitude: 8.95, longitude: 38.75, address: "Holeta"},
-  {latitude: 9.05, longitude: 38.65, address: "Sebeta"}
+  { latitude: 8.995, longitude: 38.789, address: "Bole, Addis Ababa" },
+  { latitude: 9.005, longitude: 38.765, address: "Yeka, Addis Ababa" },
+  { latitude: 9.015, longitude: 38.748, address: "Kirkos, Addis Ababa" }
 ].map do |g|
-  find_or_create_with(Cats::Warehouse::Geo, {latitude: g[:latitude], longitude: g[:longitude]}, {address: g[:address]})
+  find_or_create_with(Cats::Warehouse::Geo, { latitude: g[:latitude], longitude: g[:longitude] }, { address: g[:address] })
 end
 
 hubs = [
-  {code: "HB-001", name: "Hub Alpha", location: hub_location_1, geo: geos[0]},
-  {code: "HB-002", name: "Hub Beta", location: hub_location_2, geo: geos[1]},
-  {code: "HB-003", name: "Hub Gamma", location: hub_location_3, geo: geos[2]}
+  { code: "ADD-HUB-01", name: "Bole Hub", location: hub_locations[0], geo: geos[0] },
+  { code: "ADD-HUB-02", name: "Yeka Hub", location: hub_locations[1], geo: geos[1] },
+  { code: "ADD-HUB-03", name: "Kirkos Hub", location: hub_locations[2], geo: geos[2] }
 ].map do |h|
   find_or_create_with(
     Cats::Warehouse::Hub,
-    {code: h[:code]},
+    { code: h[:code] },
     {
       name: h[:name],
       location: h[:location],
       geo: h[:geo],
-      hub_type: "Regional",
+      hub_type: "Subcity",
       status: "Active",
-      description: "Seeded hub"
+      description: "Addis Ababa hub"
     }
   )
 end
 
 hubs.each_with_index do |hub, idx|
-  find_or_create_with(Cats::Warehouse::HubCapacity, {hub: hub}, {total_area_sqm: 1000 + idx * 100, total_capacity_mt: 500 + idx * 50})
-  find_or_create_with(Cats::Warehouse::HubAccess, {hub: hub}, {has_loading_dock: true, number_of_loading_docks: 2})
-  find_or_create_with(Cats::Warehouse::HubInfra, {hub: hub}, {floor_type: "Concrete", roof_type: "Metal", has_ventilation: true})
-  find_or_create_with(Cats::Warehouse::HubContacts, {hub: hub}, {manager_name: "Manager #{idx + 1}", contact_phone: "09123456#{idx}0"})
+  find_or_create_with(Cats::Warehouse::HubCapacity, { hub: hub }, { total_area_sqm: 1500 + idx * 100, total_capacity_mt: 800 + idx * 50 })
+  find_or_create_with(Cats::Warehouse::HubAccess, { hub: hub }, { has_loading_dock: true, number_of_loading_docks: 2 })
+  find_or_create_with(Cats::Warehouse::HubInfra, { hub: hub }, { floor_type: "concrete", roof_type: "sheet_metal", has_ventilation: true })
+  find_or_create_with(
+    Cats::Warehouse::HubContacts,
+    { hub: hub },
+    { manager_name: "#{hub_manager_user.first_name} #{hub_manager_user.last_name}", contact_phone: "091200000#{idx + 1}" }
+  )
 end
 
 warehouses = [
-  {code: "W-001", name: "Warehouse A", location: warehouse_location_1, hub: hubs[0], geo: geos[3]},
-  {code: "W-002", name: "Warehouse B", location: warehouse_location_2, hub: hubs[0], geo: geos[4]},
-  {code: "W-003", name: "Warehouse C", location: warehouse_location_3, hub: hubs[1], geo: geos[1]},
-  {code: "W-004", name: "Warehouse D", location: warehouse_location_4, hub: hubs[2], geo: geos[2]}
+  { code: "ADD-WH-01", name: "Bole Central Warehouse", location: warehouse_locations[0], hub: hubs[0], geo: geos[0] },
+  { code: "ADD-WH-02", name: "Yeka Logistics Warehouse", location: warehouse_locations[1], hub: hubs[1], geo: geos[1] },
+  { code: "ADD-WH-03", name: "Kirkos Storage Warehouse", location: warehouse_locations[2], hub: hubs[2], geo: geos[2] }
 ].map do |w|
   find_or_create_with(
     Cats::Warehouse::Warehouse,
-    {code: w[:code]},
+    { code: w[:code] },
     {
       name: w[:name],
       location: w[:location],
       hub: w[:hub],
       geo: w[:geo],
+      ownership_type: "self_owned",
+      managed_under: "Hub",
       warehouse_type: "Standard",
       status: "Active",
-      description: "Seeded warehouse"
+      description: "Addis Ababa warehouse"
     }
   )
 end
@@ -520,30 +507,30 @@ end
 warehouses.each_with_index do |warehouse, idx|
   find_or_create_with(
     Cats::Warehouse::WarehouseCapacity,
-    {warehouse: warehouse},
+    { warehouse: warehouse },
     {
-      total_area_sqm: 2000 + idx * 200,
-      total_storage_capacity_mt: 1000 + idx * 100,
-      usable_storage_capacity_mt: 800 + idx * 80,
-      no_of_stores: 3,
+      total_area_sqm: 10000 + idx * 500,
+      total_storage_capacity_mt: 100000 + idx * 1000,
+      usable_storage_capacity_mt: 80000 + idx * 1000,
+      no_of_stores: 2,
       ownership_type: "Government"
     }
   )
   find_or_create_with(
     Cats::Warehouse::WarehouseAccess,
-    {warehouse: warehouse},
+    { warehouse: warehouse },
     {
       has_loading_dock: true,
       number_of_loading_docks: 1,
-      access_road_type: "Paved"
+      access_road_type: "asphalt"
     }
   )
   find_or_create_with(
     Cats::Warehouse::WarehouseInfra,
-    {warehouse: warehouse},
+    { warehouse: warehouse },
     {
-      floor_type: "Concrete",
-      roof_type: "Metal",
+      floor_type: "concrete",
+      roof_type: "sheet_metal",
       has_fumigation_facility: true,
       has_fire_extinguisher: true,
       has_security_guard: true
@@ -551,23 +538,23 @@ warehouses.each_with_index do |warehouse, idx|
   )
   find_or_create_with(
     Cats::Warehouse::WarehouseContacts,
-    {warehouse: warehouse},
-    {manager_name: "Warehouse Manager #{idx + 1}", contact_phone: "09123456#{idx}1"}
+    { warehouse: warehouse },
+    { manager_name: "#{warehouse_manager_user.first_name} #{warehouse_manager_user.last_name}", contact_phone: "091300000#{idx + 1}" }
   )
 end
 
 stores = warehouses.flat_map do |warehouse|
-  (1..3).map do |i|
+  (1..2).map do |i|
     find_or_create_with(
       Cats::Warehouse::Store,
-      {code: "#{warehouse.code}-ST#{i}"},
+      { code: "#{warehouse.code}-ST#{i}" },
       {
         name: "#{warehouse.name} Store #{i}",
-        length: 50,
+        length: 60,
         width: 40,
         height: 10,
-        usable_space: 2000,
-        available_space: 1500,
+        usable_space: 2400,
+        available_space: 2000,
         warehouse: warehouse
       }
     )
@@ -577,7 +564,7 @@ end
 stores.each do |store|
   find_or_create_with(
     Cats::Warehouse::StackingRule,
-    {warehouse: store.warehouse},
+    { warehouse: store.warehouse },
     {
       distance_from_wall: 1.0,
       space_between_stack: 1.0,
@@ -594,7 +581,7 @@ stacks = stores.flat_map.with_index do |store, idx|
   commodities.sample(3).map.with_index do |commodity, i|
     find_or_create_with(
       Cats::Warehouse::Stack,
-      {code: "#{store.code}-S#{i + 1}"},
+      { code: "#{store.code}-S#{i + 1}" },
       {
         length: 10,
         width: 10,
@@ -604,43 +591,30 @@ stacks = stores.flat_map.with_index do |store, idx|
         commodity: commodity,
         store: store,
         unit: commodity.unit_of_measure,
-        quantity: 100 + (idx * 10)
+        quantity: 200 + (idx * 10)
       }
     )
   end
 end
 
-stacks.sample(8).each do |stack|
-  find_or_create_with(
-    Cats::Warehouse::StockBalance,
-    {
-      warehouse: stack.store.warehouse,
-      store: stack.store,
-      stack: stack,
-      commodity: stack.commodity,
-      unit: stack.unit
-    },
-    {quantity: stack.quantity}
-  )
-end
-
+puts "Seeding receipts (GRN) and dispatches (GIN)..."
 grn = find_or_create_with(
   Cats::Warehouse::Grn,
-  {reference_no: "GRN-001"},
+  { reference_no: "ADD-GRN-001" },
   {
     warehouse: warehouses.first,
     received_on: Date.today - 2,
-    received_by: receiver_user,
-    approved_by: approver_user,
+    received_by: store_keeper_user,
+    approved_by: warehouse_manager_user,
     status: "Draft",
-    source: gift_certificate
+    source: gift_certificates.first
   }
 )
 
 grn_items = commodities.first(3).map.with_index do |commodity, idx|
   find_or_create_with(
     Cats::Warehouse::GrnItem,
-    {grn: grn, commodity: commodity},
+    { grn: grn, commodity: commodity },
     {
       quantity: 100 + idx * 10,
       unit: commodity.unit_of_measure,
@@ -651,25 +625,27 @@ grn_items = commodities.first(3).map.with_index do |commodity, idx|
   )
 end
 
+Cats::Warehouse::GrnConfirmer.new(grn: grn, approved_by: warehouse_manager_user).call if grn.status != "Confirmed"
+
 gin = find_or_create_with(
   Cats::Warehouse::Gin,
-  {reference_no: "GIN-001"},
+  { reference_no: "ADD-GIN-001" },
   {
     warehouse: warehouses.first,
     issued_on: Date.today - 1,
-    issued_by: issuer_user,
-    approved_by: approver_user,
+    issued_by: store_keeper_user,
+    approved_by: warehouse_manager_user,
     status: "Draft",
-    destination: fdp_2
+    destination: fdps.last
   }
 )
 
 commodities.first(2).each_with_index do |commodity, idx|
   find_or_create_with(
     Cats::Warehouse::GinItem,
-    {gin: gin, commodity: commodity},
+    { gin: gin, commodity: commodity },
     {
-      quantity: 50 + idx * 10,
+      quantity: 30 + idx * 10,
       unit: commodity.unit_of_measure,
       store: stores.first,
       stack: stacks.first
@@ -677,62 +653,72 @@ commodities.first(2).each_with_index do |commodity, idx|
   )
 end
 
-inspection = find_or_create_with(
-  Cats::Warehouse::Inspection,
-  {reference_no: "INSP-001"},
-  {
-    warehouse: warehouses.first,
-    inspected_on: Date.today - 1,
-    inspector: inspector_user,
-    status: "Draft",
-    source: grn
-  }
-)
-
-grn_items.first(2).each_with_index do |item, idx|
-  find_or_create_with(
-    Cats::Warehouse::InspectionItem,
-    {inspection: inspection, commodity: item.commodity},
-    {
-      quantity_received: item.quantity,
-      quantity_damaged: idx.zero? ? 5 : 0,
-      quantity_lost: idx.zero? ? 2 : 0,
-      quality_status: idx.zero? ? "Damaged" : "Good",
-      packaging_condition: "OK",
-      remarks: "Seeded inspection"
-    }
-  )
-end
+Cats::Warehouse::GinConfirmer.new(gin: gin, approved_by: warehouse_manager_user).call if gin.status != "Confirmed"
 
 waybill = find_or_create_with(
   Cats::Warehouse::Waybill,
-  {reference_no: "WB-001"},
+  { reference_no: "ADD-WB-001" },
   {
     issued_on: Date.today,
     dispatch: dispatch,
-    source_location: warehouse_location_1,
-    destination_location: fdp_2,
+    source_location: warehouse_locations.first,
+    destination_location: fdps.last,
     status: "Draft"
   }
 )
 
 find_or_create_with(
   Cats::Warehouse::WaybillTransport,
-  {waybill: waybill},
+  { waybill: waybill },
   {
     transporter: transporters.first,
-    vehicle_plate_no: "XYZ-9876",
-    driver_name: "Driver Two",
-    driver_phone: "0911111111"
+    vehicle_plate_no: "AB-12345",
+    driver_name: "Amanuel Tesfaye",
+    driver_phone: "0914000001"
   }
 )
 
 commodities.first(2).each_with_index do |commodity, idx|
   find_or_create_with(
     Cats::Warehouse::WaybillItem,
-    {waybill: waybill, commodity: commodity},
-    {quantity: 20 + idx * 5, unit: commodity.unit_of_measure}
+    { waybill: waybill, commodity: commodity },
+    { quantity: 20 + idx * 5, unit: commodity.unit_of_measure }
   )
 end
+
+puts "Seeding user assignments..."
+find_or_create_with(
+  Cats::Warehouse::UserAssignment,
+  { user: hub_manager_user, hub: hubs.first },
+  { role_name: "Hub Manager" }
+)
+find_or_create_with(
+  Cats::Warehouse::UserAssignment,
+  { user: warehouse_manager_user, warehouse: warehouses.first },
+  { role_name: "Warehouse Manager" }
+)
+find_or_create_with(
+  Cats::Warehouse::UserAssignment,
+  { user: store_keeper_user, store: stores.first },
+  { role_name: "Storekeeper" }
+)
+find_or_create_with(
+  Cats::Warehouse::UserAssignment,
+  { user: hub_manager_user_2, hub: hubs.second },
+  { role_name: "Hub Manager" }
+)
+find_or_create_with(
+  Cats::Warehouse::UserAssignment,
+  { user: warehouse_manager_user_2, warehouse: warehouses.second },
+  { role_name: "Warehouse Manager" }
+)
+find_or_create_with(
+  Cats::Warehouse::UserAssignment,
+  { user: store_keeper_user_2, store: stores.second },
+  { role_name: "Storekeeper" }
+)
+
+ui_seed = Rails.root.join("db", "seeds", "ui.rb")
+load(ui_seed) if File.exist?(ui_seed)
 
 puts "Seeding completed."
