@@ -1,12 +1,20 @@
 FactoryBot.define do
+  factory :cats_warehouse_geo, class: "Cats::Warehouse::Geo" do
+    latitude { 9.03 }
+    longitude { 38.74 }
+    address { "Addis" }
+  end
+
   factory :cats_warehouse_hub, class: "Cats::Warehouse::Hub" do
     location { association :cats_core_location }
+    geo { association :cats_warehouse_geo }
     name { "Hub #{generate(:core_name)}" }
   end
 
   factory :cats_warehouse_warehouse, class: "Cats::Warehouse::Warehouse" do
     location { association :cats_core_location }
     hub { association :cats_warehouse_hub }
+    geo { association :cats_warehouse_geo }
     name { "Warehouse #{generate(:core_name)}" }
   end
 
