@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -12,6 +12,7 @@ import {
   Select,
   NumberInput,
   Card,
+  Alert,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { IconArrowLeft, IconDeviceFloppy } from '@tabler/icons-react';
@@ -19,9 +20,23 @@ import { getWarehouse, createWarehouse, updateWarehouse } from '../../api/wareho
 import { getHubs } from '../../api/hubs';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
+import { RentalAgreementUpload } from '../../components/common/RentalAgreementUpload';
 import { notifications } from '@mantine/notifications';
 import type { WarehouseUpsertPayload } from '../../types/warehouse';
 import { usePermission } from '../../hooks/usePermission';
+import { useAuthStore } from '../../store/authStore';
+
+const HUB_MANAGER_OWNERSHIP_OPTIONS = [
+  { value: 'self_owned', label: 'Self Owned' },
+  { value: 'rental', label: 'Rental' },
+];
+
+const LEGACY_OWNERSHIP_SELECT_OPTIONS = [
+  { value: 'Addis Ababa Government', label: 'Addis Ababa Government' },
+  { value: 'Subcity', label: 'Subcity' },
+  { value: 'Woreda', label: 'Woreda' },
+  { value: 'hub', label: 'Hub' },
+];
 
 function WarehouseFormPage() {
   const { id } = useParams<{ id: string }>();
@@ -30,6 +45,9 @@ function WarehouseFormPage() {
   const isEdit = !!id;
   const { can } = usePermission();
   const canReadHubs = can('hubs', 'read');
+  const role = useAuthStore((state) => state.role);
+  const isHubManager = role === 'hub_manager';
+  const [rentalAgreementFile, setRentalAgreementFile] = useState<File | null>(null);
 
   const { data: warehouse, isLoading } = useQuery({
     queryKey: ['warehouses', id],
@@ -49,7 +67,7 @@ function WarehouseFormPage() {
       name: '',
       warehouse_type: 'main',
       status: 'active',
-      ownership_type: '',
+      ownership_type: isHubManager ? 'self_owned' : '',
       description: '',
       hub_id: '',
       location_id: '',
@@ -58,6 +76,8 @@ function WarehouseFormPage() {
     validate: {
       name: (value) => (!value ? 'Name is required' : null),
       code: (value) => (!value ? 'Code is required' : null),
+      ownership_type: (value) =>
+        isHubManager && !value ? 'Ownership type is required' : null,
     },
   });
 
@@ -68,14 +88,15 @@ function WarehouseFormPage() {
         name: warehouse.name,
         warehouse_type: warehouse.warehouse_type,
         status: warehouse.status,
-        ownership_type: warehouse.ownership_type || '',
+        ownership_type: warehouse.ownership_type || (isHubManager ? 'self_owned' : ''),
         description: warehouse.description || '',
         hub_id: warehouse.hub_id?.toString() || '',
         location_id: warehouse.location_id?.toString() || '',
         geo_id: warehouse.geo_id?.toString() || '',
       });
+      setRentalAgreementFile(null);
     }
-  }, [warehouse]);
+  }, [warehouse, isHubManager]);
 
   const createMutation = useMutation({
     mutationFn: createWarehouse,
@@ -119,6 +140,20 @@ function WarehouseFormPage() {
   });
 
   const handleSubmit = (values: typeof form.values) => {
+    if (isHubManager) {
+      if (values.ownership_type === 'rental') {
+        const hasExistingDoc = isEdit && !!warehouse?.rental_agreement_document;
+        if (!rentalAgreementFile && !hasExistingDoc) {
+          notifications.show({
+            title: 'Missing file',
+            message: 'Rental Agreement is required when Ownership Type is Rental.',
+            color: 'red',
+          });
+          return;
+        }
+      }
+    }
+
     const payload: WarehouseUpsertPayload = {
       code: values.code,
       name: values.name,
@@ -127,9 +162,22 @@ function WarehouseFormPage() {
       ownership_type: values.ownership_type || undefined,
       description: values.description || undefined,
       hub_id: values.hub_id ? Number(values.hub_id) : undefined,
-      location_id: values.location_id ? Number(values.location_id) : undefined,
-      geo_id: values.geo_id ? Number(values.geo_id) : undefined,
+      ...(isHubManager
+        ? {}
+        : {
+            location_id: values.location_id ? Number(values.location_id) : undefined,
+            geo_id: values.geo_id ? Number(values.geo_id) : undefined,
+          }),
     };
+
+    if (isHubManager) {
+      if (values.ownership_type === 'rental' && rentalAgreementFile) {
+        payload.rental_agreement_document = rentalAgreementFile;
+      }
+      if (values.hub_id) {
+        payload.managed_under = 'Hub';
+      }
+    }
 
     if (isEdit) {
       updateMutation.mutate(payload);
@@ -210,17 +258,35 @@ function WarehouseFormPage() {
                 />
               </Group>
 
-              <Select
-                label="Ownership Type"
-                placeholder="Select ownership"
-                data={[
-                  { value: 'Addis Ababa Government', label: 'Addis Ababa Government' },
-                  { value: 'Subcity', label: 'Subcity' },
-                  { value: 'Woreda', label: 'Woreda' },
-                  { value: 'hub', label: 'Hub' },
-                ]}
-                {...form.getInputProps('ownership_type')}
-              />
+              {isHubManager ? (
+                <Select
+                  label="Ownership Type"
+                  placeholder="Select ownership"
+                  required
+                  data={HUB_MANAGER_OWNERSHIP_OPTIONS}
+                  {...form.getInputProps('ownership_type')}
+                  onChange={(value) => {
+                    form.setFieldValue('ownership_type', value || '');
+                    if (value !== 'rental') setRentalAgreementFile(null);
+                  }}
+                />
+              ) : (
+                <Select
+                  label="Ownership Type"
+                  placeholder="Select ownership"
+                  data={LEGACY_OWNERSHIP_SELECT_OPTIONS}
+                  {...form.getInputProps('ownership_type')}
+                />
+              )}
+
+              {isHubManager && form.values.ownership_type === 'rental' && (
+                <RentalAgreementUpload
+                  value={rentalAgreementFile}
+                  onChange={setRentalAgreementFile}
+                  required
+                  existingDocument={isEdit ? warehouse?.rental_agreement_document : undefined}
+                />
+              )}
 
               {canReadHubs && (
                 <Select
@@ -233,6 +299,12 @@ function WarehouseFormPage() {
                 />
               )}
 
+              {isHubManager && canReadHubs && (
+                <Alert color="blue" variant="light">
+                  Subcity and woreda are inherited from the selected hub. You do not need to enter location or geo IDs.
+                </Alert>
+              )}
+
               <Textarea
                 label="Description"
                 placeholder="Enter warehouse description..."
@@ -240,20 +312,22 @@ function WarehouseFormPage() {
                 {...form.getInputProps('description')}
               />
 
-              <Group grow>
-                <NumberInput
-                  label="Location ID"
-                  placeholder="Enter location ID"
-                  min={1}
-                  {...form.getInputProps('location_id')}
-                />
-                <NumberInput
-                  label="Geo ID"
-                  placeholder="Enter geo ID"
-                  min={1}
-                  {...form.getInputProps('geo_id')}
-                />
-              </Group>
+              {!isHubManager && (
+                <Group grow>
+                  <NumberInput
+                    label="Location ID"
+                    placeholder="Enter location ID"
+                    min={1}
+                    {...form.getInputProps('location_id')}
+                  />
+                  <NumberInput
+                    label="Geo ID"
+                    placeholder="Enter geo ID"
+                    min={1}
+                    {...form.getInputProps('geo_id')}
+                  />
+                </Group>
+              )}
             </Stack>
           </Card>
 
