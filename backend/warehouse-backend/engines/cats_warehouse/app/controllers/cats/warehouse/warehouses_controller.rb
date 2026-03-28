@@ -15,7 +15,9 @@ module Cats
       def create
         authorize Warehouse
         warehouse = build_warehouse_for_create
-        attach_rental_agreement!(warehouse)
+
+        attach_rental_document(warehouse)
+
         warehouse.save!
         render_resource(warehouse, status: :created, serializer: WarehouseSerializer)
       end
@@ -23,9 +25,14 @@ module Cats
       def update
         warehouse = policy_scope(Warehouse).find(params[:id])
         authorize warehouse
-        warehouse.assign_attributes(warehouse_params)
-        attach_rental_agreement!(warehouse)
-        warehouse.rental_agreement_document.purge if warehouse.ownership_type_self_owned? && warehouse.rental_agreement_document.attached?
+        warehouse.assign_attributes(warehouse_params.except(:rental_agreement_document, :rental_agreement_document_signed_id))
+
+        if warehouse.ownership_type_self_owned? && warehouse.rental_agreement_document.attached?
+          warehouse.rental_agreement_document.purge
+        else
+          attach_rental_document(warehouse)
+        end
+
         warehouse.save!
         render_resource(warehouse, serializer: WarehouseSerializer)
       end
@@ -40,13 +47,24 @@ module Cats
       private
 
       def build_warehouse_for_create
-        if warehouse_params[:hub_id].present?
-          hub = policy_scope(Hub).find(warehouse_params[:hub_id])
-          Warehouse.new(warehouse_params.except(:hub_id).merge(hub: hub))
+        # Exclude file params from warehouse initialization
+        params_for_init = warehouse_params.except(:rental_agreement_document, :rental_agreement_document_signed_id)
+        
+        if params_for_init[:hub_id].present?
+          hub = policy_scope(Hub).find(params_for_init[:hub_id])
+          Warehouse.new(params_for_init.except(:hub_id).merge(hub: hub))
         else
           raise Pundit::NotAuthorizedError, "Not authorized" unless current_access.admin?
 
-          Warehouse.new(warehouse_params)
+          Warehouse.new(params_for_init)
+        end
+      end
+
+      def attach_rental_document(warehouse)
+        if warehouse_params[:rental_agreement_document].present?
+          warehouse.rental_agreement_document.attach(warehouse_params[:rental_agreement_document])
+        elsif warehouse_params[:rental_agreement_document_signed_id].present?
+          warehouse.rental_agreement_document.attach(warehouse_params[:rental_agreement_document_signed_id])
         end
       end
 
@@ -65,13 +83,6 @@ module Cats
           :rental_agreement_document,
           :rental_agreement_document_signed_id
         )
-      end
-
-      def attach_rental_agreement!(warehouse)
-        return unless warehouse_params[:rental_agreement_document].present? || warehouse_params[:rental_agreement_document_signed_id].present?
-
-        attachment = warehouse_params[:rental_agreement_document] || warehouse_params[:rental_agreement_document_signed_id]
-        warehouse.rental_agreement_document.attach(attachment)
       end
 
       def current_access

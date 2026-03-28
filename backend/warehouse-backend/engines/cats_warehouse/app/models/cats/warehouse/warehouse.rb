@@ -64,7 +64,7 @@ module Cats
 
       def rental_document_required_for_rental
         return unless ownership_type_rental?
-        return if rental_agreement_document.attached?
+        return if rental_agreement_document.attached? || rental_agreement_document.attachment.present?
 
         errors.add(:rental_agreement_document, "must be attached for rental warehouses")
       end
