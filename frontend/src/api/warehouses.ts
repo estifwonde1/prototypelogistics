@@ -8,7 +8,7 @@ import type {
   WarehouseInfra,
 } from '../types/warehouse';
 import type { ApiResponse } from '../types/common';
-import { createGeo, updateGeo, type GeoPayload } from './geos';
+import { createGeo, updateGeo, snapshotGeoForParent, type GeoPayload } from './geos';
 
 type WarehouseApiRecord = Warehouse & {
   warehouse_capacity?: Warehouse['capacity'];
@@ -70,13 +70,13 @@ export const updateWarehouseGps = async (
   geoId: number | undefined,
   data: GeoPayload
 ): Promise<Warehouse> => {
-  let geo;
-  if (geoId) {
-    geo = await updateGeo(geoId, data);
-  } else {
-    geo = await createGeo(data);
-  }
-  return updateWarehouse(warehouseId, { geo_id: geo.id });
+  const geo = geoId ? await updateGeo(geoId, data) : await createGeo(data);
+  const warehouse = await updateWarehouse(warehouseId, { geo_id: geo.id });
+  return normalizeWarehouse({
+    ...warehouse,
+    geo_id: geo.id,
+    geo: snapshotGeoForParent(geo, warehouse.geo),
+  } as WarehouseApiRecord);
 };
 
 export const updateWarehouseCapacity = async (

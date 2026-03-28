@@ -158,8 +158,9 @@ function HubDetailPage() {
   const updateGpsMutation = useMutation({
     mutationFn: (data: { latitude: number; longitude: number; address?: string }) =>
       updateHubGps(Number(id), hub?.geo_id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['hubs', id] });
+    onSuccess: (updatedHub) => {
+      queryClient.setQueryData(['hubs', id], updatedHub);
+      queryClient.invalidateQueries({ queryKey: ['hubs'] });
       notifications.show({ title: 'Success', message: 'GPS location saved', color: 'green' });
       setGpsModalOpen(false);
     },

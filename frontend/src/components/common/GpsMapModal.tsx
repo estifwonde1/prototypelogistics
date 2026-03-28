@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Modal, Button, Group, Text, Stack, TextInput, Alert } from '@mantine/core';
 import { IconMapPin, IconAlertCircle } from '@tabler/icons-react';
 import {
@@ -13,6 +13,17 @@ const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
 // Default center: Addis Ababa
 const ADDIS_ABABA_CENTER = { lat: 9.005401, lng: 38.763611 };
+
+function parseCoordinatePair(
+  latRaw: string,
+  lngRaw: string
+): { lat: number; lng: number } | null {
+  const lat = parseFloat(latRaw.trim());
+  const lng = parseFloat(lngRaw.trim());
+  if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  return { lat, lng };
+}
 
 interface GpsSelection {
   lat: number;
@@ -90,10 +101,31 @@ export function GpsMapModal({
   title = 'Set GPS Location',
 }: GpsMapModalProps) {
   const [selection, setSelection] = useState<GpsSelection | null>(
-    initialLat && initialLng ? { lat: initialLat, lng: initialLng } : null
+    initialLat != null && initialLng != null ? { lat: initialLat, lng: initialLng } : null
   );
   const [manualLat, setManualLat] = useState(initialLat?.toString() || '');
   const [manualLng, setManualLng] = useState(initialLng?.toString() || '');
+  /** Only seed from props when the modal opens — avoids wiping edits when parent re-renders or coords refresh while open. */
+  const wasOpenedRef = useRef(false);
+
+  useEffect(() => {
+    if (!opened) {
+      wasOpenedRef.current = false;
+      return;
+    }
+    if (wasOpenedRef.current) return;
+    wasOpenedRef.current = true;
+
+    if (initialLat != null && initialLng != null) {
+      setSelection({ lat: initialLat, lng: initialLng });
+      setManualLat(String(initialLat));
+      setManualLng(String(initialLng));
+    } else {
+      setSelection(null);
+      setManualLat('');
+      setManualLng('');
+    }
+  }, [opened, initialLat, initialLng]);
 
   const handleMapSelect = (s: GpsSelection) => {
     setSelection(s);
@@ -102,16 +134,23 @@ export function GpsMapModal({
   };
 
   const handleManualApply = () => {
-    const lat = parseFloat(manualLat);
-    const lng = parseFloat(manualLng);
-    if (!isNaN(lat) && !isNaN(lng)) {
-      setSelection({ lat, lng });
+    const pair = parseCoordinatePair(manualLat, manualLng);
+    if (pair) {
+      setSelection((prev) => ({ lat: pair.lat, lng: pair.lng, address: prev?.address }));
     }
   };
 
+  const parsedForSave = parseCoordinatePair(manualLat, manualLng);
+  const canSave = parsedForSave !== null;
+
   const handleSave = () => {
-    if (!selection) return;
-    onSave({ latitude: selection.lat, longitude: selection.lng, address: selection.address });
+    const pair = parseCoordinatePair(manualLat, manualLng);
+    if (!pair) return;
+    onSave({
+      latitude: pair.lat,
+      longitude: pair.lng,
+      address: selection?.address,
+    });
   };
 
   const noApiKey = !GOOGLE_MAPS_API_KEY;
@@ -128,6 +167,11 @@ export function GpsMapModal({
         {!noApiKey && (
           <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
             <MapPicker
+              key={
+                initialLat != null && initialLng != null
+                  ? `${initialLat.toFixed(6)},${initialLng.toFixed(6)}`
+                  : 'no-initial'
+              }
               initialLat={initialLat}
               initialLng={initialLng}
               onSelect={handleMapSelect}
@@ -151,16 +195,17 @@ export function GpsMapModal({
             style={{ flex: 1 }}
           />
           {noApiKey && (
-            <Button variant="light" onClick={handleManualApply}>
+            <Button type="button" variant="light" onClick={handleManualApply} disabled={!canSave}>
               Apply
             </Button>
           )}
         </Group>
 
-        {selection && (
+        {(selection || parsedForSave) && (
           <Text size="sm" c="dimmed">
-            Selected: {selection.lat.toFixed(6)}, {selection.lng.toFixed(6)}
-            {selection.address && ` — ${selection.address}`}
+            Selected:{' '}
+            {(selection ?? parsedForSave)!.lat.toFixed(6)}, {(selection ?? parsedForSave)!.lng.toFixed(6)}
+            {selection?.address && ` — ${selection.address}`}
           </Text>
         )}
 
@@ -169,9 +214,10 @@ export function GpsMapModal({
             Cancel
           </Button>
           <Button
+            type="button"
             leftSection={<IconMapPin size={16} />}
             onClick={handleSave}
-            disabled={!selection && !manualLat}
+            disabled={!canSave}
             loading={loading}
           >
             Save Location

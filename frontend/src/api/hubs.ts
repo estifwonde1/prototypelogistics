@@ -1,7 +1,7 @@
 import apiClient from './client';
 import type { Hub, HubAccess, HubCapacity, HubContacts, HubInfra } from '../types/hub';
 import type { ApiResponse } from '../types/common';
-import { createGeo, updateGeo, type GeoPayload } from './geos';
+import { createGeo, updateGeo, snapshotGeoForParent, type GeoPayload } from './geos';
 
 type HubApiRecord = Hub & {
   hub_capacity?: Hub['capacity'];
@@ -47,13 +47,13 @@ export const updateHubGps = async (
   geoId: number | undefined,
   data: GeoPayload
 ): Promise<Hub> => {
-  let geo;
-  if (geoId) {
-    geo = await updateGeo(geoId, data);
-  } else {
-    geo = await createGeo(data);
-  }
-  return updateHub(hubId, { geo_id: geo.id });
+  const geo = geoId ? await updateGeo(geoId, data) : await createGeo(data);
+  const hub = await updateHub(hubId, { geo_id: geo.id });
+  return normalizeHub({
+    ...hub,
+    geo_id: geo.id,
+    geo: snapshotGeoForParent(geo, hub.geo),
+  } as HubApiRecord);
 };
 
 export const updateHubCapacity = async (

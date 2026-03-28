@@ -225,8 +225,9 @@ function WarehouseDetailPage() {
   const updateGpsMutation = useMutation({
     mutationFn: (data: { latitude: number; longitude: number; address?: string }) =>
       updateWarehouseGps(Number(id), warehouse?.geo_id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['warehouses', id] });
+    onSuccess: (updatedWarehouse) => {
+      queryClient.setQueryData(['warehouses', id], updatedWarehouse);
+      queryClient.invalidateQueries({ queryKey: ['warehouses'] });
       notifications.show({ title: 'Success', message: 'GPS location saved', color: 'green' });
       setGpsModalOpen(false);
     },

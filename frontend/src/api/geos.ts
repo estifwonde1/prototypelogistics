@@ -16,6 +16,20 @@ export interface GeoData {
   address?: string;
 }
 
+/** Use after create/update Geo so parent records show fresh coords even if the parent PUT response embeds a stale `geo`. */
+export function snapshotGeoForParent(
+  geo: GeoData,
+  existing?: { address?: string } | null
+): { id: number; latitude: number; longitude: number; altitude_m?: number; address?: string } {
+  return {
+    id: geo.id,
+    latitude: geo.latitude,
+    longitude: geo.longitude,
+    altitude_m: geo.altitude_m,
+    address: geo.address ?? existing?.address,
+  };
+}
+
 export const createGeo = async (data: GeoPayload): Promise<GeoData> => {
   const response = await apiClient.post<ApiResponse<GeoData>>('/geos', { payload: data });
   return response.data.data;
