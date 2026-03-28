@@ -62,6 +62,7 @@ function HubDetailPage() {
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
     queryFn: getWarehouses,
+    enabled: isHubManager || isAdmin,
   });
 
   const { data: facilityOptions } = useQuery({

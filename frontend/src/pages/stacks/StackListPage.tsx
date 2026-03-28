@@ -14,7 +14,7 @@ import {
   Text,
   Select,
 } from '@mantine/core';
-import { IconPlus, IconSearch, IconEdit, IconTrash } from '@tabler/icons-react';
+import { IconPlus, IconSearch, IconEdit, IconTrash, IconEye } from '@tabler/icons-react';
 import { getStacks, deleteStack } from '../../api/stacks';
 import { getStores } from '../../api/stores';
 import { getWarehouses } from '../../api/warehouses';
@@ -23,10 +23,12 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { notifications } from '@mantine/notifications';
+import { usePermission } from '../../hooks/usePermission';
 
 function StackListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { can } = usePermission();
   const [search, setSearch] = useState('');
   const [storeFilter, setStoreFilter] = useState<string | null>(null);
   const [warehouseFilter, setWarehouseFilter] = useState<string | null>(null);
@@ -110,9 +112,11 @@ const filteredStacks = stacks?.filter((stack) => {
             Manage commodity stacks within stores
           </Text>
         </div>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => navigate('/stacks/new')}>
-          Create Stack
-        </Button>
+        {can('stacks', 'create') && (
+          <Button leftSection={<IconPlus size={16} />} onClick={() => navigate('/stacks/new')}>
+            Create Stack
+          </Button>
+        )}
       </Group>
 
       <Group>
@@ -150,7 +154,7 @@ const filteredStacks = stacks?.filter((stack) => {
               : 'Get started by creating your first stack'
           }
           action={
-            !search && !storeFilter && !warehouseFilter
+            !search && !storeFilter && !warehouseFilter && can('stacks', 'create')
               ? {
                   label: 'Create Stack',
                   onClick: () => navigate('/stacks/new'),
@@ -178,6 +182,10 @@ const filteredStacks = stacks?.filter((stack) => {
             <Table.Tbody>
               {filteredStacks?.map((stack) => {
                 const store = stores?.find((s) => s.id === stack.store_id);
+                const canUpdate = can('stacks', 'update');
+                const canDelete = can('stacks', 'delete');
+                const canView = can('stacks', 'read');
+                
                 return (
                   <Table.Tr key={stack.id}>
                     <Table.Td>{stack.code}</Table.Td>
@@ -199,23 +207,36 @@ const filteredStacks = stacks?.filter((stack) => {
                     </Table.Td>
                     <Table.Td>
                       <Group gap="xs" justify="flex-end">
-                        <ActionIcon
-                          variant="subtle"
-                          color="gray"
-                          onClick={() => navigate(`/stacks/${stack.id}/edit`)}
-                        >
-                          <IconEdit size={16} />
-                        </ActionIcon>
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          onClick={() => {
-                            setStackToDelete(stack.id);
-                            setDeleteModalOpen(true);
-                          }}
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
+                        {!canUpdate && !canDelete && canView && (
+                          <ActionIcon
+                            variant="subtle"
+                            color="blue"
+                            onClick={() => navigate(`/stacks/${stack.id}`)}
+                          >
+                            <IconEye size={16} />
+                          </ActionIcon>
+                        )}
+                        {canUpdate && (
+                          <ActionIcon
+                            variant="subtle"
+                            color="gray"
+                            onClick={() => navigate(`/stacks/${stack.id}/edit`)}
+                          >
+                            <IconEdit size={16} />
+                          </ActionIcon>
+                        )}
+                        {canDelete && (
+                          <ActionIcon
+                            variant="subtle"
+                            color="red"
+                            onClick={() => {
+                              setStackToDelete(stack.id);
+                              setDeleteModalOpen(true);
+                            }}
+                          >
+                            <IconTrash size={16} />
+                          </ActionIcon>
+                        )}
                       </Group>
                     </Table.Td>
                   </Table.Tr>

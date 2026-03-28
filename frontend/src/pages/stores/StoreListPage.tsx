@@ -15,17 +15,19 @@ import {
   Select,
   Badge,
 } from '@mantine/core';
-import { IconPlus, IconSearch, IconEdit, IconTrash } from '@tabler/icons-react';
+import { IconPlus, IconSearch, IconEdit, IconTrash, IconEye } from '@tabler/icons-react';
 import { getStores, deleteStore } from '../../api/stores';
 import { getWarehouses } from '../../api/warehouses';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
 import { notifications } from '@mantine/notifications';
+import { usePermission } from '../../hooks/usePermission';
 
 function StoreListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { can } = usePermission();
   const [search, setSearch] = useState('');
   const [warehouseFilter, setWarehouseFilter] = useState<string | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -100,9 +102,11 @@ function StoreListPage() {
             Manage storage spaces within warehouses
           </Text>
         </div>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => navigate('/stores/new')}>
-          Create Store
-        </Button>
+        {can('stores', 'create') && (
+          <Button leftSection={<IconPlus size={16} />} onClick={() => navigate('/stores/new')}>
+            Create Store
+          </Button>
+        )}
       </Group>
 
       <Group>
@@ -132,7 +136,7 @@ function StoreListPage() {
               : 'Get started by creating your first store'
           }
           action={
-            !search && !warehouseFilter
+            !search && !warehouseFilter && can('stores', 'create')
               ? {
                   label: 'Create Store',
                   onClick: () => navigate('/stores/new'),
@@ -158,6 +162,10 @@ function StoreListPage() {
             <Table.Tbody>
               {filteredStores?.map((store) => {
                 const warehouse = warehouses?.find((w) => w.id === store.warehouse_id);
+                const canUpdate = can('stores', 'update');
+                const canDelete = can('stores', 'delete');
+                const canView = can('stores', 'read');
+                
                 return (
                   <Table.Tr key={store.id}>
                     <Table.Td>{store.code}</Table.Td>
@@ -175,23 +183,36 @@ function StoreListPage() {
                     </Table.Td>
                     <Table.Td>
                       <Group gap="xs" justify="flex-end">
-                        <ActionIcon
-                          variant="subtle"
-                          color="gray"
-                          onClick={() => navigate(`/stores/${store.id}/edit`)}
-                        >
-                          <IconEdit size={16} />
-                        </ActionIcon>
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          onClick={() => {
-                            setStoreToDelete(store.id);
-                            setDeleteModalOpen(true);
-                          }}
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
+                        {!canUpdate && !canDelete && canView && (
+                          <ActionIcon
+                            variant="subtle"
+                            color="blue"
+                            onClick={() => navigate(`/stores/${store.id}`)}
+                          >
+                            <IconEye size={16} />
+                          </ActionIcon>
+                        )}
+                        {canUpdate && (
+                          <ActionIcon
+                            variant="subtle"
+                            color="gray"
+                            onClick={() => navigate(`/stores/${store.id}/edit`)}
+                          >
+                            <IconEdit size={16} />
+                          </ActionIcon>
+                        )}
+                        {canDelete && (
+                          <ActionIcon
+                            variant="subtle"
+                            color="red"
+                            onClick={() => {
+                              setStoreToDelete(store.id);
+                              setDeleteModalOpen(true);
+                            }}
+                          >
+                            <IconTrash size={16} />
+                          </ActionIcon>
+                        )}
                       </Group>
                     </Table.Td>
                   </Table.Tr>

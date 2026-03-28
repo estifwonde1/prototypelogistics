@@ -83,7 +83,6 @@ function WarehouseDetailPage() {
     initialValues: {
       total_area_sqm: '' as number | '',
       total_storage_capacity_mt: '' as number | '',
-      no_of_stores: '' as number | '',
       construction_year: '' as number | '',
       ownership_type: '',
     },
@@ -122,7 +121,6 @@ function WarehouseDetailPage() {
     capacityForm.setValues({
       total_area_sqm: warehouse.capacity?.total_area_sqm ?? '',
       total_storage_capacity_mt: warehouse.capacity?.total_storage_capacity_mt ?? '',
-      no_of_stores: warehouse.capacity?.no_of_stores ?? '',
       construction_year: warehouse.capacity?.construction_year ?? '',
       ownership_type: warehouse.ownership_type || '',
     });
@@ -153,7 +151,6 @@ function WarehouseDetailPage() {
       updateWarehouseCapacity(Number(id), {
         total_area_sqm: toNumber(payload.total_area_sqm),
         total_storage_capacity_mt: toNumber(payload.total_storage_capacity_mt),
-        no_of_stores: toNumber(payload.no_of_stores),
         construction_year: toNumber(payload.construction_year),
       }),
     onSuccess: () => {
@@ -706,7 +703,18 @@ function WarehouseDetailPage() {
               }
               readOnly
             />
-            <NumberInput label="Number of Stores" min={0} {...capacityForm.getInputProps('no_of_stores')} />
+            <TextInput
+              label="Number of Stores"
+              value={warehouseStores?.length?.toString() || '0'}
+              readOnly
+              styles={{
+                input: {
+                  backgroundColor: '#fff',
+                  color: '#000',
+                  cursor: 'default',
+                },
+              }}
+            />
             <NumberInput label="Construction Year" min={1900} max={new Date().getFullYear()} {...capacityForm.getInputProps('construction_year')} />
             <Group justify="flex-end">
               <Button variant="default" onClick={() => setCapacityModalOpen(false)}>Cancel</Button>
