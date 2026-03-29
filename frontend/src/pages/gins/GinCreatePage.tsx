@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
@@ -28,6 +28,7 @@ import { getStockBalances } from '../../api/stockBalances';
 import { notifications } from '@mantine/notifications';
 import type { GinItem } from '../../types/gin';
 import type { ApiError } from '../../types/common';
+import { useAuthStore } from '../../store/authStore';
 
 function GinCreatePage() {
   const destinationTypeOptions = [
@@ -37,12 +38,21 @@ function GinCreatePage() {
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const loggedInUserId = useAuthStore((s) => s.userId);
+  const defaultedIssuedByRef = useRef(false);
 
   // Form state
   const [referenceNo, setReferenceNo] = useState('');
   const [warehouseId, setWarehouseId] = useState<string | null>(null);
   const [issuedOn, setIssuedOn] = useState<Date | null>(new Date());
   const [issuedById, setIssuedById] = useState('');
+
+  useEffect(() => {
+    if (loggedInUserId != null && !defaultedIssuedByRef.current) {
+      setIssuedById(String(loggedInUserId));
+      defaultedIssuedByRef.current = true;
+    }
+  }, [loggedInUserId]);
   const [destinationType, setDestinationType] = useState('');
   const [destinationId, setDestinationId] = useState('');
   const [items, setItems] = useState<GinItem[]>([
@@ -81,7 +91,22 @@ function GinCreatePage() {
   const { data: stockBalances = [] } = useQuery({
     queryKey: ['stockBalances'],
     queryFn: getStockBalances,
+    refetchOnMount: 'always',
   });
+
+  useEffect(() => {
+    if (warehouseId !== null) return;
+    if (warehouses && warehouses.length === 1) {
+      setWarehouseId(String(warehouses[0].id));
+      return;
+    }
+    if ((!warehouses || warehouses.length === 0) && stores && stores.length > 0) {
+      const uniqueWarehouseIds = Array.from(new Set(stores.map((s) => s.warehouse_id)));
+      if (uniqueWarehouseIds.length === 1) {
+        setWarehouseId(String(uniqueWarehouseIds[0]));
+      }
+    }
+  }, [warehouses, stores, warehouseId]);
 
   const createMutation = useMutation({
     mutationFn: createGin,
@@ -120,14 +145,25 @@ function GinCreatePage() {
     setItems(items.filter((_, i) => i !== index));
   };
 
+  /** Always use functional updates so rapid multi-field edits (store + stack) don't clobber each other. */
   const handleItemChange = <K extends keyof GinItem>(
     index: number,
     field: K,
     value: GinItem[K]
   ) => {
-    const newItems = [...items];
-    newItems[index] = { ...newItems[index], [field]: value };
-    setItems(newItems);
+    setItems((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
+
+  const updateItemFields = (index: number, patch: Partial<GinItem>) => {
+    setItems((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], ...patch };
+      return next;
+    });
   };
 
   const handleSubmit = () => {
@@ -138,6 +174,15 @@ function GinCreatePage() {
       notifications.show({
         title: 'Validation Error',
         message: 'Please fill in all required fields',
+        color: 'red',
+      });
+      return;
+    }
+
+    if (!issuedById?.trim()) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Issued By (User ID) is required — it defaults to your account after login.',
         color: 'red',
       });
       return;
@@ -180,7 +225,7 @@ function GinCreatePage() {
       reference_no: referenceNo,
       warehouse_id: parseInt(effectiveWarehouseId),
       issued_on: issuedOn.toISOString().split('T')[0],
-      issued_by_id: issuedById ? parseInt(issuedById) : undefined,
+      issued_by_id: parseInt(issuedById.trim(), 10),
       destination_type: destinationType || undefined,
       destination_id: destinationId ? parseInt(destinationId) : undefined,
       items,
@@ -260,6 +305,37 @@ function GinCreatePage() {
         (item.stack_id ? balance.stack_id === item.stack_id : true)
     );
 
+  const applyCommoditySelection = (index: number, value: string | null) => {
+    setItems((prev) => {
+      const next = [...prev];
+      if (!value) {
+        next[index] = {
+          ...next[index],
+          commodity_id: 0,
+          unit_id: 0,
+          store_id: undefined,
+          stack_id: undefined,
+          quantity: 0,
+        };
+        return next;
+      }
+      const parts = value.split(':');
+      const commodityId = Number(parts[0]);
+      const unitId = Number(parts[1]);
+      const storeId = parts[2] !== undefined && parts[2] !== '' ? Number(parts[2]) : undefined;
+      const stackId = parts[3] !== undefined && parts[3] !== '' ? Number(parts[3]) : undefined;
+      next[index] = {
+        ...next[index],
+        commodity_id: commodityId,
+        unit_id: unitId,
+        store_id: storeId,
+        stack_id: stackId,
+        quantity: 0,
+      };
+      return next;
+    });
+  };
+
   return (
     <Stack gap="md">
       <Group justify="space-between">
@@ -295,6 +371,9 @@ function GinCreatePage() {
                     ...item,
                     store_id: undefined,
                     stack_id: undefined,
+                    commodity_id: 0,
+                    unit_id: 0,
+                    quantity: 0,
                   }))
                 );
               }}
@@ -314,6 +393,7 @@ function GinCreatePage() {
             <TextInput
               label="Issued By (User ID)"
               placeholder="Enter user ID"
+              description="Defaults to the signed-in user; required by the server."
               value={issuedById}
               onChange={(e) => setIssuedById(e.target.value)}
             />
@@ -392,17 +472,7 @@ function GinCreatePage() {
                             ? `${item.commodity_id}:${item.unit_id}:${item.store_id ?? ''}:${item.stack_id ?? ''}`
                             : null
                         }
-                        onChange={(value) => {
-                          if (!value) {
-                            handleItemChange(index, 'commodity_id', 0);
-                            handleItemChange(index, 'unit_id', 0);
-                            return;
-                          }
-
-                          const [commodityId, unitId] = value.split(':');
-                          handleItemChange(index, 'commodity_id', Number(commodityId));
-                          handleItemChange(index, 'unit_id', Number(unitId));
-                        }}
+                        onChange={(value) => applyCommoditySelection(index, value)}
                         searchable
                         clearable
                       />
@@ -437,11 +507,14 @@ function GinCreatePage() {
                         data={storeOptions || []}
                         value={item.store_id?.toString() || null}
                         onChange={(val) => {
-                          const nextStoreId = val ? parseInt(val) : undefined;
-                          handleItemChange(index, 'store_id', nextStoreId);
-                          handleItemChange(index, 'stack_id', undefined);
-                          handleItemChange(index, 'commodity_id', 0);
-                          handleItemChange(index, 'unit_id', 0);
+                          const nextStoreId = val ? parseInt(val, 10) : undefined;
+                          updateItemFields(index, {
+                            store_id: nextStoreId,
+                            stack_id: undefined,
+                            commodity_id: 0,
+                            unit_id: 0,
+                            quantity: 0,
+                          });
                         }}
                         searchable
                         clearable
@@ -452,13 +525,15 @@ function GinCreatePage() {
                         placeholder="Stack"
                         data={stackOptionsForItem(item.store_id)}
                         value={item.stack_id?.toString() || null}
-                        onChange={(val) =>
-                          {
-                            handleItemChange(index, 'stack_id', val ? parseInt(val) : undefined);
-                            handleItemChange(index, 'commodity_id', 0);
-                            handleItemChange(index, 'unit_id', 0);
-                          }
-                        }
+                        onChange={(val) => {
+                          const nextStackId = val ? parseInt(val, 10) : undefined;
+                          updateItemFields(index, {
+                            stack_id: nextStackId,
+                            commodity_id: 0,
+                            unit_id: 0,
+                            quantity: 0,
+                          });
+                        }}
                         searchable
                         clearable
                       />

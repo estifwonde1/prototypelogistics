@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
@@ -27,6 +27,7 @@ import { notifications } from '@mantine/notifications';
 import { QualityStatus, PackagingCondition } from '../../utils/constants';
 import type { InspectionItem } from '../../types/inspection';
 import type { ApiError } from '../../types/common';
+import { useAuthStore } from '../../store/authStore';
 
 function InspectionCreatePage() {
   const sourceTypeOptions = [
@@ -37,12 +38,21 @@ function InspectionCreatePage() {
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const loggedInUserId = useAuthStore((s) => s.userId);
+  const defaultedInspectorRef = useRef(false);
 
   // Form state
   const [referenceNo, setReferenceNo] = useState('');
   const [warehouseId, setWarehouseId] = useState<string | null>(null);
   const [inspectedOn, setInspectedOn] = useState<Date | null>(new Date());
   const [inspectorId, setInspectorId] = useState('');
+
+  useEffect(() => {
+    if (loggedInUserId != null && !defaultedInspectorRef.current) {
+      setInspectorId(String(loggedInUserId));
+      defaultedInspectorRef.current = true;
+    }
+  }, [loggedInUserId]);
   const [sourceType, setSourceType] = useState('');
   const [sourceId, setSourceId] = useState('');
   const [items, setItems] = useState<InspectionItem[]>([
@@ -245,6 +255,7 @@ function InspectionCreatePage() {
             <TextInput
               label="Inspector (User ID)"
               placeholder="Enter inspector user ID"
+              description="Defaults to the signed-in user; change if a different inspector applies."
               value={inspectorId}
               onChange={(e) => setInspectorId(e.target.value)}
             />

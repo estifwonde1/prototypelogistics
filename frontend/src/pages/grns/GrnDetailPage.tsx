@@ -20,17 +20,17 @@ import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { notifications } from '@mantine/notifications';
-import { DocumentStatus, ROLES, normalizeRoleSlug } from '../../utils/constants';
+import { DocumentStatus } from '../../utils/constants';
 import { useState } from 'react';
 import type { ApiError } from '../../types/common';
-import { useAuthStore } from '../../store/authStore';
+import { usePermission } from '../../hooks/usePermission';
 
 function GrnDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
-  const role = useAuthStore((state) => state.role);
+  const { can } = usePermission();
 
   const { data: grn, isLoading, error, refetch } = useQuery({
     queryKey: ['grn', id],
@@ -92,7 +92,7 @@ function GrnDetailPage() {
 
   const warehouse = warehouses?.find((w) => w.id === grn.warehouse_id);
   const isDraft = grn.status === DocumentStatus.DRAFT;
-  const canConfirm = normalizeRoleSlug(role) === ROLES.WAREHOUSE_MANAGER;
+  const canConfirm = can('grns', 'confirm');
 
   return (
     <Stack gap="md">
