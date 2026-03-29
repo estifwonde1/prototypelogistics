@@ -12,6 +12,10 @@ module Cats
       def units?
         facility_options?
       end
+
+      def transporters?
+        facility_options?
+      end
     end
   end
 end

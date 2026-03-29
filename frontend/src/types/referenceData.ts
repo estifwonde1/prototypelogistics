@@ -26,3 +26,11 @@ export interface UnitReference {
   abbreviation?: string | null;
   unit_type?: string | null;
 }
+
+export interface TransporterReference {
+  id: number;
+  code?: string | null;
+  name: string;
+  address?: string | null;
+  contact_phone?: string | null;
+}

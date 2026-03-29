@@ -1,6 +1,11 @@
 import apiClient from './client';
 import type { ApiResponse } from '../types/common';
-import type { CommodityReference, FacilityOptions, UnitReference } from '../types/referenceData';
+import type {
+  CommodityReference,
+  FacilityOptions,
+  TransporterReference,
+  UnitReference,
+} from '../types/referenceData';
 
 export const getFacilityOptions = async (): Promise<FacilityOptions> => {
   const response = await apiClient.get<ApiResponse<FacilityOptions>>('/reference_data/facility_options');
@@ -19,4 +24,11 @@ export const getUnitReferences = async (): Promise<UnitReference[]> => {
     '/reference_data/units'
   );
   return response.data.data.units;
+};
+
+export const getTransporterReferences = async (): Promise<TransporterReference[]> => {
+  const response = await apiClient.get<ApiResponse<{ transporters: TransporterReference[] }>>(
+    '/reference_data/transporters'
+  );
+  return response.data.data.transporters;
 };

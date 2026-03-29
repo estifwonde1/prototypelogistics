@@ -45,6 +45,24 @@ module Cats
 
         render_success(units: units)
       end
+
+      def transporters
+        authorize :reference_data, :transporters?, policy_class: ReferenceDataPolicy
+
+        transporters = Cats::Core::Transporter
+          .order(:name, :code, :id)
+          .map do |t|
+            {
+              id: t.id,
+              code: t.code,
+              name: t.name,
+              address: t.address,
+              contact_phone: t.contact_phone
+            }
+          end
+
+        render_success(transporters: transporters)
+      end
     end
   end
 end

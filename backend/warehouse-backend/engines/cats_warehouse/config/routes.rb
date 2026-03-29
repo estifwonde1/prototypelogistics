@@ -18,6 +18,7 @@ Cats::Warehouse::Engine.routes.draw do
     get "reference_data/facility_options", to: "reference_data#facility_options"
     get "reference_data/commodities", to: "reference_data#commodities"
     get "reference_data/units", to: "reference_data#units"
+    get "reference_data/transporters", to: "reference_data#transporters"
     post "locations", to: "locations#create"
 
     resources :geos, only: [ :create, :update ]

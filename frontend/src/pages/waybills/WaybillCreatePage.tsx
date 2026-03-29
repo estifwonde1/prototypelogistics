@@ -18,6 +18,11 @@ import {
 import { DateInput } from '@mantine/dates';
 import { IconTrash, IconPlus } from '@tabler/icons-react';
 import { createWaybill } from '../../api/waybills';
+import {
+  getCommodityReferences,
+  getTransporterReferences,
+  getUnitReferences,
+} from '../../api/referenceData';
 import { getWarehouses } from '../../api/warehouses';
 import { notifications } from '@mantine/notifications';
 import type { WaybillItem, WaybillTransport } from '../../types/waybill';
@@ -36,7 +41,7 @@ function WaybillCreatePage() {
   const [dispatchId, setDispatchId] = useState('');
 
   // Form state - Transport
-  const [transporterId, setTransporterId] = useState('');
+  const [transporterId, setTransporterId] = useState<string | null>(null);
   const [vehiclePlateNo, setVehiclePlateNo] = useState('');
   const [driverName, setDriverName] = useState('');
   const [driverPhone, setDriverPhone] = useState('');
@@ -54,6 +59,36 @@ function WaybillCreatePage() {
     queryKey: ['warehouses'],
     queryFn: getWarehouses,
   });
+
+  const { data: transporters = [] } = useQuery({
+    queryKey: ['reference_data', 'transporters'],
+    queryFn: getTransporterReferences,
+  });
+
+  const { data: commodities = [] } = useQuery({
+    queryKey: ['reference-data', 'commodities'],
+    queryFn: getCommodityReferences,
+  });
+
+  const { data: units = [] } = useQuery({
+    queryKey: ['reference-data', 'units'],
+    queryFn: getUnitReferences,
+  });
+
+  const transporterOptions = transporters.map((t) => ({
+    value: String(t.id),
+    label: t.code ? `${t.code} — ${t.name}` : t.name,
+  }));
+
+  const commodityOptions = commodities.map((c) => ({
+    value: String(c.id),
+    label: c.code ? `${c.name} (${c.code})` : c.name,
+  }));
+
+  const unitOptions = units.map((u) => ({
+    value: String(u.id),
+    label: u.abbreviation ? `${u.name} (${u.abbreviation})` : u.name,
+  }));
 
   const availableWarehouses = warehouses
     .filter((warehouse) => warehouse.location_id)
@@ -123,6 +158,18 @@ function WaybillCreatePage() {
     setItems(newItems);
   };
 
+  const handleCommoditySelect = (index: number, commodityIdStr: string | null) => {
+    const id = commodityIdStr ? parseInt(commodityIdStr, 10) : 0;
+    const commodity = commodities.find((c) => c.id === id);
+    const newItems = [...items];
+    newItems[index] = {
+      ...newItems[index],
+      commodity_id: id,
+      unit_id: commodity?.unit_id ?? 0,
+    };
+    setItems(newItems);
+  };
+
   const handleSubmit = () => {
     if (!referenceNo || !issuedOn || !sourceWarehouseId || !destinationWarehouseId) {
       notifications.show({
@@ -133,7 +180,7 @@ function WaybillCreatePage() {
       return;
     }
 
-    if (!transporterId || !vehiclePlateNo || !driverName || !driverPhone) {
+    if (!transporterId || !vehiclePlateNo.trim() || !driverName.trim() || !driverPhone.trim()) {
       notifications.show({
         title: 'Validation Error',
         message: 'Please fill in all transport details',
@@ -142,10 +189,13 @@ function WaybillCreatePage() {
       return;
     }
 
-    if (items.length === 0 || items.some((item) => !item.commodity_id || !item.quantity)) {
+    if (
+      items.length === 0 ||
+      items.some((item) => !item.commodity_id || !item.unit_id || !item.quantity)
+    ) {
       notifications.show({
         title: 'Validation Error',
-        message: 'Please add at least one valid item',
+        message: 'Each line item needs a commodity, unit, and quantity.',
         color: 'red',
       });
       return;
@@ -170,7 +220,7 @@ function WaybillCreatePage() {
     }
 
     const transport: WaybillTransport = {
-      transporter_id: parseInt(transporterId),
+      transporter_id: parseInt(transporterId, 10),
       vehicle_plate_no: vehiclePlateNo,
       driver_name: driverName,
       driver_phone: driverPhone,
@@ -255,11 +305,13 @@ function WaybillCreatePage() {
           <Title order={4}>Transport Details</Title>
 
           <Group grow>
-            <TextInput
-              label="Transporter ID"
-              placeholder="Enter transporter ID"
+            <Select
+              label="Transporter"
+              placeholder="Select transporter"
+              data={transporterOptions}
               value={transporterId}
-              onChange={(e) => setTransporterId(e.target.value)}
+              onChange={setTransporterId}
+              searchable
               required
             />
             <TextInput
@@ -307,9 +359,9 @@ function WaybillCreatePage() {
             <Table>
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th>Commodity ID</Table.Th>
+                  <Table.Th>Commodity</Table.Th>
                   <Table.Th>Quantity</Table.Th>
-                  <Table.Th>Unit ID</Table.Th>
+                  <Table.Th>Unit</Table.Th>
                   <Table.Th style={{ width: 50 }}>Actions</Table.Th>
                 </Table.Tr>
               </Table.Thead>
@@ -317,14 +369,13 @@ function WaybillCreatePage() {
                 {items.map((item, index) => (
                   <Table.Tr key={index}>
                     <Table.Td>
-                      <NumberInput
-                        placeholder="Commodity ID"
-                        value={item.commodity_id || ''}
-                        onChange={(val) =>
-                          handleItemChange(index, 'commodity_id', Number(val))
-                        }
-                        min={1}
-                        hideControls
+                      <Select
+                        placeholder="Select commodity"
+                        data={commodityOptions}
+                        value={item.commodity_id ? String(item.commodity_id) : null}
+                        onChange={(value) => handleCommoditySelect(index, value)}
+                        searchable
+                        clearable
                       />
                     </Table.Td>
                     <Table.Td>
@@ -337,12 +388,15 @@ function WaybillCreatePage() {
                       />
                     </Table.Td>
                     <Table.Td>
-                      <NumberInput
-                        placeholder="Unit ID"
-                        value={item.unit_id || ''}
-                        onChange={(val) => handleItemChange(index, 'unit_id', Number(val))}
-                        min={1}
-                        hideControls
+                      <Select
+                        placeholder="Unit"
+                        data={unitOptions}
+                        value={item.unit_id ? String(item.unit_id) : null}
+                        onChange={(value) =>
+                          handleItemChange(index, 'unit_id', value ? parseInt(value, 10) : 0)
+                        }
+                        searchable
+                        clearable
                       />
                     </Table.Td>
                     <Table.Td>

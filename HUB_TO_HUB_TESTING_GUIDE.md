@@ -254,7 +254,7 @@ After running `rails db:seed`, the database contains:
 
 | Field | Value |
 |-------|-------|
-| Transporter ID | ID of **Addis Transport PLC** (check the dropdown or use the ID from seed) |
+| Transporter | **ADD-TR-01 — Addis Transport PLC** (dropdown lists seeded transporters) |
 | Vehicle Plate No | `AA-12345` |
 | Driver Name | `Tesfaye Kebede` |
 | Driver Phone | `0915000001` |
