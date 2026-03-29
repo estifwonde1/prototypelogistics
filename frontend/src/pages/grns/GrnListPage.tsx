@@ -143,14 +143,16 @@ function GrnListPage() {
                       {new Date(grn.received_on).toLocaleDateString()}
                     </Table.Td>
                     <Table.Td>
-                      {grn.source_type && grn.source_id
-                        ? `${grn.source_type} (${grn.source_id})`
+                      {grn.source_type
+                        ? grn.source_reference
+                          ? `${grn.source_type} (${grn.source_reference})`
+                          : grn.source_type
                         : '-'}
                     </Table.Td>
                     <Table.Td>
                       <StatusBadge status={grn.status} />
                     </Table.Td>
-                    <Table.Td>{grn.received_by_id || '-'}</Table.Td>
+                    <Table.Td>{grn.received_by_name || '-'}</Table.Td>
                     <Table.Td>
                       <Group gap="xs" justify="flex-end" onClick={(e) => e.stopPropagation()}>
                         <ActionIcon

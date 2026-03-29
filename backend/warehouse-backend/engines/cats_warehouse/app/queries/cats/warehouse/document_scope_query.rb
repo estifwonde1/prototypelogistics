@@ -45,7 +45,8 @@ module Cats
         return scoped_relation if access.admin?
 
         scoped_relation
-          .where(store_id: access.accessible_store_ids)
+          .where(warehouse_id: access.accessible_warehouse_ids)
+          .or(scoped_relation.where(store_id: access.accessible_store_ids))
           .or(scoped_relation.where(stack_id: access.accessible_stack_ids))
       end
 
