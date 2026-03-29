@@ -3,13 +3,13 @@ module Cats
     class GrnsController < BaseController
       def index
         authorize Grn
-        render_resource(policy_scope(Grn).includes(:grn_items).order(created_at: :desc), each_serializer: GrnSerializer)
+        render_resource(policy_scope(Grn).includes(:warehouse, :grn_items).order(created_at: :desc), each_serializer: GrnSerializer)
       end
 
       def show
-        grn = policy_scope(Grn).includes(:grn_items).find(params[:id])
+        grn = policy_scope(Grn).includes(:warehouse, :grn_items).find(params[:id])
         authorize grn
-        render_resource(grn, serializer: GrnSerializer)
+        render_grn_payload(grn)
       end
 
       def create
@@ -26,19 +26,30 @@ module Cats
           status: payload[:status] || "Draft"
         ).call
 
-        render_resource(grn, status: :created, serializer: GrnSerializer)
+        render_grn_payload(grn, status: :created)
       end
 
       def confirm
-        grn = policy_scope(Grn).find(params[:id])
+        grn = policy_scope(Grn).includes(:warehouse).find(params[:id])
         authorize grn, :confirm?
         approved_by = params[:approved_by_id].present? ? Cats::Core::User.find(params[:approved_by_id]) : nil
 
         GrnConfirmer.new(grn: grn, approved_by: approved_by).call
-        render_resource(grn, serializer: GrnSerializer)
+        grn.reload
+        render_grn_payload(grn)
       end
 
       private
+
+      def render_grn_payload(grn, status: :ok)
+        grn = Grn.includes(:warehouse, :grn_items).find(grn.id)
+        payload = ActiveModelSerializers::SerializableResource.new(
+          grn,
+          serializer: GrnSerializer
+        ).as_json
+        payload = payload.merge(can_confirm: GrnPolicy.new(current_user, grn).confirm?)
+        render_success(payload, status: status)
+      end
 
       def grn_params
         payload = normalize_payload_aliases(params.require(:payload), items: :grn_items)

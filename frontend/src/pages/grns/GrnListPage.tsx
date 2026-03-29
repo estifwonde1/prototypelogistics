@@ -130,7 +130,14 @@ function GrnListPage() {
             </Table.Thead>
             <Table.Tbody>
               {filteredGrns?.map((grn) => {
-                const warehouse = warehouses?.find((w) => w.id === grn.warehouse_id);
+                const warehouse = warehouses?.find(
+                  (w) => Number(w.id) === Number(grn.warehouse_id)
+                );
+                const warehouseLabel =
+                  grn.warehouse_name?.trim() ||
+                  warehouse?.name?.trim() ||
+                  (grn.warehouse_code ? String(grn.warehouse_code) : null) ||
+                  `ID: ${grn.warehouse_id}`;
                 return (
                   <Table.Tr
                     key={grn.id}
@@ -138,7 +145,7 @@ function GrnListPage() {
                     onClick={() => navigate(`/grns/${grn.id}`)}
                   >
                     <Table.Td style={{ fontWeight: 600 }}>{grn.reference_no}</Table.Td>
-                    <Table.Td>{warehouse?.name || `ID: ${grn.warehouse_id}`}</Table.Td>
+                    <Table.Td>{warehouseLabel}</Table.Td>
                     <Table.Td>
                       {new Date(grn.received_on).toLocaleDateString()}
                     </Table.Td>

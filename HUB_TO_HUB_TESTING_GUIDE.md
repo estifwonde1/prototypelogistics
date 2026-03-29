@@ -334,6 +334,8 @@ Still logged in as `hub_manager@example.com`:
 - Status: **Draft** → **Confirmed**
 - Stock balance for Rice at Yeka Logistics Warehouse **increases by 500 kg**
 
+> **Authorization:** Only the **warehouse manager assigned to Yeka Logistics Warehouse** (and admins) can confirm this GRN. The Bole warehouse manager does not see **Confirm GRN** on this document.
+
 ---
 
 ## STEP 6: Final Verification

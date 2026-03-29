@@ -2,6 +2,10 @@ export interface Grn {
   id: number;
   reference_no: string;
   warehouse_id: number;
+  warehouse_name?: string;
+  warehouse_code?: string;
+  /** Server: whether the current user may confirm this GRN (warehouse-scoped for managers). */
+  can_confirm?: boolean;
   received_on: string;
   source_type?: string;
   source_id?: number;

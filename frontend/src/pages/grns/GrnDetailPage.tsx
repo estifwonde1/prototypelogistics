@@ -90,9 +90,25 @@ function GrnDetailPage() {
     );
   }
 
-  const warehouse = warehouses?.find((w) => w.id === grn.warehouse_id);
+  const warehouse = warehouses?.find(
+    (w) => Number(w.id) === Number(grn.warehouse_id)
+  );
+  const warehouseLabel =
+    grn.warehouse_name?.trim() ||
+    warehouse?.name?.trim() ||
+    (grn.warehouse_code ? `${grn.warehouse_code}` : null) ||
+    `ID: ${grn.warehouse_id}`;
+
   const isDraft = grn.status === DocumentStatus.DRAFT;
-  const canConfirm = can('grns', 'confirm');
+  const warehouseInScope = warehouses?.some(
+    (w) => Number(w.id) === Number(grn.warehouse_id)
+  );
+  /** Prefer server flag; fallback if older API omitted it (scoped user can see this warehouse). */
+  const canConfirm =
+    isDraft &&
+    can('grns', 'confirm') &&
+    (grn.can_confirm === true ||
+      (grn.can_confirm === undefined && Boolean(warehouseInScope)));
 
   return (
     <Stack gap="md">
@@ -141,7 +157,7 @@ function GrnDetailPage() {
               <Text size="sm" c="dimmed">
                 Warehouse
               </Text>
-              <Text fw={600}>{warehouse?.name || `ID: ${grn.warehouse_id}`}</Text>
+              <Text fw={600}>{warehouseLabel}</Text>
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 6 }}>
               <Text size="sm" c="dimmed">
