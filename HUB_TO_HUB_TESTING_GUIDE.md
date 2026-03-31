@@ -221,14 +221,16 @@ After running `rails db:seed`, the database contains:
 
 **Expected:**
 - Status: **Draft** → **Confirmed**
-- Stock balance for Rice at Bole Central Warehouse **decreases by 500 kg**
+- On the **same store/stack** you used for the GIN line, **Rice decreases by 500 kg** (versus right after the GRN was confirmed).
 
 ### 3C — Verify Stock Balance Decreased
 
 1. Go to **Stock Balances**
-2. Check Rice at Bole Central Warehouse
+2. In the search box, type **Rice** so you only see Rice rows.
+3. Remember: **Rice may appear on more than one stack** at Bole (seed data). Only the stack you chose in the GIN (Step 3) drops by **500 kg**; other Rice stacks stay unchanged.
+4. Optional: set **Group by** to **Commodity** — you’ll see a **Total** for Rice; that total should be **500 kg less** than it was **immediately after you confirmed the Step 1 GRN** (not less than “before Step 1” — see Step 6).
 
-**Expected:** The 500 kg you received in Step 1 should now be gone (balance back to pre-GRN level).
+**Expected:** Versus the moment **after** `GRN-BOLE-TEST-001` was confirmed, total **Rice (kg)** at Bole is **500 kg lower** once the GIN is confirmed. Versus **before Step 1**, total Rice at Bole is **back to the same level** (net +500 then −500).
 
 ---
 
@@ -254,7 +256,7 @@ After running `rails db:seed`, the database contains:
 
 | Field | Value |
 |-------|-------|
-| Transporter ID | ID of **Addis Transport PLC** (check the dropdown or use the ID from seed) |
+| Transporter | **ADD-TR-01 — Addis Transport PLC** (dropdown lists seeded transporters) |
 | Vehicle Plate No | `AA-12345` |
 | Driver Name | `Tesfaye Kebede` |
 | Driver Phone | `0915000001` |
@@ -334,6 +336,8 @@ Still logged in as `hub_manager@example.com`:
 - Status: **Draft** → **Confirmed**
 - Stock balance for Rice at Yeka Logistics Warehouse **increases by 500 kg**
 
+> **Authorization:** Only the **warehouse manager assigned to Yeka Logistics Warehouse** (and admins) can confirm this GRN. The Bole warehouse manager does not see **Confirm GRN** on this document.
+
 ---
 
 ## STEP 6: Final Verification
@@ -343,12 +347,22 @@ Still logged in as `hub_manager@example.com`:
 **Login as any user with stock balance access** (admin, hub manager, warehouse manager)
 
 1. Go to **Stock Balances**
-2. Check both warehouses:
+2. Use the search box **Rice** and (optional) **Filter by warehouse** so you are not distracted by Wheat, Oil, etc.
+3. **Do not confuse the “Total Stock” summary card** with Rice only — it adds **all commodities** and even mixes **kg + l** as one number; use the **table rows** (or **Group by → Commodity**) for Rice.
 
-| Warehouse | Rice Balance | Expected Change |
-|-----------|-------------|-----------------|
-| **Bole Central Warehouse** | Should be **−500** from before Step 1 | Received 500 (GRN) then issued 500 (GIN) = net zero change |
-| **Yeka Logistics Warehouse** | Should be **+500** from before Step 5 | Received 500 (GRN) |
+**How to read Bole after the full flow**
+
+| Question | What to check |
+|----------|----------------|
+| Did the GIN actually remove 500 kg? | **Yes** if total **Rice (kg)** at Bole dropped by **500** compared to **right after** you confirmed `GRN-BOLE-TEST-001` (Step 1). |
+| Should total Rice be lower than *before* the test? | **No.** Versus **before Step 1**, total Rice at Bole should be **net unchanged**: +500 (GRN) and −500 (GIN) cancel out. |
+
+**Why you might see two Rice lines at Bole:** Seeds put Rice on more than one stack. You only issue from **one** stack in Step 3 — only that line (or the **Group by → Commodity** total) should drop by 500 kg versus post-GRN.
+
+| Warehouse | Rice (kg) — what “success” looks like |
+|-----------|----------------------------------------|
+| **Bole Central Warehouse** | Same **total Rice** as **before Step 1**; **500 kg less** than **right after** Step 1 GRN confirm. |
+| **Yeka Logistics Warehouse** | **+500 kg** Rice versus **before Step 5** GRN (e.g. one row at **500** if that was the only receipt). |
 
 ### Check Bin Card Report
 
@@ -426,5 +440,6 @@ Hub Manager
 | GIN says quantity exceeds balance | GRN wasn't confirmed yet | Go confirm the GRN first, then retry |
 | Confirm button returns 403 | Your role can't confirm this document type | Switch to the correct role (see table above) |
 | Stock balance didn't change after GRN confirm | Might be cached | Refresh the page; check the correct warehouse filter |
+| Bole “Total Stock” unchanged / Rice looks wrong | **Total Stock** sums every commodity (and mixes kg + liters); Rice may sit on **multiple stacks** | Search **Rice**, use **Group by → Commodity**; compare Rice **total** to **after Step 1 GRN** (−500 after GIN), not to “before Step 1” (net zero) |
 | Waybill source/destination same error | You picked the same warehouse for both | Pick different warehouses |
 | No commodities in GIN dropdown | No stock balance exists for that warehouse | Create and confirm a GRN first |

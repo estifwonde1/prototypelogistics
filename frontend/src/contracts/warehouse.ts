@@ -98,7 +98,8 @@ export const ROLE_CAPABILITIES: Record<RoleSlug, PermissionMatrix> = {
     grns: ['read'],
     gins: ['read'],
     inspections: ['read'],
-    waybills: ['read'],
+    // Matches WaybillPolicy: hub_manager can create/confirm waybills
+    waybills: ['read', 'create', 'confirm'],
     stock_balances: ['read'],
     receipts: ['read'],
     dispatches: ['read'],

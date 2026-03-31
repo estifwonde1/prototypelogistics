@@ -45,48 +45,22 @@ FactoryBot.define do
   end
 
   factory :cats_core_user, class: "Cats::Core::User" do
-    first_name { "Test" }
-    last_name { "User" }
-    email { generate(:core_email) }
-    password { "Password1!" }
-    active { true }
-    application_module { association :cats_core_application_module }
-
     transient do
       role_name { nil }
-    end
-
-    after(:create) do |user, evaluator|
-      next if evaluator.role_name.blank?
-
-      role = Cats::Core::Role.find_or_create_by!(name: evaluator.role_name, application_module: user.application_module)
-      user.roles << role unless user.roles.exists?(role.id)
-    end
-  end
-
-  factory :cats_core_commodity, class: "Cats::Core::Commodity" do
-    batch_no { "BATCH-#{generate(:core_code)}" }
-    unit_of_measure { association :cats_core_unit_of_measure }
-    project { association :cats_core_project }
-    quantity { 100 }
-    best_use_before { Date.today + 365 }
-  end
-
-  factory :cats_core_user, class: "Cats::Core::User" do
-    transient do
-      role_name { nil }
+      module_prefix { Cats::Warehouse::WarehouseModule::PREFIX }
+      module_name { "Warehouse" }
     end
 
     first_name { "Test" }
     last_name { generate(:core_name) }
-    email { "user#{SecureRandom.hex(4)}@example.com" }
+    email { generate(:core_email) }
     phone_number { "0919000000" }
     password { "Password1!" }
     password_confirmation { "Password1!" }
     active { true }
     application_module do
-      Cats::Core::ApplicationModule.find_or_create_by!(prefix: Cats::Warehouse::WarehouseModule::PREFIX) do |record|
-        record.name = "Warehouse"
+      Cats::Core::ApplicationModule.find_or_create_by!(prefix: module_prefix) do |record|
+        record.name = module_name
       end
     end
 
@@ -97,7 +71,20 @@ FactoryBot.define do
         name: evaluator.role_name,
         application_module: user.application_module
       )
-      user.roles << role unless user.roles.include?(role)
+      user.roles << role unless user.roles.exists?(role.id)
     end
+
+    trait :core_module do
+      module_prefix { "core" }
+      module_name { "Core" }
+    end
+  end
+
+  factory :cats_core_commodity, class: "Cats::Core::Commodity" do
+    batch_no { "BATCH-#{generate(:core_code)}" }
+    unit_of_measure { association :cats_core_unit_of_measure }
+    project { association :cats_core_project }
+    quantity { 100 }
+    best_use_before { Date.today + 365 }
   end
 end

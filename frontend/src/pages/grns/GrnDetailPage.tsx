@@ -23,12 +23,14 @@ import { notifications } from '@mantine/notifications';
 import { DocumentStatus } from '../../utils/constants';
 import { useState } from 'react';
 import type { ApiError } from '../../types/common';
+import { usePermission } from '../../hooks/usePermission';
 
 function GrnDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
+  const { can } = usePermission();
 
   const { data: grn, isLoading, error, refetch } = useQuery({
     queryKey: ['grn', id],
@@ -88,8 +90,25 @@ function GrnDetailPage() {
     );
   }
 
-  const warehouse = warehouses?.find((w) => w.id === grn.warehouse_id);
+  const warehouse = warehouses?.find(
+    (w) => Number(w.id) === Number(grn.warehouse_id)
+  );
+  const warehouseLabel =
+    grn.warehouse_name?.trim() ||
+    warehouse?.name?.trim() ||
+    (grn.warehouse_code ? `${grn.warehouse_code}` : null) ||
+    `ID: ${grn.warehouse_id}`;
+
   const isDraft = grn.status === DocumentStatus.DRAFT;
+  const warehouseInScope = warehouses?.some(
+    (w) => Number(w.id) === Number(grn.warehouse_id)
+  );
+  /** Prefer server flag; fallback if older API omitted it (scoped user can see this warehouse). */
+  const canConfirm =
+    isDraft &&
+    can('grns', 'confirm') &&
+    (grn.can_confirm === true ||
+      (grn.can_confirm === undefined && Boolean(warehouseInScope)));
 
   return (
     <Stack gap="md">
@@ -109,7 +128,7 @@ function GrnDetailPage() {
             </Text>
           </div>
         </Group>
-        {isDraft && (
+        {isDraft && canConfirm && (
           <Button
             leftSection={<IconCheck size={16} />}
             color="green"
@@ -138,7 +157,7 @@ function GrnDetailPage() {
               <Text size="sm" c="dimmed">
                 Warehouse
               </Text>
-              <Text fw={600}>{warehouse?.name || `ID: ${grn.warehouse_id}`}</Text>
+              <Text fw={600}>{warehouseLabel}</Text>
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 6 }}>
               <Text size="sm" c="dimmed">
@@ -150,7 +169,7 @@ function GrnDetailPage() {
               <Text size="sm" c="dimmed">
                 Received By
               </Text>
-              <Text fw={600}>{grn.received_by_id || '-'}</Text>
+              <Text fw={600}>{grn.received_by_name || '-'}</Text>
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 6 }}>
               <Text size="sm" c="dimmed">
@@ -160,16 +179,16 @@ function GrnDetailPage() {
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 6 }}>
               <Text size="sm" c="dimmed">
-                Source ID
+                Source Reference
               </Text>
-              <Text fw={600}>{grn.source_id || '-'}</Text>
+              <Text fw={600}>{grn.source_reference || grn.source_id || '-'}</Text>
             </Grid.Col>
             {grn.approved_by_id && (
               <Grid.Col span={{ base: 12, sm: 6 }}>
                 <Text size="sm" c="dimmed">
                   Approved By
                 </Text>
-                <Text fw={600}>{grn.approved_by_id}</Text>
+                <Text fw={600}>{grn.approved_by_name || grn.approved_by_id}</Text>
               </Grid.Col>
             )}
           </Grid>
@@ -247,24 +266,26 @@ function GrnDetailPage() {
         </Stack>
       </Card>
 
-      <Modal
-        opened={confirmModalOpen}
-        onClose={() => setConfirmModalOpen(false)}
-        title="Confirm GRN"
-      >
-        <Text mb="md">
-          Are you sure you want to confirm this GRN? This will update stock balances and
-          cannot be undone.
-        </Text>
-        <Group justify="flex-end">
-          <Button variant="default" onClick={() => setConfirmModalOpen(false)}>
-            Cancel
-          </Button>
-          <Button color="green" onClick={handleConfirm} loading={confirmMutation.isPending}>
-            Confirm
-          </Button>
-        </Group>
-      </Modal>
+      {canConfirm ? (
+        <Modal
+          opened={confirmModalOpen}
+          onClose={() => setConfirmModalOpen(false)}
+          title="Confirm GRN"
+        >
+          <Text mb="md">
+            Are you sure you want to confirm this GRN? This will update stock balances and
+            cannot be undone.
+          </Text>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setConfirmModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button color="green" onClick={handleConfirm} loading={confirmMutation.isPending}>
+              Confirm
+            </Button>
+          </Group>
+        </Modal>
+      ) : null}
     </Stack>
   );
 }

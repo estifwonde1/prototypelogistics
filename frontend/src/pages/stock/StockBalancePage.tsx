@@ -29,6 +29,7 @@ function StockBalancePage() {
   const { data: stockBalances, isLoading, error, refetch } = useQuery({
     queryKey: ['stockBalances'],
     queryFn: getStockBalances,
+    refetchOnMount: 'always',
   });
 
   const { data: warehouses } = useQuery({
@@ -174,6 +175,10 @@ function StockBalancePage() {
               </Text>
               <Text size="xl" fw={700}>
                 {stats.totalQuantity.toLocaleString()}
+              </Text>
+              <Text size="xs" c="dimmed" maw={280}>
+                Sum of all line quantities (all commodities; kg and l are added as plain numbers — use search / Group by
+                for one commodity).
               </Text>
             </div>
           </Group>

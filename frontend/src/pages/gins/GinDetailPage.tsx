@@ -22,12 +22,14 @@ import { notifications } from '@mantine/notifications';
 import { DocumentStatus } from '../../utils/constants';
 import { useState } from 'react';
 import type { ApiError } from '../../types/common';
+import { usePermission } from '../../hooks/usePermission';
 
 function GinDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
+  const { can } = usePermission();
 
   const { data: gin, isLoading, error, refetch } = useQuery({
     queryKey: ['gin', id],
@@ -89,6 +91,7 @@ function GinDetailPage() {
 
   const warehouse = warehouses?.find((w) => w.id === gin.warehouse_id);
   const isDraft = gin.status === DocumentStatus.DRAFT;
+  const canConfirmGin = can('gins', 'confirm');
 
   return (
     <Stack gap="md">
@@ -108,7 +111,7 @@ function GinDetailPage() {
             </Text>
           </div>
         </Group>
-        {isDraft && (
+        {isDraft && canConfirmGin && (
           <Button
             leftSection={<IconCheck size={16} />}
             color="green"
