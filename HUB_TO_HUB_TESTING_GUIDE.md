@@ -1,6 +1,6 @@
-# Hub-to-Hub Commodity Transfer — Full Testing Guide
+# Hub-to-Hub Commodity Transfer — Full End-to-End Testing Guide
 
-This guide walks through a **complete commodity transfer** from **Bole Hub** to **Yeka Hub** using the CATS Warehouse Management System. Every step tells you **which user to log in as**, **which page to go to**, and **exactly what to fill in**.
+This guide walks through a **complete commodity transfer** from **Bole Hub** to **Yeka Hub** using the CATS Warehouse Management System — starting from the **Dispatch Planner** who creates the movement plan, through **Hub Officers** who authorize it, and into the operational execution at source and destination hubs. Every step tells you **which user to log in as**, **which page to go to**, and **exactly what to fill in**.
 
 ---
 
@@ -20,6 +20,16 @@ After running `rails db:seed`, the database contains:
 | `warehouse_manager2@example.com` | `newpassword123` | Warehouse Manager | **Yeka Logistics Warehouse** |
 | `store_keeper@example.com` | `password123` | Storekeeper | Bole Store 1 |
 | `store_keeper2@example.com` | `password123` | Storekeeper | Yeka Store |
+
+### Planner & Officer Users (created in Phase 0 below)
+
+These users do NOT exist in seed data — you create them via Admin in Phase 0.
+
+| Email | Password | Role | Assigned To |
+|-------|----------|------|-------------|
+| `planner@example.com` | `newpassword123` | Dispatch Planner | System-wide (no hub assignment needed) |
+| `dispatch_officer@example.com` | `newpassword123` | Hub Dispatch Officer | **Bole Hub** |
+| `dispatch_approver@example.com` | `newpassword123` | Hub Dispatch Approver | **Yeka Hub** |
 
 ### Infrastructure (already seeded)
 
@@ -57,12 +67,256 @@ After running `rails db:seed`, the database contains:
 
 | Phase | What Happens | Who Does It |
 |-------|-------------|-------------|
+| **0A** | Create planner & officer users and assign them | Admin |
+| **0B** | Create Dispatch Plan and Plan Items | Dispatch Planner |
+| **0C** | Authorize Source hub store | Hub Dispatch Officer (Bole) |
+| **0D** | Authorize Destination hub store | Hub Dispatch Approver (Yeka) |
+| **0E** | Verify plan item is Dispatchable | Dispatch Planner |
+| **0F** | Create Dispatch from authorized plan item | Dispatch Planner |
 | 1 | Receive Rice into Bole warehouse | Storekeeper creates GRN → Warehouse Manager confirms |
 | 2 | Inspect the received goods | Storekeeper creates Inspection → Warehouse Manager confirms |
 | 3 | Issue Rice out of Bole warehouse | Storekeeper creates GIN → Warehouse Manager confirms |
-| 4 | Document the shipment | Hub Manager creates Waybill → Hub Manager confirms |
+| 4 | Document the shipment (Waybill linked to Dispatch) | Hub Manager creates Waybill → Hub Manager confirms |
 | 5 | Receive Rice into Yeka warehouse | Storekeeper 2 creates GRN → Warehouse Manager 2 confirms |
 | 6 | Verify everything | Check Stock Balances and Bin Card at both hubs |
+
+---
+
+## PHASE 0: Planning and Authorization (New Planner Flow)
+
+This phase is the **real-world prerequisite** — a Dispatch Planner creates the movement plan, hub officers authorize both ends, and only then can execution documents (GRN/GIN/Waybill) be created.
+
+---
+
+### STEP 0A — Admin Creates Planner & Officer Users
+
+**Login as:** `admin@example.com` / `newpassword123`
+
+**Create the Dispatch Planner user:**
+
+1. Go to **Admin → Users**
+2. Click **Create User**
+3. Fill in:
+
+| Field | Value |
+|-------|-------|
+| First Name | `Dawit` |
+| Last Name | `Mekonnen` |
+| Email | `planner@example.com` |
+| Phone | `0911222001` |
+| Password | `newpassword123` |
+| Confirm Password | `newpassword123` |
+| Role | **Dispatch Planner** |
+
+4. Click **Create**
+
+**Create the Hub Dispatch Officer user:**
+
+1. Click **Create User** again
+2. Fill in:
+
+| Field | Value |
+|-------|-------|
+| First Name | `Selam` |
+| Last Name | `Hailu` |
+| Email | `dispatch_officer@example.com` |
+| Phone | `0911222002` |
+| Password | `newpassword123` |
+| Confirm Password | `newpassword123` |
+| Role | **Hub Dispatch Officer** |
+
+3. Click **Create**
+
+**Create the Hub Dispatch Approver user:**
+
+1. Click **Create User** again
+2. Fill in:
+
+| Field | Value |
+|-------|-------|
+| First Name | `Biruk` |
+| Last Name | `Tadesse` |
+| Email | `dispatch_approver@example.com` |
+| Phone | `0911222003` |
+| Password | `newpassword123` |
+| Confirm Password | `newpassword123` |
+| Role | **Hub Dispatch Approver** |
+
+3. Click **Create**
+
+**Assign hub scope for Officer and Approver:**
+
+1. Go to **Admin → User Assignments**
+2. Create assignment for **dispatch_officer@example.com**:
+
+| Field | Value |
+|-------|-------|
+| User | `dispatch_officer@example.com` |
+| Role Name | **Hub Dispatch Officer** |
+| Hub | **Bole Hub** |
+
+3. Create assignment for **dispatch_approver@example.com**:
+
+| Field | Value |
+|-------|-------|
+| User | `dispatch_approver@example.com` |
+| Role Name | **Hub Dispatch Approver** |
+| Hub | **Yeka Hub** |
+
+> **Note:** The Dispatch Planner does NOT need a hub assignment — they have system-wide visibility of plans and plan items.
+
+**Expected:** Three new users created, officer and approver assigned to their respective hubs.
+
+---
+
+### STEP 0B — Planner Creates the Dispatch Plan and Plan Item
+
+**Login as:** `planner@example.com` / `newpassword123`
+
+**Create the Dispatch Plan:**
+
+Via API: `POST /cats_warehouse/v1/dispatch_plans`
+
+```json
+{
+  "payload": {
+    "reference_no": "DP-BOLE-YEKA-001",
+    "description": "Rice transfer Bole to Yeka - 500kg",
+    "prepared_by_id": "<planner_user_id>"
+  }
+}
+```
+
+**Expected:** Dispatch plan created with status **Draft**.
+
+**Create the Dispatch Plan Item:**
+
+Via API: `POST /cats_warehouse/v1/dispatch_plan_items`
+
+```json
+{
+  "payload": {
+    "reference_no": "DPI-BOLE-YEKA-001",
+    "dispatch_plan_id": "<dispatch_plan_id from above>",
+    "source_id": "<location_id of Bole Central Warehouse>",
+    "destination_id": "<location_id of Yeka Logistics Warehouse>",
+    "commodity_id": "<Rice commodity_id>",
+    "quantity": 500,
+    "unit_id": "<kg unit_id>"
+  }
+}
+```
+
+**Expected:** Plan item created with status **Unauthorized**.
+
+> **Verify gating works:** Try creating a Dispatch from this plan item now — it should fail with "Dispatch plan item must be fully authorized before execution".
+
+---
+
+### STEP 0C — Hub Dispatch Officer Authorizes the Source
+
+**Login as:** `dispatch_officer@example.com` / `newpassword123`
+
+Via API: `POST /cats_warehouse/v1/hub_authorizations`
+
+```json
+{
+  "payload": {
+    "dispatch_plan_item_id": "<plan_item_id>",
+    "store_id": "<Bole store id, e.g. ADD-WH-01-ST1>",
+    "quantity": 500,
+    "unit_id": "<kg unit_id>",
+    "authorization_type": "Source",
+    "authorized_by_id": "<officer_user_id>"
+  }
+}
+```
+
+**Expected:**
+- Hub authorization created
+- Plan item status auto-transitions to **Source Authorized**
+
+**Verify:** `GET /cats_warehouse/v1/dispatch_plan_items/<plan_item_id>` should show `status: "Source Authorized"`.
+
+---
+
+### STEP 0D — Hub Dispatch Approver Authorizes the Destination
+
+**Login as:** `dispatch_approver@example.com` / `newpassword123`
+
+Via API: `POST /cats_warehouse/v1/hub_authorizations`
+
+```json
+{
+  "payload": {
+    "dispatch_plan_item_id": "<plan_item_id>",
+    "store_id": "<Yeka store id, e.g. ADD-WH-02-ST1>",
+    "quantity": 500,
+    "unit_id": "<kg unit_id>",
+    "authorization_type": "Destination",
+    "authorized_by_id": "<approver_user_id>"
+  }
+}
+```
+
+**Expected:**
+- Hub authorization created
+- Plan item status auto-transitions to **Dispatchable**
+
+**Verify:** `GET /cats_warehouse/v1/dispatch_plan_items/<plan_item_id>` should show `status: "Dispatchable"`.
+
+---
+
+### STEP 0E — Verify Plan Item Is Dispatchable
+
+**Login as:** `planner@example.com` / `newpassword123`
+
+1. Via API: `GET /cats_warehouse/v1/dispatch_plan_items/<plan_item_id>`
+2. Confirm status is **Dispatchable**
+3. Confirm both hub authorizations are listed (Source + Destination)
+
+**Expected:** Status = `Dispatchable`, two hub_authorizations present.
+
+---
+
+### STEP 0F — Planner Creates the Dispatch
+
+**Login as:** `planner@example.com` / `newpassword123`
+
+Via API: `POST /cats_warehouse/v1/dispatches`
+
+```json
+{
+  "payload": {
+    "reference_no": "DSP-BOLE-YEKA-001",
+    "dispatch_plan_item_id": "<plan_item_id>",
+    "transporter_id": "<Addis Transport PLC id>",
+    "plate_no": "AA-99999",
+    "driver_name": "Abebe Tessema",
+    "driver_phone": "0913000001",
+    "quantity": 500,
+    "unit_id": "<kg unit_id>",
+    "prepared_by_id": "<planner_user_id>"
+  }
+}
+```
+
+**Expected:** Dispatch created with status **Draft**. This succeeds because the plan item is Dispatchable.
+
+> **Key test:** If you had tried this before Steps 0C and 0D, the API would have returned **422 Unprocessable Entity** with message: "Dispatch plan item must be fully authorized before execution".
+
+---
+
+## Phase 0 Complete — Execution Begins
+
+At this point the planning lifecycle is done:
+- Plan exists and is approved
+- Both source and destination hubs have authorized their stores
+- A Dispatch document is created and ready
+
+The remaining steps (1-6) are the **operational execution** at each hub. They are unchanged from before, except:
+- In **Step 4** (Waybill), you should link the Waybill to the Dispatch created in Step 0F by entering its Dispatch ID.
+- The flow is now **gated** — you cannot create a Dispatch or a Waybill linked to an unauthorized plan item.
 
 ---
 
@@ -250,7 +504,7 @@ After running `rails db:seed`, the database contains:
 | Issued On | Today's date |
 | Source Warehouse | **Bole Central Warehouse** (the system uses its `location_id` internally) |
 | Destination Warehouse | **Yeka Logistics Warehouse** |
-| Dispatch ID | Leave blank (or enter a dispatch ID if linking to a Core dispatch) |
+| Dispatch ID | Enter the Dispatch ID from **Step 0F** (`DSP-BOLE-YEKA-001`) — links the waybill to the authorized plan |
 
 4. Fill in transport details:
 
@@ -372,9 +626,37 @@ Still logged in as `hub_manager@example.com`:
 
 ---
 
-## Summary: Who Does What
+## Summary: Who Does What (Full End-to-End)
 
 ```
+                    PLANNING & AUTHORIZATION (Phase 0)
+                    ════════════════════════════════════
+
+Dispatch Planner (system-wide)
+  │
+  ├─ Creates Dispatch Plan (DP-BOLE-YEKA-001)
+  ├─ Creates Plan Item (source: Bole, dest: Yeka, 500kg Rice)
+  │       status: Unauthorized
+  │       ↓
+Hub Dispatch Officer (Bole Hub)
+  │
+  ├─ Creates Source Hub Authorization
+  │       status: Source Authorized
+  │       ↓
+Hub Dispatch Approver (Yeka Hub)
+  │
+  ├─ Creates Destination Hub Authorization
+  │       status: Dispatchable  ✓
+  │       ↓
+Dispatch Planner
+  │
+  ├─ Creates Dispatch (DSP-BOLE-YEKA-001)
+  │  (blocked until Dispatchable — this is the gating check)
+  │
+  ═══════════════════════════════════════════════════════════
+                    OPERATIONAL EXECUTION (Phases 1-6)
+  ═══════════════════════════════════════════════════════════
+
 BOLE HUB (Sender)                          YEKA HUB (Receiver)
 ═══════════════════                         ═══════════════════
 
@@ -406,7 +688,7 @@ Warehouse Manager
   │                                           
 Hub Manager                                   
   │                                           
-  ├─ Creates Waybill                          
+  ├─ Creates Waybill (linked to Dispatch)     
   │  (Bole location → Yeka location)          
   ├─ Confirms Waybill                         
   │  (shipment documented)                    
@@ -418,17 +700,32 @@ Hub Manager
 
 ## Quick Reference: Role Permissions
 
-| Action | Admin | Hub Manager | Warehouse Manager | Storekeeper |
-|--------|-------|-------------|-------------------|-------------|
-| Create GRN | Yes | No | **Yes** | **Yes** |
-| Confirm GRN | Yes | No | **Yes** | No |
-| Create GIN | Yes | No | **Yes** | **Yes** |
-| Confirm GIN | Yes | No | **Yes** | No |
-| Create Inspection | Yes | Yes | Yes | **Yes** |
-| Confirm Inspection | Yes | **Yes** | **Yes** | No |
-| Create Waybill | Yes | **Yes** | **Yes** | No |
-| Confirm Waybill | Yes | **Yes** | **Yes** | No |
-| View Stock Balances | Yes | Yes | Yes | Yes |
+### Planning & Authorization Permissions
+
+| Action | Admin | Dispatch Planner | Hub Dispatch Officer | Hub Dispatch Approver | Hub Manager | Warehouse Manager | Storekeeper |
+|--------|-------|-----------------|---------------------|----------------------|-------------|-------------------|-------------|
+| Create Dispatch Plan | Yes | **Yes** | No | No | No | No | No |
+| Update Dispatch Plan | Yes | **Yes** | No | No | No | No | No |
+| Approve Dispatch Plan | Yes | **Yes** | No | **Yes** | No | No | No |
+| Create Plan Item | Yes | **Yes** | No | No | No | No | No |
+| View Plans & Items | Yes | **Yes** | **Yes** | **Yes** | **Yes** | **Yes** | No |
+| Create Hub Authorization | Yes | No | **Yes** | **Yes** | **Yes** | No | No |
+| View Hub Authorizations | Yes | **Yes** | **Yes** | **Yes** | **Yes** | **Yes** | No |
+| Create Dispatch | Yes | **Yes** | **Yes** | No | **Yes** | **Yes** | No |
+
+### Operational Permissions
+
+| Action | Admin | Dispatch Planner | Hub Dispatch Officer | Hub Dispatch Approver | Hub Manager | Warehouse Manager | Storekeeper |
+|--------|-------|-----------------|---------------------|----------------------|-------------|-------------------|-------------|
+| Create GRN | Yes | No | No | No | No | **Yes** | **Yes** |
+| Confirm GRN | Yes | No | No | No | No | **Yes** | No |
+| Create GIN | Yes | No | No | No | No | **Yes** | **Yes** |
+| Confirm GIN | Yes | No | No | No | No | **Yes** | No |
+| Create Inspection | Yes | No | No | No | Yes | Yes | **Yes** |
+| Confirm Inspection | Yes | No | No | No | **Yes** | **Yes** | No |
+| Create Waybill | Yes | **Yes** | **Yes** | No | **Yes** | **Yes** | No |
+| Confirm Waybill | Yes | No | **Yes** | **Yes** | **Yes** | **Yes** | No |
+| View Stock Balances | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 
 ---
 
@@ -443,3 +740,49 @@ Hub Manager
 | Bole “Total Stock” unchanged / Rice looks wrong | **Total Stock** sums every commodity (and mixes kg + liters); Rice may sit on **multiple stacks** | Search **Rice**, use **Group by → Commodity**; compare Rice **total** to **after Step 1 GRN** (−500 after GIN), not to “before Step 1” (net zero) |
 | Waybill source/destination same error | You picked the same warehouse for both | Pick different warehouses |
 | No commodities in GIN dropdown | No stock balance exists for that warehouse | Create and confirm a GRN first |
+| "Dispatch plan item must be fully authorized" | Tried to create Dispatch or Waybill before both hub authorizations exist | Complete Steps 0C and 0D first — both Source and Destination authorizations needed |
+| Dispatch Planner can't see hubs/warehouses | Planner role doesn't need hub assignment | Planner sees all plans system-wide; this is correct behavior |
+| Hub Dispatch Officer sees no plan items | Officer not assigned to any hub | Go to Admin → User Assignments, assign officer to the relevant hub |
+| Plan item stuck at "Source Authorized" | Destination hub authorization missing | Login as the Hub Dispatch Approver at the destination hub and create the Destination authorization |
+| 403 when creating hub authorization | User role doesn't have permission | Only Hub Dispatch Officer, Hub Dispatch Approver, Hub Manager, and Admin can create authorizations |
+
+---
+
+## Negative Testing Checklist (Expected Failures)
+
+Run these tests to verify the system enforces the planner-gated workflow correctly:
+
+| # | Test | How | Expected Result |
+|---|------|-----|-----------------|
+| N1 | Dispatch blocked before authorization | Create a plan item, then immediately try `POST /dispatches` referencing it | **422** — "Dispatch plan item must be fully authorized before execution" |
+| N2 | Dispatch blocked with only Source auth | Create Source hub authorization, then try `POST /dispatches` | **422** — plan item is "Source Authorized" not "Dispatchable" |
+| N3 | Storekeeper cannot create plan | Login as `store_keeper@example.com`, try `POST /dispatch_plans` | **403 Forbidden** |
+| N4 | Planner cannot create hub authorization | Login as `planner@example.com`, try `POST /hub_authorizations` | **403 Forbidden** |
+| N5 | Officer can only see assigned hub | Login as `dispatch_officer@example.com` (Bole), check `GET /dispatch_plan_items` — should only see items where source or destination is Bole | Only Bole-related items returned |
+| N6 | Approver cannot create Dispatch | Login as `dispatch_approver@example.com`, try `POST /dispatches` | **403 Forbidden** |
+| N7 | Waybill blocked if dispatch plan item not authorized | Create a waybill referencing a dispatch whose plan item is not Dispatchable | **422** — "Dispatch plan item must be fully authorized before execution" |
+
+---
+
+## Dispatch Plan Item Status Lifecycle
+
+```
+                   ┌─────────────────┐
+                   │  Unauthorized   │  ← created
+                   └────────┬────────┘
+                            │
+              ┌─────────────┼─────────────┐
+              ▼                           ▼
+   ┌─────────────────┐        ┌─────────────────────────┐
+   │ Source Authorized│        │ Destination Authorized  │
+   └────────┬────────┘        └────────────┬────────────┘
+            │                              │
+            └──────────┬───────────────────┘
+                       ▼
+              ┌─────────────────┐
+              │  Dispatchable   │  ← both hubs approved
+              └─────────────────┘
+                       │
+                       ▼
+              Dispatch can now be created
+```

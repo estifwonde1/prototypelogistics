@@ -16,6 +16,9 @@ module Cats
         payload = waybill_params
 
         authorize Waybill
+        dispatch = resolve_dispatch(payload[:dispatch_id])
+        ensure_dispatch_dispatchable!(dispatch)
+
         waybill = WaybillCreator.new(
           reference_no: payload[:reference_no],
           issued_on: payload[:issued_on],
@@ -23,7 +26,7 @@ module Cats
           destination_location: Cats::Core::Location.find(payload[:destination_location_id]),
           items: payload[:items],
           transport: payload[:transport],
-          dispatch: resolve_dispatch(payload[:dispatch_id]),
+          dispatch: dispatch,
           status: payload[:status]
         ).call
 
@@ -71,6 +74,15 @@ module Cats
         return nil if dispatch_id.blank?
 
         Cats::Core::Dispatch.find(dispatch_id)
+      end
+
+      def ensure_dispatch_dispatchable!(dispatch)
+        return if dispatch.blank?
+
+        dispatch_plan_item = DispatchPlanItem.find_by(id: dispatch.dispatch_plan_item_id)
+        return if dispatch_plan_item.blank?
+
+        DispatchPlanItemAuthorizationGuard.new(dispatch_plan_item: dispatch_plan_item).ensure_dispatchable!
       end
     end
   end

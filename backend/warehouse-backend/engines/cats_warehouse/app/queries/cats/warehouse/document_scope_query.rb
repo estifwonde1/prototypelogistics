@@ -67,7 +67,7 @@ module Cats
       end
 
       def dispatches_scope
-        return scoped_relation if access.admin?
+        return scoped_relation if access.admin? || access.dispatch_planner?
 
         scoped_relation
           .joins("LEFT JOIN cats_core_dispatch_authorizations da ON da.dispatch_id = cats_core_dispatches.id")
@@ -76,7 +76,7 @@ module Cats
       end
 
       def waybills_scope
-        return scoped_relation if access.admin?
+        return scoped_relation if access.admin? || access.dispatch_planner?
 
         location_ids = Warehouse.where(id: access.accessible_warehouse_ids).select(:location_id)
 

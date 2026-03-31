@@ -66,6 +66,18 @@ module Cats
       def dispatcher?
         user&.has_role?("Dispatcher")
       end
+
+      def dispatch_planner?
+        user&.has_role?("Dispatch Planner")
+      end
+
+      def hub_dispatch_officer?
+        user&.has_role?("Hub Dispatch Officer")
+      end
+
+      def hub_dispatch_approver?
+        user&.has_role?("Hub Dispatch Approver")
+      end
     end
   end
 end

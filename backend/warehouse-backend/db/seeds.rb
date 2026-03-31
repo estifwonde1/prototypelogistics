@@ -23,6 +23,9 @@ roles = {
   hub_manager: find_or_create_with(Cats::Core::Role, { name: "Hub Manager", application_module: application_module }),
   warehouse_manager: find_or_create_with(Cats::Core::Role, { name: "Warehouse Manager", application_module: application_module }),
   store_keeper: find_or_create_with(Cats::Core::Role, { name: "Storekeeper", application_module: application_module }),
+  dispatch_planner: find_or_create_with(Cats::Core::Role, { name: "Dispatch Planner", application_module: application_module }),
+  hub_dispatch_officer: find_or_create_with(Cats::Core::Role, { name: "Hub Dispatch Officer", application_module: application_module }),
+  hub_dispatch_approver: find_or_create_with(Cats::Core::Role, { name: "Hub Dispatch Approver", application_module: application_module }),
   admin: find_or_create_with(Cats::Core::Role, { name: "Admin", application_module: application_module }),
   superadmin: find_or_create_with(Cats::Core::Role, { name: "Superadmin", application_module: application_module })
 }

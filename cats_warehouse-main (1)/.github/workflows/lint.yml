@@ -1,0 +1,18 @@
+# TODO: Currently this linter action is failing. We need to search for a
+# better linter action
+name: Lint
+on: [push, pull_request]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone project
+        uses: actions/checkout@v2
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+      - name: Run Rubocop
+        run: |
+          bundle exec rubocop

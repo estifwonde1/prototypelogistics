@@ -14,6 +14,10 @@ module Cats
       def show?
         index?
       end
+
+      def create?
+        admin? || dispatch_planner? || hub_dispatch_officer? || hub_manager? || warehouse_manager?
+      end
     end
   end
 end

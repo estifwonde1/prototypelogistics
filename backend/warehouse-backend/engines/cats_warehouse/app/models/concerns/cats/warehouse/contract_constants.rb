@@ -13,7 +13,10 @@ module Cats
         "Warehouse Manager",
         "Storekeeper",
         "Inspector",
-        "Dispatcher"
+        "Dispatcher",
+        "Dispatch Planner",
+        "Hub Dispatch Officer",
+        "Hub Dispatch Approver"
       ].freeze
     end
   end

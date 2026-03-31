@@ -34,6 +34,8 @@ module Cats
             case role_name
             when "Hub Manager"
               attrs[:hub_id] = id
+            when "Hub Dispatch Officer", "Hub Dispatch Approver"
+              attrs[:hub_id] = id
             when "Warehouse Manager"
               attrs[:warehouse_id] = id
             when "Storekeeper"
@@ -74,6 +76,12 @@ module Cats
               find_or_create_with(Cats::Warehouse::UserAssignment, user: user, role_name: role_name, hub_id: id)
             end
             ids.each { |id| sync_hub_manager_contacts!(user, id) }
+          when "Hub Dispatch Officer", "Hub Dispatch Approver"
+            existing_ids = Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name).pluck(:hub_id)
+            create_ids = ids - existing_ids
+            delete_ids = existing_ids - ids
+            Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name, hub_id: delete_ids).delete_all if delete_ids.any?
+            create_ids.each { |id| find_or_create_with(Cats::Warehouse::UserAssignment, user: user, role_name: role_name, hub_id: id) }
           when "Warehouse Manager"
             existing_ids = Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name).pluck(:warehouse_id)
             create_ids = ids - existing_ids
@@ -118,6 +126,8 @@ module Cats
           case role_name
           when "Hub Manager"
             payload[:hub_ids].to_a
+          when "Hub Dispatch Officer", "Hub Dispatch Approver"
+            payload[:hub_ids].to_a
           when "Warehouse Manager"
             payload[:warehouse_ids].to_a
           when "Storekeeper"
@@ -128,7 +138,7 @@ module Cats
         end
 
         def valid_role_name?(role_name)
-          ["Hub Manager", "Warehouse Manager", "Storekeeper"].include?(role_name)
+          ["Hub Manager", "Warehouse Manager", "Storekeeper", "Hub Dispatch Officer", "Hub Dispatch Approver"].include?(role_name)
         end
 
         def assignment_payload(assignment)

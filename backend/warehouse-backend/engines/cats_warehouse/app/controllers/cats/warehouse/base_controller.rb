@@ -99,6 +99,18 @@ module Cats
         current_user&.has_role?("Storekeeper")
       end
 
+      def dispatch_planner?
+        current_user&.has_role?("Dispatch Planner")
+      end
+
+      def hub_dispatch_officer?
+        current_user&.has_role?("Hub Dispatch Officer")
+      end
+
+      def hub_dispatch_approver?
+        current_user&.has_role?("Hub Dispatch Approver")
+      end
+
       def assigned_hub_ids
         access_context.assigned_hub_ids
       end

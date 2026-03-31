@@ -1,0 +1,33 @@
+name: CI
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgres:12.1
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Clone project
+        uses: actions/checkout@v2
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+      - name: Change directory permissions
+        run: |
+          sudo chmod og-w /home/runner
+      - name: Build and run tests
+        env:
+          RAILS_ENV: test
+        run: |
+          bundle exec rails db:create db:schema:load
+          bundle exec rails spec

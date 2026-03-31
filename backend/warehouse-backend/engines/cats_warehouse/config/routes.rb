@@ -39,7 +39,12 @@ Cats::Warehouse::Engine.routes.draw do
     resources :stacks, only: [ :index, :show, :create, :update, :destroy ]
     resources :stock_balances, only: [ :index, :show ]
     resources :receipts, only: [ :index, :show ]
-    resources :dispatches, only: [ :index, :show ]
+    resources :dispatches, only: [ :index, :show, :create ]
+    resources :dispatch_plans, only: [ :index, :show, :create, :update ] do
+      post :approve, on: :member
+    end
+    resources :dispatch_plan_items, only: [ :index, :show, :create, :update ]
+    resources :hub_authorizations, only: [ :index, :show, :create ]
 
     resources :grns, only: [ :index, :show, :create ] do
       post :confirm, on: :member

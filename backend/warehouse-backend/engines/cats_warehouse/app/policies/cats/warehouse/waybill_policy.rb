@@ -16,11 +16,11 @@ module Cats
       end
 
       def create?
-        admin? || hub_manager? || warehouse_manager?
+        admin? || hub_manager? || warehouse_manager? || dispatch_planner? || hub_dispatch_officer?
       end
 
       def confirm?
-        admin? || hub_manager? || warehouse_manager?
+        admin? || hub_manager? || warehouse_manager? || hub_dispatch_officer? || hub_dispatch_approver?
       end
     end
   end
