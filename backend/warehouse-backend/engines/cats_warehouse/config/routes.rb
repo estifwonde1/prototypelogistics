@@ -19,6 +19,8 @@ Cats::Warehouse::Engine.routes.draw do
     get "reference_data/commodities", to: "reference_data#commodities"
     get "reference_data/units", to: "reference_data#units"
     get "reference_data/transporters", to: "reference_data#transporters"
+    get "reference_data/inventory_lots", to: "reference_data#inventory_lots"
+    get "reference_data/uom_conversions", to: "reference_data#uom_conversions"
     post "locations", to: "locations#create"
 
     resources :geos, only: [ :create, :update ]
@@ -38,8 +40,12 @@ Cats::Warehouse::Engine.routes.draw do
     resources :stores, only: [ :index, :show, :create, :update, :destroy ]
     resources :stacks, only: [ :index, :show, :create, :update, :destroy ]
     resources :stock_balances, only: [ :index, :show ]
-    resources :receipts, only: [ :index, :show ]
-    resources :dispatches, only: [ :index, :show ]
+    resources :receipt_orders, only: [ :index, :show, :create ] do
+      post :confirm, on: :member
+    end
+    resources :dispatch_orders, only: [ :index, :show, :create ] do
+      post :confirm, on: :member
+    end
 
     resources :grns, only: [ :index, :show, :create ] do
       post :confirm, on: :member

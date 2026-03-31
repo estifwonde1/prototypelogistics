@@ -62,7 +62,9 @@ module Cats
           items: [
             :commodity_id,
             :quantity,
-            :unit_id
+            :unit_id,
+            :inventory_lot_id,
+            :entered_unit_id
           ]
         )
       end

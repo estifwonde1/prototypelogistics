@@ -52,6 +52,11 @@ module Cats
           :source_id,
           items: [
             :commodity_id,
+            :unit_id,
+            :inventory_lot_id,
+            :batch_no,
+            :expiry_date,
+            :entered_unit_id,
             :quantity_received,
             :quantity_damaged,
             :quantity_lost,

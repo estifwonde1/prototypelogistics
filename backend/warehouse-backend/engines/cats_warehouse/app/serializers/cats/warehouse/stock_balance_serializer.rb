@@ -1,7 +1,9 @@
 module Cats
   module Warehouse
     class StockBalanceSerializer < ApplicationSerializer
-      attributes :id, :warehouse_id, :store_id, :stack_id, :commodity_id, :quantity, :unit_id, :created_at, :updated_at,
+      attributes :id, :warehouse_id, :store_id, :stack_id, :commodity_id, :quantity, :unit_id,
+                 :inventory_lot_id, :batch_no, :expiry_date, :entered_unit_id, :entered_unit_name,
+                 :base_unit_id, :base_unit_name, :base_quantity, :created_at, :updated_at,
                  :warehouse_name, :warehouse_code, :store_name, :store_code, :stack_code,
                  :commodity_name, :commodity_batch_no, :unit_name, :unit_abbreviation
 
@@ -39,6 +41,22 @@ module Cats
 
       def unit_abbreviation
         object.unit&.abbreviation
+      end
+
+      def batch_no
+        object.inventory_lot&.batch_no
+      end
+
+      def expiry_date
+        object.inventory_lot&.expiry_date
+      end
+
+      def entered_unit_name
+        object.entered_unit&.name
+      end
+
+      def base_unit_name
+        object.base_unit&.name
       end
     end
   end

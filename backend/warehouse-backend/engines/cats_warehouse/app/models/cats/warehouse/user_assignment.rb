@@ -9,7 +9,7 @@ module Cats
       belongs_to :store, class_name: "Cats::Warehouse::Store", optional: true
 
       validates :user, presence: true
-      validates :role_name, presence: true, inclusion: { in: ["Hub Manager", "Warehouse Manager", "Storekeeper"] }
+      validates :role_name, presence: true, inclusion: { in: ["Hub Manager", "Warehouse Manager", "Storekeeper", "Officer"] }
       validate :assignment_target_present
       validate :assignment_target_matches_role
 
@@ -32,6 +32,9 @@ module Cats
         when "Storekeeper"
           errors.add(:store_id, "is required for Storekeeper") if store_id.blank?
           errors.add(:base, "Hub/warehouse not allowed for Storekeeper") if hub_id.present? || warehouse_id.present?
+        when "Officer"
+          errors.add(:warehouse_id, "is required for Officer") if warehouse_id.blank?
+          errors.add(:base, "Hub/store not allowed for Officer") if hub_id.present? || store_id.present?
         end
       end
     end

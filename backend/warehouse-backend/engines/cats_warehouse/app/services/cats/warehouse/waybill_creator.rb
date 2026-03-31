@@ -37,10 +37,14 @@ module Cats
           @items.each do |item|
             raise ArgumentError, "quantity must be positive" unless item[:quantity].to_f.positive?
 
+            unit_id = fetch_id_from(item, :unit)
+
             waybill.waybill_items.create!(
               commodity_id: fetch_id_from(item, :commodity),
               quantity: item[:quantity],
-              unit_id: fetch_id_from(item, :unit)
+              unit_id: unit_id,
+              inventory_lot_id: item[:inventory_lot_id] || item[:inventory_lot]&.id,
+              entered_unit_id: unit_id
             )
           end
 

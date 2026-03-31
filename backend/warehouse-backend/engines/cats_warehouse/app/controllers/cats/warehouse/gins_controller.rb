@@ -55,6 +55,8 @@ module Cats
             :commodity_id,
             :quantity,
             :unit_id,
+            :inventory_lot_id,
+            :entered_unit_id,
             :store_id,
             :stack_id
           ]

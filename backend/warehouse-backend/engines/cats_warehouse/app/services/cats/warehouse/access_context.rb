@@ -23,6 +23,10 @@ module Cats
         user&.has_role?("Storekeeper")
       end
 
+      def officer?
+        user&.has_role?("Officer")
+      end
+
       def assigned_hub_ids
         UserAssignment.where(user_id: user&.id, role_name: "Hub Manager").pluck(:hub_id).compact
       end
@@ -33,6 +37,10 @@ module Cats
 
       def assigned_store_ids
         UserAssignment.where(user_id: user&.id, role_name: "Storekeeper").pluck(:store_id).compact
+      end
+
+      def assigned_officer_warehouse_ids
+        UserAssignment.where(user_id: user&.id, role_name: "Officer").pluck(:warehouse_id).compact
       end
 
       def accessible_hub_ids
@@ -46,6 +54,7 @@ module Cats
         return Warehouse.select(:id) if admin?
         return Warehouse.where(hub_id: assigned_hub_ids).select(:id) if hub_manager?
         return assigned_warehouse_ids if warehouse_manager?
+        return assigned_officer_warehouse_ids if officer?
         return Store.where(id: assigned_store_ids).select(:warehouse_id) if storekeeper?
 
         []

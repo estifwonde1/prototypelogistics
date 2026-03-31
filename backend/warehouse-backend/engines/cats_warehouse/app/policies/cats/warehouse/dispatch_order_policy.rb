@@ -1,0 +1,47 @@
+module Cats
+  module Warehouse
+    class DispatchOrderPolicy < ApplicationPolicy
+      class Scope < Scope
+        def resolve
+          DocumentScopeQuery.new(user: user, scope: scope).call
+        end
+      end
+
+      def index?
+        admin? || hub_manager? || warehouse_manager? || storekeeper? || officer?
+      end
+
+      def show?
+        index?
+      end
+
+      def create?
+        admin? || hub_manager? || warehouse_manager? || officer?
+      end
+
+      def confirm?
+        return false unless record.is_a?(DispatchOrder)
+        return false unless record.status.to_s.casecmp("draft").zero?
+
+        return true if admin?
+        return false unless hub_manager? || warehouse_manager? || officer?
+
+        # For hub managers, check assigned hub IDs
+        if hub_manager?
+          assigned_hubs = AccessContext.new(user: user).assigned_hub_ids.map(&:to_i)
+          return assigned_hubs.include?(record.hub_id.to_i)
+        end
+
+        # For warehouse managers and officers, check assigned warehouse IDs
+        assigned = AccessContext.new(user: user).accessible_warehouse_ids.map(&:to_i)
+        assigned.include?(record.warehouse_id.to_i)
+      end
+
+      private
+
+      def officer?
+        user&.has_role?("Officer")
+      end
+    end
+  end
+end

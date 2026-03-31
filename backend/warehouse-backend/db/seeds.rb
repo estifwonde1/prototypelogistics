@@ -23,6 +23,7 @@ roles = {
   hub_manager: find_or_create_with(Cats::Core::Role, { name: "Hub Manager", application_module: application_module }),
   warehouse_manager: find_or_create_with(Cats::Core::Role, { name: "Warehouse Manager", application_module: application_module }),
   store_keeper: find_or_create_with(Cats::Core::Role, { name: "Storekeeper", application_module: application_module }),
+  officer: find_or_create_with(Cats::Core::Role, { name: "Officer", application_module: application_module }),
   admin: find_or_create_with(Cats::Core::Role, { name: "Admin", application_module: application_module }),
   superadmin: find_or_create_with(Cats::Core::Role, { name: "Superadmin", application_module: application_module })
 }
@@ -142,6 +143,19 @@ store_keeper_user_2 = find_or_create_with(
 )
 add_role(store_keeper_user_2, "Storekeeper")
 
+officer_user = find_or_create_with(
+  Cats::Core::User,
+  { email: "officer@example.com" },
+  {
+    first_name: "Abebe",
+    last_name: "Bikila",
+    password: "password123",
+    phone_number: "0911111119",
+    application_module: application_module
+  }
+)
+add_role(officer_user, "Officer")
+
 puts "Seeding Addis Ababa locations (Region -> Subcity -> Woreda)..."
 region_addis = find_or_create_with(
   Cats::Core::Location,
@@ -217,10 +231,23 @@ end
 puts "Seeding core reference data..."
 units = {
   kg: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "kg" }, { name: "Kilogram", unit_type: Cats::Core::UnitOfMeasure::WEIGHT }),
+  mt: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "mt" }, { name: "Metric Ton", unit_type: Cats::Core::UnitOfMeasure::WEIGHT }),
   l: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "l" }, { name: "Liter", unit_type: Cats::Core::UnitOfMeasure::VOLUME }),
   pcs: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "pcs" }, { name: "Pieces", unit_type: Cats::Core::UnitOfMeasure::ITEM }),
   bag: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "bag" }, { name: "Bag", unit_type: Cats::Core::UnitOfMeasure::ITEM })
 }
+
+puts "Seeding UOM conversions..."
+find_or_create_with(
+  Cats::Warehouse::UomConversion,
+  { from_unit: units[:bag], to_unit: units[:kg] },
+  { multiplier: 50.0 }
+)
+find_or_create_with(
+  Cats::Warehouse::UomConversion,
+  { from_unit: units[:kg], to_unit: units[:mt] },
+  { multiplier: 0.001 }
+)
 
 currencies = {
   etb: find_or_create_with(Cats::Core::Currency, { code: "ETB" }, { name: "Ethiopian Birr" })
@@ -286,6 +313,18 @@ commodities = [
     }
   )
 end
+
+puts "Seeding inventory lots..."
+find_or_create_with(
+  Cats::Warehouse::InventoryLot,
+  { commodity: commodities.first, batch_no: "LOT-RICE-001" }, # Rice
+  { expiry_date: 1.year.from_now.to_date }
+)
+find_or_create_with(
+  Cats::Warehouse::InventoryLot,
+  { commodity: commodities.second, batch_no: "LOT-WHEAT-001" }, # Wheat Flour
+  { expiry_date: 6.months.from_now.to_date }
+)
 
 puts "Seeding transporters, purchase orders, and gift certificates..."
 transporters = [
@@ -716,6 +755,11 @@ find_or_create_with(
   Cats::Warehouse::UserAssignment,
   { user: store_keeper_user_2, store: stores.second },
   { role_name: "Storekeeper" }
+)
+find_or_create_with(
+  Cats::Warehouse::UserAssignment,
+  { user: officer_user, warehouse: warehouses.second },
+  { role_name: "Officer" }
 )
 
 ui_seed = Rails.root.join("db", "seeds", "ui.rb")

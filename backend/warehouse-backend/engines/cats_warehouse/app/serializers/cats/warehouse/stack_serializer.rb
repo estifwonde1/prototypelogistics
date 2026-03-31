@@ -3,7 +3,9 @@ module Cats
     class StackSerializer < ApplicationSerializer
       attributes :id, :code, :length, :width, :height, :start_x, :start_y, :commodity_id, :store_id,
                  :commodity_name, :commodity_code, :store_name, :store_code, :commodity_status,
-                 :stack_status, :quantity, :unit_id, :unit_name, :unit_abbreviation, :created_at, :updated_at
+                 :stack_status, :quantity, :unit_id, :unit_name, :unit_abbreviation,
+                 :base_unit_id, :base_unit_name, :base_quantity,
+                 :created_at, :updated_at
 
       def commodity_name
         object.commodity&.[](:name) || object.commodity&.batch_no
@@ -27,6 +29,10 @@ module Cats
 
       def unit_abbreviation
         object.unit&.abbreviation
+      end
+
+      def base_unit_name
+        object.base_unit&.name
       end
     end
   end

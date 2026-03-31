@@ -6,6 +6,9 @@ module Cats
       belongs_to :grn, class_name: "Cats::Warehouse::Grn"
       belongs_to :commodity, class_name: "Cats::Core::Commodity"
       belongs_to :unit, class_name: "Cats::Core::UnitOfMeasure"
+      belongs_to :inventory_lot, class_name: "Cats::Warehouse::InventoryLot", optional: true
+      belongs_to :entered_unit, class_name: "Cats::Core::UnitOfMeasure", optional: true
+      belongs_to :base_unit, class_name: "Cats::Core::UnitOfMeasure", optional: true
       belongs_to :store, class_name: "Cats::Warehouse::Store", optional: true
       belongs_to :stack, class_name: "Cats::Warehouse::Stack", optional: true
 

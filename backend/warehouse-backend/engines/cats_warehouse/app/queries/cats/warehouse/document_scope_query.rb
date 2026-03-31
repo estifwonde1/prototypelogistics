@@ -18,6 +18,10 @@ module Cats
           scoped_relation.where(warehouse_id: access.accessible_warehouse_ids)
         when "Cats::Warehouse::Inspection"
           scoped_relation.where(warehouse_id: access.accessible_warehouse_ids)
+        when "Cats::Warehouse::ReceiptOrder"
+          scoped_relation.where(warehouse_id: access.accessible_warehouse_ids)
+        when "Cats::Warehouse::DispatchOrder"
+          scoped_relation.where(warehouse_id: access.accessible_warehouse_ids)
         when "Cats::Warehouse::Waybill"
           waybills_scope
         when "Cats::Core::Receipt"

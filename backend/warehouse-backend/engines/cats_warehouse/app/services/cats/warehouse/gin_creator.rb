@@ -27,10 +27,14 @@ module Cats
           @items.each do |item|
             raise ArgumentError, "quantity must be positive" unless item[:quantity].to_f.positive?
 
+            unit_id = fetch_id(item, :unit)
+
             gin.gin_items.create!(
               commodity_id: fetch_id(item, :commodity),
               quantity: item[:quantity],
-              unit_id: fetch_id(item, :unit),
+              unit_id: unit_id,
+              inventory_lot_id: fetch_id(item, :inventory_lot, optional: true),
+              entered_unit_id: unit_id,
               store_id: fetch_id(item, :store, optional: true),
               stack_id: fetch_id(item, :stack, optional: true)
             )

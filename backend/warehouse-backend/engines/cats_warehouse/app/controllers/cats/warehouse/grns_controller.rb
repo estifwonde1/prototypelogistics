@@ -66,6 +66,10 @@ module Cats
             :commodity_id,
             :quantity,
             :unit_id,
+            :inventory_lot_id,
+            :batch_no,
+            :expiry_date,
+            :entered_unit_id,
             :quality_status,
             :store_id,
             :stack_id

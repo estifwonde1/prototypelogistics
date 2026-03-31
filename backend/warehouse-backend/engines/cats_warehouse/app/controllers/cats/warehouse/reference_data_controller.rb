@@ -63,6 +63,44 @@ module Cats
 
         render_success(transporters: transporters)
       end
+
+      def inventory_lots
+        authorize :reference_data, :inventory_lots?, policy_class: ReferenceDataPolicy
+
+        lots = InventoryLot
+          .order(created_at: :desc)
+          .map do |lot|
+            {
+              id: lot.id,
+              commodity_id: lot.commodity_id,
+              batch_no: lot.batch_no,
+              expiry_date: lot.expiry_date,
+              display_name: lot.display_name
+            }
+          end
+
+        render_success(inventory_lots: lots)
+      end
+
+      def uom_conversions
+        authorize :reference_data, :uom_conversions?, policy_class: ReferenceDataPolicy
+
+        conversions = UomConversion
+          .includes(:from_unit, :to_unit)
+          .map do |c|
+            {
+              id: c.id,
+              commodity_id: c.commodity_id,
+              from_unit_id: c.from_unit_id,
+              from_unit_name: c.from_unit&.name,
+              to_unit_id: c.to_unit_id,
+              to_unit_name: c.to_unit&.name,
+              multiplier: c.multiplier.to_f
+            }
+          end
+
+        render_success(uom_conversions: conversions)
+      end
     end
   end
 end

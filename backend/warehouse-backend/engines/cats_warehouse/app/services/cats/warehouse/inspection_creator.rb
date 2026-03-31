@@ -27,8 +27,24 @@ module Cats
           @items.each do |item|
             raise ArgumentError, "quantity_received must be positive" unless item[:quantity_received].to_f.positive?
 
+            commodity_id = fetch_id(item, :commodity)
+            unit_id = fetch_id(item, :unit)
+
+            # Resolve Inventory Lot
+            lot_id = fetch_id(item, :inventory_lot, optional: true)
+            if lot_id.nil? && item[:batch_no].present?
+              lot_id = InventoryLotResolver.resolve(
+                commodity_id: commodity_id,
+                batch_no: item[:batch_no],
+                expiry_date: item[:expiry_date]
+              )&.id
+            end
+
             inspection.inspection_items.create!(
-              commodity_id: fetch_id(item, :commodity),
+              commodity_id: commodity_id,
+              unit_id: unit_id,
+              inventory_lot_id: lot_id,
+              entered_unit_id: unit_id,
               quantity_received: item[:quantity_received],
               quantity_damaged: item[:quantity_damaged] || 0,
               quantity_lost: item[:quantity_lost] || 0,

@@ -37,19 +37,27 @@ module Cats
         @transaction_date = transaction_date
         @reference = reference
         @quantity_delta = quantity_delta
+        @base_unit_id = item.commodity.unit_of_measure_id
+        @base_quantity_delta = calculate_base_delta
       end
 
       def call
         balance = locked_balance
         balance.quantity = balance.quantity.to_f + quantity_delta
-        ensure_non_negative!(balance.quantity, "stock balance")
+        balance.base_quantity = balance.base_quantity.to_f + base_quantity_delta
+        balance.base_unit_id ||= @base_unit_id
+
+        ensure_non_negative!(balance.base_quantity, "stock balance")
         balance.save!
 
         return balance unless item.stack_id.present?
 
         stack = Stack.lock.find(item.stack_id)
         stack.quantity = stack.quantity.to_f + quantity_delta
-        ensure_non_negative!(stack.quantity, "stack quantity")
+        stack.base_quantity = stack.base_quantity.to_f + base_quantity_delta
+        stack.base_unit_id ||= @base_unit_id
+
+        ensure_non_negative!(stack.base_quantity, "stack quantity")
         stack.save!
 
         StackTransaction.create!(
@@ -58,6 +66,10 @@ module Cats
           transaction_date: transaction_date,
           quantity: quantity_delta.abs,
           unit_id: item.unit_id,
+          inventory_lot_id: item.respond_to?(:inventory_lot_id) ? item.inventory_lot_id : nil,
+          entered_unit_id: item.unit_id,
+          base_unit_id: @base_unit_id,
+          base_quantity: base_quantity_delta.abs,
           status: "Confirmed",
           reference_type: reference.class.name,
           reference_id: reference.id
@@ -68,7 +80,18 @@ module Cats
 
       private
 
-      attr_reader :warehouse, :item, :transaction_date, :reference, :quantity_delta
+      attr_reader :warehouse, :item, :transaction_date, :reference, :quantity_delta, :base_quantity_delta
+
+      def calculate_base_delta
+        return quantity_delta if item.unit_id == @base_unit_id
+
+        UomConversionResolver.convert(
+          quantity_delta,
+          from_unit_id: item.unit_id,
+          to_unit_id: @base_unit_id,
+          commodity_id: item.commodity_id
+        )
+      end
 
       def locked_balance
         attrs = {
@@ -76,16 +99,17 @@ module Cats
           store_id: item.store_id,
           stack_id: item.stack_id,
           commodity_id: item.commodity_id,
-          unit_id: item.unit_id
+          unit_id: item.unit_id,
+          inventory_lot_id: item.respond_to?(:inventory_lot_id) ? item.inventory_lot_id : nil
         }
 
-        StockBalance.lock.find_by(attrs) || StockBalance.create!(attrs.merge(quantity: 0))
+        StockBalance.lock.find_by(attrs) || StockBalance.create!(attrs.merge(quantity: 0, base_quantity: 0, base_unit_id: @base_unit_id))
       rescue ActiveRecord::RecordNotUnique
         retry
       end
 
       def ensure_non_negative!(value, label)
-        return unless value.negative?
+        return unless value < -0.0001 # Small epsilon for float issues
 
         item.errors.add(:base, "#{label} cannot be negative")
         raise ActiveRecord::RecordInvalid, item
