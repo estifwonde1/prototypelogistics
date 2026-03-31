@@ -173,43 +173,40 @@ This phase is the **real-world prerequisite** — a Dispatch Planner creates the
 
 **Login as:** `planner@example.com` / `newpassword123`
 
-**Create the Dispatch Plan:**
+1. Click **Dispatch Plans** in the sidebar
+2. Click **Create Plan**
+3. Fill in plan header:
 
-Via API: `POST /cats_warehouse/v1/dispatch_plans`
+| Field | Value |
+|-------|-------|
+| Reference No | `DP-BOLE-YEKA-001` |
+| Description | `Rice transfer Bole to Yeka - 500kg` |
+| Status | `Draft` |
+| Upstream | Off (default) |
 
-```json
-{
-  "payload": {
-    "reference_no": "DP-BOLE-YEKA-001",
-    "description": "Rice transfer Bole to Yeka - 500kg",
-    "prepared_by_id": "<planner_user_id>"
-  }
-}
-```
+4. Click **Create Plan**
 
-**Expected:** Dispatch plan created with status **Draft**.
+**Expected:** Plan is created and you are redirected to the plan detail page.
 
-**Create the Dispatch Plan Item:**
+5. In the same plan detail page, click **Add Plan Item**
+6. Fill item form:
 
-Via API: `POST /cats_warehouse/v1/dispatch_plan_items`
+| Field | Value |
+|-------|-------|
+| Reference No | `DPI-BOLE-YEKA-001` |
+| Source Warehouse | **Bole Central Warehouse** |
+| Destination Warehouse | **Yeka Logistics Warehouse** |
+| Commodity | **Rice** |
+| Quantity | `500` |
+| Unit | **kg** |
+| Commodity Status | `Good` |
+| Beneficiaries | `0` (or leave default) |
 
-```json
-{
-  "payload": {
-    "reference_no": "DPI-BOLE-YEKA-001",
-    "dispatch_plan_id": "<dispatch_plan_id from above>",
-    "source_id": "<location_id of Bole Central Warehouse>",
-    "destination_id": "<location_id of Yeka Logistics Warehouse>",
-    "commodity_id": "<Rice commodity_id>",
-    "quantity": 500,
-    "unit_id": "<kg unit_id>"
-  }
-}
-```
+7. Click **Save Item**
 
-**Expected:** Plan item created with status **Unauthorized**.
-
-> **Verify gating works:** Try creating a Dispatch from this plan item now — it should fail with "Dispatch plan item must be fully authorized before execution".
+**Expected:**
+- Plan item appears in table with status **Unauthorized**
+- **Create Dispatch** button is disabled for this item
 
 ---
 
@@ -217,26 +214,23 @@ Via API: `POST /cats_warehouse/v1/dispatch_plan_items`
 
 **Login as:** `dispatch_officer@example.com` / `newpassword123`
 
-Via API: `POST /cats_warehouse/v1/hub_authorizations`
+1. Click **Dispatch Plans** in the sidebar
+2. Open `DP-BOLE-YEKA-001`
+3. On item `DPI-BOLE-YEKA-001`, click **Source Auth**
+4. Fill authorization form:
 
-```json
-{
-  "payload": {
-    "dispatch_plan_item_id": "<plan_item_id>",
-    "store_id": "<Bole store id, e.g. ADD-WH-01-ST1>",
-    "quantity": 500,
-    "unit_id": "<kg unit_id>",
-    "authorization_type": "Source",
-    "authorized_by_id": "<officer_user_id>"
-  }
-}
-```
+| Field | Value |
+|-------|-------|
+| Store | `ADD-WH-01-ST1` (Bole store) |
+| Quantity | `500` |
+| Unit | **kg** |
+
+5. Click **Submit Authorization**
 
 **Expected:**
 - Hub authorization created
 - Plan item status auto-transitions to **Source Authorized**
-
-**Verify:** `GET /cats_warehouse/v1/dispatch_plan_items/<plan_item_id>` should show `status: "Source Authorized"`.
+- Authorization summary shows Source is completed
 
 ---
 
@@ -244,26 +238,23 @@ Via API: `POST /cats_warehouse/v1/hub_authorizations`
 
 **Login as:** `dispatch_approver@example.com` / `newpassword123`
 
-Via API: `POST /cats_warehouse/v1/hub_authorizations`
+1. Click **Dispatch Plans** in the sidebar
+2. Open `DP-BOLE-YEKA-001`
+3. On item `DPI-BOLE-YEKA-001`, click **Destination Auth**
+4. Fill authorization form:
 
-```json
-{
-  "payload": {
-    "dispatch_plan_item_id": "<plan_item_id>",
-    "store_id": "<Yeka store id, e.g. ADD-WH-02-ST1>",
-    "quantity": 500,
-    "unit_id": "<kg unit_id>",
-    "authorization_type": "Destination",
-    "authorized_by_id": "<approver_user_id>"
-  }
-}
-```
+| Field | Value |
+|-------|-------|
+| Store | `ADD-WH-02-ST1` (Yeka store) |
+| Quantity | `500` |
+| Unit | **kg** |
+
+5. Click **Submit Authorization**
 
 **Expected:**
 - Hub authorization created
 - Plan item status auto-transitions to **Dispatchable**
-
-**Verify:** `GET /cats_warehouse/v1/dispatch_plan_items/<plan_item_id>` should show `status: "Dispatchable"`.
+- Authorization summary shows Source and Destination completed
 
 ---
 
@@ -271,11 +262,26 @@ Via API: `POST /cats_warehouse/v1/hub_authorizations`
 
 **Login as:** `planner@example.com` / `newpassword123`
 
-1. Via API: `GET /cats_warehouse/v1/dispatch_plan_items/<plan_item_id>`
-2. Confirm status is **Dispatchable**
-3. Confirm both hub authorizations are listed (Source + Destination)
+1. Click **Dispatch Plans** in the sidebar
+2. Open `DP-BOLE-YEKA-001`
+3. Check row for `DPI-BOLE-YEKA-001`
+4. Confirm status badge is **Dispatchable**
 
-**Expected:** Status = `Dispatchable`, two hub_authorizations present.
+**Expected:** Item is `Dispatchable` (hub authorizations complete). **Create Dispatch** stays disabled until the plan header is **Approved** (next step).
+
+---
+
+### STEP 0E2 — Approve the Dispatch Plan (header)
+
+**Login as:** `planner@example.com` / `newpassword123`
+
+The system (`cats_core`) requires the **dispatch plan** record to be **Approved** before any **Dispatch** can be created from a plan item. A **Dispatchable** line item alone is not enough.
+
+1. On the same plan detail page (`DP-BOLE-YEKA-001`), confirm the badge at the top shows **Draft** (or not yet **Approved**)
+2. Click **Approve Plan** (top right)
+3. Confirm the plan status badge becomes **Approved**
+
+**Expected:** Plan status is **Approved**. **Create Dispatch** on `DPI-BOLE-YEKA-001` is now enabled (and the amber notice about approving the plan disappears).
 
 ---
 
@@ -283,27 +289,28 @@ Via API: `POST /cats_warehouse/v1/hub_authorizations`
 
 **Login as:** `planner@example.com` / `newpassword123`
 
-Via API: `POST /cats_warehouse/v1/dispatches`
+1. From the plan detail page, click **Create Dispatch** on `DPI-BOLE-YEKA-001`
+2. Fill dispatch form:
 
-```json
-{
-  "payload": {
-    "reference_no": "DSP-BOLE-YEKA-001",
-    "dispatch_plan_item_id": "<plan_item_id>",
-    "transporter_id": "<Addis Transport PLC id>",
-    "plate_no": "AA-99999",
-    "driver_name": "Abebe Tessema",
-    "driver_phone": "0913000001",
-    "quantity": 500,
-    "unit_id": "<kg unit_id>",
-    "prepared_by_id": "<planner_user_id>"
-  }
-}
-```
+| Field | Value |
+|-------|-------|
+| Reference No | `DSP-BOLE-YEKA-001` |
+| Transporter | **ADD-TR-01 — Addis Transport PLC** |
+| Plate No | `AA-99999` |
+| Driver Name | `Abebe Tessema` |
+| Driver Phone | `0913000001` |
+| Quantity | `500` |
+| Unit | **kg** |
+| Commodity Status | `Good` |
+| Remark | Optional |
 
-**Expected:** Dispatch created with status **Draft**. This succeeds because the plan item is Dispatchable.
+3. Click **Create Dispatch**
 
-> **Key test:** If you had tried this before Steps 0C and 0D, the API would have returned **422 Unprocessable Entity** with message: "Dispatch plan item must be fully authorized before execution".
+**Expected:** Dispatch created with status **Draft**. This succeeds because the plan item is **Dispatchable** and the plan header is **Approved**.
+
+> **Key tests:**
+> - Before Steps 0C and 0D are complete, creating a dispatch should fail (plan item not fully authorized).
+> - If the plan is still **Draft** (Step 0E2 not done), creating a dispatch should fail with: "Dispatch plan should be approved first."
 
 ---
 
@@ -336,20 +343,30 @@ The remaining steps (1-6) are the **operational execution** at each hub. They ar
 | Warehouse | **Bole Central Warehouse** (should auto-select if only one visible) |
 | Received On | Today's date |
 | Received By | Leave blank or enter your user ID |
-| Source Type | Leave blank (or select "Receipt" if testing source linking) |
+| Source Type | `Waybill` (recommended) or `Dispatch` |
+| Source Reference | Select the reference created in earlier steps (e.g. `WB-BOLE-YEKA-001` or `DSP-BOLE-YEKA-001`) |
 
-4. Add a line item — click **Add Item**:
+4. After selecting **Source Reference**, verify auto-fill behavior:
+- Warehouse auto-selects to the inbound destination warehouse.
+- Line items are prefilled from the selected Waybill/Dispatch planning flow.
+
+5. Complete receiving location details for each prefilled item:
+- Select destination **Store**.
+- Select destination reserved **Stack**.
+- Keep or adjust quantity/quality based on actual received goods.
+
+6. If needed, click **Add Item** for additional manual lines:
 
 | Field | Value |
 |-------|-------|
-| Commodity | Select **Rice** (or pick a stack that has Rice) |
+| Commodity | Usually prefilled from source reference (e.g. **Rice**) |
 | Quantity | `500` |
 | Unit | **kg** (auto-fills if you selected from a stack) |
 | Quality Status | `Good` |
 | Store | `ADD-WH-01-ST1` (Bole Central Warehouse Store 1) |
 | Stack | Pick any stack under that store |
 
-5. Click **Create GRN**
+7. Click **Create GRN**
 
 **Expected:** GRN created with status **Draft**. You are redirected to the GRN detail page.
 
@@ -754,13 +771,13 @@ Run these tests to verify the system enforces the planner-gated workflow correct
 
 | # | Test | How | Expected Result |
 |---|------|-----|-----------------|
-| N1 | Dispatch blocked before authorization | Create a plan item, then immediately try `POST /dispatches` referencing it | **422** — "Dispatch plan item must be fully authorized before execution" |
-| N2 | Dispatch blocked with only Source auth | Create Source hub authorization, then try `POST /dispatches` | **422** — plan item is "Source Authorized" not "Dispatchable" |
-| N3 | Storekeeper cannot create plan | Login as `store_keeper@example.com`, try `POST /dispatch_plans` | **403 Forbidden** |
-| N4 | Planner cannot create hub authorization | Login as `planner@example.com`, try `POST /hub_authorizations` | **403 Forbidden** |
-| N5 | Officer can only see assigned hub | Login as `dispatch_officer@example.com` (Bole), check `GET /dispatch_plan_items` — should only see items where source or destination is Bole | Only Bole-related items returned |
-| N6 | Approver cannot create Dispatch | Login as `dispatch_approver@example.com`, try `POST /dispatches` | **403 Forbidden** |
-| N7 | Waybill blocked if dispatch plan item not authorized | Create a waybill referencing a dispatch whose plan item is not Dispatchable | **422** — "Dispatch plan item must be fully authorized before execution" |
+| N1 | Dispatch blocked before authorization | Create a plan item, then click **Create Dispatch** before any authorizations | Error/blocked: "Dispatch plan item must be fully authorized before execution" |
+| N2 | Dispatch blocked with only Source auth | Complete **Source Auth** only, then click **Create Dispatch** | Error/blocked: item still not `Dispatchable` |
+| N3 | Storekeeper cannot create plan | Login as `store_keeper@example.com`; `Dispatch Plans` menu should be hidden or inaccessible | Access denied / no planner actions |
+| N4 | Planner cannot create hub authorization | Login as `planner@example.com`; verify Source/Destination auth actions are not available | Planner cannot submit hub authorization |
+| N5 | Officer can only see assigned hub context | Login as `dispatch_officer@example.com` (Bole) and open plan details | Officer should only be able to perform valid source-side authorization in assigned context |
+| N6 | Approver cannot create Dispatch | Login as `dispatch_approver@example.com`; open a dispatchable item | **Create Dispatch** action unavailable or denied |
+| N7 | Waybill blocked if linked dispatch is unauthorized | Try to create waybill with dispatch from non-dispatchable plan item scenario | Error: authorization gating prevents flow |
 
 ---
 

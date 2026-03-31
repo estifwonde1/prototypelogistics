@@ -16,7 +16,7 @@ module Cats
         authorize :dispatch, :create?, policy_class: DispatchPolicy
         payload = dispatch_params
         dispatch_plan_item = DispatchPlanItem.find(payload[:dispatch_plan_item_id])
-        DispatchPlanItemAuthorizationGuard.new(dispatch_plan_item: dispatch_plan_item).ensure_dispatchable!
+        DispatchPlanItemAuthorizationGuard.new(dispatch_plan_item: dispatch_plan_item).ensure_ready_for_dispatch_creation!
 
         dispatch = Cats::Core::Dispatch.create!(
           reference_no: payload[:reference_no],

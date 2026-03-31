@@ -9,7 +9,13 @@ import { getHubsForAssignment, getWarehousesForAssignment, getStoresForAssignmen
 import { LoadingState } from '../../../components/common/LoadingState';
 import { ErrorState } from '../../../components/common/ErrorState';
 
-const ROLE_OPTIONS = ['Hub Manager', 'Warehouse Manager', 'Storekeeper'];
+const ROLE_OPTIONS = [
+  'Hub Manager',
+  'Hub Dispatch Officer',
+  'Hub Dispatch Approver',
+  'Warehouse Manager',
+  'Storekeeper',
+];
 
 export default function UserAssignmentsPage() {
   const queryClient = useQueryClient();
@@ -26,7 +32,9 @@ export default function UserAssignmentsPage() {
   const { data: locations } = useQuery({
     queryKey: ['assignment-locations', roleName],
     queryFn: () => {
-      if (roleName === 'Hub Manager') return getHubsForAssignment();
+      if (roleName === 'Hub Manager' || roleName === 'Hub Dispatch Officer' || roleName === 'Hub Dispatch Approver') {
+        return getHubsForAssignment();
+      }
       if (roleName === 'Warehouse Manager') return getWarehousesForAssignment();
       return getStoresForAssignment();
     },
@@ -63,7 +71,9 @@ export default function UserAssignmentsPage() {
     if (!roleName || !userId) return;
 
     const payload: any = { user_id: Number(userId), role_name: roleName };
-    if (roleName === 'Hub Manager') payload.hub_ids = selectedIds.map(Number);
+    if (roleName === 'Hub Manager' || roleName === 'Hub Dispatch Officer' || roleName === 'Hub Dispatch Approver') {
+      payload.hub_ids = selectedIds.map(Number);
+    }
     if (roleName === 'Warehouse Manager') payload.warehouse_ids = selectedIds.map(Number);
     if (roleName === 'Storekeeper') payload.store_ids = selectedIds.map(Number);
 

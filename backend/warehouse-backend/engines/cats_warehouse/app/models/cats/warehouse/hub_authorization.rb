@@ -14,7 +14,7 @@ module Cats
                  class_name: "Cats::Warehouse::DispatchPlanItem",
                  optional: true,
                  inverse_of: :hub_authorizations
-      belongs_to :store, class_name: "Cats::Warehouse::Store"
+      belongs_to :store, class_name: "Cats::Core::Store"
       belongs_to :unit, class_name: "Cats::Core::UnitOfMeasure"
       belongs_to :authorized_by, class_name: "Cats::Core::User"
 

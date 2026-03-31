@@ -2,6 +2,9 @@ export const ROLES = {
   ADMIN: 'admin',
   SUPERADMIN: 'superadmin',
   HUB_MANAGER: 'hub_manager',
+  DISPATCH_PLANNER: 'dispatch_planner',
+  HUB_DISPATCH_OFFICER: 'hub_dispatch_officer',
+  HUB_DISPATCH_APPROVER: 'hub_dispatch_approver',
   WAREHOUSE_MANAGER: 'warehouse_manager',
   STOREKEEPER: 'storekeeper',
   INSPECTOR: 'inspector',
@@ -14,6 +17,9 @@ export const ROLE_LABELS: Record<RoleSlug, string> = {
   [ROLES.ADMIN]: 'Admin',
   [ROLES.SUPERADMIN]: 'Superadmin',
   [ROLES.HUB_MANAGER]: 'Hub Manager',
+  [ROLES.DISPATCH_PLANNER]: 'Dispatch Planner',
+  [ROLES.HUB_DISPATCH_OFFICER]: 'Hub Dispatch Officer',
+  [ROLES.HUB_DISPATCH_APPROVER]: 'Hub Dispatch Approver',
   [ROLES.WAREHOUSE_MANAGER]: 'Warehouse Manager',
   [ROLES.STOREKEEPER]: 'Storekeeper',
   [ROLES.INSPECTOR]: 'Inspector',
@@ -32,6 +38,7 @@ export type Resource =
   | 'stock_balances'
   | 'receipts'
   | 'dispatches'
+  | 'dispatch_plans'
   | 'reports';
 
 export type Action = 'read' | 'create' | 'update' | 'delete' | 'confirm';
@@ -67,6 +74,7 @@ export const PATH_SEGMENT_TO_RESOURCE: Record<string, Resource> = {
   waybills: 'waybills',
   receipts: 'receipts',
   dispatches: 'dispatches',
+  'dispatch-plans': 'dispatch_plans',
   reports: 'reports',
 };
 
@@ -84,6 +92,7 @@ const FULL_ACCESS: PermissionMatrix = {
   stock_balances: ['read'],
   receipts: ['read'],
   dispatches: ['read'],
+  dispatch_plans: ['read', 'create', 'update', 'delete', 'confirm'],
   reports: ['read'],
 };
 
@@ -103,7 +112,53 @@ export const ROLE_CAPABILITIES: Record<RoleSlug, PermissionMatrix> = {
     stock_balances: ['read'],
     receipts: ['read'],
     dispatches: ['read'],
+    dispatch_plans: ['read'],
     reports: ['read'],
+  },
+  [ROLES.DISPATCH_PLANNER]: {
+    dispatches: ['read', 'create'],
+    dispatch_plans: ['read', 'create', 'update', 'confirm'],
+    waybills: ['read', 'create'],
+    grns: ['read'],
+    gins: ['read'],
+    inspections: ['read'],
+    stock_balances: ['read'],
+    reports: ['read'],
+    receipts: ['read'],
+    hubs: ['read'],
+    warehouses: ['read'],
+    stores: ['read'],
+    stacks: ['read'],
+  },
+  [ROLES.HUB_DISPATCH_OFFICER]: {
+    dispatches: ['read', 'create'],
+    dispatch_plans: ['read'],
+    waybills: ['read', 'create', 'confirm'],
+    grns: ['read'],
+    gins: ['read'],
+    inspections: ['read'],
+    stock_balances: ['read'],
+    reports: ['read'],
+    receipts: ['read'],
+    hubs: ['read'],
+    warehouses: ['read'],
+    stores: ['read'],
+    stacks: ['read'],
+  },
+  [ROLES.HUB_DISPATCH_APPROVER]: {
+    dispatches: ['read'],
+    dispatch_plans: ['read'],
+    waybills: ['read', 'confirm'],
+    grns: ['read'],
+    gins: ['read'],
+    inspections: ['read'],
+    stock_balances: ['read'],
+    reports: ['read'],
+    receipts: ['read'],
+    hubs: ['read'],
+    warehouses: ['read'],
+    stores: ['read'],
+    stacks: ['read'],
   },
   [ROLES.WAREHOUSE_MANAGER]: {
     warehouses: ['read', 'update'],
@@ -116,6 +171,7 @@ export const ROLE_CAPABILITIES: Record<RoleSlug, PermissionMatrix> = {
     stock_balances: ['read'],
     receipts: ['read'],
     dispatches: ['read'],
+    dispatch_plans: ['read'],
     reports: ['read'],
   },
   [ROLES.STOREKEEPER]: {
@@ -128,6 +184,7 @@ export const ROLE_CAPABILITIES: Record<RoleSlug, PermissionMatrix> = {
     stock_balances: ['read'],
     receipts: ['read'],
     dispatches: ['read'],
+    dispatch_plans: ['read'],
     reports: ['read'],
   },
   [ROLES.INSPECTOR]: {},
@@ -138,6 +195,9 @@ const DEFAULT_ROUTE_BY_ROLE: Record<RoleSlug, string> = {
   [ROLES.ADMIN]: '/admin/users',
   [ROLES.SUPERADMIN]: '/admin/users',
   [ROLES.HUB_MANAGER]: '/hubs',
+  [ROLES.DISPATCH_PLANNER]: '/dispatch-plans',
+  [ROLES.HUB_DISPATCH_OFFICER]: '/dispatch-plans',
+  [ROLES.HUB_DISPATCH_APPROVER]: '/dispatch-plans',
   [ROLES.WAREHOUSE_MANAGER]: '/warehouses',
   [ROLES.STOREKEEPER]: '/stock-balances',
   [ROLES.INSPECTOR]: '/',

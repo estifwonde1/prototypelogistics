@@ -34,7 +34,7 @@ module Cats
       end
 
       def hubs_scope
-        return scoped_relation if access.admin?
+        return scoped_relation if access.admin? || access.dispatch_planner?
         return scoped_relation.where(id: access.assigned_hub_ids) if access.hub_manager?
         return scoped_relation.where(id: access.accessible_hub_ids) if access.hub_dispatch_officer? || access.hub_dispatch_approver?
 
@@ -42,7 +42,7 @@ module Cats
       end
 
       def warehouses_scope
-        return scoped_relation if access.admin?
+        return scoped_relation if access.admin? || access.dispatch_planner?
         return scoped_relation.where(hub_id: access.assigned_hub_ids) if access.hub_manager?
         return scoped_relation.where(hub_id: access.accessible_hub_ids) if access.hub_dispatch_officer? || access.hub_dispatch_approver?
         return scoped_relation.where(id: access.accessible_warehouse_ids) if access.warehouse_manager?
@@ -52,7 +52,7 @@ module Cats
       end
 
       def stores_scope
-        return scoped_relation if access.admin?
+        return scoped_relation if access.admin? || access.dispatch_planner?
         return scoped_relation.where(warehouse_id: access.accessible_warehouse_ids) if access.hub_manager? || access.warehouse_manager?
         return scoped_relation.where(warehouse_id: access.accessible_warehouse_ids) if access.hub_dispatch_officer? || access.hub_dispatch_approver?
         return scoped_relation.where(id: access.assigned_store_ids) if access.storekeeper?

@@ -41,6 +41,9 @@ const HubSetupPage = lazy(() => import('./pages/admin/setup/HubSetupPage'));
 const WarehouseSetupPage = lazy(() => import('./pages/admin/setup/WarehouseSetupPage'));
 const ReceiptListPage = lazy(() => import('./pages/receipts/ReceiptListPage'));
 const DispatchListPage = lazy(() => import('./pages/dispatches/DispatchListPage'));
+const DispatchPlansListPage = lazy(() => import('./pages/dispatchPlans/DispatchPlansListPage'));
+const DispatchPlanFormPage = lazy(() => import('./pages/dispatchPlans/DispatchPlanFormPage'));
+const DispatchPlanDetailPage = lazy(() => import('./pages/dispatchPlans/DispatchPlanDetailPage'));
 const BinCardReportPage = lazy(() => import('./pages/reports/BinCardReportPage'));
 const StackLayoutPage = lazy(() => import('./pages/stacks/StackLayoutPage'));
 
@@ -355,6 +358,38 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission resource="dispatches" action="read">
             <DispatchListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'dispatch-plans',
+        element: (
+          <RequirePermission resource="dispatch_plans" action="read">
+            <DispatchPlansListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'dispatch-plans/new',
+        element: (
+          <RequirePermission resource="dispatch_plans" action="create">
+            <DispatchPlanFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'dispatch-plans/:id',
+        element: (
+          <RequirePermission resource="dispatch_plans" action="read">
+            <DispatchPlanDetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'dispatch-plans/:id/edit',
+        element: (
+          <RequirePermission resource="dispatch_plans" action="update">
+            <DispatchPlanFormPage />
           </RequirePermission>
         ),
       },

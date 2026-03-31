@@ -125,6 +125,36 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
       ];
     }
 
+    if (role === 'dispatch_planner') {
+      return [
+        {
+          label: 'Planning Operations',
+          items: [
+            { label: 'Dispatch Plans', icon: <IconFileExport size={20} />, path: '/dispatch-plans', resource: 'dispatch_plans' },
+            { label: 'Dispatches', icon: <IconTruck size={20} />, path: '/dispatches', resource: 'dispatches' },
+            { label: 'Waybills', icon: <IconTruck size={20} />, path: '/waybills', resource: 'waybills' },
+            { label: 'Stock Balances', icon: <IconChartBar size={20} />, path: '/stock-balances', resource: 'stock_balances' },
+            { label: 'Bin Card', icon: <IconReportAnalytics size={20} />, path: '/reports/bin-card', resource: 'reports' },
+          ],
+        },
+      ];
+    }
+
+    if (role === 'hub_dispatch_officer' || role === 'hub_dispatch_approver') {
+      return [
+        {
+          label: 'Hub Dispatch',
+          items: [
+            { label: 'Dispatch Plans', icon: <IconFileExport size={20} />, path: '/dispatch-plans', resource: 'dispatch_plans' },
+            { label: 'Dispatches', icon: <IconTruck size={20} />, path: '/dispatches', resource: 'dispatches' },
+            { label: 'Waybills', icon: <IconTruck size={20} />, path: '/waybills', resource: 'waybills' },
+            { label: 'Stock Balances', icon: <IconChartBar size={20} />, path: '/stock-balances', resource: 'stock_balances' },
+            { label: 'Bin Card', icon: <IconReportAnalytics size={20} />, path: '/reports/bin-card', resource: 'reports' },
+          ],
+        },
+      ];
+    }
+
     if (role === 'warehouse_manager') {
       return [
         {

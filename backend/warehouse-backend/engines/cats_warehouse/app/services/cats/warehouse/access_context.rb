@@ -53,6 +53,7 @@ module Cats
 
       def accessible_hub_ids
         return Hub.select(:id) if admin?
+        return Hub.select(:id) if dispatch_planner?
         return assigned_hub_ids if hub_manager?
         return assigned_dispatch_hub_ids if hub_dispatch_officer? || hub_dispatch_approver?
 
@@ -61,6 +62,7 @@ module Cats
 
       def accessible_warehouse_ids
         return Warehouse.select(:id) if admin?
+        return Warehouse.select(:id) if dispatch_planner?
         return Warehouse.where(hub_id: assigned_hub_ids).select(:id) if hub_manager?
         return Warehouse.where(hub_id: assigned_dispatch_hub_ids).select(:id) if hub_dispatch_officer? || hub_dispatch_approver?
         return assigned_warehouse_ids if warehouse_manager?
@@ -71,6 +73,7 @@ module Cats
 
       def accessible_store_ids
         return Store.select(:id) if admin?
+        return Store.select(:id) if dispatch_planner?
         return Store.where(warehouse_id: accessible_warehouse_ids).select(:id) if hub_manager? || warehouse_manager?
         return assigned_store_ids if storekeeper?
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
@@ -21,11 +21,13 @@ import { IconTrash, IconPlus } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { createGrn, getGrns } from '../../api/grns';
 import { getReceipts } from '../../api/receipts';
-import { getWaybills } from '../../api/waybills';
+import { getWaybill, getWaybills } from '../../api/waybills';
+import { getDispatch, getDispatches } from '../../api/dispatches';
 import { getWarehouses } from '../../api/warehouses';
 import { getStores } from '../../api/stores';
 import { getStacks } from '../../api/stacks';
 import { getCommodityReferences, getUnitReferences } from '../../api/referenceData';
+import { getDispatchPlanItem } from '../../api/dispatchPlanItems';
 import { useAuthStore } from '../../store/authStore';
 import { QualityStatus } from '../../utils/constants';
 import type { GrnItem } from '../../types/grn';
@@ -42,6 +44,7 @@ function GrnCreatePage() {
   const sourceTypeOptions = [
     { value: 'Receipt', label: 'Receipt' },
     { value: 'Waybill', label: 'Waybill' },
+    { value: 'Dispatch', label: 'Dispatch' },
     { value: 'Grn', label: 'GRN' },
   ];
 
@@ -79,6 +82,11 @@ function GrnCreatePage() {
   const { data: waybills = [] } = useQuery({
     queryKey: ['waybills'],
     queryFn: getWaybills,
+  });
+
+  const { data: dispatches = [] } = useQuery({
+    queryKey: ['dispatches'],
+    queryFn: getDispatches,
   });
 
   const { data: grns = [] } = useQuery({
@@ -198,12 +206,89 @@ function GrnCreatePage() {
             value: waybill.id.toString(),
             label: waybill.reference_no || `Waybill #${waybill.id}`,
           }))
+        : sourceType === 'Dispatch'
+          ? dispatches.map((dispatch) => ({
+              value: dispatch.id.toString(),
+              label: dispatch.reference_no || `Dispatch #${dispatch.id}`,
+            }))
         : sourceType === 'Grn'
           ? grns.map((grn) => ({
               value: grn.id.toString(),
               label: grn.reference_no || `GRN #${grn.id}`,
             }))
           : [];
+
+  const selectedWaybillId = sourceType === 'Waybill' && sourceId ? parseInt(sourceId, 10) : null;
+  const { data: selectedWaybill } = useQuery({
+    queryKey: ['waybill', selectedWaybillId],
+    queryFn: () => getWaybill(selectedWaybillId as number),
+    enabled: Boolean(selectedWaybillId),
+  });
+
+  const selectedDispatchId = sourceType === 'Dispatch' && sourceId ? parseInt(sourceId, 10) : null;
+  const { data: selectedDispatch } = useQuery({
+    queryKey: ['dispatch', selectedDispatchId],
+    queryFn: () => getDispatch(selectedDispatchId as number),
+    enabled: Boolean(selectedDispatchId),
+  });
+
+  const selectedDispatchPlanItemId = selectedDispatch?.dispatch_plan_item_id;
+  const { data: selectedDispatchPlanItem } = useQuery({
+    queryKey: ['dispatch-plan-item', selectedDispatchPlanItemId],
+    queryFn: () => getDispatchPlanItem(selectedDispatchPlanItemId as number),
+    enabled: Boolean(selectedDispatchPlanItemId),
+  });
+
+  useEffect(() => {
+    if (sourceType === 'Waybill' && selectedWaybill) {
+      const destinationWarehouse = warehouses?.find(
+        (warehouse) => Number(warehouse.location_id) === Number(selectedWaybill.destination_location_id)
+      );
+      if (destinationWarehouse) {
+        setWarehouseId(String(destinationWarehouse.id));
+      }
+
+      const inferredItems =
+        selectedWaybill.waybill_items?.map((item) => ({
+          commodity_id: Number(item.commodity_id || 0),
+          quantity: Number(item.quantity || 0),
+          unit_id: Number(item.unit_id || 0),
+          quality_status: QualityStatus.GOOD,
+          store_id: undefined,
+          stack_id: undefined,
+        })) || [];
+      if (inferredItems.length > 0) {
+        setItems(inferredItems);
+      }
+      return;
+    }
+
+    if (sourceType === 'Dispatch' && selectedDispatch && selectedDispatchPlanItem) {
+      const destinationWarehouse = warehouses?.find(
+        (warehouse) => Number(warehouse.location_id) === Number(selectedDispatchPlanItem.destination_id)
+      );
+      if (destinationWarehouse) {
+        setWarehouseId(String(destinationWarehouse.id));
+      }
+
+      setItems([
+        {
+          commodity_id: Number(selectedDispatchPlanItem.commodity_id || 0),
+          quantity: Number(selectedDispatch.quantity || selectedDispatchPlanItem.quantity || 0),
+          unit_id: Number(selectedDispatch.unit_id || selectedDispatchPlanItem.unit_id || 0),
+          quality_status: QualityStatus.GOOD,
+          store_id: undefined,
+          stack_id: undefined,
+        },
+      ]);
+    }
+  }, [
+    sourceType,
+    selectedWaybill,
+    selectedDispatch,
+    selectedDispatchPlanItem,
+    warehouses,
+  ]);
 
   const selectedStackForItem = (item: GrnItem) =>
     reservedStacks.find((stack) => stack.id === item.stack_id);
@@ -380,7 +465,7 @@ function GrnCreatePage() {
           <Group grow align="flex-start">
             <Select
               label="Source Type"
-              description="Optional. Use this only when the GRN should be linked to an earlier document such as a receipt, waybill, or another GRN."
+              description="Optional. Use this to link GRN to an upstream document (Waybill/Dispatch recommended for inbound control)."
               placeholder="Select source type"
               data={sourceTypeOptions}
               value={sourceType || null}
@@ -392,7 +477,7 @@ function GrnCreatePage() {
             />
             <Select
               label="Source Reference"
-              description="Optional. Choose the exact source document to link this GRN back to."
+              description="Pick reference number. For Waybill/Dispatch, warehouse and line items auto-fill from planning/execution data."
               placeholder={sourceType ? 'Select source reference' : 'Select source type first'}
               data={sourceOptions}
               value={sourceId || null}
@@ -417,6 +502,11 @@ function GrnCreatePage() {
           <Alert color="blue" variant="light">
             Choose the destination store first, then the commodity. The stack list only shows reserved stacks for that store and commodity so the GRN receives goods into the correct reserved location.
           </Alert>
+          {(sourceType === 'Waybill' || sourceType === 'Dispatch') && sourceId ? (
+            <Alert color="teal" variant="light">
+              Source-linked GRN detected. Header/line data was prefilled from selected reference. Complete receiving by choosing destination store/stack for each line.
+            </Alert>
+          ) : null}
 
           <Table.ScrollContainer minWidth={1100}>
             <Table>

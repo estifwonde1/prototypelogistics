@@ -82,7 +82,9 @@ module Cats
         dispatch_plan_item = DispatchPlanItem.find_by(id: dispatch.dispatch_plan_item_id)
         return if dispatch_plan_item.blank?
 
-        DispatchPlanItemAuthorizationGuard.new(dispatch_plan_item: dispatch_plan_item).ensure_dispatchable!
+        guard = DispatchPlanItemAuthorizationGuard.new(dispatch_plan_item: dispatch_plan_item)
+        guard.ensure_dispatchable!
+        guard.ensure_plan_approved_for_dispatch!
       end
     end
   end
