@@ -123,11 +123,11 @@ function DispatchOrderFormPage() {
   const destinationTypeOptions = [
     { value: 'Hub', label: 'Hub' },
     { value: 'Warehouse', label: 'Warehouse' },
-    { value: 'External', label: 'External' },
+    { value: 'Beneficiary', label: 'Beneficiary' },
   ];
 
   const createMutation = useMutation({
-    mutationFn: (payload) => createDispatchOrder(payload),
+    mutationFn: createDispatchOrder,
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['dispatch_orders'] });
       notifications.show({
@@ -149,7 +149,7 @@ function DispatchOrderFormPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (payload) => updateDispatchOrder(Number(id), payload),
+    mutationFn: (payload: any) => updateDispatchOrder(Number(id), payload),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['dispatch_orders'] });
       notifications.show({
@@ -208,6 +208,15 @@ function DispatchOrderFormPage() {
     setItems((current) => {
       const next = [...current];
       next[index] = { ...next[index], [field]: value };
+      
+      // Auto-select unit when commodity is selected
+      if (field === 'commodity_id' && value) {
+        const commodity = commodities.find((c) => c.id === value);
+        if (commodity && commodity.unit_id) {
+          next[index].unit_id = commodity.unit_id;
+        }
+      }
+      
       return next;
     });
   };
@@ -231,11 +240,15 @@ function DispatchOrderFormPage() {
       return;
     }
 
+    const dateStr = expectedPickupDate instanceof Date 
+      ? expectedPickupDate.toISOString().split('T')[0]
+      : expectedPickupDate;
+
     const payload = {
       source_warehouse_id: Number(warehouseId),
       destination_type: destinationType,
       destination_name: destinationName,
-      expected_pickup_date: expectedPickupDate.toISOString().split('T')[0],
+      expected_pickup_date: dateStr,
       notes,
       lines: items,
     };
@@ -283,7 +296,7 @@ function DispatchOrderFormPage() {
                 required
                 disabled={isEdit}
               />
-              {destinationType === 'External' ? (
+              {destinationType === 'Beneficiary' ? (
                 <TextInput
                   label="Destination Name"
                   placeholder="Enter destination name"
@@ -307,7 +320,7 @@ function DispatchOrderFormPage() {
                 label="Expected Pickup Date"
                 placeholder="Select date"
                 value={expectedPickupDate}
-                onChange={setExpectedPickupDate}
+                onChange={(val) => setExpectedPickupDate(val)}
                 required
                 disabled={isEdit}
               />
@@ -370,7 +383,7 @@ function DispatchOrderFormPage() {
                         <NumberInput
                           placeholder="0"
                           value={item.quantity}
-                          onChange={(val) => handleItemChange(index, 'quantity', val || 0)}
+                          onChange={(val) => handleItemChange(index, 'quantity', Number(val) || 0)}
                           disabled={isEdit}
                         />
                       </Table.Td>

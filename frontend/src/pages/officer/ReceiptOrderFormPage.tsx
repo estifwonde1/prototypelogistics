@@ -109,7 +109,7 @@ function ReceiptOrderFormPage() {
   ];
 
   const createMutation = useMutation({
-    mutationFn: (payload) => createReceiptOrder(payload),
+    mutationFn: createReceiptOrder,
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['receipt_orders'] });
       notifications.show({
@@ -131,7 +131,7 @@ function ReceiptOrderFormPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (payload) => updateReceiptOrder(Number(id), payload),
+    mutationFn: (payload: any) => updateReceiptOrder(Number(id), payload),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['receipt_orders'] });
       notifications.show({
@@ -190,6 +190,15 @@ function ReceiptOrderFormPage() {
     setItems((current) => {
       const next = [...current];
       next[index] = { ...next[index], [field]: value };
+      
+      // Auto-select unit when commodity is selected
+      if (field === 'commodity_id' && value) {
+        const commodity = commodities.find((c) => c.id === value);
+        if (commodity && commodity.unit_id) {
+          next[index].unit_id = commodity.unit_id;
+        }
+      }
+      
       return next;
     });
   };
@@ -213,11 +222,15 @@ function ReceiptOrderFormPage() {
       return;
     }
 
+    const dateStr = expectedDeliveryDate instanceof Date 
+      ? expectedDeliveryDate.toISOString().split('T')[0]
+      : expectedDeliveryDate;
+
     const payload = {
       source_type: sourceType,
       source_name: sourceName,
       destination_warehouse_id: Number(warehouseId),
-      expected_delivery_date: expectedDeliveryDate.toISOString().split('T')[0],
+      expected_delivery_date: dateStr,
       notes,
       lines: items,
     };
@@ -277,7 +290,7 @@ function ReceiptOrderFormPage() {
                 label="Expected Delivery Date"
                 placeholder="Select date"
                 value={expectedDeliveryDate}
-                onChange={setExpectedDeliveryDate}
+                onChange={(val) => setExpectedDeliveryDate(val)}
                 required
                 disabled={isEdit}
               />
@@ -341,7 +354,7 @@ function ReceiptOrderFormPage() {
                         <NumberInput
                           placeholder="0"
                           value={item.quantity}
-                          onChange={(val) => handleItemChange(index, 'quantity', val || 0)}
+                          onChange={(val) => handleItemChange(index, 'quantity', Number(val) || 0)}
                           disabled={isEdit}
                         />
                       </Table.Td>
@@ -360,7 +373,7 @@ function ReceiptOrderFormPage() {
                         <NumberInput
                           placeholder="0"
                           value={item.unit_price}
-                          onChange={(val) => handleItemChange(index, 'unit_price', val || 0)}
+                          onChange={(val) => handleItemChange(index, 'unit_price', Number(val) || 0)}
                           disabled={isEdit}
                         />
                       </Table.Td>

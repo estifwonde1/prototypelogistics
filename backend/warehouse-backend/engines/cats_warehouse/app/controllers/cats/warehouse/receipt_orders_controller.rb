@@ -3,12 +3,12 @@ module Cats
     class ReceiptOrdersController < BaseController
       def index
         authorize ReceiptOrder
-        orders = policy_scope(ReceiptOrder).includes(:hub, :warehouse, :receipt_order_lines).order(created_at: :desc)
+        orders = policy_scope(ReceiptOrder).includes(:hub, :warehouse, receipt_order_lines: [:commodity, :unit]).order(created_at: :desc)
         render_resource(orders, each_serializer: ReceiptOrderSerializer)
       end
 
       def show
-        order = policy_scope(ReceiptOrder).includes(:hub, :warehouse, :receipt_order_lines).find(params[:id])
+        order = policy_scope(ReceiptOrder).includes(:hub, :warehouse, receipt_order_lines: [:commodity, :unit]).find(params[:id])
         authorize order
         render_order_payload(order)
       end
@@ -17,23 +17,31 @@ module Cats
         payload = receipt_order_params
         authorize ReceiptOrder
 
+        # Map frontend params to backend params
+        warehouse_id = payload[:destination_warehouse_id] || payload[:warehouse_id]
+        received_date = payload[:expected_delivery_date] || payload[:received_date] || Date.today
+        items = payload[:lines] || payload[:receipt_order_lines] || []
+        source_name = payload[:source_name] || payload[:name]
+
         order = ReceiptOrderCreator.new(
           hub: find_optional_hub(payload[:hub_id]),
-          warehouse: find_optional_warehouse(payload[:warehouse_id]),
-          received_date: payload[:received_date],
+          warehouse: find_optional_warehouse(warehouse_id),
+          received_date: received_date,
           created_by: current_user,
-          items: payload[:receipt_order_lines],
+          items: items,
           source: PolymorphicReferenceResolver.resolve_source(payload[:source_type], payload[:source_id]),
           reference_no: payload[:reference_no],
-          description: payload[:description],
-          name: payload[:name]
+          description: payload[:description] || payload[:notes],
+          name: source_name
         ).call
 
+        # Reload with proper associations
+        order = ReceiptOrder.includes(receipt_order_lines: [:commodity, :unit]).find(order.id)
         render_order_payload(order, status: :created)
       end
 
       def update
-        order = policy_scope(ReceiptOrder).includes(:receipt_order_lines).find(params[:id])
+        order = policy_scope(ReceiptOrder).includes(receipt_order_lines: [:commodity, :unit]).find(params[:id])
         authorize order
 
         raise ArgumentError, "Only draft receipt orders can be updated" unless order.status_draft?
@@ -54,7 +62,8 @@ module Cats
           replace_receipt_order_lines!(order, payload[:receipt_order_lines]) if payload.key?(:receipt_order_lines)
         end
 
-        render_order_payload(order.reload)
+        order = ReceiptOrder.includes(receipt_order_lines: [:commodity, :unit]).find(order.id)
+        render_order_payload(order)
       end
 
       def confirm
@@ -62,7 +71,8 @@ module Cats
         authorize order
 
         ReceiptOrderConfirmer.new(order: order, confirmed_by: current_user).call
-        render_order_payload(order.reload)
+        order = ReceiptOrder.includes(receipt_order_lines: [:commodity, :unit]).find(order.id)
+        render_order_payload(order)
       end
 
       def assign
@@ -75,7 +85,8 @@ module Cats
           assignments: assignment_params[:assignments]
         ).call
 
-        render_order_payload(order.reload)
+        order = ReceiptOrder.includes(receipt_order_lines: [:commodity, :unit]).find(order.id)
+        render_order_payload(order)
       end
 
       def reserve_space
@@ -88,7 +99,8 @@ module Cats
           reservations: space_reservation_params[:reservations]
         ).call
 
-        render_order_payload(order.reload)
+        order = ReceiptOrder.includes(receipt_order_lines: [:commodity, :unit]).find(order.id)
+        render_order_payload(order)
       end
 
       def workflow
@@ -119,16 +131,29 @@ module Cats
         payload.permit(
           :hub_id,
           :warehouse_id,
+          :destination_warehouse_id,  # NEW: Accept frontend param name
           :received_date,
+          :expected_delivery_date,    # NEW: Accept frontend param name
           :reference_no,
           :name,
+          :source_name,               # NEW: Accept frontend param name
           :description,
+          :notes,                     # NEW: Accept frontend param name
           :source_type,
           :source_id,
           receipt_order_lines: [
             :commodity_id,
             :quantity,
-            :unit_id
+            :unit_id,
+            :unit_price,              # NEW: Accept frontend param name
+            :notes                    # NEW: Accept frontend param name
+          ],
+          lines: [                    # NEW: Accept frontend param name
+            :commodity_id,
+            :quantity,
+            :unit_id,
+            :unit_price,
+            :notes
           ]
         )
       end

@@ -3,12 +3,12 @@ module Cats
     class DispatchOrdersController < BaseController
       def index
         authorize DispatchOrder
-        orders = policy_scope(DispatchOrder).includes(:hub, :warehouse, :dispatch_order_lines).order(created_at: :desc)
+        orders = policy_scope(DispatchOrder).includes(:hub, :warehouse, dispatch_order_lines: [:commodity, :unit]).order(created_at: :desc)
         render_resource(orders, each_serializer: DispatchOrderSerializer)
       end
 
       def show
-        order = policy_scope(DispatchOrder).includes(:hub, :warehouse, :dispatch_order_lines).find(params[:id])
+        order = policy_scope(DispatchOrder).includes(:hub, :warehouse, dispatch_order_lines: [:commodity, :unit]).find(params[:id])
         authorize order
         render_order_payload(order)
       end
@@ -17,23 +17,31 @@ module Cats
         payload = dispatch_order_params
         authorize DispatchOrder
 
+        # Map frontend params to backend params
+        warehouse_id = payload[:source_warehouse_id] || payload[:warehouse_id]
+        dispatched_date = payload[:expected_pickup_date] || payload[:dispatched_date] || Date.today
+        items = payload[:lines] || payload[:dispatch_order_lines] || []
+        destination_name = payload[:destination_name] || payload[:name]
+
         order = DispatchOrderCreator.new(
           hub: find_optional_hub(payload[:hub_id]),
-          warehouse: find_optional_warehouse(payload[:warehouse_id]),
-          dispatched_date: payload[:dispatched_date],
+          warehouse: find_optional_warehouse(warehouse_id),
+          dispatched_date: dispatched_date,
           created_by: current_user,
-          items: payload[:dispatch_order_lines],
+          items: items,
           destination: PolymorphicReferenceResolver.resolve_source(payload[:destination_type], payload[:destination_id]),
           reference_no: payload[:reference_no],
-          description: payload[:description],
-          name: payload[:name]
+          description: payload[:description] || payload[:notes],
+          name: destination_name
         ).call
 
+        # Reload with proper associations
+        order = DispatchOrder.includes(dispatch_order_lines: [:commodity, :unit]).find(order.id)
         render_order_payload(order, status: :created)
       end
 
       def update
-        order = policy_scope(DispatchOrder).includes(:dispatch_order_lines).find(params[:id])
+        order = policy_scope(DispatchOrder).includes(dispatch_order_lines: [:commodity, :unit]).find(params[:id])
         authorize order
 
         raise ArgumentError, "Only draft dispatch orders can be updated" unless order.status_draft?
@@ -54,7 +62,8 @@ module Cats
           replace_dispatch_order_lines!(order, payload[:dispatch_order_lines]) if payload.key?(:dispatch_order_lines)
         end
 
-        render_order_payload(order.reload)
+        order = DispatchOrder.includes(dispatch_order_lines: [:commodity, :unit]).find(order.id)
+        render_order_payload(order)
       end
 
       def confirm
@@ -62,7 +71,8 @@ module Cats
         authorize order
 
         DispatchOrderConfirmer.new(order: order, confirmed_by: current_user).call
-        render_order_payload(order.reload)
+        order = DispatchOrder.includes(dispatch_order_lines: [:commodity, :unit]).find(order.id)
+        render_order_payload(order)
       end
 
       def assign
@@ -75,7 +85,8 @@ module Cats
           assignments: assignment_params[:assignments]
         ).call
 
-        render_order_payload(order.reload)
+        order = DispatchOrder.includes(dispatch_order_lines: [:commodity, :unit]).find(order.id)
+        render_order_payload(order)
       end
 
       def reserve_stock
@@ -88,7 +99,8 @@ module Cats
           reservations: stock_reservation_params[:reservations]
         ).call
 
-        render_order_payload(order.reload)
+        order = DispatchOrder.includes(dispatch_order_lines: [:commodity, :unit]).find(order.id)
+        render_order_payload(order)
       end
 
       def workflow
@@ -119,16 +131,27 @@ module Cats
         payload.permit(
           :hub_id,
           :warehouse_id,
+          :source_warehouse_id,       # NEW: Accept frontend param name
           :dispatched_date,
+          :expected_pickup_date,      # NEW: Accept frontend param name
           :reference_no,
           :name,
+          :destination_name,          # NEW: Accept frontend param name
           :description,
+          :notes,                     # NEW: Accept frontend param name
           :destination_type,
           :destination_id,
           dispatch_order_lines: [
             :commodity_id,
             :quantity,
-            :unit_id
+            :unit_id,
+            :notes                    # NEW: Accept frontend param name
+          ],
+          lines: [                    # NEW: Accept frontend param name
+            :commodity_id,
+            :quantity,
+            :unit_id,
+            :notes
           ]
         )
       end

@@ -52,13 +52,13 @@ export async function getReceiptOrder(id: number): Promise<ReceiptOrder> {
 }
 
 export async function createReceiptOrder(payload: CreateReceiptOrderPayload): Promise<ReceiptOrder> {
-  const response = await apiClient.post('/receipt_orders', payload);
-  return response.data;
+  const response = await apiClient.post('/receipt_orders', { payload });
+  return response.data.data || response.data;
 }
 
 export async function updateReceiptOrder(id: number, payload: Partial<CreateReceiptOrderPayload>): Promise<ReceiptOrder> {
-  const response = await apiClient.put(`/receipt_orders/${id}`, payload);
-  return response.data;
+  const response = await apiClient.put(`/receipt_orders/${id}`, { payload });
+  return response.data.data || response.data;
 }
 
 export async function deleteReceiptOrder(id: number): Promise<void> {
@@ -67,7 +67,7 @@ export async function deleteReceiptOrder(id: number): Promise<void> {
 
 export async function confirmReceiptOrder(id: number): Promise<ReceiptOrder> {
   const response = await apiClient.post(`/receipt_orders/${id}/confirm`);
-  return response.data;
+  return response.data.data || response.data;
 }
 
 // Phase 3: Assignment & Reservation APIs

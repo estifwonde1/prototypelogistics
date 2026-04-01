@@ -1,5 +1,25 @@
 # Manual Testing Guide - Officer Role Implementation
 
+## 🎉 Latest Fix Applied (April 1, 2026)
+
+### Receipt/Dispatch Order Creation - FIXED
+The "Server Error" issue when creating receipt/dispatch orders has been resolved. The problem was:
+- Backend wasn't properly eager-loading the `commodity` and `unit` associations when serializing order lines
+- This caused a `NoMethodError` where the serializer tried to call `commodity_name` on the wrong object
+
+**What was fixed:**
+- Updated `ReceiptOrdersController` to properly load associations: `includes(receipt_order_lines: [:commodity, :unit])`
+- Updated `DispatchOrdersController` with the same fix
+- Applied to all controller actions: `index`, `show`, `create`, `update`, `confirm`, `assign`, `reserve_space/stock`
+
+**You can now:**
+- ✅ Create receipt orders successfully
+- ✅ Create dispatch orders successfully
+- ✅ View order details without errors
+- ✅ Edit and confirm orders without issues
+
+---
+
 ## Prerequisites
 
 ### 1. Check Services are Running

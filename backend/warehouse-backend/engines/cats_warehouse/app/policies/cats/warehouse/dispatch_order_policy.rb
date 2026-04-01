@@ -47,16 +47,18 @@ module Cats
         return false unless record.status.to_s.casecmp("draft").zero?
 
         return true if admin?
-        return false unless hub_manager? || warehouse_manager? || officer?
+        return true if officer?  # Officers can confirm any order
 
         # For hub managers, check assigned hub IDs
         if hub_manager?
-          assigned_hubs = AccessContext.new(user: user).assigned_hub_ids.map(&:to_i)
+          assigned_hubs = AccessContext.new(user: user).assigned_hub_ids
           return assigned_hubs.include?(record.hub_id.to_i)
         end
 
-        # For warehouse managers and officers, check assigned warehouse IDs
-        assigned = AccessContext.new(user: user).accessible_warehouse_ids.map(&:to_i)
+        # For warehouse managers, check assigned warehouse IDs
+        return false unless warehouse_manager?
+        
+        assigned = AccessContext.new(user: user).accessible_warehouse_ids.pluck(:id)
         assigned.include?(record.warehouse_id.to_i)
       end
 
