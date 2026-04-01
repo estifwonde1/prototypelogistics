@@ -4,9 +4,12 @@ module Cats
       attributes :id, :commodity_id, :commodity_name, :quantity, :unit_id, :unit_name
 
       def commodity_name
-        # Reload the commodity to ensure we have the right object
+        # Do not call Commodity#name — cats_core implements it via project.source.commodity_name,
+        # which breaks when project.source is a Donor (no commodity_name). Use DB column + fallbacks.
         commodity = Cats::Core::Commodity.find_by(id: object.commodity_id)
-        commodity&.name
+        return unless commodity
+
+        commodity.read_attribute(:name).presence || commodity.batch_no.presence
       end
 
       def unit_name

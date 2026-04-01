@@ -1,0 +1,6 @@
+# Legacy reference copy (do not version Rails tmp/log from a nested app)
+cats_warehouse-main (1)/
+
+# OS / editor
+.DS_Store
+Thumbs.db
