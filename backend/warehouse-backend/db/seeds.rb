@@ -780,11 +780,13 @@ find_or_create_with(
   { user: store_keeper_user_2, store: stores.second },
   { role_name: "Storekeeper" }
 )
-find_or_create_with(
-  Cats::Warehouse::UserAssignment,
-  { user: officer_user, warehouse: warehouses.second },
-  { role_name: "Officer" }
-)
+warehouses.each do |warehouse|
+  find_or_create_with(
+    Cats::Warehouse::UserAssignment,
+    { user: officer_user, warehouse: warehouse },
+    { role_name: "Officer" }
+  )
+end
 
 ui_seed = Rails.root.join("db", "seeds", "ui.rb")
 load(ui_seed) if File.exist?(ui_seed)

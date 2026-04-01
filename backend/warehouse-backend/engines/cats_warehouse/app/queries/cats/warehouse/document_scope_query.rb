@@ -7,6 +7,9 @@ module Cats
       end
 
       def call
+        # Officers should see all documents (they're coordinators)
+        return scoped_relation if access.admin? || access.officer?
+
         case model_name
         when "Cats::Warehouse::StockBalance"
           stock_balances_scope

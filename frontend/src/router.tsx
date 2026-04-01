@@ -11,6 +11,13 @@ import { getDefaultRouteForRole, type RoleSlug } from './contracts/warehouse';
 // Lazy load pages
 const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage'));
+const OfficerDashboardPage = lazy(() => import('./pages/officer/OfficerDashboardPage'));
+const ReceiptOrdersListPage = lazy(() => import('./pages/officer/ReceiptOrdersListPage'));
+const ReceiptOrderFormPage = lazy(() => import('./pages/officer/ReceiptOrderFormPage'));
+const ReceiptOrderDetailPage = lazy(() => import('./pages/officer/ReceiptOrderDetailPage'));
+const DispatchOrdersListPage = lazy(() => import('./pages/officer/DispatchOrdersListPage'));
+const DispatchOrderFormPage = lazy(() => import('./pages/officer/DispatchOrderFormPage'));
+const DispatchOrderDetailPage = lazy(() => import('./pages/officer/DispatchOrderDetailPage'));
 const HubListPage = lazy(() => import('./pages/hubs/HubListPage'));
 const HubDetailPage = lazy(() => import('./pages/hubs/HubDetailPage'));
 const HubFormPage = lazy(() => import('./pages/hubs/HubFormPage'));
@@ -125,6 +132,78 @@ export const router = createBrowserRouter([
       {
         path: 'dashboard',
         element: <DashboardPage />,
+      },
+      {
+        path: 'officer/dashboard',
+        element: (
+          <RequirePermission resource="receipt_orders" action="read">
+            <OfficerDashboardPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/receipt-orders',
+        element: (
+          <RequirePermission resource="receipt_orders" action="read">
+            <ReceiptOrdersListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/receipt-orders/new',
+        element: (
+          <RequirePermission resource="receipt_orders" action="create">
+            <ReceiptOrderFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/receipt-orders/:id',
+        element: (
+          <RequirePermission resource="receipt_orders" action="read">
+            <ReceiptOrderDetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/receipt-orders/:id/edit',
+        element: (
+          <RequirePermission resource="receipt_orders" action="update">
+            <ReceiptOrderFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/dispatch-orders',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <DispatchOrdersListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/dispatch-orders/new',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="create">
+            <DispatchOrderFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/dispatch-orders/:id',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <DispatchOrderDetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/dispatch-orders/:id/edit',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="update">
+            <DispatchOrderFormPage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'hubs',

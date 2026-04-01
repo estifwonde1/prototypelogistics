@@ -15,9 +15,12 @@ import {
 import { IconSearch, IconPackage, IconBuilding, IconBox } from '@tabler/icons-react';
 import { getStockBalances } from '../../api/stockBalances';
 import { getWarehouses } from '../../api/warehouses';
+import { getInventoryLots } from '../../api/referenceData';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
+import { ExpiryBadge } from '../../components/common/ExpiryBadge';
+import { UomConversionDisplay } from '../../components/common/UomConversionDisplay';
 
 type GroupByOption = 'none' | 'warehouse' | 'commodity';
 
@@ -25,6 +28,8 @@ function StockBalancePage() {
   const [search, setSearch] = useState('');
   const [warehouseFilter, setWarehouseFilter] = useState<string | null>(null);
   const [groupBy, setGroupBy] = useState<GroupByOption>('none');
+  const [showExpiringSoon, setShowExpiringSoon] = useState(false);
+  const [lotFilter, setLotFilter] = useState<string | null>(null);
 
   const { data: stockBalances, isLoading, error, refetch } = useQuery({
     queryKey: ['stockBalances'],
@@ -35,6 +40,11 @@ function StockBalancePage() {
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
     queryFn: getWarehouses,
+  });
+
+  const { data: inventoryLots = [] } = useQuery({
+    queryKey: ['reference-data', 'inventory_lots'],
+    queryFn: getInventoryLots,
   });
 
   // Calculate summary statistics
@@ -58,6 +68,18 @@ function StockBalancePage() {
 
     return stockBalances.filter((balance) => {
       const matchesWarehouse = !warehouseFilter || balance.warehouse_id.toString() === warehouseFilter;
+      
+      // Lot filter
+      const matchesLot = !lotFilter || balance.inventory_lot_id?.toString() === lotFilter;
+      
+      // Expiring soon filter (within 30 days)
+      const matchesExpiry = !showExpiringSoon || (balance.expiry_date && (() => {
+        const expiry = new Date(balance.expiry_date);
+        const today = new Date();
+        const daysUntilExpiry = Math.floor((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        return daysUntilExpiry >= 0 && daysUntilExpiry <= 30;
+      })());
+      
       const searchTerm = search.trim().toLowerCase();
       const matchesSearch =
         searchTerm === '' ||
@@ -65,14 +87,15 @@ function StockBalancePage() {
         balance.warehouse_id.toString().includes(searchTerm) ||
         balance.commodity_name?.toLowerCase().includes(searchTerm) ||
         balance.commodity_batch_no?.toLowerCase().includes(searchTerm) ||
+        balance.batch_no?.toLowerCase().includes(searchTerm) ||
         balance.warehouse_name?.toLowerCase().includes(searchTerm) ||
         balance.warehouse_code?.toLowerCase().includes(searchTerm) ||
         balance.store_name?.toLowerCase().includes(searchTerm) ||
         balance.store_code?.toLowerCase().includes(searchTerm) ||
         balance.stack_code?.toLowerCase().includes(searchTerm);
-      return matchesWarehouse && matchesSearch;
+      return matchesWarehouse && matchesLot && matchesExpiry && matchesSearch;
     });
-  }, [stockBalances, warehouseFilter, search]);
+  }, [stockBalances, warehouseFilter, lotFilter, showExpiringSoon, search]);
 
   // Group stock balances
   const groupedBalances = useMemo(() => {
@@ -96,6 +119,11 @@ function StockBalancePage() {
     label: `${warehouse.name} (${warehouse.code})`,
   }));
 
+  const lotOptions = inventoryLots.map((lot) => ({
+    value: lot.id.toString(),
+    label: lot.display_name || `${lot.batch_no} - Exp: ${new Date(lot.expiry_date).toLocaleDateString()}`,
+  }));
+
   if (isLoading) {
     return <LoadingState message="Loading stock balances..." />;
   }
@@ -116,7 +144,7 @@ function StockBalancePage() {
           {title}
         </Title>
       )}
-      <Table.ScrollContainer minWidth={800}>
+      <Table.ScrollContainer minWidth={1200}>
         <Table striped highlightOnHover>
           <Table.Thead>
             <Table.Tr>
@@ -126,6 +154,7 @@ function StockBalancePage() {
               <Table.Th>Commodity</Table.Th>
               <Table.Th>Quantity</Table.Th>
               <Table.Th>Unit</Table.Th>
+              <Table.Th>Batch/Expiry</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -143,8 +172,34 @@ function StockBalancePage() {
                 </Table.Td>
                 <Table.Td>{balance.stack_code || balance.stack_id || '-'}</Table.Td>
                 <Table.Td>{balance.commodity_name || balance.commodity_batch_no || balance.commodity_id}</Table.Td>
-                <Table.Td style={{ fontWeight: 600 }}>{balance.quantity.toLocaleString()}</Table.Td>
+                <Table.Td style={{ fontWeight: 600 }}>
+                  {balance.quantity.toLocaleString()}
+                  {balance.entered_quantity && balance.entered_unit_name && (
+                    <Text size="xs" c="dimmed" mt={4}>
+                      <UomConversionDisplay
+                        enteredQuantity={balance.entered_quantity}
+                        enteredUnit={balance.entered_unit_name}
+                        baseQuantity={balance.base_quantity || balance.quantity}
+                        baseUnit={balance.base_unit_name || balance.unit_abbreviation || balance.unit_name || ''}
+                      />
+                    </Text>
+                  )}
+                </Table.Td>
                 <Table.Td>{balance.unit_abbreviation || balance.unit_name || balance.unit_id}</Table.Td>
+                <Table.Td>
+                  {balance.batch_no || balance.expiry_date ? (
+                    <Stack gap="xs">
+                      {balance.batch_no && (
+                        <Text size="sm" fw={500}>
+                          {balance.batch_no}
+                        </Text>
+                      )}
+                      {balance.expiry_date && <ExpiryBadge expiryDate={balance.expiry_date} size="sm" />}
+                    </Stack>
+                  ) : (
+                    <Text c="dimmed">-</Text>
+                  )}
+                </Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>
@@ -229,6 +284,23 @@ function StockBalancePage() {
           onChange={setWarehouseFilter}
           clearable
           style={{ width: 250 }}
+        />
+        <Select
+          placeholder="Filter by lot"
+          data={lotOptions}
+          value={lotFilter}
+          onChange={setLotFilter}
+          clearable
+          searchable
+          style={{ width: 250 }}
+        />
+        <SegmentedControl
+          value={showExpiringSoon ? 'expiring' : 'all'}
+          onChange={(value) => setShowExpiringSoon(value === 'expiring')}
+          data={[
+            { label: 'All Stock', value: 'all' },
+            { label: 'Expiring Soon', value: 'expiring' },
+          ]}
         />
       </Group>
 

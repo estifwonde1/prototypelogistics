@@ -17,7 +17,7 @@ import {
   Alert,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
-import { IconTrash, IconPlus } from '@tabler/icons-react';
+import { IconTrash, IconPlus, IconChevronDown, IconChevronUp } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { createGrn, getGrns } from '../../api/grns';
 import { getReceipts } from '../../api/receipts';
@@ -25,7 +25,7 @@ import { getWaybills } from '../../api/waybills';
 import { getWarehouses } from '../../api/warehouses';
 import { getStores } from '../../api/stores';
 import { getStacks } from '../../api/stacks';
-import { getCommodityReferences, getUnitReferences } from '../../api/referenceData';
+import { getCommodityReferences, getUnitReferences, getUomConversions } from '../../api/referenceData';
 import { useAuthStore } from '../../store/authStore';
 import { QualityStatus } from '../../utils/constants';
 import type { GrnItem } from '../../types/grn';
@@ -55,6 +55,7 @@ function GrnCreatePage() {
   const [sourceType, setSourceType] = useState('');
   const [sourceId, setSourceId] = useState('');
   const [items, setItems] = useState<GrnItem[]>([createEmptyItem()]);
+  const [showLotTracking, setShowLotTracking] = useState<{ [key: number]: boolean }>({});
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
@@ -94,6 +95,11 @@ function GrnCreatePage() {
   const { data: units = [] } = useQuery({
     queryKey: ['reference-data', 'units'],
     queryFn: getUnitReferences,
+  });
+
+  const { data: uomConversions = [] } = useQuery({
+    queryKey: ['reference-data', 'uom_conversions'],
+    queryFn: getUomConversions,
   });
 
   const warehouseOptions =
@@ -437,7 +443,8 @@ function GrnCreatePage() {
                   const selectedCommodity = selectedCommodityForItem(item);
 
                   return (
-                    <Table.Tr key={index}>
+                    <>
+                      <Table.Tr key={index}>
                       <Table.Td>
                         <Select
                           placeholder={effectiveWarehouseId ? 'Select store' : 'Select warehouse first'}
@@ -544,23 +551,96 @@ function GrnCreatePage() {
                       </Table.Td>
 
                       <Table.Td>
-                        <ActionIcon
-                          color="red"
-                          variant="subtle"
-                          onClick={() => handleRemoveItem(index)}
-                          disabled={items.length === 1}
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
+                        <Group gap="xs">
+                          <ActionIcon
+                            color="blue"
+                            variant="subtle"
+                            onClick={() => setShowLotTracking((prev) => ({ ...prev, [index]: !prev[index] }))}
+                            title="Toggle lot tracking"
+                          >
+                            {showLotTracking[index] ? <IconChevronUp size={16} /> : <IconChevronDown size={16} />}
+                          </ActionIcon>
+                          <ActionIcon
+                            color="red"
+                            variant="subtle"
+                            onClick={() => handleRemoveItem(index)}
+                            disabled={items.length === 1}
+                          >
+                            <IconTrash size={16} />
+                          </ActionIcon>
+                        </Group>
                       </Table.Td>
                     </Table.Tr>
-                  );
-                })}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
-        </Stack>
-      </Card>
+                    {showLotTracking[index] && (
+                      <Table.Tr key={`${index}-lot`}>
+                        <Table.Td colSpan={7}>
+                          <Card bg="gray.0" p="md">
+                            <Stack gap="md">
+                              <Text size="sm" fw={600}>
+                                Lot & UOM Tracking (Optional)
+                              </Text>
+                              <Group grow>
+                                <TextInput
+                                  label="Batch Number"
+                                  placeholder="e.g., BATCH-2026-001"
+                                  value={item.batch_no || ''}
+                                  onChange={(e) => handleItemChange(index, 'batch_no', e.target.value)}
+                                />
+                                <DateInput
+                                  label="Expiry Date"
+                                  placeholder="Select expiry date"
+                                  value={item.expiry_date ? new Date(item.expiry_date) : null}
+                                  onChange={(date) =>
+                                    handleItemChange(index, 'expiry_date', date?.toISOString().split('T')[0])
+                                  }
+                                  minDate={new Date()}
+                                />
+                              </Group>
+                              <Group grow>
+                                <Select
+                                  label="Entered Unit"
+                                  description="Unit as received (e.g., bags)"
+                                  placeholder="Select entered unit"
+                                  data={unitOptions}
+                                  value={item.entered_unit_id?.toString() || null}
+                                  onChange={(value) =>
+                                    handleItemChange(index, 'entered_unit_id', value ? parseInt(value, 10) : undefined)
+                                  }
+                                  searchable
+                                  clearable
+                                />
+                                <NumberInput
+                                  label="Entered Quantity"
+                                  description="Quantity in entered unit"
+                                  placeholder="Enter quantity"
+                                  value={item.entered_quantity || ''}
+                                  onChange={(value) => handleItemChange(index, 'entered_quantity', Number(value))}
+                                  min={0}
+                                  hideControls
+                                />
+                              </Group>
+                              {item.entered_unit_id && item.entered_quantity && (
+                                <Alert color="blue" variant="light">
+                                  <Text size="sm">
+                                    Conversion: {item.entered_quantity}{' '}
+                                    {units.find((u) => u.id === item.entered_unit_id)?.abbreviation || 'units'} ={' '}
+                                    {item.quantity} {item.unit_abbreviation || 'base units'}
+                                  </Text>
+                                </Alert>
+                              )}
+                            </Stack>
+                          </Card>
+                        </Table.Td>
+                      </Table.Tr>
+                    )}
+                  </>
+                );
+              })}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      </Stack>
+    </Card>
 
       <Group justify="flex-end">
         <Button variant="default" onClick={() => navigate('/grns')}>

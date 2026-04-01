@@ -34,3 +34,28 @@ export interface TransporterReference {
   address?: string | null;
   contact_phone?: string | null;
 }
+
+export interface InventoryLot {
+  id: number;
+  warehouse_id: number;
+  warehouse_name?: string;
+  commodity_id: number;
+  lot_code: string;
+  batch_no: string;
+  expiry_date: string;
+  received_on: string;
+  status: string;
+  display_name?: string;
+}
+
+export interface UomConversion {
+  id: number;
+  commodity_id?: number;
+  from_unit_id: number;
+  from_unit_name?: string;
+  to_unit_id: number;
+  to_unit_name?: string;
+  multiplier: number;
+  active: boolean;
+  conversion_type?: string;
+}

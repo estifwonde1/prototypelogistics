@@ -17,7 +17,7 @@ import {
   Alert,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
-import { IconTrash, IconPlus } from '@tabler/icons-react';
+import { IconTrash, IconPlus, IconChevronDown, IconChevronUp } from '@tabler/icons-react';
 import { createGin } from '../../api/gins';
 import { getDispatches } from '../../api/dispatches';
 import { getWaybills } from '../../api/waybills';
@@ -25,7 +25,9 @@ import { getWarehouses } from '../../api/warehouses';
 import { getStores } from '../../api/stores';
 import { getStacks } from '../../api/stacks';
 import { getStockBalances } from '../../api/stockBalances';
+import { getInventoryLots } from '../../api/referenceData';
 import { notifications } from '@mantine/notifications';
+import { ExpiryBadge } from '../../components/common/ExpiryBadge';
 import type { GinItem } from '../../types/gin';
 import type { ApiError } from '../../types/common';
 import { useAuthStore } from '../../store/authStore';
@@ -62,6 +64,7 @@ function GinCreatePage() {
       unit_id: 0,
     },
   ]);
+  const [showLotInfo, setShowLotInfo] = useState<{ [key: number]: boolean }>({});
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
@@ -92,6 +95,11 @@ function GinCreatePage() {
     queryKey: ['stockBalances'],
     queryFn: getStockBalances,
     refetchOnMount: 'always',
+  });
+
+  const { data: inventoryLots = [] } = useQuery({
+    queryKey: ['reference-data', 'inventory_lots'],
+    queryFn: getInventoryLots,
   });
 
   useEffect(() => {
@@ -305,6 +313,25 @@ function GinCreatePage() {
         (item.stack_id ? balance.stack_id === item.stack_id : true)
     );
 
+  const availableLotsForItem = (item: GinItem) => {
+    const effectiveWarehouseId =
+      warehouseId ?? (warehouseOptions.length === 1 ? warehouseOptions[0].value : null);
+    
+    if (!effectiveWarehouseId || !item.commodity_id) return [];
+    
+    return inventoryLots.filter((lot) => {
+      if (lot.warehouse_id !== Number(effectiveWarehouseId)) return false;
+      if (lot.commodity_id !== item.commodity_id) return false;
+      if (lot.status !== 'Active') return false;
+      return true;
+    });
+  };
+
+  const selectedLotForItem = (item: GinItem) => {
+    if (!item.inventory_lot_id) return null;
+    return inventoryLots.find((lot) => lot.id === item.inventory_lot_id);
+  };
+
   const applyCommoditySelection = (index: number, value: string | null) => {
     setItems((prev) => {
       const next = [...prev];
@@ -457,6 +484,7 @@ function GinCreatePage() {
               </Table.Thead>
               <Table.Tbody>
                 {items.map((item, index) => (
+                  <>
                   <Table.Tr key={index}>
                     {(() => {
                       const selectedBalance = selectedBalanceForItem(item);
@@ -539,25 +567,87 @@ function GinCreatePage() {
                       />
                     </Table.Td>
                     <Table.Td>
-                      <ActionIcon
-                        color="red"
-                        variant="subtle"
-                        onClick={() => handleRemoveItem(index)}
-                        disabled={items.length === 1}
-                      >
-                        <IconTrash size={16} />
-                      </ActionIcon>
+                      <Group gap="xs">
+                        {availableLotsForItem(item).length > 0 && (
+                          <ActionIcon
+                            color="blue"
+                            variant="subtle"
+                            onClick={() => setShowLotInfo((prev) => ({ ...prev, [index]: !prev[index] }))}
+                            title="Toggle lot information"
+                          >
+                            {showLotInfo[index] ? <IconChevronUp size={16} /> : <IconChevronDown size={16} />}
+                          </ActionIcon>
+                        )}
+                        <ActionIcon
+                          color="red"
+                          variant="subtle"
+                          onClick={() => handleRemoveItem(index)}
+                          disabled={items.length === 1}
+                        >
+                          <IconTrash size={16} />
+                        </ActionIcon>
+                      </Group>
                     </Table.Td>
                         </>
                       );
                     })()}
                   </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
-        </Stack>
-      </Card>
+                  {showLotInfo[index] && availableLotsForItem(items[index]).length > 0 && (
+                    <Table.Tr key={`${index}-lot`}>
+                      <Table.Td colSpan={7}>
+                        <Card bg="blue.0" p="md">
+                          <Stack gap="md">
+                            <Text size="sm" fw={600}>
+                              Lot Selection (Optional)
+                            </Text>
+                            <Select
+                              label="Select Lot"
+                              description="Choose which lot to issue from"
+                              placeholder="Select lot"
+                              data={availableLotsForItem(items[index]).map((lot) => ({
+                                value: lot.id.toString(),
+                                label: `${lot.batch_no} - Exp: ${new Date(lot.expiry_date).toLocaleDateString()}`,
+                              }))}
+                              value={items[index].inventory_lot_id?.toString() || null}
+                              onChange={(value) => {
+                                const lotId = value ? parseInt(value, 10) : undefined;
+                                const selectedLot = inventoryLots.find((l) => l.id === lotId);
+                                handleItemChange(index, 'inventory_lot_id', lotId);
+                                if (selectedLot) {
+                                  handleItemChange(index, 'batch_no', selectedLot.batch_no);
+                                  handleItemChange(index, 'expiry_date', selectedLot.expiry_date);
+                                }
+                              }}
+                              searchable
+                              clearable
+                            />
+                            {selectedLotForItem(items[index]) && (
+                              <Card bg="white" p="sm" withBorder>
+                                <Group justify="space-between">
+                                  <div>
+                                    <Text size="sm" fw={600}>
+                                      Batch: {selectedLotForItem(items[index])?.batch_no}
+                                    </Text>
+                                    <Text size="xs" c="dimmed">
+                                      Lot Code: {selectedLotForItem(items[index])?.lot_code}
+                                    </Text>
+                                  </div>
+                                  <ExpiryBadge expiryDate={selectedLotForItem(items[index])!.expiry_date} />
+                                </Group>
+                              </Card>
+                            )}
+                          </Stack>
+                        </Card>
+                      </Table.Td>
+                    </Table.Tr>
+                  )}
+                </>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      </Stack>
+    </Card>
 
       <Group justify="flex-end">
         <Button variant="default" onClick={() => navigate('/gins')}>

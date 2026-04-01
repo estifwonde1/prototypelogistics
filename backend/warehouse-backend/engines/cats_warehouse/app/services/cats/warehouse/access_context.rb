@@ -46,6 +46,7 @@ module Cats
       def accessible_hub_ids
         return Hub.select(:id) if admin?
         return assigned_hub_ids if hub_manager?
+        return Hub.select(:id) if officer?
 
         []
       end
@@ -54,7 +55,7 @@ module Cats
         return Warehouse.select(:id) if admin?
         return Warehouse.where(hub_id: assigned_hub_ids).select(:id) if hub_manager?
         return assigned_warehouse_ids if warehouse_manager?
-        return assigned_officer_warehouse_ids if officer?
+        return Warehouse.select(:id) if officer?
         return Store.where(id: assigned_store_ids).select(:warehouse_id) if storekeeper?
 
         []

@@ -16,6 +16,15 @@ export interface Grn {
   approved_by_id?: number;
   approved_by_name?: string;
   grn_items?: GrnItem[];
+  // Phase 3: Order linkage
+  receipt_order_id?: number;
+  receipt_order?: {
+    id: number;
+    source_type: string;
+    source_name: string;
+    status: string;
+  };
+  generated_from_inspection_id?: number;
 }
 
 export interface GrnItem {
@@ -35,4 +44,14 @@ export interface GrnItem {
   stack_id?: number;
   stack_name?: string;
   stack_code?: string;
+  // Phase 2: Lot/UOM fields
+  batch_no?: string;
+  expiry_date?: string;
+  entered_unit_id?: number;
+  entered_unit_name?: string;
+  entered_quantity?: number;
+  base_unit_id?: number;
+  base_unit_name?: string;
+  base_quantity?: number;
+  inventory_lot_id?: number;
 }

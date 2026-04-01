@@ -8,7 +8,7 @@ module Cats
       end
 
       def index?
-        admin? || hub_manager? || warehouse_manager? || storekeeper?
+        admin? || hub_manager? || warehouse_manager? || storekeeper? || officer?
       end
 
       def show?
@@ -21,6 +21,12 @@ module Cats
 
       def confirm?
         admin? || warehouse_manager?
+      end
+
+      private
+
+      def officer?
+        user&.has_role?("Officer")
       end
     end
   end
