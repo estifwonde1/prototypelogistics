@@ -9,6 +9,25 @@ Guiding rules:
 - Prefer additive migrations and nullable foreign keys for new links
 - Preserve manual GRN / GIN / Inspection / Waybill flows while adding orchestration, traceability, reservation, and backorder support
 
+## Current Status Snapshot
+
+Status legend used below:
+- `LIVE IN CURRENT DB`: model/table is present in the current backend database snapshot and used by the running manual flow
+- `IMPLEMENTED IN CODE, PENDING DB`: model/service/controller support exists in the engine codebase, but the current checked database/schema snapshot does not yet expose the table or columns
+- `LEGACY LIVE, NOT FULLY CATALOGED BELOW`: model/table is active in the current backend database but belongs to older workflow structures that are only partially represented in this blueprint
+
+Current backend status as of this revision:
+- `Hub`, `Warehouse`, `Store`, `Stack`, `StockBalance`, `StackTransaction`, `Grn`, `GrnItem`, `Gin`, `GinItem`, `Inspection`, `InspectionItem`, `Waybill`, and `WaybillItem` are `LIVE IN CURRENT DB`
+- `ReceiptOrder`, `ReceiptOrderLine`, `DispatchOrder`, and their richer draft/confirm workflow are `IMPLEMENTED IN CODE, PENDING DB`
+- `InventoryLot` and `UomConversion` are `IMPLEMENTED IN CODE, PENDING DB`
+- `ReceiptOrderAssignment`, `DispatchOrderAssignment`, `StockReservation`, `SpaceReservation`, and `WorkflowEvent` are `IMPLEMENTED IN CODE, PENDING DB`
+- `reserved_quantity` / `available_quantity` behavior for `StockBalance` is implemented in code, but the current checked `schema.rb` snapshot does not yet show those columns as live
+- Legacy tables such as `ReceiptAdvice`, `ReceiptAdviceItem`, `DispatchPreparation`, `DispatchOrderItem`, `StackReservation`, `GinStackReservation`, `OperationalTask`, and related older execution helpers are `LEGACY LIVE, NOT FULLY CATALOGED BELOW`
+
+Practical interpretation:
+- The current database still supports the established manual warehouse flow and the older orchestration structures
+- The newer Phase 1 to Phase 3 orchestration / lot / reservation backend has been added in code, but this document should not imply those tables are already present in every local database unless the corresponding migrations have actually been applied
+
 ## Existing Models
 
 ### Hub

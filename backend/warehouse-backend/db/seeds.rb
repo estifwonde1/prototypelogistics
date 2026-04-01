@@ -7,6 +7,10 @@ def find_or_create_with(model, attrs, updates = {})
   record
 end
 
+def table_exists?(table_name)
+  ActiveRecord::Base.connection.data_source_exists?(table_name)
+end
+
 def add_role(user, role_name)
   user.add_role(role_name)
   user
@@ -237,17 +241,21 @@ units = {
   bag: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "bag" }, { name: "Bag", unit_type: Cats::Core::UnitOfMeasure::ITEM })
 }
 
-puts "Seeding UOM conversions..."
-find_or_create_with(
-  Cats::Warehouse::UomConversion,
-  { from_unit: units[:bag], to_unit: units[:kg] },
-  { multiplier: 50.0 }
-)
-find_or_create_with(
-  Cats::Warehouse::UomConversion,
-  { from_unit: units[:kg], to_unit: units[:mt] },
-  { multiplier: 0.001 }
-)
+if table_exists?("cats_warehouse_uom_conversions")
+  puts "Seeding UOM conversions..."
+  find_or_create_with(
+    Cats::Warehouse::UomConversion,
+    { from_unit: units[:bag], to_unit: units[:kg] },
+    { multiplier: 50.0 }
+  )
+  find_or_create_with(
+    Cats::Warehouse::UomConversion,
+    { from_unit: units[:kg], to_unit: units[:mt] },
+    { multiplier: 0.001 }
+  )
+else
+  puts "Skipping UOM conversions: table cats_warehouse_uom_conversions is not present in the current database."
+end
 
 currencies = {
   etb: find_or_create_with(Cats::Core::Currency, { code: "ETB" }, { name: "Ethiopian Birr" })
@@ -313,18 +321,6 @@ commodities = [
     }
   )
 end
-
-puts "Seeding inventory lots..."
-find_or_create_with(
-  Cats::Warehouse::InventoryLot,
-  { commodity: commodities.first, batch_no: "LOT-RICE-001" }, # Rice
-  { expiry_date: 1.year.from_now.to_date }
-)
-find_or_create_with(
-  Cats::Warehouse::InventoryLot,
-  { commodity: commodities.second, batch_no: "LOT-WHEAT-001" }, # Wheat Flour
-  { expiry_date: 6.months.from_now.to_date }
-)
 
 puts "Seeding transporters, purchase orders, and gift certificates..."
 transporters = [
@@ -541,6 +537,34 @@ warehouses = [
       description: "Addis Ababa warehouse"
     }
   )
+end
+
+if table_exists?("cats_warehouse_inventory_lots")
+  puts "Seeding inventory lots..."
+  inventory_lot_warehouse = warehouses.first
+
+  find_or_create_with(
+    Cats::Warehouse::InventoryLot,
+    { warehouse: inventory_lot_warehouse, commodity: commodities.first, batch_no: "LOT-RICE-001" },
+    {
+      lot_code: "ADD-LOT-RICE-001",
+      received_on: Date.current - 2,
+      expiry_date: 1.year.from_now.to_date,
+      status: "Active"
+    }
+  )
+  find_or_create_with(
+    Cats::Warehouse::InventoryLot,
+    { warehouse: inventory_lot_warehouse, commodity: commodities.second, batch_no: "LOT-WHEAT-001" },
+    {
+      lot_code: "ADD-LOT-WHEAT-001",
+      received_on: Date.current - 2,
+      expiry_date: 6.months.from_now.to_date,
+      status: "Active"
+    }
+  )
+else
+  puts "Skipping inventory lots: table cats_warehouse_inventory_lots is not present in the current database."
 end
 
 warehouses.each_with_index do |warehouse, idx|
