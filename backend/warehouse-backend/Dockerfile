@@ -4,6 +4,7 @@ FROM ruby:3.2
 # Install dependencies
 RUN apt-get update -qq && apt-get install -y \
   build-essential \
+  curl \
   libpq-dev \
   nodejs \
   postgresql-client \
@@ -11,6 +12,8 @@ RUN apt-get update -qq && apt-get install -y \
 
 # Set working directory
 WORKDIR /app
+
+ENV RAILS_LOG_TO_STDOUT=true
 
 # Copy engine first (needed for bundle install)
 COPY engines ./engines

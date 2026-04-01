@@ -19,13 +19,13 @@ services:
   backend:
     build: .
     container_name: cats_warehouse_backend
-    command: bash -c "rm -f tmp/pids/server.pid && bundle exec rails server -b 0.0.0.0"
+    command: bundle exec rails server -b 0.0.0.0
+    env_file:
+      - .env
     environment:
       POSTGRES_HOST: db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 1234
-      POSTGRES_DB: cats_warehouse_development
       RAILS_ENV: development
+      MIGRATE_DB: "true"
       SEED_DB: "true"
     ports:
       - "3000:3000"
@@ -35,6 +35,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3000/up || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     stdin_open: true
     tty: true
 

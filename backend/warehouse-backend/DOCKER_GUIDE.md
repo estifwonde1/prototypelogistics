@@ -89,6 +89,7 @@ curl http://localhost:3000/cats_warehouse/v1/hubs
   - `POSTGRES_PASSWORD=1234`
   - `POSTGRES_DB=cats_warehouse_development`
   - `RAILS_ENV=development`
+  - `MIGRATE_DB=true` (runs the verified migration-context flow on startup)
   - `SEED_DB=true` (seeds database on first run)
 - **Volumes:**
   - Application code mounted for live reloading
