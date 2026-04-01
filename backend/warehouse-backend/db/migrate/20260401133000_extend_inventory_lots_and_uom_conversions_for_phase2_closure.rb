@@ -13,17 +13,20 @@ class ExtendInventoryLotsAndUomConversionsForPhase2Closure < ActiveRecord::Migra
 
     change_column_null :cats_warehouse_inventory_lots, :warehouse_id, true
 
-    add_index :cats_warehouse_inventory_lots, [:source_type, :source_id], name: "index_cats_warehouse_inventory_lots_on_source", unless: index_exists?(:cats_warehouse_inventory_lots, [:source_type, :source_id], name: "index_cats_warehouse_inventory_lots_on_source")
+    unless index_exists?(:cats_warehouse_inventory_lots, [:source_type, :source_id], name: "index_cats_warehouse_inventory_lots_on_source")
+      add_index :cats_warehouse_inventory_lots, [:source_type, :source_id], name: "index_cats_warehouse_inventory_lots_on_source"
+    end
 
     if index_exists?(:cats_warehouse_inventory_lots, [:commodity_id, :batch_no], name: "idx_lot_commodity_batch")
       remove_index :cats_warehouse_inventory_lots, name: "idx_lot_commodity_batch"
     end
 
-    add_index :cats_warehouse_inventory_lots,
-              [:warehouse_id, :commodity_id, :batch_no, :expiry_date],
-              unique: true,
-              name: "idx_lot_warehouse_commodity_batch_expiry",
-              unless: index_exists?(:cats_warehouse_inventory_lots, [:warehouse_id, :commodity_id, :batch_no, :expiry_date], name: "idx_lot_warehouse_commodity_batch_expiry")
+    unless index_exists?(:cats_warehouse_inventory_lots, [:warehouse_id, :commodity_id, :batch_no, :expiry_date], name: "idx_lot_warehouse_commodity_batch_expiry")
+      add_index :cats_warehouse_inventory_lots,
+                [:warehouse_id, :commodity_id, :batch_no, :expiry_date],
+                unique: true,
+                name: "idx_lot_warehouse_commodity_batch_expiry"
+    end
 
     change_table :cats_warehouse_uom_conversions do |t|
       t.string :conversion_type unless column_exists?(:cats_warehouse_uom_conversions, :conversion_type)

@@ -40,17 +40,5 @@ module Cats
         [object.confirmed_by&.first_name, object.confirmed_by&.last_name].compact.join(" ").presence || object.confirmed_by&.email
       end
     end
-
-    class DispatchOrderLineSerializer < ApplicationSerializer
-      attributes :id, :commodity_id, :commodity_name, :quantity, :unit_id, :unit_name
-
-      def commodity_name
-        object.commodity&.name
-      end
-
-      def unit_name
-        object.unit&.abbreviation
-      end
-    end
   end
 end
