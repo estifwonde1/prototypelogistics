@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_03_31_212330) do
+ActiveRecord::Schema[7.0].define(version: 2026_03_30_093000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1038,38 +1038,47 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_31_212330) do
     t.index ["user_id"], name: "user_on_ur_indx"
   end
 
-  create_table "cats_warehouse_dispatch_order_lines", force: :cascade do |t|
+  create_table "cats_warehouse_dispatch_order_items", force: :cascade do |t|
     t.bigint "dispatch_order_id", null: false
     t.bigint "commodity_id", null: false
-    t.decimal "quantity", precision: 15, scale: 2, null: false
+    t.float "quantity", null: false
     t.bigint "unit_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["commodity_id"], name: "index_cats_warehouse_dispatch_order_lines_on_commodity_id"
-    t.index ["dispatch_order_id"], name: "index_dispatch_order_lines_on_order_id"
-    t.index ["unit_id"], name: "index_cats_warehouse_dispatch_order_lines_on_unit_id"
+    t.index ["commodity_id"], name: "idx_cw_disp_order_items_comm"
+    t.index ["dispatch_order_id"], name: "idx_cw_disp_order_items_order"
+    t.index ["unit_id"], name: "idx_cw_disp_order_items_unit"
   end
 
   create_table "cats_warehouse_dispatch_orders", force: :cascade do |t|
     t.string "reference_no", null: false
+    t.string "request_source_type", null: false
+    t.bigint "destination_location_id", null: false
+    t.bigint "requested_by_id"
+    t.bigint "assigned_hub_id"
+    t.bigint "assigned_warehouse_id"
     t.string "status", default: "Draft", null: false
-    t.bigint "hub_id"
-    t.bigint "warehouse_id"
-    t.string "destination_type"
-    t.bigint "destination_id"
-    t.string "source_document_no"
-    t.date "dispatched_date"
-    t.bigint "created_by_id"
-    t.bigint "confirmed_by_id"
-    t.text "description"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["confirmed_by_id"], name: "index_cats_warehouse_dispatch_orders_on_confirmed_by_id"
-    t.index ["created_by_id"], name: "index_cats_warehouse_dispatch_orders_on_created_by_id"
-    t.index ["hub_id"], name: "index_cats_warehouse_dispatch_orders_on_hub_id"
-    t.index ["reference_no"], name: "index_cats_warehouse_dispatch_orders_on_reference_no", unique: true
-    t.index ["status"], name: "index_cats_warehouse_dispatch_orders_on_status"
-    t.index ["warehouse_id"], name: "index_cats_warehouse_dispatch_orders_on_warehouse_id"
+    t.index ["assigned_hub_id"], name: "idx_cw_disp_orders_assigned_hub"
+    t.index ["assigned_warehouse_id"], name: "idx_cw_disp_orders_assigned_wh"
+    t.index ["destination_location_id"], name: "idx_cw_disp_orders_destination"
+    t.index ["reference_no"], name: "idx_cw_dispatch_orders_ref_no", unique: true
+    t.index ["requested_by_id"], name: "idx_cw_disp_orders_requested_by"
+  end
+
+  create_table "cats_warehouse_dispatch_preparations", force: :cascade do |t|
+    t.bigint "dispatch_order_id", null: false
+    t.bigint "warehouse_id", null: false
+    t.string "status", default: "Open", null: false
+    t.bigint "prepared_by_id"
+    t.bigint "verified_by_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["dispatch_order_id"], name: "idx_cw_disp_preps_order_unique", unique: true
+    t.index ["prepared_by_id"], name: "idx_cw_disp_preps_prepared_by"
+    t.index ["verified_by_id"], name: "idx_cw_disp_preps_verified_by"
+    t.index ["warehouse_id"], name: "idx_cw_disp_preps_wh"
   end
 
   create_table "cats_warehouse_geos", force: :cascade do |t|
@@ -1092,18 +1101,21 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_31_212330) do
     t.bigint "stack_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.bigint "inventory_lot_id"
-    t.bigint "entered_unit_id"
-    t.bigint "base_unit_id"
-    t.decimal "base_quantity", precision: 15, scale: 3
-    t.index ["base_unit_id"], name: "index_cats_warehouse_gin_items_on_base_unit_id"
     t.index ["commodity_id"], name: "index_cats_warehouse_gin_items_on_commodity_id"
-    t.index ["entered_unit_id"], name: "index_cats_warehouse_gin_items_on_entered_unit_id"
     t.index ["gin_id"], name: "index_cats_warehouse_gin_items_on_gin_id"
-    t.index ["inventory_lot_id"], name: "index_cats_warehouse_gin_items_on_inventory_lot_id"
     t.index ["stack_id"], name: "index_cats_warehouse_gin_items_on_stack_id"
     t.index ["store_id"], name: "index_cats_warehouse_gin_items_on_store_id"
     t.index ["unit_id"], name: "index_cats_warehouse_gin_items_on_unit_id"
+  end
+
+  create_table "cats_warehouse_gin_stack_reservations", force: :cascade do |t|
+    t.bigint "gin_id", null: false
+    t.bigint "stack_reservation_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["gin_id", "stack_reservation_id"], name: "idx_cw_gin_stack_res_unique", unique: true
+    t.index ["gin_id"], name: "idx_cw_gin_stack_res_gin"
+    t.index ["stack_reservation_id"], name: "idx_cw_gin_stack_res_res"
   end
 
   create_table "cats_warehouse_gins", force: :cascade do |t|
@@ -1118,11 +1130,15 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_31_212330) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.bigint "dispatch_order_id"
+    t.bigint "dispatch_preparation_id"
+    t.bigint "waybill_id"
     t.index ["approved_by_id"], name: "index_cats_warehouse_gins_on_approved_by_id"
     t.index ["destination_type", "destination_id"], name: "index_cats_warehouse_gins_on_destination"
-    t.index ["dispatch_order_id"], name: "index_cats_warehouse_gins_on_dispatch_order_id"
+    t.index ["dispatch_order_id"], name: "idx_cw_gins_dispatch_order"
+    t.index ["dispatch_preparation_id"], name: "idx_cw_gins_dispatch_prep"
     t.index ["issued_by_id"], name: "index_cats_warehouse_gins_on_issued_by_id"
     t.index ["warehouse_id"], name: "index_cats_warehouse_gins_on_warehouse_id"
+    t.index ["waybill_id"], name: "idx_cw_gins_waybill"
   end
 
   create_table "cats_warehouse_grn_items", force: :cascade do |t|
@@ -1135,15 +1151,8 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_31_212330) do
     t.bigint "stack_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.bigint "inventory_lot_id"
-    t.bigint "entered_unit_id"
-    t.bigint "base_unit_id"
-    t.decimal "base_quantity", precision: 15, scale: 3
-    t.index ["base_unit_id"], name: "index_cats_warehouse_grn_items_on_base_unit_id"
     t.index ["commodity_id"], name: "index_cats_warehouse_grn_items_on_commodity_id"
-    t.index ["entered_unit_id"], name: "index_cats_warehouse_grn_items_on_entered_unit_id"
     t.index ["grn_id"], name: "index_cats_warehouse_grn_items_on_grn_id"
-    t.index ["inventory_lot_id"], name: "index_cats_warehouse_grn_items_on_inventory_lot_id"
     t.index ["stack_id"], name: "index_cats_warehouse_grn_items_on_stack_id"
     t.index ["store_id"], name: "index_cats_warehouse_grn_items_on_store_id"
     t.index ["unit_id"], name: "index_cats_warehouse_grn_items_on_unit_id"
@@ -1160,12 +1169,18 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_31_212330) do
     t.bigint "approved_by_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.bigint "receipt_order_id"
+    t.bigint "receipt_advice_id"
+    t.bigint "arrival_inspection_id"
+    t.bigint "stack_reservation_id"
+    t.bigint "waybill_id"
     t.index ["approved_by_id"], name: "index_cats_warehouse_grns_on_approved_by_id"
-    t.index ["receipt_order_id"], name: "index_cats_warehouse_grns_on_receipt_order_id"
+    t.index ["arrival_inspection_id"], name: "idx_cw_grns_arrival_inspection"
+    t.index ["receipt_advice_id"], name: "idx_cw_grns_receipt_advice"
     t.index ["received_by_id"], name: "index_cats_warehouse_grns_on_received_by_id"
     t.index ["source_type", "source_id"], name: "index_cats_warehouse_grns_on_source"
+    t.index ["stack_reservation_id"], name: "idx_cw_grns_stack_reservation"
     t.index ["warehouse_id"], name: "index_cats_warehouse_grns_on_warehouse_id"
+    t.index ["waybill_id"], name: "idx_cw_grns_waybill"
   end
 
   create_table "cats_warehouse_hub_access", force: :cascade do |t|
@@ -1244,15 +1259,9 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_31_212330) do
     t.text "remarks"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.bigint "inventory_lot_id"
-    t.bigint "entered_unit_id"
-    t.bigint "base_unit_id"
-    t.decimal "base_quantity", precision: 15, scale: 3
-    t.index ["base_unit_id"], name: "index_cats_warehouse_inspection_items_on_base_unit_id"
+    t.float "quantity_rejected", default: 0.0, null: false
     t.index ["commodity_id"], name: "index_cats_warehouse_inspection_items_on_commodity_id"
-    t.index ["entered_unit_id"], name: "index_cats_warehouse_inspection_items_on_entered_unit_id"
     t.index ["inspection_id"], name: "index_cats_warehouse_inspection_items_on_inspection_id"
-    t.index ["inventory_lot_id"], name: "index_cats_warehouse_inspection_items_on_inventory_lot_id"
   end
 
   create_table "cats_warehouse_inspections", force: :cascade do |t|
@@ -1265,9 +1274,8 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_31_212330) do
     t.string "status", default: "Draft", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.bigint "receipt_order_id"
+    t.string "inspection_mode", default: "stock_adjustment", null: false
     t.index ["inspector_id"], name: "index_cats_warehouse_inspections_on_inspector_id"
-    t.index ["receipt_order_id"], name: "index_cats_warehouse_inspections_on_receipt_order_id"
     t.index ["source_type", "source_id"], name: "index_cats_warehouse_inspections_on_source"
     t.index ["warehouse_id"], name: "index_cats_warehouse_inspections_on_warehouse_id"
   end
@@ -1286,49 +1294,82 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_31_212330) do
     t.index ["unit_id"], name: "index_cats_warehouse_inventory_adjustments_on_unit_id"
   end
 
-  create_table "cats_warehouse_inventory_lots", force: :cascade do |t|
-    t.bigint "commodity_id", null: false
-    t.string "batch_no", null: false
-    t.date "expiry_date"
-    t.string "description"
+  create_table "cats_warehouse_operational_tasks", force: :cascade do |t|
+    t.string "task_type", null: false
+    t.string "related_type"
+    t.bigint "related_id"
+    t.string "recipient_role", null: false
+    t.bigint "recipient_user_id"
+    t.string "facility_scope_type", null: false
+    t.bigint "facility_scope_id", null: false
+    t.string "status", default: "open", null: false
+    t.text "message"
+    t.bigint "created_by_id"
+    t.bigint "completed_by_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["commodity_id", "batch_no"], name: "idx_lot_commodity_batch", unique: true
-    t.index ["commodity_id"], name: "index_cats_warehouse_inventory_lots_on_commodity_id"
+    t.index ["completed_by_id"], name: "idx_cw_operational_tasks_completed_by"
+    t.index ["created_by_id"], name: "idx_cw_operational_tasks_created_by"
+    t.index ["facility_scope_type", "facility_scope_id"], name: "idx_cw_operational_tasks_scope"
+    t.index ["recipient_user_id"], name: "idx_cw_operational_tasks_recipient"
+    t.index ["related_type", "related_id"], name: "idx_cw_operational_tasks_related"
   end
 
-  create_table "cats_warehouse_receipt_order_lines", force: :cascade do |t|
-    t.bigint "receipt_order_id", null: false
+  create_table "cats_warehouse_receipt_advice_items", force: :cascade do |t|
+    t.bigint "receipt_advice_id", null: false
     t.bigint "commodity_id", null: false
-    t.decimal "quantity", precision: 15, scale: 2, null: false
+    t.float "quantity", null: false
     t.bigint "unit_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["commodity_id"], name: "index_cats_warehouse_receipt_order_lines_on_commodity_id"
-    t.index ["receipt_order_id"], name: "index_receipt_order_lines_on_order_id"
-    t.index ["unit_id"], name: "index_cats_warehouse_receipt_order_lines_on_unit_id"
+    t.index ["commodity_id"], name: "idx_cw_receipt_items_commodity"
+    t.index ["receipt_advice_id"], name: "idx_cw_receipt_items_advice"
+    t.index ["unit_id"], name: "idx_cw_receipt_items_unit"
   end
 
-  create_table "cats_warehouse_receipt_orders", force: :cascade do |t|
+  create_table "cats_warehouse_receipt_advices", force: :cascade do |t|
     t.string "reference_no", null: false
+    t.string "source_kind", null: false
+    t.string "source_name"
+    t.string "source_reference_no"
+    t.bigint "destination_hub_id"
+    t.bigint "destination_warehouse_id", null: false
     t.string "status", default: "Draft", null: false
-    t.bigint "hub_id"
-    t.bigint "warehouse_id"
-    t.string "source_type"
-    t.bigint "source_id"
-    t.string "source_document_no"
-    t.date "received_date"
+    t.datetime "expected_arrival_at"
     t.bigint "created_by_id"
-    t.bigint "confirmed_by_id"
-    t.text "description"
+    t.bigint "assigned_by_id"
+    t.bigint "assigned_to_user_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["confirmed_by_id"], name: "index_cats_warehouse_receipt_orders_on_confirmed_by_id"
-    t.index ["created_by_id"], name: "index_cats_warehouse_receipt_orders_on_created_by_id"
-    t.index ["hub_id"], name: "index_cats_warehouse_receipt_orders_on_hub_id"
-    t.index ["reference_no"], name: "index_cats_warehouse_receipt_orders_on_reference_no", unique: true
-    t.index ["status"], name: "index_cats_warehouse_receipt_orders_on_status"
-    t.index ["warehouse_id"], name: "index_cats_warehouse_receipt_orders_on_warehouse_id"
+    t.index ["assigned_by_id"], name: "idx_cw_receipt_advices_assigned_by"
+    t.index ["assigned_to_user_id"], name: "idx_cw_receipt_advices_assigned_to"
+    t.index ["created_by_id"], name: "idx_cw_receipt_advices_created_by"
+    t.index ["destination_hub_id"], name: "idx_cw_receipt_advices_dest_hub"
+    t.index ["destination_warehouse_id"], name: "idx_cw_receipt_advices_dest_wh"
+    t.index ["reference_no"], name: "idx_cw_receipt_advices_reference_no", unique: true
+  end
+
+  create_table "cats_warehouse_stack_reservations", force: :cascade do |t|
+    t.bigint "warehouse_id", null: false
+    t.bigint "store_id", null: false
+    t.bigint "stack_id", null: false
+    t.string "purpose_type", null: false
+    t.bigint "purpose_id", null: false
+    t.string "status", default: "reserved", null: false
+    t.bigint "commodity_id"
+    t.bigint "unit_id"
+    t.float "reserved_quantity"
+    t.float "reserved_area_m2"
+    t.bigint "created_by_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["commodity_id"], name: "idx_cw_stack_reservations_commodity"
+    t.index ["created_by_id"], name: "idx_cw_stack_reservations_created_by"
+    t.index ["purpose_type", "purpose_id"], name: "idx_cw_stack_reservations_purpose"
+    t.index ["stack_id"], name: "idx_cw_stack_reservations_stack"
+    t.index ["store_id"], name: "idx_cw_stack_reservations_store"
+    t.index ["unit_id"], name: "idx_cw_stack_reservations_unit"
+    t.index ["warehouse_id"], name: "idx_cw_stack_reservations_wh"
   end
 
   create_table "cats_warehouse_stack_transactions", force: :cascade do |t|
@@ -1342,14 +1383,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_31_212330) do
     t.datetime "updated_at", null: false
     t.string "reference_type"
     t.bigint "reference_id"
-    t.bigint "inventory_lot_id"
-    t.bigint "entered_unit_id"
-    t.bigint "base_unit_id"
-    t.decimal "base_quantity", precision: 15, scale: 3
-    t.index ["base_unit_id"], name: "index_cats_warehouse_stack_transactions_on_base_unit_id"
     t.index ["destination_id"], name: "destination_on_cwst_indx"
-    t.index ["entered_unit_id"], name: "index_cats_warehouse_stack_transactions_on_entered_unit_id"
-    t.index ["inventory_lot_id"], name: "index_cats_warehouse_stack_transactions_on_inventory_lot_id"
     t.index ["source_id"], name: "source_on_cwst_indx"
     t.index ["unit_id"], name: "unit_on_cwst_indx"
   end
@@ -1383,9 +1417,6 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_31_212330) do
     t.bigint "unit_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.bigint "base_unit_id"
-    t.decimal "base_quantity", precision: 15, scale: 3
-    t.index ["base_unit_id"], name: "index_cats_warehouse_stacks_on_base_unit_id"
     t.index ["commodity_id"], name: "index_cats_warehouse_stacks_on_commodity_id"
     t.index ["store_id"], name: "index_cats_warehouse_stacks_on_store_id"
     t.index ["unit_id"], name: "index_cats_warehouse_stacks_on_unit_id"
@@ -1401,15 +1432,8 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_31_212330) do
     t.bigint "unit_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.bigint "inventory_lot_id"
-    t.bigint "entered_unit_id"
-    t.bigint "base_unit_id"
-    t.decimal "base_quantity", precision: 15, scale: 3
     t.index "warehouse_id, COALESCE(store_id, ('-1'::integer)::bigint), COALESCE(stack_id, ('-1'::integer)::bigint), commodity_id, unit_id", name: "idx_cats_warehouse_stock_balances_unique_dimension", unique: true
-    t.index ["base_unit_id"], name: "index_cats_warehouse_stock_balances_on_base_unit_id"
     t.index ["commodity_id"], name: "index_cats_warehouse_stock_balances_on_commodity_id"
-    t.index ["entered_unit_id"], name: "index_cats_warehouse_stock_balances_on_entered_unit_id"
-    t.index ["inventory_lot_id"], name: "index_cats_warehouse_stock_balances_on_inventory_lot_id"
     t.index ["stack_id"], name: "index_cats_warehouse_stock_balances_on_stack_id"
     t.index ["store_id"], name: "index_cats_warehouse_stock_balances_on_store_id"
     t.index ["unit_id"], name: "index_cats_warehouse_stock_balances_on_unit_id"
@@ -1434,19 +1458,6 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_31_212330) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["warehouse_id"], name: "index_cats_warehouse_stores_on_warehouse_id"
-  end
-
-  create_table "cats_warehouse_uom_conversions", force: :cascade do |t|
-    t.bigint "commodity_id"
-    t.bigint "from_unit_id", null: false
-    t.bigint "to_unit_id", null: false
-    t.decimal "multiplier", precision: 15, scale: 6, null: false
-    t.boolean "is_inter_unit", default: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["commodity_id"], name: "index_cats_warehouse_uom_conversions_on_commodity_id"
-    t.index ["from_unit_id"], name: "index_cats_warehouse_uom_conversions_on_from_unit_id"
-    t.index ["to_unit_id"], name: "index_cats_warehouse_uom_conversions_on_to_unit_id"
   end
 
   create_table "cats_warehouse_user_assignments", force: :cascade do |t|
@@ -1492,6 +1503,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_31_212330) do
     t.float "length_m"
     t.float "width_m"
     t.float "height_m"
+    t.float "usable_area_sqm"
     t.index ["warehouse_id"], name: "index_cats_warehouse_warehouse_capacity_on_warehouse_id"
   end
 
@@ -1544,14 +1556,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_31_212330) do
     t.bigint "unit_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.bigint "inventory_lot_id"
-    t.bigint "entered_unit_id"
-    t.bigint "base_unit_id"
-    t.decimal "base_quantity", precision: 15, scale: 3
-    t.index ["base_unit_id"], name: "index_cats_warehouse_waybill_items_on_base_unit_id"
     t.index ["commodity_id"], name: "index_cats_warehouse_waybill_items_on_commodity_id"
-    t.index ["entered_unit_id"], name: "index_cats_warehouse_waybill_items_on_entered_unit_id"
-    t.index ["inventory_lot_id"], name: "index_cats_warehouse_waybill_items_on_inventory_lot_id"
     t.index ["unit_id"], name: "index_cats_warehouse_waybill_items_on_unit_id"
     t.index ["waybill_id"], name: "index_cats_warehouse_waybill_items_on_waybill_id"
   end
@@ -1577,10 +1582,10 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_31_212330) do
     t.string "status"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.bigint "dispatch_order_id"
+    t.bigint "receipt_advice_id"
     t.index ["destination_location_id"], name: "index_cats_warehouse_waybills_on_destination_location_id"
     t.index ["dispatch_id"], name: "index_cats_warehouse_waybills_on_dispatch_id"
-    t.index ["dispatch_order_id"], name: "index_cats_warehouse_waybills_on_dispatch_order_id"
+    t.index ["receipt_advice_id"], name: "idx_cw_waybills_receipt_advice"
     t.index ["source_location_id"], name: "index_cats_warehouse_waybills_on_source_location_id"
   end
 
@@ -1751,37 +1756,42 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_31_212330) do
   add_foreign_key "cats_core_users", "cats_core_application_modules", column: "application_module_id"
   add_foreign_key "cats_core_users_cats_core_roles", "cats_core_roles", column: "role_id"
   add_foreign_key "cats_core_users_cats_core_roles", "cats_core_users", column: "user_id"
-  add_foreign_key "cats_warehouse_dispatch_order_lines", "cats_core_commodities", column: "commodity_id"
-  add_foreign_key "cats_warehouse_dispatch_order_lines", "cats_core_unit_of_measures", column: "unit_id"
-  add_foreign_key "cats_warehouse_dispatch_order_lines", "cats_warehouse_dispatch_orders", column: "dispatch_order_id"
-  add_foreign_key "cats_warehouse_dispatch_orders", "cats_core_users", column: "confirmed_by_id"
-  add_foreign_key "cats_warehouse_dispatch_orders", "cats_core_users", column: "created_by_id"
-  add_foreign_key "cats_warehouse_dispatch_orders", "cats_warehouse_hubs", column: "hub_id"
-  add_foreign_key "cats_warehouse_dispatch_orders", "cats_warehouse_warehouses", column: "warehouse_id"
+  add_foreign_key "cats_warehouse_dispatch_order_items", "cats_core_commodities", column: "commodity_id"
+  add_foreign_key "cats_warehouse_dispatch_order_items", "cats_core_unit_of_measures", column: "unit_id"
+  add_foreign_key "cats_warehouse_dispatch_order_items", "cats_warehouse_dispatch_orders", column: "dispatch_order_id"
+  add_foreign_key "cats_warehouse_dispatch_orders", "cats_core_locations", column: "destination_location_id"
+  add_foreign_key "cats_warehouse_dispatch_orders", "cats_core_users", column: "requested_by_id"
+  add_foreign_key "cats_warehouse_dispatch_orders", "cats_warehouse_hubs", column: "assigned_hub_id"
+  add_foreign_key "cats_warehouse_dispatch_orders", "cats_warehouse_warehouses", column: "assigned_warehouse_id"
+  add_foreign_key "cats_warehouse_dispatch_preparations", "cats_core_users", column: "prepared_by_id"
+  add_foreign_key "cats_warehouse_dispatch_preparations", "cats_core_users", column: "verified_by_id"
+  add_foreign_key "cats_warehouse_dispatch_preparations", "cats_warehouse_dispatch_orders", column: "dispatch_order_id"
+  add_foreign_key "cats_warehouse_dispatch_preparations", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_gin_items", "cats_core_commodities", column: "commodity_id"
-  add_foreign_key "cats_warehouse_gin_items", "cats_core_unit_of_measures", column: "base_unit_id"
-  add_foreign_key "cats_warehouse_gin_items", "cats_core_unit_of_measures", column: "entered_unit_id"
   add_foreign_key "cats_warehouse_gin_items", "cats_core_unit_of_measures", column: "unit_id"
   add_foreign_key "cats_warehouse_gin_items", "cats_warehouse_gins", column: "gin_id"
-  add_foreign_key "cats_warehouse_gin_items", "cats_warehouse_inventory_lots", column: "inventory_lot_id"
   add_foreign_key "cats_warehouse_gin_items", "cats_warehouse_stacks", column: "stack_id"
   add_foreign_key "cats_warehouse_gin_items", "cats_warehouse_stores", column: "store_id"
+  add_foreign_key "cats_warehouse_gin_stack_reservations", "cats_warehouse_gins", column: "gin_id"
+  add_foreign_key "cats_warehouse_gin_stack_reservations", "cats_warehouse_stack_reservations", column: "stack_reservation_id"
   add_foreign_key "cats_warehouse_gins", "cats_core_users", column: "approved_by_id"
   add_foreign_key "cats_warehouse_gins", "cats_core_users", column: "issued_by_id"
   add_foreign_key "cats_warehouse_gins", "cats_warehouse_dispatch_orders", column: "dispatch_order_id"
+  add_foreign_key "cats_warehouse_gins", "cats_warehouse_dispatch_preparations", column: "dispatch_preparation_id"
   add_foreign_key "cats_warehouse_gins", "cats_warehouse_warehouses", column: "warehouse_id"
+  add_foreign_key "cats_warehouse_gins", "cats_warehouse_waybills", column: "waybill_id"
   add_foreign_key "cats_warehouse_grn_items", "cats_core_commodities", column: "commodity_id"
-  add_foreign_key "cats_warehouse_grn_items", "cats_core_unit_of_measures", column: "base_unit_id"
-  add_foreign_key "cats_warehouse_grn_items", "cats_core_unit_of_measures", column: "entered_unit_id"
   add_foreign_key "cats_warehouse_grn_items", "cats_core_unit_of_measures", column: "unit_id"
   add_foreign_key "cats_warehouse_grn_items", "cats_warehouse_grns", column: "grn_id"
-  add_foreign_key "cats_warehouse_grn_items", "cats_warehouse_inventory_lots", column: "inventory_lot_id"
   add_foreign_key "cats_warehouse_grn_items", "cats_warehouse_stacks", column: "stack_id"
   add_foreign_key "cats_warehouse_grn_items", "cats_warehouse_stores", column: "store_id"
   add_foreign_key "cats_warehouse_grns", "cats_core_users", column: "approved_by_id"
   add_foreign_key "cats_warehouse_grns", "cats_core_users", column: "received_by_id"
-  add_foreign_key "cats_warehouse_grns", "cats_warehouse_receipt_orders", column: "receipt_order_id"
+  add_foreign_key "cats_warehouse_grns", "cats_warehouse_inspections", column: "arrival_inspection_id"
+  add_foreign_key "cats_warehouse_grns", "cats_warehouse_receipt_advices", column: "receipt_advice_id"
+  add_foreign_key "cats_warehouse_grns", "cats_warehouse_stack_reservations", column: "stack_reservation_id"
   add_foreign_key "cats_warehouse_grns", "cats_warehouse_warehouses", column: "warehouse_id"
+  add_foreign_key "cats_warehouse_grns", "cats_warehouse_waybills", column: "waybill_id"
   add_foreign_key "cats_warehouse_hub_access", "cats_warehouse_hubs", column: "hub_id"
   add_foreign_key "cats_warehouse_hub_capacity", "cats_warehouse_hubs", column: "hub_id"
   add_foreign_key "cats_warehouse_hub_contacts", "cats_warehouse_hubs", column: "hub_id"
@@ -1789,46 +1799,41 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_31_212330) do
   add_foreign_key "cats_warehouse_hubs", "cats_core_locations", column: "location_id"
   add_foreign_key "cats_warehouse_hubs", "cats_warehouse_geos", column: "geo_id"
   add_foreign_key "cats_warehouse_inspection_items", "cats_core_commodities", column: "commodity_id"
-  add_foreign_key "cats_warehouse_inspection_items", "cats_core_unit_of_measures", column: "base_unit_id"
-  add_foreign_key "cats_warehouse_inspection_items", "cats_core_unit_of_measures", column: "entered_unit_id"
   add_foreign_key "cats_warehouse_inspection_items", "cats_warehouse_inspections", column: "inspection_id"
-  add_foreign_key "cats_warehouse_inspection_items", "cats_warehouse_inventory_lots", column: "inventory_lot_id"
   add_foreign_key "cats_warehouse_inspections", "cats_core_users", column: "inspector_id"
-  add_foreign_key "cats_warehouse_inspections", "cats_warehouse_receipt_orders", column: "receipt_order_id"
   add_foreign_key "cats_warehouse_inspections", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_inventory_adjustments", "cats_core_unit_of_measures", column: "unit_id"
   add_foreign_key "cats_warehouse_inventory_adjustments", "cats_warehouse_stacks", column: "stack_id"
-  add_foreign_key "cats_warehouse_inventory_lots", "cats_core_commodities", column: "commodity_id"
-  add_foreign_key "cats_warehouse_receipt_order_lines", "cats_core_commodities", column: "commodity_id"
-  add_foreign_key "cats_warehouse_receipt_order_lines", "cats_core_unit_of_measures", column: "unit_id"
-  add_foreign_key "cats_warehouse_receipt_order_lines", "cats_warehouse_receipt_orders", column: "receipt_order_id"
-  add_foreign_key "cats_warehouse_receipt_orders", "cats_core_users", column: "confirmed_by_id"
-  add_foreign_key "cats_warehouse_receipt_orders", "cats_core_users", column: "created_by_id"
-  add_foreign_key "cats_warehouse_receipt_orders", "cats_warehouse_hubs", column: "hub_id"
-  add_foreign_key "cats_warehouse_receipt_orders", "cats_warehouse_warehouses", column: "warehouse_id"
-  add_foreign_key "cats_warehouse_stack_transactions", "cats_core_unit_of_measures", column: "base_unit_id"
-  add_foreign_key "cats_warehouse_stack_transactions", "cats_core_unit_of_measures", column: "entered_unit_id"
+  add_foreign_key "cats_warehouse_operational_tasks", "cats_core_users", column: "completed_by_id"
+  add_foreign_key "cats_warehouse_operational_tasks", "cats_core_users", column: "created_by_id"
+  add_foreign_key "cats_warehouse_operational_tasks", "cats_core_users", column: "recipient_user_id"
+  add_foreign_key "cats_warehouse_receipt_advice_items", "cats_core_commodities", column: "commodity_id"
+  add_foreign_key "cats_warehouse_receipt_advice_items", "cats_core_unit_of_measures", column: "unit_id"
+  add_foreign_key "cats_warehouse_receipt_advice_items", "cats_warehouse_receipt_advices", column: "receipt_advice_id"
+  add_foreign_key "cats_warehouse_receipt_advices", "cats_core_users", column: "assigned_by_id"
+  add_foreign_key "cats_warehouse_receipt_advices", "cats_core_users", column: "assigned_to_user_id"
+  add_foreign_key "cats_warehouse_receipt_advices", "cats_core_users", column: "created_by_id"
+  add_foreign_key "cats_warehouse_receipt_advices", "cats_warehouse_hubs", column: "destination_hub_id"
+  add_foreign_key "cats_warehouse_receipt_advices", "cats_warehouse_warehouses", column: "destination_warehouse_id"
+  add_foreign_key "cats_warehouse_stack_reservations", "cats_core_commodities", column: "commodity_id"
+  add_foreign_key "cats_warehouse_stack_reservations", "cats_core_unit_of_measures", column: "unit_id"
+  add_foreign_key "cats_warehouse_stack_reservations", "cats_core_users", column: "created_by_id"
+  add_foreign_key "cats_warehouse_stack_reservations", "cats_warehouse_stacks", column: "stack_id"
+  add_foreign_key "cats_warehouse_stack_reservations", "cats_warehouse_stores", column: "store_id"
+  add_foreign_key "cats_warehouse_stack_reservations", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_stack_transactions", "cats_core_unit_of_measures", column: "unit_id"
-  add_foreign_key "cats_warehouse_stack_transactions", "cats_warehouse_inventory_lots", column: "inventory_lot_id"
   add_foreign_key "cats_warehouse_stack_transactions", "cats_warehouse_stacks", column: "destination_id"
   add_foreign_key "cats_warehouse_stack_transactions", "cats_warehouse_stacks", column: "source_id"
   add_foreign_key "cats_warehouse_stacking_rules", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_stacks", "cats_core_commodities", column: "commodity_id"
-  add_foreign_key "cats_warehouse_stacks", "cats_core_unit_of_measures", column: "base_unit_id"
   add_foreign_key "cats_warehouse_stacks", "cats_core_unit_of_measures", column: "unit_id"
   add_foreign_key "cats_warehouse_stacks", "cats_warehouse_stores", column: "store_id"
   add_foreign_key "cats_warehouse_stock_balances", "cats_core_commodities", column: "commodity_id"
-  add_foreign_key "cats_warehouse_stock_balances", "cats_core_unit_of_measures", column: "base_unit_id"
-  add_foreign_key "cats_warehouse_stock_balances", "cats_core_unit_of_measures", column: "entered_unit_id"
   add_foreign_key "cats_warehouse_stock_balances", "cats_core_unit_of_measures", column: "unit_id"
-  add_foreign_key "cats_warehouse_stock_balances", "cats_warehouse_inventory_lots", column: "inventory_lot_id"
   add_foreign_key "cats_warehouse_stock_balances", "cats_warehouse_stacks", column: "stack_id"
   add_foreign_key "cats_warehouse_stock_balances", "cats_warehouse_stores", column: "store_id"
   add_foreign_key "cats_warehouse_stock_balances", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_stores", "cats_warehouse_warehouses", column: "warehouse_id"
-  add_foreign_key "cats_warehouse_uom_conversions", "cats_core_commodities", column: "commodity_id"
-  add_foreign_key "cats_warehouse_uom_conversions", "cats_core_unit_of_measures", column: "from_unit_id"
-  add_foreign_key "cats_warehouse_uom_conversions", "cats_core_unit_of_measures", column: "to_unit_id"
   add_foreign_key "cats_warehouse_user_assignments", "cats_core_users", column: "user_id"
   add_foreign_key "cats_warehouse_user_assignments", "cats_warehouse_hubs", column: "hub_id"
   add_foreign_key "cats_warehouse_user_assignments", "cats_warehouse_stores", column: "store_id"
@@ -1841,15 +1846,12 @@ ActiveRecord::Schema[7.0].define(version: 2026_03_31_212330) do
   add_foreign_key "cats_warehouse_warehouses", "cats_warehouse_geos", column: "geo_id"
   add_foreign_key "cats_warehouse_warehouses", "cats_warehouse_hubs", column: "hub_id"
   add_foreign_key "cats_warehouse_waybill_items", "cats_core_commodities", column: "commodity_id"
-  add_foreign_key "cats_warehouse_waybill_items", "cats_core_unit_of_measures", column: "base_unit_id"
-  add_foreign_key "cats_warehouse_waybill_items", "cats_core_unit_of_measures", column: "entered_unit_id"
   add_foreign_key "cats_warehouse_waybill_items", "cats_core_unit_of_measures", column: "unit_id"
-  add_foreign_key "cats_warehouse_waybill_items", "cats_warehouse_inventory_lots", column: "inventory_lot_id"
   add_foreign_key "cats_warehouse_waybill_items", "cats_warehouse_waybills", column: "waybill_id"
   add_foreign_key "cats_warehouse_waybill_transport", "cats_core_transporters", column: "transporter_id"
   add_foreign_key "cats_warehouse_waybill_transport", "cats_warehouse_waybills", column: "waybill_id"
   add_foreign_key "cats_warehouse_waybills", "cats_core_dispatches", column: "dispatch_id"
   add_foreign_key "cats_warehouse_waybills", "cats_core_locations", column: "destination_location_id"
   add_foreign_key "cats_warehouse_waybills", "cats_core_locations", column: "source_location_id"
-  add_foreign_key "cats_warehouse_waybills", "cats_warehouse_dispatch_orders", column: "dispatch_order_id"
+  add_foreign_key "cats_warehouse_waybills", "cats_warehouse_receipt_advices", column: "receipt_advice_id"
 end

@@ -19,6 +19,29 @@ module Cats
         admin? || warehouse_manager? || officer?
       end
 
+      def update?
+        return false unless record.is_a?(ReceiptOrder)
+        return false unless record.status_draft?
+
+        create?
+      end
+
+      def assign?
+        return true if admin?
+
+        hub_manager? || warehouse_manager?
+      end
+
+      def reserve_space?
+        return true if admin?
+
+        warehouse_manager? || storekeeper?
+      end
+
+      def workflow?
+        show?
+      end
+
       def confirm?
         return false unless record.is_a?(ReceiptOrder)
         return false unless record.status.to_s.casecmp("draft").zero?

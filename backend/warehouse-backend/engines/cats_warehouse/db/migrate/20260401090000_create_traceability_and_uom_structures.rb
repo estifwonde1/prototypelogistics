@@ -2,19 +2,29 @@ class CreateTraceabilityAndUomStructures < ActiveRecord::Migration[7.1]
   def change
     # 1. New Tables
     create_table :cats_warehouse_inventory_lots do |t|
+      t.references :warehouse, null: false, foreign_key: { to_table: :cats_warehouse_warehouses }
       t.references :commodity, null: false, foreign_key: { to_table: :cats_core_commodities }
+      t.string :source_type
+      t.bigint :source_id
+      t.string :lot_code
       t.string :batch_no, null: false
       t.date :expiry_date
+      t.date :manufactured_on
+      t.date :received_on
+      t.string :status, null: false, default: "Active"
       t.string :description
       t.timestamps
     end
-    add_index :cats_warehouse_inventory_lots, [:commodity_id, :batch_no], unique: true, name: 'idx_lot_commodity_batch'
+    add_index :cats_warehouse_inventory_lots, [:warehouse_id, :commodity_id, :batch_no, :expiry_date], unique: true, name: 'idx_lot_warehouse_commodity_batch_expiry'
+    add_index :cats_warehouse_inventory_lots, [:source_type, :source_id]
 
     create_table :cats_warehouse_uom_conversions do |t|
       t.references :commodity, foreign_key: { to_table: :cats_core_commodities } # Nullable if global
       t.references :from_unit, null: false, foreign_key: { to_table: :cats_core_unit_of_measures }
       t.references :to_unit, null: false, foreign_key: { to_table: :cats_core_unit_of_measures }
       t.decimal :multiplier, null: false, precision: 15, scale: 6
+      t.string :conversion_type
+      t.boolean :active, null: false, default: true
       t.boolean :is_inter_unit, default: false
       t.timestamps
     end

@@ -56,7 +56,11 @@ module Cats
             :quantity,
             :unit_id,
             :inventory_lot_id,
+            :batch_no,
+            :expiry_date,
             :entered_unit_id,
+            :base_unit_id,
+            :base_quantity,
             :store_id,
             :stack_id
           ]

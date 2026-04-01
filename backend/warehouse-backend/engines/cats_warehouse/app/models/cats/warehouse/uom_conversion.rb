@@ -9,6 +9,7 @@ module Cats
 
       validates :multiplier, presence: true, numericality: { greater_than: 0 }
       validates :from_unit_id, uniqueness: { scope: [:to_unit_id, :commodity_id], message: "conversion already exists" }
+      scope :active_only, -> { where(active: true) }
     end
   end
 end

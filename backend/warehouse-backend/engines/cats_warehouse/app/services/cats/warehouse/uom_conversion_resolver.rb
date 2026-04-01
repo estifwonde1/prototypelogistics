@@ -5,7 +5,7 @@ module Cats
         return 1.0 if from_unit_id == to_unit_id
 
         # 1. Try commodity-specific conversion
-        conversion = UomConversion.find_by(
+        conversion = UomConversion.active_only.find_by(
           commodity_id: commodity_id,
           from_unit_id: from_unit_id,
           to_unit_id: to_unit_id
@@ -14,7 +14,7 @@ module Cats
         return conversion.multiplier.to_f if conversion
 
         # 2. Try global conversion
-        conversion = UomConversion.find_by(
+        conversion = UomConversion.active_only.find_by(
           commodity_id: nil,
           from_unit_id: from_unit_id,
           to_unit_id: to_unit_id
@@ -23,7 +23,7 @@ module Cats
         return conversion.multiplier.to_f if conversion
 
         # 3. Try inverse commodity-specific conversion
-        inverse = UomConversion.find_by(
+        inverse = UomConversion.active_only.find_by(
           commodity_id: commodity_id,
           from_unit_id: to_unit_id,
           to_unit_id: from_unit_id
@@ -32,7 +32,7 @@ module Cats
         return 1.0 / inverse.multiplier.to_f if inverse
 
         # 4. Try inverse global conversion
-        inverse = UomConversion.find_by(
+        inverse = UomConversion.active_only.find_by(
           commodity_id: nil,
           from_unit_id: to_unit_id,
           to_unit_id: from_unit_id

@@ -46,6 +46,7 @@ module Cats
         balance.quantity = balance.quantity.to_f + quantity_delta
         balance.base_quantity = balance.base_quantity.to_f + base_quantity_delta
         balance.base_unit_id ||= @base_unit_id
+        balance.available_quantity = balance.quantity.to_f - balance.reserved_quantity.to_f if balance.respond_to?(:available_quantity)
 
         ensure_non_negative!(balance.base_quantity, "stock balance")
         balance.save!
@@ -103,7 +104,7 @@ module Cats
           inventory_lot_id: item.respond_to?(:inventory_lot_id) ? item.inventory_lot_id : nil
         }
 
-        StockBalance.lock.find_by(attrs) || StockBalance.create!(attrs.merge(quantity: 0, base_quantity: 0, base_unit_id: @base_unit_id))
+        StockBalance.lock.find_by(attrs) || StockBalance.create!(attrs.merge(quantity: 0, base_quantity: 0, base_unit_id: @base_unit_id, reserved_quantity: 0, available_quantity: 0))
       rescue ActiveRecord::RecordNotUnique
         retry
       end

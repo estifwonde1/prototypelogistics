@@ -7,6 +7,9 @@ module Cats
       belongs_to :dispatch, class_name: "Cats::Core::Dispatch", optional: true
       belongs_to :source_location, class_name: "Cats::Core::Location"
       belongs_to :destination_location, class_name: "Cats::Core::Location"
+      belongs_to :dispatch_order, class_name: "Cats::Warehouse::DispatchOrder", optional: true
+      belongs_to :prepared_by, class_name: "Cats::Core::User", optional: true
+      belongs_to :auto_generated_gin, class_name: "Cats::Warehouse::Gin", optional: true
 
       has_one :waybill_transport, class_name: "Cats::Warehouse::WaybillTransport", dependent: :destroy
       has_many :waybill_items, class_name: "Cats::Warehouse::WaybillItem", dependent: :destroy

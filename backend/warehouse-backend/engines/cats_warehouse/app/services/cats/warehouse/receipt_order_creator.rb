@@ -1,20 +1,19 @@
 module Cats
   module Warehouse
     class ReceiptOrderCreator
-      def initialize(hub:, warehouse:, received_date:, created_by:, items:, source: nil, reference_no: nil, description: nil)
+      def initialize(hub: nil, warehouse: nil, received_date: nil, created_by:, items: nil, source: nil, reference_no: nil, description: nil, name: nil)
         @hub = hub
         @warehouse = warehouse
         @received_date = received_date
         @created_by = created_by
-        @items = items
+        @items = items || []
         @source = source
         @reference_no = reference_no
         @description = description
+        @name = name
       end
 
       def call
-        raise ArgumentError, "items are required" if @items.nil? || @items.empty?
-
         ReceiptOrder.transaction do
           order = ReceiptOrder.create!(
             hub: @hub,
@@ -22,7 +21,8 @@ module Cats
             received_date: @received_date,
             created_by: @created_by,
             source: @source,
-            reference_no: @reference_no || generate_reference_no,
+            reference_no: @reference_no.presence,
+            name: @name,
             description: @description,
             status: "Draft"
           )
@@ -40,10 +40,6 @@ module Cats
       end
 
       private
-
-      def generate_reference_no
-        "RO-#{SecureRandom.hex(4).upcase}"
-      end
     end
   end
 end

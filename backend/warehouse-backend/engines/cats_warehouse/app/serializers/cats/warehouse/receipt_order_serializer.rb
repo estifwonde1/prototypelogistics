@@ -1,12 +1,14 @@
 module Cats
   module Warehouse
     class ReceiptOrderSerializer < ApplicationSerializer
-      attributes :id, :reference_no, :status, :received_date, :source_type, :source_id, :source_reference,
+      attributes :id, :reference_no, :name, :status, :received_date, :source_type, :source_id, :source_reference,
                  :hub_id, :hub_name, :warehouse_id, :warehouse_name, :warehouse_code,
-                 :created_by_id, :created_by_name, :confirmed_by_id, :confirmed_by_name,
+                 :created_by_id, :created_by_name, :confirmed_by_id, :confirmed_by_name, :confirmed_at,
                  :description, :created_at, :updated_at
 
-      has_many :receipt_order_lines, serializer: ReceiptOrderLineSerializer
+      has_many :receipt_order_lines, serializer: Cats::Warehouse::ReceiptOrderLineSerializer
+      has_many :receipt_order_assignments, serializer: Cats::Warehouse::ReceiptOrderAssignmentSerializer
+      has_many :space_reservations, serializer: Cats::Warehouse::SpaceReservationSerializer
 
       def status
         object.status.to_s.titleize

@@ -1,20 +1,19 @@
 module Cats
   module Warehouse
     class DispatchOrderCreator
-      def initialize(hub:, warehouse:, dispatched_date:, created_by:, items:, destination: nil, reference_no: nil, description: nil)
+      def initialize(hub: nil, warehouse: nil, dispatched_date: nil, created_by:, items: nil, destination: nil, reference_no: nil, description: nil, name: nil)
         @hub = hub
         @warehouse = warehouse
         @dispatched_date = dispatched_date
         @created_by = created_by
-        @items = items
+        @items = items || []
         @destination = destination
         @reference_no = reference_no
         @description = description
+        @name = name
       end
 
       def call
-        raise ArgumentError, "items are required" if @items.nil? || @items.empty?
-
         DispatchOrder.transaction do
           order = DispatchOrder.create!(
             hub: @hub,
@@ -22,7 +21,8 @@ module Cats
             dispatched_date: @dispatched_date,
             created_by: @created_by,
             destination: @destination,
-            reference_no: @reference_no || generate_reference_no,
+            reference_no: @reference_no.presence,
+            name: @name,
             description: @description,
             status: "Draft"
           )
@@ -40,10 +40,6 @@ module Cats
       end
 
       private
-
-      def generate_reference_no
-        "DO-#{SecureRandom.hex(4).upcase}"
-      end
     end
   end
 end

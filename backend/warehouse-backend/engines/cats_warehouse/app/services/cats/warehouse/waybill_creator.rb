@@ -1,7 +1,7 @@
 module Cats
   module Warehouse
     class WaybillCreator
-      def initialize(reference_no:, issued_on:, source_location:, destination_location:, items:, transport:, dispatch: nil, status: nil)
+      def initialize(reference_no:, issued_on:, source_location:, destination_location:, items:, transport:, dispatch: nil, status: nil, dispatch_order: nil, prepared_by: nil)
         @reference_no = reference_no
         @issued_on = issued_on
         @source_location = source_location
@@ -10,6 +10,8 @@ module Cats
         @transport = transport
         @dispatch = dispatch
         @status = status
+        @dispatch_order = dispatch_order
+        @prepared_by = prepared_by
       end
 
       def call
@@ -23,7 +25,10 @@ module Cats
             source_location_id: fetch_id(@source_location),
             destination_location_id: fetch_id(@destination_location),
             dispatch: @dispatch,
-            status: @status
+            status: @status,
+            dispatch_order: @dispatch_order,
+            prepared_by: @prepared_by,
+            workflow_status: @dispatch_order.present? ? "Prepared" : @status
           )
 
           WaybillTransport.create!(
@@ -38,16 +43,22 @@ module Cats
             raise ArgumentError, "quantity must be positive" unless item[:quantity].to_f.positive?
 
             unit_id = fetch_id_from(item, :unit)
+            entered_unit_id = fetch_id_from_optional(item, :entered_unit) || unit_id
+            base_unit_id = fetch_id_from_optional(item, :base_unit)
+            base_quantity = item[:base_quantity]
 
             waybill.waybill_items.create!(
               commodity_id: fetch_id_from(item, :commodity),
               quantity: item[:quantity],
               unit_id: unit_id,
               inventory_lot_id: item[:inventory_lot_id] || item[:inventory_lot]&.id,
-              entered_unit_id: unit_id
+              entered_unit_id: entered_unit_id,
+              base_unit_id: base_unit_id,
+              base_quantity: base_quantity
             )
           end
 
+          WaybillPreparationService.new(waybill: waybill, actor: @prepared_by).call if @dispatch_order.present? && @prepared_by.present?
           waybill
         end
       end
@@ -67,6 +78,14 @@ module Cats
         return value if value.present?
 
         raise ArgumentError, "#{key} is required"
+      end
+
+      def fetch_id_from_optional(hash, key)
+        value = hash[key] || hash[:"#{key}_id"]
+        return value&.id if value.respond_to?(:id)
+        return value if value.present?
+
+        nil
       end
     end
   end

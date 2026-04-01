@@ -1,12 +1,14 @@
 module Cats
   module Warehouse
     class DispatchOrderSerializer < ApplicationSerializer
-      attributes :id, :reference_no, :status, :dispatched_date, :destination_type, :destination_id, :destination_reference,
+      attributes :id, :reference_no, :name, :status, :dispatched_date, :destination_type, :destination_id, :destination_reference,
                  :hub_id, :hub_name, :warehouse_id, :warehouse_name, :warehouse_code,
-                 :created_by_id, :created_by_name, :confirmed_by_id, :confirmed_by_name,
+                 :created_by_id, :created_by_name, :confirmed_by_id, :confirmed_by_name, :confirmed_at,
                  :description, :created_at, :updated_at
 
-      has_many :dispatch_order_lines, serializer: DispatchOrderLineSerializer
+      has_many :dispatch_order_lines, serializer: Cats::Warehouse::DispatchOrderLineSerializer
+      has_many :dispatch_order_assignments, serializer: Cats::Warehouse::DispatchOrderAssignmentSerializer
+      has_many :stock_reservations, serializer: Cats::Warehouse::StockReservationSerializer
 
       def status
         object.status.to_s.titleize

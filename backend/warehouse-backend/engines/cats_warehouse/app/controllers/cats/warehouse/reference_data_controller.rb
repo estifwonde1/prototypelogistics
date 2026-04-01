@@ -64,21 +64,17 @@ module Cats
         render_success(transporters: transporters)
       end
 
+      def lots
+        authorize :reference_data, :inventory_lots?, policy_class: ReferenceDataPolicy
+
+        lots = inventory_lot_payload
+        render_success(lots: lots)
+      end
+
       def inventory_lots
         authorize :reference_data, :inventory_lots?, policy_class: ReferenceDataPolicy
 
-        lots = InventoryLot
-          .order(created_at: :desc)
-          .map do |lot|
-            {
-              id: lot.id,
-              commodity_id: lot.commodity_id,
-              batch_no: lot.batch_no,
-              expiry_date: lot.expiry_date,
-              display_name: lot.display_name
-            }
-          end
-
+        lots = inventory_lot_payload
         render_success(inventory_lots: lots)
       end
 
@@ -86,6 +82,7 @@ module Cats
         authorize :reference_data, :uom_conversions?, policy_class: ReferenceDataPolicy
 
         conversions = UomConversion
+          .active_only
           .includes(:from_unit, :to_unit)
           .map do |c|
             {
@@ -95,11 +92,35 @@ module Cats
               from_unit_name: c.from_unit&.name,
               to_unit_id: c.to_unit_id,
               to_unit_name: c.to_unit&.name,
-              multiplier: c.multiplier.to_f
+              multiplier: c.multiplier.to_f,
+              active: c.active,
+              conversion_type: c.conversion_type
             }
           end
 
         render_success(uom_conversions: conversions)
+      end
+
+      private
+
+      def inventory_lot_payload
+        InventoryLot
+          .includes(:warehouse)
+          .order(created_at: :desc)
+          .map do |lot|
+            {
+              id: lot.id,
+              warehouse_id: lot.warehouse_id,
+              warehouse_name: lot.warehouse&.name,
+              commodity_id: lot.commodity_id,
+              lot_code: lot.lot_code,
+              batch_no: lot.batch_no,
+              expiry_date: lot.expiry_date,
+              received_on: lot.received_on,
+              status: lot.status,
+              display_name: lot.display_name
+            }
+          end
       end
     end
   end
