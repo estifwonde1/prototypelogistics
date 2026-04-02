@@ -225,7 +225,8 @@ module Cats
           :warehouse,
           {
             receipt_order_lines: [:commodity, :unit],
-            receipt_order_assignments: [:assigned_to, :assigned_by, :hub, :warehouse, :store]
+            receipt_order_assignments: [:assigned_to, :assigned_by, :hub, :warehouse, :store],
+            space_reservations: [:warehouse, :store, :reserved_by]
           }
         ]
       end

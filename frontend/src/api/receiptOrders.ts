@@ -23,6 +23,7 @@ export interface AssignableManagerOption {
 
 export interface ReceiptOrder {
   id: number;
+  reference_no?: string;
   source_type: string;
   /** Free-text or resolved label from API */
   source_name?: string;

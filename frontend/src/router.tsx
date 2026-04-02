@@ -166,6 +166,14 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: 'receipt-orders/:id',
+        element: (
+          <RequirePermission resource="receipt_orders" action="read">
+            <ReceiptOrderDetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
         path: 'officer/receipt-orders/:id/edit',
         element: (
           <RequirePermission resource="receipt_orders" action="update">
@@ -424,8 +432,8 @@ export const router = createBrowserRouter([
       {
         path: 'receipts',
         element: (
-          <RequirePermission resource="receipts" action="read">
-            <ReceiptListPage />
+          <RequirePermission resource="receipt_orders" action="read">
+            <ReceiptOrdersListPage />
           </RequirePermission>
         ),
       },

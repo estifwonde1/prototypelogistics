@@ -6,9 +6,14 @@ interface ReservationCardProps {
 }
 
 export function ReservationCard({ reservation, type }: ReservationCardProps) {
+  const statusKey = String(reservation.status ?? 'reserved')
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+
   const statusColors: Record<string, string> = {
     pending: 'yellow',
     confirmed: 'blue',
+    reserved: 'gray',
     fulfilled: 'green',
     occupied: 'cyan',
     released: 'gray',
@@ -27,8 +32,8 @@ export function ReservationCard({ reservation, type }: ReservationCardProps) {
       <Stack gap="md">
         <Group justify="space-between">
           <Text fw={600}>{getReservationLabel()}</Text>
-          <Badge color={statusColors[reservation.status]}>
-            {reservation.status}
+          <Badge color={statusColors[statusKey] ?? 'gray'}>
+            {String(reservation.status ?? '—').replace(/_/g, ' ')}
           </Badge>
         </Group>
 
@@ -50,8 +55,17 @@ export function ReservationCard({ reservation, type }: ReservationCardProps) {
           </Text>
         )}
 
+        {reservation.reserved_by_name ? (
+          <Text size="xs" c="dimmed">
+            Reserved by {reservation.reserved_by_name}
+          </Text>
+        ) : null}
+
         <Text size="xs" c="dimmed">
-          Reserved on {new Date(reservation.reserved_at).toLocaleString()}
+          Reserved on{' '}
+          {reservation.reserved_at && !Number.isNaN(Date.parse(reservation.reserved_at))
+            ? new Date(reservation.reserved_at).toLocaleString()
+            : '—'}
         </Text>
 
         {type === 'space' && reservation.reserved_quantity && (

@@ -4,6 +4,7 @@ module Cats
       attributes :id, :reference_no, :warehouse_id, :warehouse_name, :warehouse_code, :received_on, :source_type, :source_id,
                  :source_reference, :status, :workflow_status, :receipt_order_id, :generated_from_inspection_id,
                  :received_by_id, :received_by_name, :approved_by_id, :approved_by_name, :created_at, :updated_at
+      belongs_to :receipt_order, serializer: ReceiptOrderSerializer
       has_many :grn_items, serializer: GrnItemSerializer
 
       def status

@@ -1,4 +1,5 @@
-import { Badge, BadgeProps } from '@mantine/core';
+import { Badge } from '@mantine/core';
+import type { BadgeProps } from '@mantine/core';
 
 interface ExpiryBadgeProps extends Omit<BadgeProps, 'children'> {
   expiryDate: string;

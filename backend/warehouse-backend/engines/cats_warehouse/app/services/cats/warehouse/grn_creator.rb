@@ -49,13 +49,12 @@ module Cats
             base_unit_id = fetch_id(item, :base_unit, optional: true)
             base_quantity = item[:base_quantity]
 
+            # batch_no / expiry_date are only for InventoryLotResolver above — not GrnItem columns
             grn.grn_items.create!(
               commodity_id: commodity_id,
               quantity: item[:quantity],
               unit_id: unit_id,
               inventory_lot_id: lot_id,
-              batch_no: item[:batch_no],
-              expiry_date: item[:expiry_date],
               entered_unit_id: entered_unit_id,
               base_unit_id: base_unit_id,
               base_quantity: base_quantity,

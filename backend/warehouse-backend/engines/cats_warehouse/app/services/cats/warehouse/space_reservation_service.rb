@@ -12,12 +12,25 @@ module Cats
 
         ReceiptOrder.transaction do
           @reservations.each do |payload|
-            line = @order.receipt_order_lines.find(payload[:receipt_order_line_id])
+            line =
+              if payload[:receipt_order_line_id].present?
+                @order.receipt_order_lines.find(payload[:receipt_order_line_id])
+              else
+                # UI currently reserves space without selecting a specific receipt order line.
+                # If there's exactly one line, assume it. Otherwise, require the frontend to send `receipt_order_line_id`.
+                lines = @order.receipt_order_lines.to_a
+                raise ArgumentError, "receipt_order_line_id is required when the receipt order has multiple lines" if lines.many?
+
+                lines.first
+              end
+
             store = payload[:store_id].present? ? Store.find(payload[:store_id]) : nil
             warehouse = payload[:warehouse_id].present? ? Warehouse.find(payload[:warehouse_id]) : @order.warehouse
             assignment = payload[:receipt_order_assignment_id].present? ? @order.receipt_order_assignments.find(payload[:receipt_order_assignment_id]) : nil
 
             ensure_space_available!(store || warehouse, payload[:reserved_volume], payload[:reserved_quantity])
+
+            raise ArgumentError, "receipt_order_line_id is required" if line.blank?
 
             SpaceReservation.create!(
               receipt_order: @order,

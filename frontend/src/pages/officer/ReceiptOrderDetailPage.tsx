@@ -26,6 +26,7 @@ import {
   reserveSpace,
   getReceiptOrderWorkflow,
 } from '../../api/receiptOrders';
+import { getStores } from '../../api/stores';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
@@ -35,6 +36,7 @@ import { WorkflowTimeline } from '../../components/common/WorkflowTimeline';
 import type { ApiError } from '../../types/common';
 import { useMemo, useState } from 'react';
 import type { ReceiptOrder } from '../../api/receiptOrders';
+import { usePermission } from '../../hooks/usePermission';
 
 function formatReceiptDate(order: ReceiptOrder): string {
   const raw = order.received_date || order.expected_delivery_date;
@@ -70,6 +72,7 @@ function ReceiptOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { can } = usePermission();
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('details');
   
@@ -88,6 +91,28 @@ function ReceiptOrderDetailPage() {
     queryKey: ['receipt_orders', id],
     queryFn: () => getReceiptOrder(Number(id)),
   });
+
+  const warehouseIdForStores = useMemo(() => {
+    const wid = order?.warehouse_id ?? order?.destination_warehouse_id;
+    return wid != null ? Number(wid) : null;
+  }, [order]);
+
+  const {
+    data: stores = [],
+    isLoading: storesLoading,
+    isError: storesError,
+  } = useQuery({
+    queryKey: ['stores'],
+    queryFn: () => getStores(),
+    enabled: showSpaceReservationForm && warehouseIdForStores != null,
+  });
+
+  const storeSelectData = useMemo(() => {
+    if (!warehouseIdForStores) return [];
+    return stores
+      .filter((s) => Number(s.warehouse_id) === warehouseIdForStores)
+      .map((s) => ({ value: String(s.id), label: s.name }));
+  }, [stores, warehouseIdForStores]);
 
   const { data: workflowEvents = [] } = useQuery({
     queryKey: ['receipt_orders', id, 'workflow'],
@@ -262,6 +287,7 @@ function ReceiptOrderDetailPage() {
   const spaceReservations = order.space_reservations || [];
   const lines = receiptLines(order);
   const isDraft = String(order.status).toLowerCase() === 'draft';
+  const canCreateGrn = can('grns', 'create') && !isDraft;
 
   return (
     <Stack gap="md">
@@ -272,7 +298,18 @@ function ReceiptOrderDetailPage() {
             Created on {new Date(order.created_at).toLocaleDateString()}
           </Text>
         </div>
-        <StatusBadge status={order.status} />
+        <Group gap="sm">
+          {canCreateGrn && (
+            <Button
+              size="sm"
+              variant="light"
+              onClick={() => navigate(`/grns/new?receipt_order_id=${order.id}`)}
+            >
+              Create GRN
+            </Button>
+          )}
+          <StatusBadge status={order.status} />
+        </Group>
       </Group>
 
       <Tabs value={activeTab} onChange={(value) => setActiveTab(value || 'details')}>
@@ -531,14 +568,29 @@ function ReceiptOrderDetailPage() {
                 <Stack gap="md">
                   <Select
                     label="Store"
-                    placeholder="Select store"
-                    data={[
-                      { value: '1', label: 'Store 1' },
-                      { value: '2', label: 'Store 2' },
-                    ]}
+                    placeholder={
+                      storesLoading ? 'Loading stores…' : 'Select store'
+                    }
+                    data={storeSelectData}
+                    disabled={storesLoading || !warehouseIdForStores}
                     value={selectedStoreId}
                     onChange={setSelectedStoreId}
+                    searchable
                   />
+                  {storesError ? (
+                    <Text size="sm" c="red">
+                      Could not load stores for this warehouse.
+                    </Text>
+                  ) : null}
+                  {!storesLoading &&
+                  warehouseIdForStores &&
+                  storeSelectData.length === 0 &&
+                  !storesError ? (
+                    <Text size="sm" c="dimmed">
+                      No stores found for this warehouse. Create stores first under
+                      `Admin > Stores` (or the `Stores` page).
+                    </Text>
+                  ) : null}
                   <NumberInput
                     label="Quantity to Reserve"
                     placeholder="Enter quantity"

@@ -1,7 +1,7 @@
 module Cats
   module Warehouse
     class InspectionItemSerializer < ApplicationSerializer
-      attributes :id, :inspection_id, :commodity_id, :commodity_name, :commodity_code, :unit_id, :unit_name,
+      attributes :id, :inspection_id, :commodity_id, :commodity_name, :commodity_code,
                  :inventory_lot_id, :batch_no, :expiry_date, :entered_unit_id, :entered_unit_name,
                  :base_unit_id, :base_unit_name, :base_quantity, :quantity_received,
                  :quantity_damaged, :quantity_lost, :quality_status, :packaging_condition, :remarks,

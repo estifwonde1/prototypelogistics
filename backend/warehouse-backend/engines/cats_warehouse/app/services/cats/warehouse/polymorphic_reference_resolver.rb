@@ -4,6 +4,9 @@ module Cats
       SOURCE_MAP = {
         "Receipt" => "Cats::Core::Receipt",
         "Cats::Core::Receipt" => "Cats::Core::Receipt",
+        "Receipt Order" => "Cats::Warehouse::ReceiptOrder",
+        "ReceiptOrder" => "Cats::Warehouse::ReceiptOrder",
+        "Cats::Warehouse::ReceiptOrder" => "Cats::Warehouse::ReceiptOrder",
         "Waybill" => "Cats::Warehouse::Waybill",
         "Cats::Warehouse::Waybill" => "Cats::Warehouse::Waybill",
         "Grn" => "Cats::Warehouse::Grn",

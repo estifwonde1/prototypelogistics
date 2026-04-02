@@ -155,7 +155,7 @@ function ReceiptOrdersListPage() {
                 <Table.Tr
                   key={order.id}
                   style={{ cursor: 'pointer' }}
-                  onClick={() => navigate(`/officer/receipt-orders/${order.id}`)}
+                  onClick={() => navigate(`/receipt-orders/${order.id}`)}
                 >
                   <Table.Td style={{ fontWeight: 600 }}>RO-{order.id}</Table.Td>
                   <Table.Td>
@@ -180,7 +180,7 @@ function ReceiptOrdersListPage() {
                       <ActionIcon
                         variant="subtle"
                         color="blue"
-                        onClick={() => navigate(`/officer/receipt-orders/${order.id}`)}
+                        onClick={() => navigate(`/receipt-orders/${order.id}`)}
                       >
                         <IconEye size={16} />
                       </ActionIcon>
