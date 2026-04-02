@@ -37,12 +37,18 @@ function ReceiptOrdersListPage() {
   });
 
   const filteredOrders = orders?.filter((order) => {
+    const sourceLabel = (
+      order.source_name ||
+      order.name ||
+      (order.source_reference != null ? String(order.source_reference) : '') ||
+      ''
+    ).toLowerCase();
     const matchesSearch =
-      order.id.toString().includes(search) ||
-      order.source_name.toLowerCase().includes(search.toLowerCase());
+      order.id.toString().includes(search) || sourceLabel.includes(search.toLowerCase());
     const matchesStatus = !statusFilter || order.status === statusFilter;
+    const whId = order.destination_warehouse_id ?? order.warehouse_id;
     const matchesWarehouse =
-      !warehouseFilter || order.destination_warehouse_id.toString() === warehouseFilter;
+      !warehouseFilter || (whId != null && String(whId) === warehouseFilter);
     return matchesSearch && matchesStatus && matchesWarehouse;
   });
 
@@ -152,12 +158,20 @@ function ReceiptOrdersListPage() {
                   onClick={() => navigate(`/officer/receipt-orders/${order.id}`)}
                 >
                   <Table.Td style={{ fontWeight: 600 }}>RO-{order.id}</Table.Td>
-                  <Table.Td>{order.source_name}</Table.Td>
-                  <Table.Td>{order.destination_warehouse_name || 'N/A'}</Table.Td>
+                  <Table.Td>
+                    {order.source_name ||
+                      order.name ||
+                      (order.source_reference != null ? String(order.source_reference) : '—')}
+                  </Table.Td>
+                  <Table.Td>
+                    {order.warehouse_name || order.destination_warehouse_name || '—'}
+                  </Table.Td>
                   <Table.Td>
                     <StatusBadge status={order.status} />
                   </Table.Td>
-                  <Table.Td>{order.lines?.length || 0}</Table.Td>
+                  <Table.Td>
+                    {order.receipt_order_lines?.length ?? order.lines?.length ?? 0}
+                  </Table.Td>
                   <Table.Td>
                     {new Date(order.created_at).toLocaleDateString()}
                   </Table.Td>

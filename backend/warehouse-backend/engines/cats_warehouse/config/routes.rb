@@ -41,9 +41,10 @@ Cats::Warehouse::Engine.routes.draw do
     resources :stores, only: [ :index, :show, :create, :update, :destroy ]
     resources :stacks, only: [ :index, :show, :create, :update, :destroy ]
     resources :stock_balances, only: [ :index, :show ]
-    resources :receipt_orders, only: [ :index, :show, :create, :update ] do
+    resources :receipt_orders, only: [ :index, :show, :create, :update, :destroy ] do
       post :confirm, on: :member
       post :assign, on: :member
+      get :assignable_managers, on: :member
       post :reserve_space, on: :member
       get :workflow, on: :member
     end

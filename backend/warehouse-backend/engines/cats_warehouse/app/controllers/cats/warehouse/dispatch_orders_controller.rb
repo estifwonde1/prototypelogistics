@@ -109,7 +109,7 @@ module Cats
 
         render_success(
           workflow_events: ActiveModelSerializers::SerializableResource.new(
-            order.workflow_events.order(occurred_at: :asc, id: :asc),
+            order.workflow_events.includes(:actor).order(occurred_at: :asc, id: :asc),
             each_serializer: WorkflowEventSerializer
           ).as_json
         )

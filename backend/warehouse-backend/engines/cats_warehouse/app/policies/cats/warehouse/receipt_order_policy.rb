@@ -26,14 +26,24 @@ module Cats
         create?
       end
 
+      def destroy?
+        update?
+      end
+
       def assign?
         return true if admin?
+        return true if officer?
 
         hub_manager? || warehouse_manager?
       end
 
+      def assignable_managers?
+        assign?
+      end
+
       def reserve_space?
         return true if admin?
+        return true if officer?
 
         warehouse_manager? || storekeeper?
       end

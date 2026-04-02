@@ -15,7 +15,7 @@ export interface ReceiptOrderAssignment {
   assigned_by_id: number;
   assigned_by_name?: string;
   quantity?: number;
-  status: 'pending' | 'accepted' | 'in_progress' | 'completed' | 'rejected';
+  status: 'pending' | 'assigned' | 'accepted' | 'in_progress' | 'completed' | 'rejected';
   assigned_at: string;
   accepted_at?: string;
   completed_at?: string;
@@ -37,7 +37,7 @@ export interface DispatchOrderAssignment {
   assigned_by_id: number;
   assigned_by_name?: string;
   quantity?: number;
-  status: 'pending' | 'accepted' | 'in_progress' | 'completed' | 'rejected';
+  status: 'pending' | 'assigned' | 'accepted' | 'in_progress' | 'completed' | 'rejected';
   assigned_at: string;
   accepted_at?: string;
   completed_at?: string;
@@ -92,13 +92,23 @@ export interface StockReservation {
 
 export interface WorkflowEvent {
   id: number;
-  entity_type: 'receipt_order' | 'dispatch_order' | 'grn' | 'gin' | 'inspection' | 'waybill';
-  entity_id: number;
+  entity_type?: 'receipt_order' | 'dispatch_order' | 'grn' | 'gin' | 'inspection' | 'waybill' | string;
+  entity_id?: number;
   event_type: string;
-  status: string;
-  triggered_by_id: number;
+  /** API uses occurred_at */
+  occurred_at?: string;
+  from_status?: string | null;
+  to_status?: string | null;
+  actor_id?: number | null;
+  actor_name?: string | null;
+  payload?: Record<string, unknown> | null;
+  created_at?: string;
+  updated_at?: string;
+  /** Legacy / alternate names */
+  status?: string;
+  triggered_by_id?: number;
   triggered_by_name?: string;
-  triggered_at: string;
-  metadata?: Record<string, any>;
+  triggered_at?: string;
+  metadata?: Record<string, unknown>;
   description?: string;
 }

@@ -22,6 +22,7 @@ import {
   confirmReceiptOrder,
   deleteReceiptOrder,
   assignReceiptOrder,
+  getReceiptOrderAssignableManagers,
   reserveSpace,
   getReceiptOrderWorkflow,
 } from '../../api/receiptOrders';
@@ -32,7 +33,38 @@ import { AssignmentCard } from '../../components/common/AssignmentCard';
 import { ReservationCard } from '../../components/common/ReservationCard';
 import { WorkflowTimeline } from '../../components/common/WorkflowTimeline';
 import type { ApiError } from '../../types/common';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import type { ReceiptOrder } from '../../api/receiptOrders';
+
+function formatReceiptDate(order: ReceiptOrder): string {
+  const raw = order.received_date || order.expected_delivery_date;
+  if (!raw) return '—';
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString();
+}
+
+function receiptSourceLabel(order: ReceiptOrder): string {
+  const type = order.source_type?.trim();
+  const label =
+    order.source_name ||
+    order.name ||
+    (order.source_reference != null ? String(order.source_reference) : '');
+  if (type && label) return `${type} — ${label}`;
+  if (label) return label;
+  if (type) return type;
+  return '—';
+}
+
+function receiptLines(order: ReceiptOrder) {
+  return order.receipt_order_lines ?? order.lines ?? [];
+}
+
+function formatUnitPrice(value: number | string | undefined | null): string {
+  if (value === null || value === undefined || value === '') return '—';
+  const n = typeof value === 'number' ? value : Number(value);
+  if (Number.isNaN(n)) return '—';
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+}
 
 function ReceiptOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -60,8 +92,26 @@ function ReceiptOrderDetailPage() {
   const { data: workflowEvents = [] } = useQuery({
     queryKey: ['receipt_orders', id, 'workflow'],
     queryFn: () => getReceiptOrderWorkflow(Number(id)),
-    enabled: !!order && order.status !== 'Draft',
+    enabled: !!order && String(order.status).toLowerCase() !== 'draft',
   });
+
+  const {
+    data: assignableManagersPayload,
+    isLoading: assignableManagersLoading,
+    isError: assignableManagersError,
+  } = useQuery({
+    queryKey: ['receipt_orders', id, 'assignable_managers'],
+    queryFn: () => getReceiptOrderAssignableManagers(Number(id)),
+    enabled:
+      !!order &&
+      showAssignmentForm &&
+      String(order.status).toLowerCase() === 'confirmed',
+  });
+
+  const managerSelectData = useMemo(() => {
+    const rows = assignableManagersPayload?.assignable_managers ?? [];
+    return rows.map((m) => ({ value: String(m.id), label: m.name }));
+  }, [assignableManagersPayload]);
 
   const confirmMutation = useMutation({
     mutationFn: () => confirmReceiptOrder(Number(id)),
@@ -210,6 +260,8 @@ function ReceiptOrderDetailPage() {
   const isLoading_ = confirmMutation.isPending || deleteMutation.isPending || assignMutation.isPending || reserveSpaceMutation.isPending;
   const assignments = order.assignments || [];
   const spaceReservations = order.space_reservations || [];
+  const lines = receiptLines(order);
+  const isDraft = String(order.status).toLowerCase() === 'draft';
 
   return (
     <Stack gap="md">
@@ -226,7 +278,7 @@ function ReceiptOrderDetailPage() {
       <Tabs value={activeTab} onChange={(value) => setActiveTab(value || 'details')}>
         <Tabs.List>
           <Tabs.Tab value="details">Details</Tabs.Tab>
-          {order.status !== 'Draft' && (
+          {!isDraft && (
             <>
               <Tabs.Tab value="assignments">Assignments</Tabs.Tab>
               <Tabs.Tab value="space-reservations">Space Reservations</Tabs.Tab>
@@ -245,7 +297,7 @@ function ReceiptOrderDetailPage() {
                       Source
                     </Text>
                     <Text size="sm" fw={600} mt="xs">
-                      {order.source_type} - {order.source_name}
+                      {receiptSourceLabel(order)}
                     </Text>
                   </div>
                   <div>
@@ -253,15 +305,15 @@ function ReceiptOrderDetailPage() {
                       Destination Warehouse
                     </Text>
                     <Text size="sm" fw={600} mt="xs">
-                      {order.destination_warehouse_name || 'N/A'}
+                      {order.warehouse_name || order.destination_warehouse_name || '—'}
                     </Text>
                   </div>
                   <div>
                     <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                      Expected Delivery
+                      Received date
                     </Text>
                     <Text size="sm" fw={600} mt="xs">
-                      {new Date(order.expected_delivery_date).toLocaleDateString()}
+                      {formatReceiptDate(order)}
                     </Text>
                   </div>
                   <div>
@@ -273,13 +325,13 @@ function ReceiptOrderDetailPage() {
                     </Text>
                   </div>
                 </SimpleGrid>
-                {order.notes && (
+                {(order.notes || order.description) && (
                   <div>
                     <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
                       Notes
                     </Text>
                     <Text size="sm" mt="xs">
-                      {order.notes}
+                      {order.notes ?? order.description}
                     </Text>
                   </div>
                 )}
@@ -302,13 +354,19 @@ function ReceiptOrderDetailPage() {
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
-                    {order.lines?.map((line, index) => (
-                      <Table.Tr key={index}>
-                        <Table.Td>{line.commodity_id}</Table.Td>
+                    {lines.map((line, index) => (
+                      <Table.Tr key={line.id ?? index}>
+                        <Table.Td>
+                          {line.commodity_name?.trim() ||
+                            (line.commodity_id ? `Commodity #${line.commodity_id}` : '—')}
+                        </Table.Td>
                         <Table.Td>{line.quantity}</Table.Td>
-                        <Table.Td>{line.unit_id}</Table.Td>
-                        <Table.Td>{line.unit_price || '-'}</Table.Td>
-                        <Table.Td>{line.notes || '-'}</Table.Td>
+                        <Table.Td>
+                          {line.unit_name?.trim() ||
+                            (line.unit_id ? `Unit #${line.unit_id}` : '—')}
+                        </Table.Td>
+                        <Table.Td>{formatUnitPrice(line.unit_price)}</Table.Td>
+                        <Table.Td>{line.notes?.trim() ? line.notes : '—'}</Table.Td>
                       </Table.Tr>
                     ))}
                   </Table.Tbody>
@@ -317,7 +375,7 @@ function ReceiptOrderDetailPage() {
             </div>
 
             <Group justify="flex-end">
-              {order.status === 'Draft' && (
+              {isDraft && (
                 <>
                   <Button
                     variant="light"
@@ -341,7 +399,7 @@ function ReceiptOrderDetailPage() {
                   </Button>
                 </>
               )}
-              {order.status !== 'Draft' && (
+              {!isDraft && (
                 <Button variant="light" onClick={() => navigate('/officer/receipt-orders')}>
                   Back to List
                 </Button>
@@ -354,7 +412,7 @@ function ReceiptOrderDetailPage() {
           <Stack gap="md">
             <Group justify="space-between">
               <Text fw={600}>Warehouse Assignments</Text>
-              {order.status === 'Confirmed' && (
+              {String(order.status).toLowerCase() === 'confirmed' && (
                 <Button
                   size="sm"
                   onClick={() => setShowAssignmentForm(true)}
@@ -378,16 +436,44 @@ function ReceiptOrderDetailPage() {
             {showAssignmentForm && (
               <Card shadow="sm" padding="lg" radius="md" withBorder>
                 <Stack gap="md">
+                  {order.hub_name ? (
+                    <Text size="sm" c="dimmed">
+                      Managers for hub: {order.hub_name}
+                    </Text>
+                  ) : null}
+                  {!order.hub_id ? (
+                    <Text size="sm" c="dimmed">
+                      This order has no hub yet. Link the destination warehouse to a hub (or set a hub on the order) so
+                      hub and warehouse managers can appear here.
+                    </Text>
+                  ) : null}
+                  {assignableManagersError ? (
+                    <Text size="sm" c="red">
+                      Could not load managers for this hub.
+                    </Text>
+                  ) : null}
                   <Select
                     label="Assign to User"
-                    placeholder="Select warehouse manager"
-                    data={[
-                      { value: '1', label: 'Manager 1' },
-                      { value: '2', label: 'Manager 2' },
-                    ]}
+                    placeholder={
+                      assignableManagersLoading
+                        ? 'Loading managers…'
+                        : 'Select warehouse or hub manager'
+                    }
+                    data={managerSelectData}
+                    disabled={assignableManagersLoading || !order.hub_id}
                     value={selectedUserId}
                     onChange={setSelectedUserId}
+                    searchable
                   />
+                  {!assignableManagersLoading &&
+                  order.hub_id &&
+                  managerSelectData.length === 0 &&
+                  !assignableManagersError ? (
+                    <Text size="sm" c="dimmed">
+                      No hub managers or warehouse managers are assigned to this hub in admin. Add assignments under Hub
+                      Manager (for this hub) or Warehouse Manager (for a warehouse in this hub).
+                    </Text>
+                  ) : null}
                   <Textarea
                     label="Notes"
                     placeholder="Assignment notes..."
@@ -418,7 +504,7 @@ function ReceiptOrderDetailPage() {
           <Stack gap="md">
             <Group justify="space-between">
               <Text fw={600}>Reserved Space</Text>
-              {order.status === 'Confirmed' && (
+              {['confirmed', 'assigned'].includes(String(order.status).toLowerCase()) && (
                 <Button
                   size="sm"
                   onClick={() => setShowSpaceReservationForm(true)}

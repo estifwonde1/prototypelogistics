@@ -67,38 +67,65 @@ function ReceiptOrderFormPage() {
     queryFn: getUnitReferences,
   });
 
-  const { data: existingOrder } = useQuery({
-    queryKey: ['receipt_orders', id],
-    queryFn: () => getReceiptOrder(Number(id)),
-    enabled: isEdit,
-  });
+  const { data: existingOrder, isLoading: orderLoading, isError: orderError, refetch: refetchOrder } =
+    useQuery({
+      queryKey: ['receipt_orders', id],
+      queryFn: () => getReceiptOrder(Number(id)),
+      enabled: isEdit,
+    });
+
+  const isDraftOrder =
+    existingOrder != null && String(existingOrder.status).toLowerCase() === 'draft';
+  const fieldsEditable = !isEdit || (isDraftOrder && !orderLoading);
 
   useEffect(() => {
-    if (isEdit && existingOrder) {
-      setSourceType(existingOrder.source_type);
-      setSourceName(existingOrder.source_name);
-      setWarehouseId(existingOrder.destination_warehouse_id.toString());
-      setExpectedDeliveryDate(new Date(existingOrder.expected_delivery_date));
-      setNotes(existingOrder.notes || '');
-      setItems(existingOrder.lines || [createEmptyItem()]);
-    }
+    if (!isEdit || !existingOrder) return;
+
+    const warehouseNumeric =
+      existingOrder.destination_warehouse_id ?? existingOrder.warehouse_id;
+    setWarehouseId(warehouseNumeric != null ? String(warehouseNumeric) : null);
+
+    setSourceType(existingOrder.source_type || '');
+    setSourceName(
+      existingOrder.source_name ||
+        (existingOrder.name != null ? String(existingOrder.name) : '') ||
+        (existingOrder.source_reference != null ? String(existingOrder.source_reference) : '')
+    );
+
+    const dateRaw = existingOrder.expected_delivery_date || existingOrder.received_date;
+    setExpectedDeliveryDate(dateRaw ? new Date(dateRaw) : null);
+
+    setNotes(existingOrder.notes ?? existingOrder.description ?? '');
+
+    const rawLines = existingOrder.lines ?? existingOrder.receipt_order_lines ?? [];
+    setItems(
+      rawLines.length > 0
+        ? rawLines.map((line) => ({
+            commodity_id: line.commodity_id,
+            quantity: line.quantity,
+            unit_id: line.unit_id,
+            unit_price: line.unit_price ?? 0,
+            notes: line.notes ?? '',
+          }))
+        : [createEmptyItem()]
+    );
   }, [isEdit, existingOrder]);
 
   const warehouseOptions =
     warehouses?.map((w) => ({
-      value: w.id.toString(),
+      value: String(w.id),
       label: w.name,
     })) || [];
 
   const commodityOptions =
     commodities?.map((c) => ({
-      value: c.id.toString(),
-      label: c.name,
+      value: String(c.id),
+      label: c.name ?? `Commodity #${c.id}`,
     })) || [];
 
   const unitOptions =
     units?.map((u) => ({
-      value: u.id.toString(),
+      value: String(u.id),
       label: u.name,
     })) || [];
 
@@ -134,6 +161,7 @@ function ReceiptOrderFormPage() {
     mutationFn: (payload: any) => updateReceiptOrder(Number(id), payload),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['receipt_orders'] });
+      queryClient.invalidateQueries({ queryKey: ['receipt_orders', id] });
       notifications.show({
         title: 'Success',
         message: 'Receipt Order updated successfully',
@@ -213,10 +241,13 @@ function ReceiptOrderFormPage() {
       return;
     }
 
-    if (items.length === 0 || items.some((item) => !item.commodity_id || !item.quantity)) {
+    if (
+      items.length === 0 ||
+      items.some((item) => !item.commodity_id || !item.quantity || !item.unit_id)
+    ) {
       notifications.show({
         title: 'Validation Error',
-        message: 'Please add at least one valid item',
+        message: 'Please add at least one line with commodity, quantity, and unit',
         color: 'red',
       });
       return;
@@ -244,6 +275,50 @@ function ReceiptOrderFormPage() {
 
   const isLoading = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
 
+  if (isEdit && orderError) {
+    return (
+      <Stack gap="md">
+        <Title order={2}>Edit Receipt Order</Title>
+        <Text c="red" size="sm">
+          Could not load this order.
+        </Text>
+        <Group>
+          <Button variant="light" onClick={() => refetchOrder()}>
+            Retry
+          </Button>
+          <Button variant="subtle" onClick={() => navigate('/officer/receipt-orders')}>
+            Back to list
+          </Button>
+        </Group>
+      </Stack>
+    );
+  }
+
+  if (isEdit && orderLoading) {
+    return (
+      <Stack gap="md">
+        <Title order={2}>Edit Receipt Order</Title>
+        <Text c="dimmed" size="sm">
+          Loading order…
+        </Text>
+      </Stack>
+    );
+  }
+
+  if (isEdit && existingOrder && !isDraftOrder) {
+    return (
+      <Stack gap="md">
+        <Title order={2}>Edit Receipt Order</Title>
+        <Text c="dimmed" size="sm">
+          Only draft receipt orders can be edited. This order is {existingOrder.status}.
+        </Text>
+        <Button variant="light" onClick={() => navigate(`/officer/receipt-orders/${existingOrder.id}`)}>
+          Back to order
+        </Button>
+      </Stack>
+    );
+  }
+
   return (
     <Stack gap="md">
       <div>
@@ -267,7 +342,7 @@ function ReceiptOrderFormPage() {
                 value={sourceType}
                 onChange={(val) => setSourceType(val || '')}
                 required
-                disabled={isEdit}
+                disabled={!fieldsEditable}
               />
               <TextInput
                 label="Source Name"
@@ -275,7 +350,7 @@ function ReceiptOrderFormPage() {
                 value={sourceName}
                 onChange={(e) => setSourceName(e.target.value)}
                 required
-                disabled={isEdit}
+                disabled={!fieldsEditable}
               />
               <Select
                 label="Destination Warehouse"
@@ -284,7 +359,7 @@ function ReceiptOrderFormPage() {
                 value={warehouseId}
                 onChange={setWarehouseId}
                 required
-                disabled={isEdit}
+                disabled={!fieldsEditable}
               />
               <DateInput
                 label="Expected Delivery Date"
@@ -292,7 +367,7 @@ function ReceiptOrderFormPage() {
                 value={expectedDeliveryDate}
                 onChange={(val) => setExpectedDeliveryDate(val)}
                 required
-                disabled={isEdit}
+                disabled={!fieldsEditable}
               />
             </SimpleGrid>
             <Textarea
@@ -302,7 +377,7 @@ function ReceiptOrderFormPage() {
               onChange={(e) => setNotes(e.target.value)}
               mt="md"
               rows={3}
-              disabled={isEdit}
+              disabled={!fieldsEditable}
             />
           </div>
 
@@ -311,7 +386,7 @@ function ReceiptOrderFormPage() {
               <Text size="sm" fw={600}>
                 Order Items
               </Text>
-              {!isEdit && (
+              {fieldsEditable && (
                 <Button
                   size="xs"
                   variant="light"
@@ -332,7 +407,7 @@ function ReceiptOrderFormPage() {
                     <Table.Th>Unit</Table.Th>
                     <Table.Th>Unit Price</Table.Th>
                     <Table.Th>Notes</Table.Th>
-                    {!isEdit && <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>}
+                    {fieldsEditable && <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>}
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -347,7 +422,7 @@ function ReceiptOrderFormPage() {
                             handleItemChange(index, 'commodity_id', parseInt(val || '0'))
                           }
                           searchable
-                          disabled={isEdit}
+                          disabled={!fieldsEditable}
                         />
                       </Table.Td>
                       <Table.Td>
@@ -355,7 +430,7 @@ function ReceiptOrderFormPage() {
                           placeholder="0"
                           value={item.quantity}
                           onChange={(val) => handleItemChange(index, 'quantity', Number(val) || 0)}
-                          disabled={isEdit}
+                          disabled={!fieldsEditable}
                         />
                       </Table.Td>
                       <Table.Td>
@@ -366,7 +441,7 @@ function ReceiptOrderFormPage() {
                           onChange={(val) =>
                             handleItemChange(index, 'unit_id', parseInt(val || '0'))
                           }
-                          disabled={isEdit}
+                          disabled={!fieldsEditable}
                         />
                       </Table.Td>
                       <Table.Td>
@@ -374,7 +449,7 @@ function ReceiptOrderFormPage() {
                           placeholder="0"
                           value={item.unit_price}
                           onChange={(val) => handleItemChange(index, 'unit_price', Number(val) || 0)}
-                          disabled={isEdit}
+                          disabled={!fieldsEditable}
                         />
                       </Table.Td>
                       <Table.Td>
@@ -382,10 +457,10 @@ function ReceiptOrderFormPage() {
                           placeholder="Notes"
                           value={item.notes}
                           onChange={(e) => handleItemChange(index, 'notes', e.target.value)}
-                          disabled={isEdit}
+                          disabled={!fieldsEditable}
                         />
                       </Table.Td>
-                      {!isEdit && (
+                      {fieldsEditable && (
                         <Table.Td>
                           <ActionIcon
                             color="red"
@@ -417,9 +492,9 @@ function ReceiptOrderFormPage() {
                 Delete
               </Button>
             )}
-            {!isEdit && (
+            {fieldsEditable && (
               <Button onClick={handleSave} loading={isLoading}>
-                Save as Draft
+                {isEdit ? 'Update draft' : 'Save as Draft'}
               </Button>
             )}
           </Group>

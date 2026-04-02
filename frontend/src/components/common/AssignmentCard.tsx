@@ -14,8 +14,13 @@ export function AssignmentCard({
   onReject,
   isLoading,
 }: AssignmentCardProps) {
+  const statusKey = String(assignment.status ?? 'pending')
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+
   const statusColors: Record<string, string> = {
     pending: 'yellow',
+    assigned: 'gray',
     accepted: 'blue',
     in_progress: 'cyan',
     completed: 'green',
@@ -24,11 +29,20 @@ export function AssignmentCard({
 
   const statusIcons: Record<string, React.ReactNode> = {
     pending: <IconClock size={16} />,
+    assigned: <IconClock size={16} />,
     accepted: <IconCheck size={16} />,
     in_progress: <IconClock size={16} />,
     completed: <IconCheck size={16} />,
     rejected: <IconX size={16} />,
   };
+
+  const badgeColor = statusColors[statusKey] ?? 'gray';
+  const badgeIcon = statusIcons[statusKey] ?? statusIcons.pending;
+  const assignedAtRaw = assignment.assigned_at || (assignment as { created_at?: string }).created_at;
+  const assignedAtLabel =
+    assignedAtRaw && !Number.isNaN(Date.parse(assignedAtRaw))
+      ? new Date(assignedAtRaw).toLocaleString()
+      : '—';
 
   return (
     <Card shadow="sm" padding="lg" radius="md" withBorder>
@@ -43,23 +57,26 @@ export function AssignmentCard({
               </Text>
             </div>
           </Group>
-          <Badge
-            color={statusColors[assignment.status]}
-            leftSection={statusIcons[assignment.status]}
-          >
-            {assignment.status}
+          <Badge color={badgeColor} leftSection={badgeIcon}>
+            {String(assignment.status ?? '—').replace(/_/g, ' ')}
           </Badge>
         </Group>
+
+        {assignment.assigned_by_name ? (
+          <Text size="sm" c="dimmed">
+            Assigned by {assignment.assigned_by_name}
+          </Text>
+        ) : null}
 
         {assignment.notes && (
           <Text size="sm">{assignment.notes}</Text>
         )}
 
         <Text size="xs" c="dimmed">
-          Assigned on {new Date(assignment.assigned_at).toLocaleString()}
+          Assigned on {assignedAtLabel}
         </Text>
 
-        {assignment.status === 'pending' && (onAccept || onReject) && (
+        {statusKey === 'pending' && (onAccept || onReject) && (
           <Group gap="sm">
             {onAccept && (
               <Button

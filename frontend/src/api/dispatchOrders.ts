@@ -87,7 +87,14 @@ export async function reserveStock(
   return response.data.data || response.data;
 }
 
+function extractWorkflowEvents(responseData: unknown): WorkflowEvent[] {
+  const root = (responseData as { data?: { workflow_events?: unknown }; workflow_events?: unknown }) || {};
+  const inner = root.data ?? root;
+  const raw = inner.workflow_events ?? (Array.isArray(inner) ? inner : []);
+  return Array.isArray(raw) ? raw : [];
+}
+
 export async function getDispatchOrderWorkflow(id: number): Promise<WorkflowEvent[]> {
   const response = await apiClient.get(`/dispatch_orders/${id}/workflow`);
-  return response.data.workflow_events || response.data.data || [];
+  return extractWorkflowEvents(response.data);
 }

@@ -3,6 +3,17 @@ module Cats
     class ReceiptOrderLineSerializer < ApplicationSerializer
       attributes :id, :commodity_id, :commodity_name, :quantity, :unit_id, :unit_name
 
+      attribute :unit_price, if: :line_has_unit_price?
+      attribute :notes, if: :line_has_notes?
+
+      def line_has_unit_price?
+        object.has_attribute?(:unit_price)
+      end
+
+      def line_has_notes?
+        object.has_attribute?(:notes)
+      end
+
       def commodity_name
         # Do not call Commodity#name — cats_core implements it via project.source.commodity_name,
         # which breaks when project.source is a Donor (no commodity_name). Use DB column + fallbacks.

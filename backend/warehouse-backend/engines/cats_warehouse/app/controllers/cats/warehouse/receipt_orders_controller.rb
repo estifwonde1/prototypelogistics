@@ -3,12 +3,12 @@ module Cats
     class ReceiptOrdersController < BaseController
       def index
         authorize ReceiptOrder
-        orders = policy_scope(ReceiptOrder).includes(:hub, :warehouse, receipt_order_lines: [:commodity, :unit]).order(created_at: :desc)
+        orders = policy_scope(ReceiptOrder).includes(*order_detail_includes).order(created_at: :desc)
         render_resource(orders, each_serializer: ReceiptOrderSerializer)
       end
 
       def show
-        order = policy_scope(ReceiptOrder).includes(:hub, :warehouse, receipt_order_lines: [:commodity, :unit]).find(params[:id])
+        order = policy_scope(ReceiptOrder).includes(*order_detail_includes).find(params[:id])
         authorize order
         render_order_payload(order)
       end
@@ -36,7 +36,7 @@ module Cats
         ).call
 
         # Reload with proper associations
-        order = ReceiptOrder.includes(receipt_order_lines: [:commodity, :unit]).find(order.id)
+        order = ReceiptOrder.includes(*order_detail_includes).find(order.id)
         render_order_payload(order, status: :created)
       end
 
@@ -48,22 +48,80 @@ module Cats
 
         ReceiptOrder.transaction do
           payload = receipt_order_params
+
+          warehouse_attr =
+            if payload.key?(:warehouse_id) || payload.key?(:destination_warehouse_id)
+              wid = payload[:destination_warehouse_id].presence || payload[:warehouse_id]
+              wid.present? ? find_optional_warehouse(wid) : order.warehouse
+            else
+              order.warehouse
+            end
+
+          received_attr =
+            if payload.key?(:received_date) || payload.key?(:expected_delivery_date)
+              payload[:expected_delivery_date].presence || payload[:received_date] || order.received_date
+            else
+              order.received_date
+            end
+
+          source_attr =
+            if payload.key?(:source_type) || payload.key?(:source_id)
+              st = payload[:source_type].to_s.presence
+              sid = payload[:source_id]
+              if st.present? && sid.present?
+                PolymorphicReferenceResolver.resolve_source(st, sid)
+              elsif payload.key?(:source_id) && sid.blank?
+                nil
+              else
+                order.source
+              end
+            else
+              order.source
+            end
+
+          description_attr =
+            if payload.key?(:description) || payload.key?(:notes)
+              payload[:notes].presence || payload[:description].presence || order.description
+            else
+              order.description
+            end
+
+          name_attr =
+            if payload.key?(:name) || payload.key?(:source_name)
+              payload[:source_name].presence || payload[:name].presence || order.name
+            else
+              order.name
+            end
+
           order.assign_attributes(
             hub: payload.key?(:hub_id) ? find_optional_hub(payload[:hub_id]) : order.hub,
-            warehouse: payload.key?(:warehouse_id) ? find_optional_warehouse(payload[:warehouse_id]) : order.warehouse,
-            received_date: payload.key?(:received_date) ? payload[:received_date] : order.received_date,
-            source: payload.key?(:source_type) || payload.key?(:source_id) ? PolymorphicReferenceResolver.resolve_source(payload[:source_type], payload[:source_id]) : order.source,
+            warehouse: warehouse_attr,
+            received_date: received_attr,
+            source: source_attr,
             reference_no: payload.key?(:reference_no) ? payload[:reference_no].presence : order.reference_no,
-            description: payload.key?(:description) ? payload[:description] : order.description,
-            name: payload.key?(:name) ? payload[:name] : order.name
+            description: description_attr,
+            name: name_attr
           )
           order.save!
 
-          replace_receipt_order_lines!(order, payload[:receipt_order_lines]) if payload.key?(:receipt_order_lines)
+          if payload.key?(:receipt_order_lines) || payload.key?(:lines)
+            replace_receipt_order_lines!(order, payload[:receipt_order_lines].presence || payload[:lines] || [])
+          end
         end
 
-        order = ReceiptOrder.includes(receipt_order_lines: [:commodity, :unit]).find(order.id)
+        order = ReceiptOrder.includes(*order_detail_includes).find(order.id)
         render_order_payload(order)
+      end
+
+      def destroy
+        order = policy_scope(ReceiptOrder).find(params[:id])
+        authorize order
+
+        raise ArgumentError, "Only draft receipt orders can be deleted" unless order.status_draft?
+
+        destroyed_id = order.id
+        order.destroy!
+        render_success({ id: destroyed_id })
       end
 
       def confirm
@@ -71,8 +129,52 @@ module Cats
         authorize order
 
         ReceiptOrderConfirmer.new(order: order, confirmed_by: current_user).call
-        order = ReceiptOrder.includes(receipt_order_lines: [:commodity, :unit]).find(order.id)
+        order = ReceiptOrder.includes(*order_detail_includes).find(order.id)
         render_order_payload(order)
+      end
+
+      def assignable_managers
+        order = policy_scope(ReceiptOrder).find(params[:id])
+        authorize order, :assignable_managers?
+
+        hub_id = order.hub_id
+        if hub_id.blank?
+          return render_success(
+            assignable_managers: [],
+            hub_id: hub_id,
+            hub_name: order.hub&.name
+          )
+        end
+
+        warehouse_ids = Warehouse.where(hub_id: hub_id).pluck(:id)
+        hm_scope = UserAssignment.where(role_name: "Hub Manager", hub_id: hub_id)
+        assignment_rows =
+          if warehouse_ids.any?
+            UserAssignment
+              .where(role_name: "Warehouse Manager", warehouse_id: warehouse_ids)
+              .or(hm_scope)
+          else
+            hm_scope
+          end
+        user_ids = assignment_rows.distinct.pluck(:user_id)
+        mod_id = warehouse_module.id
+        users =
+          Cats::Core::User
+            .where(id: user_ids, active: true, application_module_id: mod_id)
+            .order(:last_name, :first_name, :id)
+
+        assignable_managers =
+          users.map do |u|
+            display = [ u.first_name, u.last_name ].compact.join(" ").strip
+            display = u.email if display.blank?
+            { id: u.id, name: display }
+          end
+
+        render_success(
+          assignable_managers: assignable_managers,
+          hub_id: hub_id,
+          hub_name: order.hub&.name
+        )
       end
 
       def assign
@@ -85,7 +187,7 @@ module Cats
           assignments: assignment_params[:assignments]
         ).call
 
-        order = ReceiptOrder.includes(receipt_order_lines: [:commodity, :unit]).find(order.id)
+        order = ReceiptOrder.includes(*order_detail_includes).find(order.id)
         render_order_payload(order)
       end
 
@@ -99,7 +201,7 @@ module Cats
           reservations: space_reservation_params[:reservations]
         ).call
 
-        order = ReceiptOrder.includes(receipt_order_lines: [:commodity, :unit]).find(order.id)
+        order = ReceiptOrder.includes(*order_detail_includes).find(order.id)
         render_order_payload(order)
       end
 
@@ -109,13 +211,24 @@ module Cats
 
         render_success(
           workflow_events: ActiveModelSerializers::SerializableResource.new(
-            order.workflow_events.order(occurred_at: :asc, id: :asc),
+            order.workflow_events.includes(:actor).order(occurred_at: :asc, id: :asc),
             each_serializer: WorkflowEventSerializer
           ).as_json
         )
       end
 
       private
+
+      def order_detail_includes
+        [
+          :hub,
+          :warehouse,
+          {
+            receipt_order_lines: [:commodity, :unit],
+            receipt_order_assignments: [:assigned_to, :assigned_by, :hub, :warehouse, :store]
+          }
+        ]
+      end
 
       def render_order_payload(order, status: :ok)
         payload = ActiveModelSerializers::SerializableResource.new(
@@ -193,12 +306,8 @@ module Cats
       def replace_receipt_order_lines!(order, items)
         order.receipt_order_lines.destroy_all
 
-        Array(items).each do |item|
-          order.receipt_order_lines.create!(
-            commodity_id: item[:commodity_id],
-            quantity: item[:quantity],
-            unit_id: item[:unit_id]
-          )
+        Array(items).each do |raw|
+          order.receipt_order_lines.create!(ReceiptOrderLine.attributes_from_line_payload(raw))
         end
       end
     end

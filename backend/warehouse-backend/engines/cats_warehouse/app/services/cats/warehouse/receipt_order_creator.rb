@@ -27,12 +27,8 @@ module Cats
             status: "Draft"
           )
 
-          @items.each do |item|
-            order.receipt_order_lines.create!(
-              commodity_id: item[:commodity_id],
-              quantity: item[:quantity],
-              unit_id: item[:unit_id]
-            )
+          @items.each do |raw|
+            order.receipt_order_lines.create!(ReceiptOrderLine.attributes_from_line_payload(raw))
           end
 
           order
