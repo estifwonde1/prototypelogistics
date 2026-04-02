@@ -1,31 +1,87 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Stack,
-  Title,
+  Badge,
   Button,
+  Card,
+  Divider,
   Group,
-  TextInput,
   NumberInput,
   Select,
-  Card,
+  SimpleGrid,
+  Stack,
+  Text,
+  TextInput,
+  ThemeIcon,
+  Title,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { IconArrowLeft, IconDeviceFloppy } from '@tabler/icons-react';
-import { getStack, createStack, updateStack } from '../../api/stacks';
-import { getStores } from '../../api/stores';
-import { LoadingState } from '../../components/common/LoadingState';
-import { ErrorState } from '../../components/common/ErrorState';
+import { IconArrowLeft, IconBox, IconDeviceFloppy, IconRuler3, IconStack2 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
+import type { AxiosError } from 'axios';
+import { createStack, getStack, updateStack } from '../../api/stacks';
+import { getStores } from '../../api/stores';
+import { ErrorState } from '../../components/common/ErrorState';
+import { LoadingState } from '../../components/common/LoadingState';
 import type { Stack as StackType } from '../../types/stack';
+
+type ApiError = {
+  error?: {
+    message?: string;
+  };
+};
+
+const commodityOptions = [
+  { value: '1', label: 'Wheat' },
+  { value: '2', label: 'Maize' },
+  { value: '3', label: 'Rice' },
+  { value: '4', label: 'Barley' },
+];
+
+const unitOptions = [
+  { value: '1', label: 'Quintal (qt)' },
+  { value: '2', label: 'Kilogram (kg)' },
+  { value: '3', label: 'Metric Ton (mt)' },
+  { value: '4', label: 'Bag' },
+];
+
+const commodityStatusOptions = [
+  { value: 'good', label: 'Good' },
+  { value: 'damaged', label: 'Damaged' },
+  { value: 'expired', label: 'Expired' },
+  { value: 'quarantine', label: 'Quarantine' },
+];
+
+const stackStatusOptions = [
+  { value: 'active', label: 'Active / Allocated' },
+  { value: 'inactive', label: 'Inactive' },
+  { value: 'reserved', label: 'Reserved' },
+  { value: 'empty', label: 'Empty' },
+];
+
+const inputStyles = {
+  label: {
+    fontSize: '0.74rem',
+    fontWeight: 800,
+    letterSpacing: '0.12em',
+    textTransform: 'uppercase' as const,
+    color: '#42506a',
+    marginBottom: 6,
+  },
+  input: {
+    backgroundColor: '#eaf0ff',
+    borderColor: '#d5def2',
+    color: '#1f2a44',
+    fontWeight: 700,
+  },
+};
 
 function StackFormPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const isEdit = !!id;
+  const isEdit = Boolean(id);
 
   const { data: stack, isLoading } = useQuery({
     queryKey: ['stacks', id],
@@ -84,7 +140,7 @@ function StackFormPage() {
         unit_id: stack.unit_id.toString(),
       });
     }
-  }, [stack]);
+  }, [form, stack]);
 
   const createMutation = useMutation({
     mutationFn: createStack,
@@ -97,10 +153,10 @@ function StackFormPage() {
       });
       navigate('/stacks');
     },
-    onError: (error: any) => {
+    onError: (mutationError: AxiosError<ApiError>) => {
       notifications.show({
         title: 'Error',
-        message: error.response?.data?.error?.message || 'Failed to create stack',
+        message: mutationError.response?.data?.error?.message || 'Failed to create stack',
         color: 'red',
       });
     },
@@ -118,14 +174,20 @@ function StackFormPage() {
       });
       navigate('/stacks');
     },
-    onError: (error: any) => {
+    onError: (mutationError: AxiosError<ApiError>) => {
       notifications.show({
         title: 'Error',
-        message: error.response?.data?.error?.message || 'Failed to update stack',
+        message: mutationError.response?.data?.error?.message || 'Failed to update stack',
         color: 'red',
       });
     },
   });
+
+  const storeOptions =
+    stores?.map((store) => ({
+      value: store.id.toString(),
+      label: `${store.name} (${store.code})`,
+    })) || [];
 
   const handleSubmit = (values: typeof form.values) => {
     const payload: Partial<StackType> = {
@@ -145,44 +207,15 @@ function StackFormPage() {
 
     if (isEdit) {
       updateMutation.mutate(payload);
-    } else {
-      createMutation.mutate(payload);
+      return;
     }
+
+    createMutation.mutate(payload);
   };
 
-  const storeOptions = stores?.map((store) => ({
-    value: store.id.toString(),
-    label: `${store.name} (${store.code})`,
-  }));
-
-  // Placeholder options for commodity and unit - these should be fetched from API
-  const commodityOptions = [
-    { value: '1', label: 'Wheat' },
-    { value: '2', label: 'Maize' },
-    { value: '3', label: 'Rice' },
-    { value: '4', label: 'Barley' },
-  ];
-
-  const unitOptions = [
-    { value: '1', label: 'Quintal (qt)' },
-    { value: '2', label: 'Kilogram (kg)' },
-    { value: '3', label: 'Metric Ton (mt)' },
-    { value: '4', label: 'Bag' },
-  ];
-
-  const commodityStatusOptions = [
-    { value: 'good', label: 'Good' },
-    { value: 'damaged', label: 'Damaged' },
-    { value: 'expired', label: 'Expired' },
-    { value: 'quarantine', label: 'Quarantine' },
-  ];
-
-  const stackStatusOptions = [
-    { value: 'active', label: 'Active' },
-    { value: 'inactive', label: 'Inactive' },
-    { value: 'reserved', label: 'Reserved' },
-    { value: 'empty', label: 'Empty' },
-  ];
+  if (!isEdit) {
+    return <Navigate to="/stacks/layout?mode=create" replace />;
+  }
 
   if (isEdit && isLoading) {
     return <LoadingState message="Loading stack..." />;
@@ -193,166 +226,299 @@ function StackFormPage() {
   }
 
   return (
-    <Stack gap="md">
-      <Group>
-        <Button
-          variant="subtle"
-          leftSection={<IconArrowLeft size={16} />}
-          onClick={() => navigate('/stacks')}
-        >
-          Back
-        </Button>
-        <Title order={2}>{isEdit ? 'Edit Stack' : 'Create Stack'}</Title>
-      </Group>
-
-      <form onSubmit={form.onSubmit(handleSubmit)}>
-        <Stack gap="md">
-          <Card withBorder padding="lg">
-            <Stack gap="md">
-              <Title order={4}>Basic Information</Title>
-
-              <TextInput
-                label="Code"
-                placeholder="STACK-001"
-                required
-                {...form.getInputProps('code')}
-              />
-
-              <Group grow>
-                <Select
-                  label="Store"
-                  placeholder="Select store"
-                  required
-                  searchable
-                  data={storeOptions || []}
-                  {...form.getInputProps('store_id')}
-                />
-                <Select
-                  label="Commodity"
-                  placeholder="Select commodity"
-                  required
-                  searchable
-                  data={commodityOptions}
-                  {...form.getInputProps('commodity_id')}
-                />
-              </Group>
-
-              <Group grow>
-                <Select
-                  label="Commodity Status"
-                  placeholder="Select status"
-                  required
-                  data={commodityStatusOptions}
-                  {...form.getInputProps('commodity_status')}
-                />
-                <Select
-                  label="Stack Status"
-                  placeholder="Select status"
-                  required
-                  data={stackStatusOptions}
-                  {...form.getInputProps('stack_status')}
-                />
-              </Group>
-            </Stack>
-          </Card>
-
-          <Card withBorder padding="lg">
-            <Stack gap="md">
-              <Title order={4}>Dimensions</Title>
-
-              <Group grow>
-                <NumberInput
-                  label="Length (m)"
-                  placeholder="0"
-                  required
-                  min={0}
-                  decimalScale={2}
-                  {...form.getInputProps('length')}
-                />
-                <NumberInput
-                  label="Width (m)"
-                  placeholder="0"
-                  required
-                  min={0}
-                  decimalScale={2}
-                  {...form.getInputProps('width')}
-                />
-                <NumberInput
-                  label="Height (m)"
-                  placeholder="0"
-                  required
-                  min={0}
-                  decimalScale={2}
-                  {...form.getInputProps('height')}
-                />
-              </Group>
-            </Stack>
-          </Card>
-
-          <Card withBorder padding="lg">
-            <Stack gap="md">
-              <Title order={4}>Position</Title>
-
-              <Group grow>
-                <NumberInput
-                  label="Start X Position"
-                  placeholder="0"
-                  required
-                  min={0}
-                  decimalScale={2}
-                  {...form.getInputProps('start_x')}
-                />
-                <NumberInput
-                  label="Start Y Position"
-                  placeholder="0"
-                  required
-                  min={0}
-                  decimalScale={2}
-                  {...form.getInputProps('start_y')}
-                />
-              </Group>
-            </Stack>
-          </Card>
-
-          <Card withBorder padding="lg">
-            <Stack gap="md">
-              <Title order={4}>Quantity</Title>
-
-              <Group grow>
-                <NumberInput
-                  label="Quantity"
-                  placeholder="0"
-                  required
-                  min={0}
-                  decimalScale={2}
-                  {...form.getInputProps('quantity')}
-                />
-                <Select
-                  label="Unit of Measure"
-                  placeholder="Select unit"
-                  required
-                  searchable
-                  data={unitOptions}
-                  {...form.getInputProps('unit_id')}
-                />
-              </Group>
-            </Stack>
-          </Card>
-
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => navigate('/stacks')}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              leftSection={<IconDeviceFloppy size={16} />}
-              loading={createMutation.isPending || updateMutation.isPending}
+    <Stack gap="xl" style={{ padding: '0.25rem' }}>
+      <Stack
+        gap="lg"
+        style={{
+          padding: '1.25rem',
+          borderRadius: 24,
+          background: 'linear-gradient(180deg, #edf4ff 0%, #e7f0ff 100%)',
+          boxShadow: '0 18px 44px rgba(76, 106, 158, 0.12)',
+        }}
+      >
+        <Group justify="space-between" align="flex-start" wrap="wrap">
+          <div>
+            <Badge
+              variant="light"
+              radius="xl"
+              size="lg"
+              style={{ backgroundColor: '#dce8ff', color: '#1b4f9c', marginBottom: 12 }}
             >
-              {isEdit ? 'Update Stack' : 'Create Stack'}
-            </Button>
-          </Group>
-        </Stack>
-      </form>
+              Stack Configuration
+            </Badge>
+            <Title order={2} c="#1d3354">
+              {isEdit ? 'Edit Stack' : 'Create Stack'}
+            </Title>
+            <Text c="#64748b" mt={6}>
+              Use the same clean operational styling from the stacking layout to configure stack
+              details, capacity, and placement.
+            </Text>
+          </div>
+
+          <Button
+            variant="light"
+            radius="md"
+            leftSection={<IconArrowLeft size={16} />}
+            onClick={() => navigate('/stacks')}
+          >
+            Back to Stacks
+          </Button>
+        </Group>
+
+        <SimpleGrid cols={{ base: 1, md: 3 }} spacing="lg">
+          <Card radius="xl" padding="lg" style={{ background: '#ffffff', border: '1px solid #dce5f5' }}>
+            <Group align="center" gap="md">
+              <ThemeIcon size={42} radius="md" variant="light" color="blue">
+                <IconStack2 size={22} />
+              </ThemeIcon>
+              <div>
+                <Text size="xs" fw={800} c="#5b6e8c" tt="uppercase">
+                  Workflow Mode
+                </Text>
+                <Title order={4} c="#1d3354">
+                  {isEdit ? 'Update Existing Stack' : 'Create New Stack'}
+                </Title>
+              </div>
+            </Group>
+          </Card>
+
+          <Card radius="xl" padding="lg" style={{ background: '#ffffff', border: '1px solid #dce5f5' }}>
+            <Group align="center" gap="md">
+              <ThemeIcon size={42} radius="md" variant="light" color="blue">
+                <IconRuler3 size={22} />
+              </ThemeIcon>
+              <div>
+                <Text size="xs" fw={800} c="#5b6e8c" tt="uppercase">
+                  Position Controls
+                </Text>
+                <Title order={4} c="#1d57a8">
+                  Length, Width, Height
+                </Title>
+              </div>
+            </Group>
+          </Card>
+
+          <Card radius="xl" padding="lg" style={{ background: '#ffffff', border: '1px solid #dce5f5' }}>
+            <Group align="center" gap="md">
+              <ThemeIcon size={42} radius="md" variant="light" color="gray">
+                <IconBox size={22} />
+              </ThemeIcon>
+              <div>
+                <Text size="xs" fw={800} c="#5b6e8c" tt="uppercase">
+                  Stock Profile
+                </Text>
+                <Title order={4} c="#44526b">
+                  Commodity, Status, Quantity
+                </Title>
+              </div>
+            </Group>
+          </Card>
+        </SimpleGrid>
+
+        <form onSubmit={form.onSubmit(handleSubmit)}>
+          <Stack gap="lg">
+            <Card
+              radius="xl"
+              padding="xl"
+              style={{
+                background: '#ffffff',
+                border: '1px solid #dce5f5',
+                boxShadow: '0 12px 28px rgba(56, 84, 128, 0.08)',
+              }}
+            >
+              <Stack gap="lg">
+                <Divider
+                  label="Basic Information"
+                  labelPosition="left"
+                  styles={{
+                    label: {
+                      fontWeight: 900,
+                      fontSize: '0.9rem',
+                      letterSpacing: '0.16em',
+                      textTransform: 'uppercase',
+                      color: '#1955a5',
+                    },
+                  }}
+                />
+
+                <TextInput
+                  label="Stack Code"
+                  placeholder="STK-015"
+                  styles={inputStyles}
+                  {...form.getInputProps('code')}
+                />
+
+                <Group grow align="flex-start">
+                  <Select
+                    label="Store"
+                    placeholder="Select store"
+                    searchable
+                    data={storeOptions}
+                    styles={inputStyles}
+                    {...form.getInputProps('store_id')}
+                  />
+                  <Select
+                    label="Commodity"
+                    placeholder="Select commodity"
+                    searchable
+                    data={commodityOptions}
+                    styles={inputStyles}
+                    {...form.getInputProps('commodity_id')}
+                  />
+                </Group>
+
+                <Group grow align="flex-start">
+                  <Select
+                    label="Commodity Status"
+                    placeholder="Select status"
+                    data={commodityStatusOptions}
+                    styles={inputStyles}
+                    {...form.getInputProps('commodity_status')}
+                  />
+                  <Select
+                    label="Stack Status"
+                    placeholder="Select status"
+                    data={stackStatusOptions}
+                    styles={inputStyles}
+                    {...form.getInputProps('stack_status')}
+                  />
+                </Group>
+              </Stack>
+            </Card>
+
+            <Card
+              radius="xl"
+              padding="xl"
+              style={{
+                background: '#ffffff',
+                border: '1px solid #dce5f5',
+                boxShadow: '0 12px 28px rgba(56, 84, 128, 0.08)',
+              }}
+            >
+              <Stack gap="lg">
+                <Divider
+                  label="Dimensions"
+                  labelPosition="left"
+                  styles={{
+                    label: {
+                      fontWeight: 900,
+                      fontSize: '0.9rem',
+                      letterSpacing: '0.16em',
+                      textTransform: 'uppercase',
+                      color: '#1955a5',
+                    },
+                  }}
+                />
+
+                <Group grow align="flex-start">
+                  <NumberInput
+                    label="Length (m)"
+                    placeholder="0"
+                    min={0}
+                    decimalScale={2}
+                    styles={inputStyles}
+                    {...form.getInputProps('length')}
+                  />
+                  <NumberInput
+                    label="Width (m)"
+                    placeholder="0"
+                    min={0}
+                    decimalScale={2}
+                    styles={inputStyles}
+                    {...form.getInputProps('width')}
+                  />
+                  <NumberInput
+                    label="Height (m)"
+                    placeholder="0"
+                    min={0}
+                    decimalScale={2}
+                    styles={inputStyles}
+                    {...form.getInputProps('height')}
+                  />
+                </Group>
+              </Stack>
+            </Card>
+
+            <Card
+              radius="xl"
+              padding="xl"
+              style={{
+                background: '#ffffff',
+                border: '1px solid #dce5f5',
+                boxShadow: '0 12px 28px rgba(56, 84, 128, 0.08)',
+              }}
+            >
+              <Stack gap="lg">
+                <Divider
+                  label="Position And Quantity"
+                  labelPosition="left"
+                  styles={{
+                    label: {
+                      fontWeight: 900,
+                      fontSize: '0.9rem',
+                      letterSpacing: '0.16em',
+                      textTransform: 'uppercase',
+                      color: '#1955a5',
+                    },
+                  }}
+                />
+
+                <Group grow align="flex-start">
+                  <NumberInput
+                    label="Start X Position"
+                    placeholder="0"
+                    min={0}
+                    decimalScale={2}
+                    styles={inputStyles}
+                    {...form.getInputProps('start_x')}
+                  />
+                  <NumberInput
+                    label="Start Y Position"
+                    placeholder="0"
+                    min={0}
+                    decimalScale={2}
+                    styles={inputStyles}
+                    {...form.getInputProps('start_y')}
+                  />
+                </Group>
+
+                <Group grow align="flex-start">
+                  <NumberInput
+                    label="Quantity"
+                    placeholder="0"
+                    min={0}
+                    decimalScale={2}
+                    styles={inputStyles}
+                    {...form.getInputProps('quantity')}
+                  />
+                  <Select
+                    label="Unit Of Measure"
+                    placeholder="Select unit"
+                    searchable
+                    data={unitOptions}
+                    styles={inputStyles}
+                    {...form.getInputProps('unit_id')}
+                  />
+                </Group>
+              </Stack>
+            </Card>
+
+            <Group justify="flex-end">
+              <Button variant="light" radius="md" onClick={() => navigate('/stacks')}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                radius="md"
+                leftSection={<IconDeviceFloppy size={16} />}
+                loading={createMutation.isPending || updateMutation.isPending}
+              >
+                {isEdit ? 'Update Stack' : 'Save Stack'}
+              </Button>
+            </Group>
+          </Stack>
+        </form>
+      </Stack>
     </Stack>
   );
 }
