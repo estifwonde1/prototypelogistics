@@ -41,6 +41,15 @@ const createEmptyItem = (): GrnItem => ({
   quality_status: QualityStatus.GOOD,
 });
 
+/** Stacks usable for GRN receiving: reserved/available/active and similar; excludes full or in-use bins. */
+function isStackEligibleForGrn(stack: WarehouseStack): boolean {
+  const s = String(stack.stack_status || '')
+    .toLowerCase()
+    .trim();
+  if (s === 'full' || s === 'in use' || s === 'in_use') return false;
+  return true;
+}
+
 /** Prefill GRN rows from receipt order lines; store/stack come from space reservations + reserved stacks when available. */
 function mapReceiptOrderLinesToGrnItems(
   order: ReceiptOrder,
@@ -60,7 +69,7 @@ function mapReceiptOrderLinesToGrnItems(
         (s) =>
           s.store_id === storeId &&
           s.commodity_id === line.commodity_id &&
-          String(s.stack_status || '').toLowerCase() === 'reserved'
+          isStackEligibleForGrn(s)
       );
       stackId = match?.id;
     }
@@ -243,7 +252,7 @@ function GrnCreatePage() {
 
   const reservedStacks = stacks.filter((stack) => {
     if (!availableStoreIds.has(stack.store_id)) return false;
-    return String(stack.stack_status || '').toLowerCase() === 'reserved';
+    return isStackEligibleForGrn(stack);
   });
 
   const qualityOptions = Object.entries(QualityStatus).map(([key, value]) => ({
@@ -322,8 +331,7 @@ function GrnCreatePage() {
 
     const storeIds = new Set(stores.filter((s) => s.warehouse_id === wid).map((s) => s.id));
     const reservedForWh = stacks.filter(
-      (stack) =>
-        storeIds.has(stack.store_id) && String(stack.stack_status || '').toLowerCase() === 'reserved'
+      (stack) => storeIds.has(stack.store_id) && isStackEligibleForGrn(stack)
     );
 
     const mapped = mapReceiptOrderLinesToGrnItems(activeReceiptOrder, reservedForWh);
@@ -549,9 +557,7 @@ function GrnCreatePage() {
                       stores.filter((s) => s.warehouse_id === wid).map((s) => s.id)
                     );
                     const reservedForWh = stacks.filter(
-                      (stack) =>
-                        storeIds.has(stack.store_id) &&
-                        String(stack.stack_status || '').toLowerCase() === 'reserved'
+                      (stack) => storeIds.has(stack.store_id) && isStackEligibleForGrn(stack)
                     );
                     const mapped = mapReceiptOrderLinesToGrnItems(activeReceiptOrder, reservedForWh);
                     setItems(mapped.length > 0 ? mapped : [createEmptyItem()]);
@@ -626,7 +632,7 @@ function GrnCreatePage() {
           </Group>
 
           <Alert color="blue" variant="light">
-            Choose the destination store first, then the commodity. Options come from the full commodity catalog (commodities with reserved space in this store are sorted first). The stack list only shows reserved stacks for the selected store and commodity.
+            Choose the destination store first, then the commodity. Options come from the full commodity catalog (commodities with reserved space in this store are sorted first). The stack list shows receivable stacks for the selected store and commodity (reserved, available, or active slots; full or in-use stacks are hidden).
           </Alert>
 
           <Table.ScrollContainer minWidth={1100}>
@@ -698,7 +704,7 @@ function GrnCreatePage() {
 
                       <Table.Td>
                         <Select
-                          placeholder={item.commodity_id ? 'Select reserved stack' : 'Select commodity first'}
+                          placeholder={item.commodity_id ? 'Select stack' : 'Select commodity first'}
                           data={stackOptionsForItem(item)}
                           value={item.stack_id?.toString() || null}
                           onChange={(value) => {
@@ -713,11 +719,11 @@ function GrnCreatePage() {
                         />
                         {hasNoReservedStackForCommodity(item) ? (
                           <Text size="xs" c="red" mt={4}>
-                            No reserved stack is available for this commodity in the selected store. Reserve one first before creating the GRN.
+                            No receivable stack is available for this commodity in this store. Reserve space on the receipt order first (which creates a receiving stack), or add a stack for this store and commodity.
                           </Text>
                         ) : selectedStack ? (
                           <Text size="xs" c="dimmed" mt={4}>
-                            Reserved stack selected: {selectedStack.code}
+                            Stack selected: {selectedStack.code}
                           </Text>
                         ) : null}
                       </Table.Td>

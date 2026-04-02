@@ -15,6 +15,7 @@ import {
   Select,
   Textarea,
   NumberInput,
+  Alert,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -37,6 +38,8 @@ import type { ApiError } from '../../types/common';
 import { useMemo, useState } from 'react';
 import type { ReceiptOrder } from '../../api/receiptOrders';
 import { usePermission } from '../../hooks/usePermission';
+import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 
 function formatReceiptDate(order: ReceiptOrder): string {
   const raw = order.received_date || order.expected_delivery_date;
@@ -61,6 +64,36 @@ function receiptLines(order: ReceiptOrder) {
   return order.receipt_order_lines ?? order.lines ?? [];
 }
 
+function normalizeOrderStatus(status: string | undefined): string {
+  return String(status || '').toLowerCase().replace(/\s+/g, '_');
+}
+
+function totalReceiptOrderLineQuantity(order: ReceiptOrder): number {
+  return receiptLines(order).reduce((sum, line) => sum + Number(line.quantity ?? 0), 0);
+}
+
+function totalSpaceReservedQuantity(
+  reservations: NonNullable<ReceiptOrder['space_reservations']> | undefined
+): number {
+  if (!Array.isArray(reservations)) return 0;
+  return reservations.reduce((sum, r) => {
+    const st = String(r.status ?? '').toLowerCase();
+    if (st === 'cancelled' || st === 'released') return sum;
+    return sum + Number(r.reserved_quantity ?? 0);
+  }, 0);
+}
+
+/** Line quantity for progress / context when a reservation targets a specific line (or single-line order). */
+function lineQuantityForReservation(order: ReceiptOrder, reservation: { receipt_order_line_id?: number }): number {
+  const lines = receiptLines(order);
+  if (reservation.receipt_order_line_id != null) {
+    const line = lines.find((l) => l.id === reservation.receipt_order_line_id);
+    if (line) return Number(line.quantity ?? 0);
+  }
+  if (lines.length === 1) return Number(lines[0].quantity ?? 0);
+  return totalReceiptOrderLineQuantity(order);
+}
+
 function formatUnitPrice(value: number | string | undefined | null): string {
   if (value === null || value === undefined || value === '') return '—';
   const n = typeof value === 'number' ? value : Number(value);
@@ -73,6 +106,7 @@ function ReceiptOrderDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { can } = usePermission();
+  const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('details');
   
@@ -97,6 +131,42 @@ function ReceiptOrderDetailPage() {
     return wid != null ? Number(wid) : null;
   }, [order]);
 
+  const reservationTotals = useMemo(() => {
+    if (!order) return { totalOrdered: 0, totalReserved: 0, remaining: 0 };
+    const totalOrdered = totalReceiptOrderLineQuantity(order);
+    const totalReserved = totalSpaceReservedQuantity(order.space_reservations);
+    return {
+      totalOrdered,
+      totalReserved,
+      remaining: Math.max(0, totalOrdered - totalReserved),
+    };
+  }, [order]);
+
+  const canReserveSpace = useMemo(() => {
+    if (!order) return false;
+    if (roleSlug === 'officer') return false;
+    if (
+      !['admin', 'superadmin', 'warehouse_manager', 'storekeeper'].includes(roleSlug || '')
+    ) {
+      return false;
+    }
+
+    const status = normalizeOrderStatus(order.status);
+    if (status === 'draft' || status === 'completed') return false;
+
+    const { totalOrdered, remaining } = reservationTotals;
+    if (totalOrdered <= 0) return false;
+    return remaining > 1e-6;
+  }, [order, roleSlug, reservationTotals]);
+
+  const showOfficerSpaceReservationHint = useMemo(() => {
+    if (!order) return false;
+    const status = normalizeOrderStatus(order.status);
+    if (roleSlug !== 'officer') return false;
+    if (status === 'draft' || status === 'completed') return false;
+    return ['confirmed', 'assigned', 'reserved', 'in_progress'].includes(status);
+  }, [order, roleSlug]);
+
   const {
     data: stores = [],
     isLoading: storesLoading,
@@ -104,7 +174,7 @@ function ReceiptOrderDetailPage() {
   } = useQuery({
     queryKey: ['stores'],
     queryFn: () => getStores(),
-    enabled: showSpaceReservationForm && warehouseIdForStores != null,
+    enabled: showSpaceReservationForm && warehouseIdForStores != null && canReserveSpace,
   });
 
   const storeSelectData = useMemo(() => {
@@ -212,6 +282,8 @@ function ReceiptOrderDetailPage() {
     mutationFn: (payload: any) => reserveSpace(Number(id), payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['receipt_orders', id] });
+      queryClient.invalidateQueries({ queryKey: ['receipt_orders', id, 'workflow'] });
+      queryClient.invalidateQueries({ queryKey: ['stacks'] });
       notifications.show({
         title: 'Success',
         message: 'Space reservation created successfully',
@@ -299,6 +371,22 @@ function ReceiptOrderDetailPage() {
           </Text>
         </div>
         <Group gap="sm">
+          {canReserveSpace && (
+            <Button
+              size="sm"
+              onClick={() => {
+                setActiveTab('space-reservations');
+                setShowSpaceReservationForm(true);
+                setReservedQuantity(
+                  reservationTotals.remaining > 0 ? reservationTotals.remaining : 0
+                );
+              }}
+            >
+              {reservationTotals.totalReserved > 0 && reservationTotals.remaining > 0
+                ? 'Reserve remaining space'
+                : 'Reserve Space'}
+            </Button>
+          )}
           {canCreateGrn && (
             <Button
               size="sm"
@@ -541,15 +629,38 @@ function ReceiptOrderDetailPage() {
           <Stack gap="md">
             <Group justify="space-between">
               <Text fw={600}>Reserved Space</Text>
-              {['confirmed', 'assigned'].includes(String(order.status).toLowerCase()) && (
+              {canReserveSpace && (
                 <Button
                   size="sm"
-                  onClick={() => setShowSpaceReservationForm(true)}
+                  onClick={() => {
+                    setShowSpaceReservationForm(true);
+                    setReservedQuantity(
+                      reservationTotals.remaining > 0 ? reservationTotals.remaining : 0
+                    );
+                  }}
                 >
-                  + Reserve Space
+                  {reservationTotals.totalReserved > 0 && reservationTotals.remaining > 0
+                    ? '+ Reserve remaining space'
+                    : '+ Reserve Space'}
                 </Button>
               )}
             </Group>
+
+            {reservationTotals.totalOrdered > 0 ? (
+              <Text size="sm" c="dimmed">
+                Reserved {reservationTotals.totalReserved} of {reservationTotals.totalOrdered} units
+                {reservationTotals.remaining > 0
+                  ? ` (${reservationTotals.remaining} remaining)`
+                  : ' — fully reserved'}
+              </Text>
+            ) : null}
+
+            {showOfficerSpaceReservationHint ? (
+              <Alert color="blue" variant="light">
+                Space is reserved by warehouse staff at the destination warehouse. When they reserve space, it will
+                appear here with warehouse and store details. Check the Workflow Timeline tab for status updates.
+              </Alert>
+            ) : null}
 
             {spaceReservations.length === 0 ? (
               <Text c="dimmed">No space reservations yet</Text>
@@ -559,11 +670,12 @@ function ReceiptOrderDetailPage() {
                   key={reservation.id}
                   reservation={reservation}
                   type="space"
+                  progressDenominator={lineQuantityForReservation(order, reservation)}
                 />
               ))
             )}
 
-            {showSpaceReservationForm && (
+            {showSpaceReservationForm && canReserveSpace && (
               <Card shadow="sm" padding="lg" radius="md" withBorder>
                 <Stack gap="md">
                   <Select

@@ -57,9 +57,15 @@ module Cats
 
         # For warehouse managers, check assigned warehouse IDs
         return false unless warehouse_manager?
-        
-        assigned = AccessContext.new(user: user).accessible_warehouse_ids.pluck(:id)
-        assigned.include?(record.warehouse_id.to_i)
+
+        raw = AccessContext.new(user: user).accessible_warehouse_ids
+        warehouse_ids =
+          if raw.is_a?(Array)
+            raw.map { |v| v.is_a?(Integer) ? v : v.try(:id) }.compact.map(&:to_i)
+          else
+            raw.pluck(:id)
+          end
+        warehouse_ids.include?(record.warehouse_id.to_i)
       end
 
       private

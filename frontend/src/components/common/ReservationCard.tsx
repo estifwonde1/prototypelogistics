@@ -3,9 +3,11 @@ import { Card, Group, Stack, Text, Badge, Progress } from '@mantine/core';
 interface ReservationCardProps {
   reservation: any;
   type: 'space' | 'stock';
+  /** When set (e.g. line or order total qty), progress bar shows reserved / denominator. */
+  progressDenominator?: number;
 }
 
-export function ReservationCard({ reservation, type }: ReservationCardProps) {
+export function ReservationCard({ reservation, type, progressDenominator }: ReservationCardProps) {
   const statusKey = String(reservation.status ?? 'reserved')
     .toLowerCase()
     .replace(/\s+/g, '_');
@@ -68,12 +70,17 @@ export function ReservationCard({ reservation, type }: ReservationCardProps) {
             : '—'}
         </Text>
 
-        {type === 'space' && reservation.reserved_quantity && (
+        {type === 'space' && reservation.reserved_quantity ? (
           <Progress
-            value={Math.min((reservation.reserved_quantity / 100) * 100, 100)}
+            value={Math.min(
+              progressDenominator && progressDenominator > 0
+                ? (Number(reservation.reserved_quantity) / progressDenominator) * 100
+                : Math.min(Number(reservation.reserved_quantity), 100),
+              100
+            )}
             label={`${reservation.reserved_quantity} units`}
           />
-        )}
+        ) : null}
       </Stack>
     </Card>
   );

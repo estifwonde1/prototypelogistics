@@ -32,17 +32,17 @@ module Cats
 
             raise ArgumentError, "receipt_order_line_id is required" if line.blank?
 
-            SpaceReservation.create!(
-              receipt_order: @order,
-              receipt_order_line: line,
-              receipt_order_assignment: assignment,
+            ensure_line_remaining_capacity!(line, payload[:reserved_quantity])
+
+            create_or_merge_reservation!(
+              line: line,
               warehouse: warehouse,
               store: store,
-              reserved_quantity: payload[:reserved_quantity],
-              reserved_volume: payload[:reserved_volume],
-              status: payload[:status].presence || "Reserved",
-              reserved_by: @actor
+              assignment: assignment,
+              payload: payload
             )
+
+            ensure_reservation_stack_for_line!(line: line, store: store)
           end
 
           transition_order!("Reserved", "receipt_order.space_reserved", reservations_count: @reservations.size)
@@ -51,6 +51,86 @@ module Cats
       end
 
       private
+
+      def create_or_merge_reservation!(line:, warehouse:, store:, assignment:, payload:)
+        existing = SpaceReservation.find_by(
+          receipt_order_line_id: line.id,
+          warehouse_id: warehouse.id,
+          store_id: store&.id
+        )
+
+        delta_qty = payload[:reserved_quantity].to_f
+
+        if existing
+          attrs = {
+            reserved_quantity: existing.reserved_quantity.to_f + delta_qty,
+            reserved_by: @actor
+          }
+          attrs[:status] = payload[:status] if payload[:status].present?
+          attrs[:receipt_order_assignment_id] = assignment.id if assignment
+          if payload[:reserved_volume].present?
+            attrs[:reserved_volume] = existing.reserved_volume.to_f + payload[:reserved_volume].to_f
+          end
+          existing.update!(attrs)
+        else
+          SpaceReservation.create!(
+            receipt_order: @order,
+            receipt_order_line: line,
+            receipt_order_assignment: assignment,
+            warehouse: warehouse,
+            store: store,
+            reserved_quantity: payload[:reserved_quantity],
+            reserved_volume: payload[:reserved_volume],
+            status: payload[:status].presence || "Reserved",
+            reserved_by: @actor
+          )
+        end
+      end
+
+      # GRN requires a concrete stack row; space reservation alone does not create one.
+      # One deterministic stack per (receipt order, line, store) for receiving.
+      def ensure_reservation_stack_for_line!(line:, store:)
+        return if store.blank?
+        return if line.blank? || line.commodity_id.blank? || line.unit_id.blank?
+
+        code = "RES-RO#{@order.id}-L#{line.id}-S#{store.id}"
+        stack = Stack.find_or_initialize_by(store_id: store.id, code: code)
+        return unless stack.new_record?
+
+        dims = default_stack_dimensions_for_store(store)
+        stack.assign_attributes(
+          commodity_id: line.commodity_id,
+          unit_id: line.unit_id,
+          stack_status: "Reserved",
+          commodity_status: "Good",
+          quantity: 0,
+          start_x: 0,
+          start_y: 0,
+          **dims
+        )
+        stack.save!
+      end
+
+      def default_stack_dimensions_for_store(store)
+        scale = 0.2
+        l = (store.length.to_f * scale).clamp(0.01, store.length.to_f * 0.99)
+        w = (store.width.to_f * scale).clamp(0.01, store.width.to_f * 0.99)
+        h = (store.height.to_f * scale).clamp(0.01, store.height.to_f * 0.99)
+        { length: l, width: w, height: h }
+      end
+
+      def ensure_line_remaining_capacity!(line, requested_quantity)
+        requested = requested_quantity.to_f
+        return if requested <= 0
+
+        already = line.space_reservations.where.not(status: %w[cancelled released]).sum(:reserved_quantity).to_f
+        max_qty = line.quantity.to_f
+        remaining = max_qty - already
+        return if requested <= remaining + 1e-9
+
+        raise ArgumentError,
+              "cannot reserve #{requested} units; only #{remaining.round(4)} remaining for this line (ordered #{max_qty})"
+      end
 
       def ensure_space_available!(target, reserved_volume, reserved_quantity)
         return unless target.is_a?(Store)

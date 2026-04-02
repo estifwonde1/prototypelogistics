@@ -43,9 +43,15 @@ module Cats
 
       def reserve_space?
         return true if admin?
-        return true if officer?
+        return false unless record.is_a?(ReceiptOrder)
 
-        warehouse_manager? || storekeeper?
+        if warehouse_manager?
+          return accessible_warehouse_id_values.include?(record.warehouse_id.to_i)
+        end
+
+        return true if storekeeper?
+
+        false
       end
 
       def workflow?
@@ -60,11 +66,21 @@ module Cats
         return true if officer?  # Officers can confirm any order
         return false unless warehouse_manager?
 
-        assigned = AccessContext.new(user: user).accessible_warehouse_ids.pluck(:id)
-        assigned.include?(record.warehouse_id.to_i)
+        accessible_warehouse_id_values.include?(record.warehouse_id.to_i)
       end
 
       private
+
+      # AccessContext#accessible_warehouse_ids is an ActiveRecord::Relation for some roles, but for
+      # Warehouse Manager it is already an Array<Integer> from UserAssignment — do not call .pluck(:id) on that.
+      def accessible_warehouse_id_values
+        raw = AccessContext.new(user: user).accessible_warehouse_ids
+        if raw.is_a?(Array)
+          raw.map { |v| v.is_a?(Integer) ? v : v.try(:id) }.compact.map(&:to_i)
+        else
+          raw.pluck(:id)
+        end
+      end
 
       def officer?
         user&.has_role?("Officer")
