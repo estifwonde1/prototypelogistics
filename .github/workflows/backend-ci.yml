@@ -1,0 +1,60 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [ "main", "phases" ]
+    paths:
+      - 'backend/warehouse-backend/**'
+  pull_request:
+    branches: [ "main", "phases" ]
+    paths:
+      - 'backend/warehouse-backend/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        ports:
+          - "5432:5432"
+        env:
+          POSTGRES_DB: warehouse_backend_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+      redis:
+        image: redis:alpine
+        ports:
+          - "6379:6379"
+
+    defaults:
+      run:
+        working-directory: backend/warehouse-backend
+
+    env:
+      RAILS_ENV: test
+      DATABASE_URL: "postgres://postgres:password@localhost:5432/warehouse_backend_test"
+      REDIS_URL: "redis://localhost:6379/1"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Ruby and gems
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2.10'
+          bundler-cache: true
+          working-directory: backend/warehouse-backend
+
+      - name: Set up database
+        run: |
+          bin/rails db:prepare
+
+      - name: Run tests
+        run: |
+          bundle exec rspec
+
+      - name: Lint with Rubocop
+        run: |
+          bundle exec rubocop
