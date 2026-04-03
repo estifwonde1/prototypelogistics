@@ -1,6 +1,4 @@
 require "rails_helper"
-require_relative "../../factories/core"
-require_relative "../../factories/warehouse"
 
 RSpec.describe "Cats::Warehouse Phase 1 inventory workflows", type: :request do
   def json_response
