@@ -84,4 +84,38 @@ FactoryBot.define do
     issued_on { Date.today }
     reference_no { "WAY-#{generate(:core_code)}" }
   end
+
+  factory :cats_warehouse_grn_item, class: "Cats::Warehouse::GrnItem" do
+    grn { association :cats_warehouse_grn }
+    commodity { association :cats_core_commodity }
+    unit { association :cats_core_unit_of_measure }
+    store { association :cats_warehouse_store }
+    stack { association :cats_warehouse_stack }
+    quantity { 100 }
+  end
+
+  factory :cats_warehouse_gin_item, class: "Cats::Warehouse::GinItem" do
+    gin { association :cats_warehouse_gin }
+    commodity { association :cats_core_commodity }
+    unit { association :cats_core_unit_of_measure }
+    store { association :cats_warehouse_store }
+    stack { association :cats_warehouse_stack }
+    quantity { 50 }
+  end
+
+  factory :cats_warehouse_inspection_item, class: "Cats::Warehouse::InspectionItem" do
+    inspection { association :cats_warehouse_inspection }
+    commodity { association :cats_core_commodity }
+    quantity_received { 100 }
+    quantity_damaged { 0 }
+    quantity_lost { 0 }
+    quality_status { "Good" }
+  end
+
+  factory :cats_warehouse_waybill_item, class: "Cats::Warehouse::WaybillItem" do
+    waybill { association :cats_warehouse_waybill }
+    commodity { association :cats_core_commodity }
+    unit { association :cats_core_unit_of_measure }
+    quantity { 100 }
+  end
 end

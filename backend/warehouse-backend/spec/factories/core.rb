@@ -87,4 +87,9 @@ FactoryBot.define do
     quantity { 100 }
     best_use_before { Date.today + 365 }
   end
+
+  factory :cats_core_transporter, class: "Cats::Core::Transporter" do
+    name { "Transporter #{generate(:core_name)}" }
+    code { generate(:core_code) }
+  end
 end
