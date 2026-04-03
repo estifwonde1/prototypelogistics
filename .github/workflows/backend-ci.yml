@@ -36,12 +36,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update 
+          sudo apt-get install --no-install-recommends -y build-essential git libyaml-dev pkg-config libpq-dev
+
       - name: Install Ruby and gems
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.2.10'
-          bundler-cache: true
+          bundler-cache: false
           working-directory: backend/warehouse-backend
+
+      - name: Install dependencies
+        run: |
+          bundle config set --local frozen false
+          bundle install
 
       - name: Set up database
         run: |

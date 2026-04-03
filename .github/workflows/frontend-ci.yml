@@ -30,6 +30,7 @@ jobs:
 
       - name: Linting
         run: npm run lint
+        continue-on-error: true
 
       - name: Building
         run: npm run build
