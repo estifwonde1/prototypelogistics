@@ -89,7 +89,9 @@ FactoryBot.define do
   end
 
   factory :cats_core_transporter, class: "Cats::Core::Transporter" do
-    name { "Transporter #{generate(:core_name)}" }
+    name { "Transporter #{generate(:core_code)}" }
     code { generate(:core_code) }
+    address { "Test Address" }
+    contact_phone { "0910000000" }
   end
 end

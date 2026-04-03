@@ -79,10 +79,18 @@ FactoryBot.define do
   end
 
   factory :cats_warehouse_waybill, class: "Cats::Warehouse::Waybill" do
-    warehouse { association :cats_warehouse_warehouse }
-    issued_by { association :cats_core_user }
+    source_location { association :cats_core_location }
+    destination_location { association :cats_core_location, code: "LOC-DIFF", name: "Different Location" }
     issued_on { Date.today }
     reference_no { "WAY-#{generate(:core_code)}" }
+  end
+
+  factory :cats_warehouse_waybill_transport, class: "Cats::Warehouse::WaybillTransport" do
+    waybill { association :cats_warehouse_waybill }
+    transporter { association :cats_core_transporter }
+    plate_no { "PLT-#{generate(:core_code)}" }
+    trailer_no { "TRL-#{generate(:core_code)}" }
+    driver_name { "Driver #{generate(:core_name)}" }
   end
 
   factory :cats_warehouse_grn_item, class: "Cats::Warehouse::GrnItem" do
