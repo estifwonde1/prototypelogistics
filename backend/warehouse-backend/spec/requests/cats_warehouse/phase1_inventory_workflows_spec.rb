@@ -135,7 +135,7 @@ RSpec.describe "Cats::Warehouse Phase 1 inventory workflows", type: :request do
       post "/cats_warehouse/v1/grns/#{grn_id}/confirm", headers: headers
 
       expect(response).to have_http_status(:ok)
-      expect(json_response.dig("data", "status")).to eq("Confirmed")
+      expect(json_response.dig("data", "status")).to eq("confirmed")
 
       balance = Cats::Warehouse::StockBalance.find_by!(
         warehouse_id: warehouse.id,

@@ -49,7 +49,7 @@ RSpec.describe Cats::Warehouse::InspectionConfirmer, type: :service do
 
     described_class.new(inspection: inspection).call
 
-    expect(inspection.reload.status).to eq("Confirmed")
+    expect(inspection.reload.status).to eq("confirmed")
     expect(grn_item.reload.quality_status).to eq("Damaged")
     expect(stack.reload.quantity).to eq(8)
 

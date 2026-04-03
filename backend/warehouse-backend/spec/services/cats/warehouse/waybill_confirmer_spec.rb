@@ -6,6 +6,6 @@ RSpec.describe Cats::Warehouse::WaybillConfirmer, type: :service do
 
     described_class.new(waybill: waybill).call
 
-    expect(waybill.reload.status).to eq("Confirmed")
+    expect(waybill.reload.status).to eq("confirmed")
   end
 end
