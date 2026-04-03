@@ -3,12 +3,8 @@ name: Backend CI
 on:
   push:
     branches: [ "main", "phases" ]
-    paths:
-      - 'backend/warehouse-backend/**'
   pull_request:
     branches: [ "main", "phases" ]
-    paths:
-      - 'backend/warehouse-backend/**'
 
 jobs:
   test:

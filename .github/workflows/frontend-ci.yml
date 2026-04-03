@@ -3,12 +3,8 @@ name: Frontend CI
 on:
   push:
     branches: [ "main", "phases" ]
-    paths:
-      - 'frontend/**'
   pull_request:
     branches: [ "main", "phases" ]
-    paths:
-      - 'frontend/**'
 
 jobs:
   build:
