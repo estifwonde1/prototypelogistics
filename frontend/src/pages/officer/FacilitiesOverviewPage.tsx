@@ -16,6 +16,7 @@ import {
   SimpleGrid,
   Tooltip,
   Divider,
+  Button,
 } from '@mantine/core';
 import {
   IconAlertCircle,
@@ -25,7 +26,9 @@ import {
   IconChevronRight,
   IconBox,
   IconInfoCircle,
+  IconRefresh,
 } from '@tabler/icons-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { getHubs } from '../../api/hubs';
 import { getWarehouses } from '../../api/warehouses';
 import { getStores } from '../../api/stores';
@@ -290,9 +293,19 @@ function StandaloneRow({ warehouse, stores }: { warehouse: Warehouse; stores: St
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 function FacilitiesOverviewPage() {
-  const { data: hubs = [],       isLoading: l1, error: e1 } = useQuery({ queryKey: ['hubs'],       queryFn: getHubs });
-  const { data: warehouses = [], isLoading: l2, error: e2 } = useQuery({ queryKey: ['warehouses'], queryFn: getWarehouses });
-  const { data: stores = [],     isLoading: l3, error: e3 } = useQuery({ queryKey: ['stores'],     queryFn: getStores });
+  const queryClient = useQueryClient();
+
+  const { data: hubs = [],       isLoading: l1, error: e1, isFetching: f1 } = useQuery({ queryKey: ['hubs'],       queryFn: getHubs });
+  const { data: warehouses = [], isLoading: l2, error: e2, isFetching: f2 } = useQuery({ queryKey: ['warehouses'], queryFn: getWarehouses });
+  const { data: stores = [],     isLoading: l3, error: e3, isFetching: f3 } = useQuery({ queryKey: ['stores'],     queryFn: getStores });
+
+  const isRefreshing = f1 || f2 || f3;
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['hubs'] });
+    queryClient.invalidateQueries({ queryKey: ['warehouses'] });
+    queryClient.invalidateQueries({ queryKey: ['stores'] });
+  };
 
   if (l1 || l2 || l3) return <Center h={400}><Loader size="lg" /></Center>;
   if (e1 || e2 || e3) return (
@@ -314,12 +327,22 @@ function FacilitiesOverviewPage() {
 
   return (
     <Stack gap="md">
-      <div>
-        <Title order={2}>Facilities Overview</Title>
-        <Text c="dimmed" size="sm" mt={4}>
-          Click any row to expand. Use this to pick the right hub/warehouse when creating a receipt order.
-        </Text>
-      </div>
+      <Group justify="space-between" align="flex-start">
+        <div>
+          <Title order={2}>Facilities Overview</Title>
+          <Text c="dimmed" size="sm" mt={4}>
+            Click any row to expand. Use this to pick the right hub/warehouse when creating a receipt order.
+          </Text>
+        </div>
+        <Button
+          variant="light"
+          leftSection={<IconRefresh size={16} />}
+          loading={isRefreshing}
+          onClick={refresh}
+        >
+          Refresh
+        </Button>
+      </Group>
 
       <SimpleGrid cols={4}>
         <Card shadow="sm" padding="md" radius="md" withBorder>
