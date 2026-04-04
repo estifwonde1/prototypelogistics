@@ -33,11 +33,13 @@ import { ReservationCard } from '../../components/common/ReservationCard';
 import { WorkflowTimeline } from '../../components/common/WorkflowTimeline';
 import type { ApiError } from '../../types/common';
 import { useState } from 'react';
+import { usePermission } from '../../hooks/usePermission';
 
 function DispatchOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { can } = usePermission();
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('details');
   
@@ -210,6 +212,8 @@ function DispatchOrderDetailPage() {
   const isLoading_ = confirmMutation.isPending || deleteMutation.isPending || assignMutation.isPending || reserveStockMutation.isPending;
   const assignments = order.assignments || [];
   const stockReservations = order.stock_reservations || [];
+  const isDraft = order.status === 'Draft';
+  const canCreateGin = can('gins', 'create') && !isDraft;
 
   return (
     <Stack gap="md">
@@ -220,13 +224,24 @@ function DispatchOrderDetailPage() {
             Created on {new Date(order.created_at).toLocaleDateString()}
           </Text>
         </div>
-        <StatusBadge status={order.status} />
+        <Group gap="sm">
+          {canCreateGin && (
+            <Button
+              size="sm"
+              variant="light"
+              onClick={() => navigate(`/gins/new?dispatch_order_id=${order.id}`)}
+            >
+              Create GIN
+            </Button>
+          )}
+          <StatusBadge status={order.status} />
+        </Group>
       </Group>
 
       <Tabs value={activeTab} onChange={(value) => setActiveTab(value || 'details')}>
         <Tabs.List>
           <Tabs.Tab value="details">Details</Tabs.Tab>
-          {order.status !== 'Draft' && (
+          {!isDraft && (
             <>
               <Tabs.Tab value="assignments">Assignments</Tabs.Tab>
               <Tabs.Tab value="stock-reservations">Stock Reservations</Tabs.Tab>
@@ -315,7 +330,7 @@ function DispatchOrderDetailPage() {
             </div>
 
             <Group justify="flex-end">
-              {order.status === 'Draft' && (
+              {isDraft && (
                 <>
                   <Button
                     variant="light"
@@ -339,7 +354,7 @@ function DispatchOrderDetailPage() {
                   </Button>
                 </>
               )}
-              {order.status !== 'Draft' && (
+              {!isDraft && (
                 <Button variant="light" onClick={() => navigate('/officer/dispatch-orders')}>
                   Back to List
                 </Button>

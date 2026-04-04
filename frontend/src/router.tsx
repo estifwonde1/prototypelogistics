@@ -12,6 +12,7 @@ import { getDefaultRouteForRole, type RoleSlug } from './contracts/warehouse';
 const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage'));
 const OfficerDashboardPage = lazy(() => import('./pages/officer/OfficerDashboardPage'));
+const FacilitiesOverviewPage = lazy(() => import('./pages/officer/FacilitiesOverviewPage'));
 const ReceiptOrdersListPage = lazy(() => import('./pages/officer/ReceiptOrdersListPage'));
 const ReceiptOrderFormPage = lazy(() => import('./pages/officer/ReceiptOrderFormPage'));
 const ReceiptOrderDetailPage = lazy(() => import('./pages/officer/ReceiptOrderDetailPage'));
@@ -137,6 +138,14 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission resource="receipt_orders" action="read">
             <OfficerDashboardPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/facilities',
+        element: (
+          <RequirePermission resource="receipt_orders" action="read">
+            <FacilitiesOverviewPage />
           </RequirePermission>
         ),
       },
