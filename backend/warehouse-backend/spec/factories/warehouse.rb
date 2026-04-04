@@ -38,6 +38,7 @@ FactoryBot.define do
     width { 2 }
     height { 2 }
     quantity { 10 }
+    base_quantity { 10 }
   end
 
   factory :cats_warehouse_user_assignment, class: "Cats::Warehouse::UserAssignment" do
@@ -53,6 +54,8 @@ FactoryBot.define do
     commodity { association :cats_core_commodity }
     unit { association :cats_core_unit_of_measure }
     quantity { 100 }
+    base_quantity { 100 }
+    available_quantity { 100 }
   end
 
   factory :cats_warehouse_grn, class: "Cats::Warehouse::Grn" do
