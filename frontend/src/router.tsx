@@ -46,7 +46,6 @@ const UserAssignmentsPage = lazy(() => import('./pages/admin/assignments/UserAss
 const LocationsSetupPage = lazy(() => import('./pages/admin/setup/LocationsSetupPage'));
 const HubSetupPage = lazy(() => import('./pages/admin/setup/HubSetupPage'));
 const WarehouseSetupPage = lazy(() => import('./pages/admin/setup/WarehouseSetupPage'));
-const ReceiptListPage = lazy(() => import('./pages/receipts/ReceiptListPage'));
 const DispatchListPage = lazy(() => import('./pages/dispatches/DispatchListPage'));
 const BinCardReportPage = lazy(() => import('./pages/reports/BinCardReportPage'));
 const StackLayoutPage = lazy(() => import('./pages/stacks/StackLayoutPage'));

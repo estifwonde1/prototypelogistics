@@ -100,7 +100,7 @@ function normalizeReceiptOrderAssignment(raw: Record<string, unknown>): ReceiptO
 
 /** Maps API payload (e.g. `receipt_order_assignments`) into the shape the UI expects */
 export function normalizeReceiptOrder(raw: Record<string, unknown>): ReceiptOrder {
-  const base = { ...raw } as ReceiptOrder;
+  const base = { ...raw } as unknown as ReceiptOrder;
   const fromNested = raw.receipt_order_assignments;
   const existing = base.assignments;
   const list =
@@ -127,8 +127,8 @@ export interface CreateReceiptOrderPayload {
 export async function getReceiptOrders(): Promise<ReceiptOrder[]> {
   const response = await apiClient.get('/receipt_orders');
   const rows = Array.isArray(response.data) ? response.data : response.data.data || [];
-  return rows.map((row) =>
-    normalizeReceiptOrder(typeof row === 'object' && row !== null ? (row as Record<string, unknown>) : {})
+  return rows.map((row: Record<string, unknown>) =>
+    normalizeReceiptOrder(typeof row === 'object' && row !== null ? row : {})
   );
 }
 

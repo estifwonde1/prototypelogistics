@@ -700,7 +700,7 @@ function ReceiptOrderDetailPage() {
                   !storesError ? (
                     <Text size="sm" c="dimmed">
                       No stores found for this warehouse. Create stores first under
-                      `Admin > Stores` (or the `Stores` page).
+                      Admin &gt; Stores (or the Stores page).
                     </Text>
                   ) : null}
                   <NumberInput

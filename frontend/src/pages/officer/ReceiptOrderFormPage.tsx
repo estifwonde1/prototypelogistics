@@ -365,7 +365,7 @@ function ReceiptOrderFormPage() {
                 label="Expected Delivery Date"
                 placeholder="Select date"
                 value={expectedDeliveryDate}
-                onChange={(val) => setExpectedDeliveryDate(val)}
+                onChange={(val) => setExpectedDeliveryDate(val as Date | null)}
                 required
                 disabled={!fieldsEditable}
               />

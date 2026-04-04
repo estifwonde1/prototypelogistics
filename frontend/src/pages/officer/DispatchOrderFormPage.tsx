@@ -320,7 +320,7 @@ function DispatchOrderFormPage() {
                 label="Expected Pickup Date"
                 placeholder="Select date"
                 value={expectedPickupDate}
-                onChange={(val) => setExpectedPickupDate(val)}
+                onChange={(val) => setExpectedPickupDate(val as Date | null)}
                 required
                 disabled={isEdit}
               />

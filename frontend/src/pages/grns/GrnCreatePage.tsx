@@ -182,7 +182,7 @@ function GrnCreatePage() {
     queryFn: getUnitReferences,
   });
 
-  const { data: uomConversions = [] } = useQuery({
+  useQuery({
     queryKey: ['reference-data', 'uom_conversions'],
     queryFn: getUomConversions,
   });
@@ -444,7 +444,7 @@ function GrnCreatePage() {
     }
     const ref = commodities.find((c) => c.id === item.commodity_id);
     if (ref?.unit_id) {
-      return unitOptions.filter((unit) => unit.value === ref.unit_id.toString());
+      return unitOptions.filter((unit) => unit.value === ref?.unit_id?.toString());
     }
     return unitOptions;
   };
@@ -805,10 +805,15 @@ function GrnCreatePage() {
                                 <DateInput
                                   label="Expiry Date"
                                   placeholder="Select expiry date"
-                                  value={item.expiry_date ? new Date(item.expiry_date) : null}
-                                  onChange={(date) =>
-                                    handleItemChange(index, 'expiry_date', date?.toISOString().split('T')[0])
-                                  }
+                                  value={item.expiry_date ? new Date(item.expiry_date as string) : null}
+                                  onChange={(date) => {
+                                    if (!date) {
+                                      handleItemChange(index, 'expiry_date', undefined);
+                                      return;
+                                    }
+                                    const d = date as unknown as Date;
+                                    handleItemChange(index, 'expiry_date', d.toISOString().split('T')[0]);
+                                  }}
                                   minDate={new Date()}
                                 />
                               </Group>

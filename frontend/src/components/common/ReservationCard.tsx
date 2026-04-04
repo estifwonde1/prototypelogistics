@@ -78,7 +78,6 @@ export function ReservationCard({ reservation, type, progressDenominator }: Rese
                 : Math.min(Number(reservation.reserved_quantity), 100),
               100
             )}
-            label={`${reservation.reserved_quantity} units`}
           />
         ) : null}
       </Stack>
