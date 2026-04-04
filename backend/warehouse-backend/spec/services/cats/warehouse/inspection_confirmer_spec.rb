@@ -8,7 +8,7 @@ RSpec.describe Cats::Warehouse::InspectionConfirmer, type: :service do
     receiver = create(:cats_core_user, role_name: "Storekeeper")
     inspector = create(:cats_core_user, role_name: "Inspector")
 
-    grn = create(:cats_warehouse_grn, warehouse: warehouse, received_by: receiver, status: "Confirmed")
+    grn = create(:cats_warehouse_grn, warehouse: warehouse, received_by: receiver, status: "confirmed")
     grn_item = create(
       :cats_warehouse_grn_item,
       grn: grn,
@@ -34,7 +34,7 @@ RSpec.describe Cats::Warehouse::InspectionConfirmer, type: :service do
       warehouse: warehouse,
       inspector: inspector,
       source: grn,
-      status: "Draft"
+      status: "draft"
     )
 
     create(

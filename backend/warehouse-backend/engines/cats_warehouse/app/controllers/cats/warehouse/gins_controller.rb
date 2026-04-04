@@ -23,7 +23,7 @@ module Cats
           items: payload[:items],
           destination: PolymorphicReferenceResolver.resolve_destination(payload[:destination_type], payload[:destination_id]),
           reference_no: payload[:reference_no],
-          status: payload[:status] || "Draft"
+          status: payload[:status] || "draft"
         ).call
 
         render_resource(gin, status: :created, serializer: GinSerializer)

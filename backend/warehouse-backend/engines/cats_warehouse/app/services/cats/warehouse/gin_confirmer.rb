@@ -12,9 +12,9 @@ module Cats
         Gin.transaction do
           old_status = @gin.status
           @gin.update!(
-            status: "Confirmed",
+            status: :confirmed,
             approved_by: @approved_by || @gin.approved_by,
-            workflow_status: "Confirmed"
+            workflow_status: "confirmed"
           )
 
           @gin.gin_items.find_each do |item|

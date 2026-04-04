@@ -11,7 +11,7 @@ module Cats
 
         Inspection.transaction do
           old_status = @inspection.status
-          @inspection.update!(status: "Confirmed")
+          @inspection.update!(status: :confirmed)
 
           apply_grn_updates if @inspection.source.is_a?(Cats::Warehouse::Grn)
           InspectionResultApplier.new(inspection: @inspection, actor: @actor || @inspection.inspector).call

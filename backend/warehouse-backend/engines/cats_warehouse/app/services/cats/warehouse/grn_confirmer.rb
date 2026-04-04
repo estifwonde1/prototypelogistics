@@ -12,9 +12,9 @@ module Cats
         Grn.transaction do
           old_status = @grn.status
           @grn.update!(
-            status: "Confirmed",
+            status: :confirmed,
             approved_by: @approved_by || @grn.approved_by,
-            workflow_status: "Confirmed"
+            workflow_status: "confirmed"
           )
 
           @grn.grn_items.find_each do |item|

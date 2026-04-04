@@ -1,7 +1,7 @@
 module Cats
   module Warehouse
     class InspectionCreator
-      def initialize(warehouse:, inspected_on:, inspector:, items:, source: nil, reference_no: nil, status: "Draft", receipt_order: nil, dispatch_order: nil)
+      def initialize(warehouse:, inspected_on:, inspector:, items:, source: nil, reference_no: nil, status: "draft", receipt_order: nil, dispatch_order: nil)
         @warehouse = warehouse
         @inspected_on = inspected_on
         @inspector = inspector
@@ -32,7 +32,7 @@ module Cats
             raise ArgumentError, "quantity_received must be positive" unless item[:quantity_received].to_f.positive?
 
             commodity_id = fetch_id(item, :commodity)
-            unit_id = fetch_id(item, :unit)
+            unit_id = fetch_id(item, :unit, optional: true)
 
             # Resolve Inventory Lot
             lot_id = fetch_id(item, :inventory_lot, optional: true)
@@ -55,7 +55,6 @@ module Cats
 
             inspection.inspection_items.create!(
               commodity_id: commodity_id,
-              unit_id: unit_id,
               inventory_lot_id: lot_id,
               entered_unit_id: entered_unit_id,
               base_unit_id: base_unit_id,

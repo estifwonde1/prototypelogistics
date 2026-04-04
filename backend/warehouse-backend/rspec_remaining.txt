@@ -1,0 +1,28 @@
+Run options: include {locations: {"./spec/requests/cats_warehouse/document_contracts_spec.rb" => [64, 102]}}
+
+Cats::Warehouse document contract aliases
+  POST /cats_warehouse/v1/inspections
+    accepts legacy inspection_items and normalizes them to items (FAILED - 1)
+  POST /cats_warehouse/v1/waybills
+    accepts legacy waybill_items and waybill_transport aliases (FAILED - 2)
+
+Failures:
+
+  1) Cats::Warehouse document contract aliases POST /cats_warehouse/v1/inspections accepts legacy inspection_items and normalizes them to items
+     Failure/Error: expect(response).to have_http_status(:created)
+       expected the response to have status code :created (201) but it was :internal_server_error (500)
+     # ./spec/requests/cats_warehouse/document_contracts_spec.rb:87:in 'block (3 levels) in <main>'
+
+  2) Cats::Warehouse document contract aliases POST /cats_warehouse/v1/waybills accepts legacy waybill_items and waybill_transport aliases
+     Failure/Error: expect(response).to have_http_status(:created)
+       expected the response to have status code :created (201) but it was :unprocessable_entity (422)
+     # ./spec/requests/cats_warehouse/document_contracts_spec.rb:128:in 'block (3 levels) in <main>'
+
+Finished in 1.64 seconds (files took 8.68 seconds to load)
+2 examples, 2 failures
+
+Failed examples:
+
+rspec ./spec/requests/cats_warehouse/document_contracts_spec.rb:64 # Cats::Warehouse document contract aliases POST /cats_warehouse/v1/inspections accepts legacy inspection_items and normalizes them to items
+rspec ./spec/requests/cats_warehouse/document_contracts_spec.rb:102 # Cats::Warehouse document contract aliases POST /cats_warehouse/v1/waybills accepts legacy waybill_items and waybill_transport aliases
+

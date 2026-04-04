@@ -2,6 +2,7 @@ require "rails_helper"
 
 RSpec.describe "Cats::Warehouse Auth", type: :request do
   it "returns a token for valid credentials" do
+    Cats::Core::ApplicationModule.find_or_create_by!(prefix: "CATS-WH") { |m| m.name = "Warehouse module" }
     module_rec = Cats::Core::ApplicationModule.find_or_create_by!(prefix: "core") { |m| m.name = "Core" }
     user = Cats::Core::User.create!(
       first_name: "Auth",

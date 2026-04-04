@@ -1,7 +1,7 @@
 module Cats
   module Warehouse
     class GrnCreator
-      def initialize(warehouse:, received_on:, received_by:, items:, source: nil, reference_no: nil, status: "Draft")
+      def initialize(warehouse:, received_on:, received_by:, items:, source: nil, reference_no: nil, status: "draft")
         @warehouse = warehouse
         @received_on = received_on
         @received_by = received_by

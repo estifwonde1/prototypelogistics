@@ -7,7 +7,7 @@ RSpec.describe Cats::Warehouse::GrnConfirmer, type: :service do
     stack = create(:cats_warehouse_stack, store: store, quantity: 10)
     user = create(:cats_core_user, role_name: "Storekeeper")
 
-    grn = create(:cats_warehouse_grn, warehouse: warehouse, received_by: user, status: "Draft")
+    grn = create(:cats_warehouse_grn, warehouse: warehouse, received_by: user, status: "draft")
     create(
       :cats_warehouse_grn_item,
       grn: grn,
@@ -30,7 +30,7 @@ RSpec.describe Cats::Warehouse::GrnConfirmer, type: :service do
 
     described_class.new(grn: grn).call
 
-    expect(grn.reload.status).to eq("Confirmed")
+    expect(grn.reload.status).to eq("confirmed")
     expect(stack.reload.quantity).to eq(12)
 
     balance = Cats::Warehouse::StockBalance.find_by(stack_id: stack.id)

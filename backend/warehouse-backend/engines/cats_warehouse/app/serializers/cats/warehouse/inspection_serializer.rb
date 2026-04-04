@@ -7,7 +7,7 @@ module Cats
       has_many :inspection_items, serializer: InspectionItemSerializer
 
       def status
-        object[:status].to_s.titleize
+        object[:status].to_s.downcase
       end
     end
   end

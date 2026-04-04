@@ -8,7 +8,7 @@ module Cats
       has_many :grn_items, serializer: GrnItemSerializer
 
       def status
-        object[:status].to_s.titleize
+        object[:status].to_s.downcase
       end
 
       def source_type

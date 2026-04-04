@@ -77,7 +77,7 @@ FactoryBot.define do
     inspector { association :cats_core_user }
     inspected_on { Date.today }
     reference_no { "INSP-#{generate(:core_code)}" }
-    source_type { "Grn" }
+    source_type { "Cats::Warehouse::Grn" }
     source_id { 1 }
   end
 

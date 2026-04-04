@@ -2,13 +2,13 @@ module Cats
   module Warehouse
     module ContractConstants
       DOCUMENT_STATUSES = {
-        draft: "Draft",
-        assigned: "Assigned",
-        reserved: "Reserved",
-        in_progress: "In Progress",
-        completed: "Completed",
-        confirmed: "Confirmed",
-        cancelled: "Cancelled"
+        draft: "draft",
+        assigned: "assigned",
+        reserved: "reserved",
+        in_progress: "in_progress",
+        completed: "completed",
+        confirmed: "confirmed",
+        cancelled: "cancelled"
       }.freeze
 
       DOCUMENT_STATUS_TRANSITIONS = {

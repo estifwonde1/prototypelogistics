@@ -1,7 +1,7 @@
 module Cats
   module Warehouse
     class GinCreator
-      def initialize(warehouse:, issued_on:, issued_by:, items:, destination: nil, reference_no: nil, status: "Draft")
+      def initialize(warehouse:, issued_on:, issued_by:, items:, destination: nil, reference_no: nil, status: "draft")
         @warehouse = warehouse
         @issued_on = issued_on
         @issued_by = issued_by

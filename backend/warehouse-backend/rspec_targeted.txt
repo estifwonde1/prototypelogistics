@@ -1,0 +1,39 @@
+
+Cats::Warehouse document contract aliases
+  POST /cats_warehouse/v1/grns
+    accepts legacy grn_items and normalizes them to items
+  POST /cats_warehouse/v1/gins
+    accepts legacy gin_items and normalizes them to items
+  POST /cats_warehouse/v1/inspections
+    accepts legacy inspection_items and normalizes them to items (FAILED - 1)
+  POST /cats_warehouse/v1/waybills
+    accepts legacy waybill_items and waybill_transport aliases (FAILED - 2)
+
+Cats::Warehouse Auth
+  returns a token for valid credentials
+
+Cats Warehouse Locations
+  lists regions, zones, and woredas
+  lists hubs, warehouses, and stores
+  rejects non-admin access to location endpoints
+
+Failures:
+
+  1) Cats::Warehouse document contract aliases POST /cats_warehouse/v1/inspections accepts legacy inspection_items and normalizes them to items
+     Failure/Error: expect(response).to have_http_status(:created)
+       expected the response to have status code :created (201) but it was :unprocessable_entity (422)
+     # ./spec/requests/cats_warehouse/document_contracts_spec.rb:87:in 'block (3 levels) in <main>'
+
+  2) Cats::Warehouse document contract aliases POST /cats_warehouse/v1/waybills accepts legacy waybill_items and waybill_transport aliases
+     Failure/Error: expect(response).to have_http_status(:created)
+       expected the response to have status code :created (201) but it was :unprocessable_entity (422)
+     # ./spec/requests/cats_warehouse/document_contracts_spec.rb:128:in 'block (3 levels) in <main>'
+
+Finished in 3.06 seconds (files took 6.09 seconds to load)
+8 examples, 2 failures
+
+Failed examples:
+
+rspec ./spec/requests/cats_warehouse/document_contracts_spec.rb:64 # Cats::Warehouse document contract aliases POST /cats_warehouse/v1/inspections accepts legacy inspection_items and normalizes them to items
+rspec ./spec/requests/cats_warehouse/document_contracts_spec.rb:102 # Cats::Warehouse document contract aliases POST /cats_warehouse/v1/waybills accepts legacy waybill_items and waybill_transport aliases
+

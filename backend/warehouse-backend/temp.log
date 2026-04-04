@@ -1,0 +1,32 @@
+
+An error occurred while loading rails_helper.
+Failure/Error: ActiveRecord::Migration.maintain_test_schema!
+
+ActiveRecord::PendingMigrationError:
+
+
+  Migrations are pending. To resolve this issue, run:
+
+          bin/rails db:migrate RAILS_ENV=test
+
+  You have 7 pending migrations:
+
+  20260331212328_create_cats_warehouse_orders.rb
+  20260331212329_link_documents_to_orders.rb
+  20260331212330_create_traceability_and_uom_structures.rb
+  20260401120000_extend_cats_warehouse_orders_for_phase1_closure.rb
+  20260401133000_extend_inventory_lots_and_uom_conversions_for_phase2_closure.rb
+  20260401150000_add_phase3_workflow_and_reservation_structures.rb
+  20260401180000_add_unit_price_and_notes_to_receipt_order_lines.rb
+# ./spec/rails_helper.rb:11:in '<top (required)>'
+No examples found.
+No examples found.
+
+
+Finished in 0.00009 seconds (files took 12.6 seconds to load)
+0 examples, 0 failures, 1 error occurred outside of examples
+
+Finished in 0.00009 seconds (files took 12.6 seconds to load)
+0 examples, 0 failures, 1 error occurred outside of examples
+
+

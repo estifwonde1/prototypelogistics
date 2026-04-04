@@ -1,0 +1,205 @@
+
+Cats::Warehouse model validations
+  validates hub name
+  validates warehouse name
+  validates store dimensions and space
+  validates stack dimensions
+  validates stock balance quantity
+  validates GRN received_on
+  validates GIN issued_on
+  validates inspection inspected_on
+  validates waybill issued_on
+
+Cats Warehouse Admin Roles
+  lists roles for the warehouse module
+
+Cats Warehouse Admin UserAssignments
+  bulk updates assignments for a hub manager
+  deletes an assignment
+  rejects invalid bulk payloads
+  rejects non-admin access
+
+Cats Warehouse Admin Users
+  lists users filtered by warehouse and role
+  creates a user with role
+  updates and deletes a user
+  rejects non-admin access
+
+Cats::Warehouse document contract aliases
+  POST /cats_warehouse/v1/grns
+    accepts legacy grn_items and normalizes them to items (FAILED - 1)
+  POST /cats_warehouse/v1/gins
+    accepts legacy gin_items and normalizes them to items (FAILED - 2)
+  POST /cats_warehouse/v1/inspections
+    accepts legacy inspection_items and normalizes them to items (FAILED - 3)
+  POST /cats_warehouse/v1/waybills
+    accepts legacy waybill_items and waybill_transport aliases (FAILED - 4)
+
+Cats Warehouse Documents
+  lists document endpoints
+
+Cats Warehouse Hubs
+  supports CRUD without exposing location_id in the overview payload
+  returns computed capacity totals from child warehouses
+  returns live Hub Manager contact details from assignments
+
+Cats Warehouse Locations
+  lists regions, zones, and woredas (FAILED - 5)
+  lists hubs, warehouses, and stores
+  rejects non-admin access to location endpoints
+
+Cats::Warehouse Phase 1 inventory workflows
+  GRN confirmation
+    increases stock balance and exposes readable bin card fields (FAILED - 6)
+  GIN confirmation
+    decreases stock and blocks negative inventory (FAILED - 7)
+  Inspection confirmation
+    applies stock adjustments and blocks losses above available stock (FAILED - 8)
+  assignment scoped inventory visibility
+    returns only balances inside the assigned warehouse scope
+  storekeeper workflow scope
+    allows draft GRN creation within the assigned store and blocks confirmation (FAILED - 9)
+
+Cats Warehouse Stacks
+  supports CRUD
+
+Cats Warehouse Stores
+  supports CRUD
+
+Cats Warehouse Warehouses
+  derives warehouse location and managed_under from the hub
+  requires a rental agreement document for rental warehouses
+  accepts rental warehouses when a rental agreement document is attached
+
+Cats::Warehouse Auth
+  returns a token for valid credentials (FAILED - 10)
+
+Cats::Warehouse StockBalances
+  lists stock balances with auth
+
+Cats::Warehouse::GinConfirmer
+  confirms GIN and reduces stock/stack
+
+Cats::Warehouse::GrnConfirmer
+  confirms GRN and updates stock/stack
+
+Cats::Warehouse::GrnCreator
+  creates a GRN with items (FAILED - 11)
+  raises when items are missing
+
+Cats::Warehouse::InspectionConfirmer
+  confirms inspection and applies GRN item updates (FAILED - 12)
+
+Cats::Warehouse::WaybillConfirmer
+  confirms a waybill (FAILED - 13)
+
+Cats::Warehouse::WaybillCreator
+  creates a waybill with transport and items
+
+Failures:
+
+  1) Cats::Warehouse document contract aliases POST /cats_warehouse/v1/grns accepts legacy grn_items and normalizes them to items
+     Failure/Error: expect(response).to have_http_status(:created)
+       expected the response to have status code :created (201) but it was :unprocessable_entity (422)
+     # ./spec/requests/cats_warehouse/document_contracts_spec.rb:32:in 'block (3 levels) in <main>'
+
+  2) Cats::Warehouse document contract aliases POST /cats_warehouse/v1/gins accepts legacy gin_items and normalizes them to items
+     Failure/Error: expect(response).to have_http_status(:created)
+       expected the response to have status code :created (201) but it was :unprocessable_entity (422)
+     # ./spec/requests/cats_warehouse/document_contracts_spec.rb:58:in 'block (3 levels) in <main>'
+
+  3) Cats::Warehouse document contract aliases POST /cats_warehouse/v1/inspections accepts legacy inspection_items and normalizes them to items
+     Failure/Error: expect(response).to have_http_status(:created)
+       expected the response to have status code :created (201) but it was :unprocessable_entity (422)
+     # ./spec/requests/cats_warehouse/document_contracts_spec.rb:87:in 'block (3 levels) in <main>'
+
+  4) Cats::Warehouse document contract aliases POST /cats_warehouse/v1/waybills accepts legacy waybill_items and waybill_transport aliases
+     Failure/Error: expect(response).to have_http_status(:created)
+       expected the response to have status code :created (201) but it was :unprocessable_entity (422)
+     # ./spec/requests/cats_warehouse/document_contracts_spec.rb:128:in 'block (3 levels) in <main>'
+
+  5) Cats Warehouse Locations lists regions, zones, and woredas
+     Failure/Error: expect(response).to have_http_status(:ok)
+       expected the response to have status code :ok (200) but it was :not_found (404)
+     # ./spec/requests/cats_warehouse/locations_spec.rb:12:in 'block (2 levels) in <main>'
+
+  6) Cats::Warehouse Phase 1 inventory workflows GRN confirmation increases stock balance and exposes readable bin card fields
+     Failure/Error: expect(response).to have_http_status(:created)
+       expected the response to have status code :created (201) but it was :unprocessable_entity (422)
+     # ./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb:73:in 'RSpec::ExampleGroups::CatsWarehousePhase1InventoryWorkflows#create_grn!'
+     # ./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb:133:in 'block (3 levels) in <main>'
+
+  7) Cats::Warehouse Phase 1 inventory workflows GIN confirmation decreases stock and blocks negative inventory
+     Failure/Error: expect(response).to have_http_status(:created)
+       expected the response to have status code :created (201) but it was :unprocessable_entity (422)
+     # ./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb:73:in 'RSpec::ExampleGroups::CatsWarehousePhase1InventoryWorkflows#create_grn!'
+     # ./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb:167:in 'block (3 levels) in <main>'
+
+  8) Cats::Warehouse Phase 1 inventory workflows Inspection confirmation applies stock adjustments and blocks losses above available stock
+     Failure/Error: expect(response).to have_http_status(:created)
+       expected the response to have status code :created (201) but it was :unprocessable_entity (422)
+     # ./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb:73:in 'RSpec::ExampleGroups::CatsWarehousePhase1InventoryWorkflows#create_grn!'
+     # ./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb:204:in 'block (3 levels) in <main>'
+
+  9) Cats::Warehouse Phase 1 inventory workflows storekeeper workflow scope allows draft GRN creation within the assigned store and blocks confirmation
+     Failure/Error: expect(response).to have_http_status(:created)
+       expected the response to have status code :created (201) but it was :unprocessable_entity (422)
+     # ./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb:355:in 'block (3 levels) in <main>'
+
+  10) Cats::Warehouse Auth returns a token for valid credentials
+      Failure/Error: expect(response).to have_http_status(:ok)
+        expected the response to have status code :ok (200) but it was :not_found (404)
+      # ./spec/requests/cats_warehouse_auth_spec.rb:18:in 'block (2 levels) in <main>'
+
+  11) Cats::Warehouse::GrnCreator creates a GRN with items
+      Failure/Error:
+        grn = described_class.new(
+          warehouse: warehouse,
+          received_on: Date.today,
+          received_by: user,
+          items: [item]
+        ).call
+
+      ArgumentError:
+        'Draft' is not a valid status
+      # ./engines/cats_warehouse/app/services/cats/warehouse/grn_creator.rb:18:in 'block in Cats::Warehouse::GrnCreator#call'
+      # ./engines/cats_warehouse/app/services/cats/warehouse/grn_creator.rb:17:in 'Cats::Warehouse::GrnCreator#call'
+      # ./spec/services/cats/warehouse/grn_creator_spec.rb:24:in 'block (2 levels) in <main>'
+
+  12) Cats::Warehouse::InspectionConfirmer confirms inspection and applies GRN item updates
+      Failure/Error: described_class.new(inspection: inspection).call
+
+      ArgumentError:
+        'Confirmed' is not a valid status
+      # ./engines/cats_warehouse/app/services/cats/warehouse/inspection_confirmer.rb:14:in 'block in Cats::Warehouse::InspectionConfirmer#call'
+      # ./engines/cats_warehouse/app/services/cats/warehouse/inspection_confirmer.rb:12:in 'Cats::Warehouse::InspectionConfirmer#call'
+      # ./spec/services/cats/warehouse/inspection_confirmer_spec.rb:50:in 'block (2 levels) in <main>'
+
+  13) Cats::Warehouse::WaybillConfirmer confirms a waybill
+      Failure/Error: described_class.new(waybill: waybill).call
+
+      ArgumentError:
+        'Confirmed' is not a valid status
+      # ./engines/cats_warehouse/app/services/cats/warehouse/waybill_confirmer.rb:14:in 'block in Cats::Warehouse::WaybillConfirmer#call'
+      # ./engines/cats_warehouse/app/services/cats/warehouse/waybill_confirmer.rb:12:in 'Cats::Warehouse::WaybillConfirmer#call'
+      # ./spec/services/cats/warehouse/waybill_confirmer_spec.rb:7:in 'block (2 levels) in <main>'
+
+Finished in 17.3 seconds (files took 9.5 seconds to load)
+48 examples, 13 failures
+
+Failed examples:
+
+rspec ./spec/requests/cats_warehouse/document_contracts_spec.rb:12 # Cats::Warehouse document contract aliases POST /cats_warehouse/v1/grns accepts legacy grn_items and normalizes them to items
+rspec ./spec/requests/cats_warehouse/document_contracts_spec.rb:38 # Cats::Warehouse document contract aliases POST /cats_warehouse/v1/gins accepts legacy gin_items and normalizes them to items
+rspec ./spec/requests/cats_warehouse/document_contracts_spec.rb:64 # Cats::Warehouse document contract aliases POST /cats_warehouse/v1/inspections accepts legacy inspection_items and normalizes them to items
+rspec ./spec/requests/cats_warehouse/document_contracts_spec.rb:102 # Cats::Warehouse document contract aliases POST /cats_warehouse/v1/waybills accepts legacy waybill_items and waybill_transport aliases
+rspec ./spec/requests/cats_warehouse/locations_spec.rb:4 # Cats Warehouse Locations lists regions, zones, and woredas
+rspec ./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb:132 # Cats::Warehouse Phase 1 inventory workflows GRN confirmation increases stock balance and exposes readable bin card fields
+rspec ./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb:166 # Cats::Warehouse Phase 1 inventory workflows GIN confirmation decreases stock and blocks negative inventory
+rspec ./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb:203 # Cats::Warehouse Phase 1 inventory workflows Inspection confirmation applies stock adjustments and blocks losses above available stock
+rspec ./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb:323 # Cats::Warehouse Phase 1 inventory workflows storekeeper workflow scope allows draft GRN creation within the assigned store and blocks confirmation
+rspec ./spec/requests/cats_warehouse_auth_spec.rb:4 # Cats::Warehouse Auth returns a token for valid credentials
+rspec ./spec/services/cats/warehouse/grn_creator_spec.rb:4 # Cats::Warehouse::GrnCreator creates a GRN with items
+rspec ./spec/services/cats/warehouse/inspection_confirmer_spec.rb:4 # Cats::Warehouse::InspectionConfirmer confirms inspection and applies GRN item updates
+rspec ./spec/services/cats/warehouse/waybill_confirmer_spec.rb:4 # Cats::Warehouse::WaybillConfirmer confirms a waybill
+

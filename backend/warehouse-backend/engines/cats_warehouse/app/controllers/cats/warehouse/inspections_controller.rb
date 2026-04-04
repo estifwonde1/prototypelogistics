@@ -24,7 +24,7 @@ module Cats
           items: payload[:items],
           source: PolymorphicReferenceResolver.resolve_source(payload[:source_type], payload[:source_id]),
           reference_no: payload[:reference_no],
-          status: payload[:status] || "Draft",
+          status: payload[:status] || "draft",
           receipt_order: payload[:receipt_order_id].present? ? ReceiptOrder.find(payload[:receipt_order_id]) : nil,
           dispatch_order: payload[:dispatch_order_id].present? ? DispatchOrder.find(payload[:dispatch_order_id]) : nil
         ).call

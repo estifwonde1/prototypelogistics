@@ -1,0 +1,18 @@
+
+Cats::Warehouse Auth
+  returns a token for valid credentials (FAILED - 1)
+
+Failures:
+
+  1) Cats::Warehouse Auth returns a token for valid credentials
+     Failure/Error: expect(response).to have_http_status(:ok)
+       expected the response to have status code :ok (200) but it was :not_found (404)
+     # ./spec/requests/cats_warehouse_auth_spec.rb:18:in 'block (2 levels) in <main>'
+
+Finished in 0.3436 seconds (files took 6.4 seconds to load)
+1 example, 1 failure
+
+Failed examples:
+
+rspec ./spec/requests/cats_warehouse_auth_spec.rb:4 # Cats::Warehouse Auth returns a token for valid credentials
+

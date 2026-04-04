@@ -28,7 +28,7 @@ module Cats
             status: @status,
             dispatch_order: @dispatch_order,
             prepared_by: @prepared_by,
-            workflow_status: @dispatch_order.present? ? "Prepared" : @status
+            workflow_status: @dispatch_order.present? ? "prepared" : @status
           )
 
           WaybillTransport.create!(
