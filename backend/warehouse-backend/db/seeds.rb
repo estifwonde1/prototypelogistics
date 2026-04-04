@@ -669,7 +669,7 @@ grn = find_or_create_with(
     received_on: Date.today - 2,
     received_by: store_keeper_user,
     approved_by: warehouse_manager_user,
-    status: "Draft",
+    status: "draft",
     source: gift_certificates.first
   }
 )
@@ -688,7 +688,7 @@ grn_items = commodities.first(3).map.with_index do |commodity, idx|
   )
 end
 
-Cats::Warehouse::GrnConfirmer.new(grn: grn, approved_by: warehouse_manager_user).call if grn.status != "Confirmed"
+Cats::Warehouse::GrnConfirmer.new(grn: grn, approved_by: warehouse_manager_user).call if grn.status != "confirmed"
 
 gin = find_or_create_with(
   Cats::Warehouse::Gin,
@@ -698,7 +698,7 @@ gin = find_or_create_with(
     issued_on: Date.today - 1,
     issued_by: store_keeper_user,
     approved_by: warehouse_manager_user,
-    status: "Draft",
+    status: "draft",
     destination: fdps.last
   }
 )
@@ -716,7 +716,7 @@ commodities.first(2).each_with_index do |commodity, idx|
   )
 end
 
-Cats::Warehouse::GinConfirmer.new(gin: gin, approved_by: warehouse_manager_user).call if gin.status != "Confirmed"
+Cats::Warehouse::GinConfirmer.new(gin: gin, approved_by: warehouse_manager_user).call if gin.status != "confirmed"
 
 waybill = find_or_create_with(
   Cats::Warehouse::Waybill,
@@ -726,7 +726,7 @@ waybill = find_or_create_with(
     dispatch: dispatch,
     source_location: warehouse_locations.first,
     destination_location: fdps.last,
-    status: "Draft"
+    status: "draft"
   }
 )
 

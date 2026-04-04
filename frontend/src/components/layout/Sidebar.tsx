@@ -187,6 +187,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
           label: 'Officer Operations',
           items: [
             { label: 'Dashboard', icon: <IconChartBar size={20} />, path: '/officer/dashboard', resource: 'receipt_orders' },
+            { label: 'Facilities', icon: <IconBuildingWarehouse size={20} />, path: '/officer/facilities', resource: 'receipt_orders' },
             { label: 'Receipt Orders', icon: <IconFileImport size={20} />, path: '/officer/receipt-orders', resource: 'receipt_orders' },
             { label: 'Dispatch Orders', icon: <IconFileExport size={20} />, path: '/officer/dispatch-orders', resource: 'dispatch_orders' },
           ],

@@ -127,8 +127,8 @@ export interface CreateReceiptOrderPayload {
 export async function getReceiptOrders(): Promise<ReceiptOrder[]> {
   const response = await apiClient.get('/receipt_orders');
   const rows = Array.isArray(response.data) ? response.data : response.data.data || [];
-  return rows.map((row: Record<string, unknown>) =>
-    normalizeReceiptOrder(typeof row === 'object' && row !== null ? row : {})
+  return rows.map((row: any) =>
+    normalizeReceiptOrder(typeof row === 'object' && row !== null ? (row as Record<string, unknown>) : {})
   );
 }
 
