@@ -19,9 +19,11 @@ import { StatusBadge } from '../../components/common/StatusBadge';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
+import { usePermission } from '../../hooks/usePermission';
 
 function ReceiptOrdersListPage() {
   const navigate = useNavigate();
+  const { can } = usePermission();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [warehouseFilter, setWarehouseFilter] = useState<string | null>(null);
@@ -62,6 +64,7 @@ function ReceiptOrdersListPage() {
       value: w.id.toString(),
       label: w.name,
     })) || [];
+  const canCreateReceiptOrder = can('receipt_orders', 'create');
 
   if (isLoading) {
     return <LoadingState message="Loading Receipt Orders..." />;
@@ -85,12 +88,14 @@ function ReceiptOrdersListPage() {
             Create and manage inbound warehouse orders
           </Text>
         </div>
-        <Button
-          leftSection={<IconPlus size={16} />}
-          onClick={() => navigate('/officer/receipt-orders/new')}
-        >
-          Create Receipt Order
-        </Button>
+        {canCreateReceiptOrder ? (
+          <Button
+            leftSection={<IconPlus size={16} />}
+            onClick={() => navigate('/officer/receipt-orders/new')}
+          >
+            Create Receipt Order
+          </Button>
+        ) : null}
       </Group>
 
       <Group>
@@ -125,10 +130,12 @@ function ReceiptOrdersListPage() {
           description={
             search || statusFilter || warehouseFilter
               ? 'Try adjusting your filters'
-              : 'Get started by creating your first Receipt Order'
+              : canCreateReceiptOrder
+                ? 'Get started by creating your first Receipt Order'
+                : 'No assigned receipt orders yet'
           }
           action={
-            !search && !statusFilter && !warehouseFilter
+            !search && !statusFilter && !warehouseFilter && canCreateReceiptOrder
               ? {
                   label: 'Create Receipt Order',
                   onClick: () => navigate('/officer/receipt-orders/new'),

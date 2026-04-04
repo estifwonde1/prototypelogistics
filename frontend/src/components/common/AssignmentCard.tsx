@@ -86,6 +86,12 @@ export function AssignmentCard({
           <Text size="sm">{assignment.notes}</Text>
         )}
 
+        {assignment.quantity != null ? (
+          <Text size="sm" fw={500}>
+            Quantity: {Number(assignment.quantity).toLocaleString()}
+          </Text>
+        ) : null}
+
         <Text size="xs" c="dimmed">
           Assigned on {assignedAtLabel}
         </Text>

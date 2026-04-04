@@ -158,6 +158,14 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: 'receipt-orders',
+        element: (
+          <RequirePermission resource="receipt_orders" action="read">
+            <ReceiptOrdersListPage />
+          </RequirePermission>
+        ),
+      },
+      {
         path: 'officer/receipt-orders/new',
         element: (
           <RequirePermission resource="receipt_orders" action="create">

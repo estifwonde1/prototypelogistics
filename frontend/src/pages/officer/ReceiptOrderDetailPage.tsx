@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import {
@@ -28,12 +28,15 @@ import {
   getReceiptOrderWorkflow,
 } from '../../api/receiptOrders';
 import { getStores } from '../../api/stores';
+import { getWarehouses } from '../../api/warehouses';
+import { getUnitReferences, getUomConversions } from '../../api/referenceData';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { AssignmentCard } from '../../components/common/AssignmentCard';
 import { ReservationCard } from '../../components/common/ReservationCard';
 import { WorkflowTimeline } from '../../components/common/WorkflowTimeline';
+import ReceiptWarehouseAssignmentModal from '../../components/common/ReceiptWarehouseAssignmentModal';
 import type { ApiError } from '../../types/common';
 import { useMemo, useState } from 'react';
 import type { ReceiptOrder } from '../../api/receiptOrders';
@@ -104,6 +107,7 @@ function formatUnitPrice(value: number | string | undefined | null): string {
 function ReceiptOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const { can } = usePermission();
   const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
@@ -112,6 +116,7 @@ function ReceiptOrderDetailPage() {
   
   // Assignment form state
   const [showAssignmentForm, setShowAssignmentForm] = useState(false);
+  const [showWarehouseAssignmentModal, setShowWarehouseAssignmentModal] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [assignmentNotes, setAssignmentNotes] = useState('');
   
@@ -177,6 +182,30 @@ function ReceiptOrderDetailPage() {
     enabled: showSpaceReservationForm && warehouseIdForStores != null && canReserveSpace,
   });
 
+  const { data: allWarehouses = [] } = useQuery({
+    queryKey: ['warehouses'],
+    queryFn: () => getWarehouses(),
+    enabled: showWarehouseAssignmentModal,
+  });
+
+  const { data: allStores = [] } = useQuery({
+    queryKey: ['stores'],
+    queryFn: () => getStores(),
+    enabled: showWarehouseAssignmentModal,
+  });
+
+  const { data: units = [] } = useQuery({
+    queryKey: ['reference-data', 'units'],
+    queryFn: () => getUnitReferences(),
+    enabled: showWarehouseAssignmentModal,
+  });
+
+  const { data: uomConversions = [] } = useQuery({
+    queryKey: ['reference-data', 'uom_conversions'],
+    queryFn: () => getUomConversions(),
+    enabled: showWarehouseAssignmentModal,
+  });
+
   const storeSelectData = useMemo(() => {
     if (!warehouseIdForStores) return [];
     return stores
@@ -200,6 +229,7 @@ function ReceiptOrderDetailPage() {
     enabled:
       !!order &&
       showAssignmentForm &&
+      roleSlug !== 'hub_manager' &&
       String(order.status).toLowerCase() === 'confirmed',
   });
 
@@ -240,7 +270,7 @@ function ReceiptOrderDetailPage() {
         message: 'Receipt Order deleted successfully',
         color: 'green',
       });
-      navigate('/officer/receipt-orders');
+      navigate(location.pathname.startsWith('/officer/') ? '/officer/receipt-orders' : '/receipt-orders');
     },
     onError: (error: unknown) => {
       notifications.show({
@@ -263,6 +293,7 @@ function ReceiptOrderDetailPage() {
         color: 'green',
       });
       setShowAssignmentForm(false);
+      setShowWarehouseAssignmentModal(false);
       setSelectedUserId(null);
       setAssignmentNotes('');
       refetch();
@@ -341,6 +372,43 @@ function ReceiptOrderDetailPage() {
     });
   };
 
+  const assignments = order?.assignments || [];
+  const spaceReservations = order?.space_reservations || [];
+  const lines = order ? receiptLines(order) : [];
+  const isDraft = String(order?.status || '').toLowerCase() === 'draft';
+  const canCreateGrn = can('grns', 'create') && !!order && !isDraft;
+  const canUpdateOrder = can('receipt_orders', 'update');
+  const canDeleteOrder = can('receipt_orders', 'delete');
+  const canConfirmOrder = can('receipt_orders', 'confirm');
+  const listPath = location.pathname.startsWith('/officer/') ? '/officer/receipt-orders' : '/receipt-orders';
+  const hubScopedWarehouses = useMemo(() => {
+    if (!order?.hub_id) return [];
+    return allWarehouses.filter((warehouse) => Number(warehouse.hub_id) === Number(order.hub_id));
+  }, [allWarehouses, order?.hub_id]);
+  const assignedByLine = useMemo(() => {
+    const result: Record<number, number> = {};
+    assignments.forEach((assignment) => {
+      const lineId = assignment.receipt_order_line_id;
+      if (lineId == null) return;
+      result[lineId] = (result[lineId] || 0) + Number(assignment.quantity ?? 0);
+    });
+    return result;
+  }, [assignments]);
+  const fullyAssigned = useMemo(() => {
+    if (lines.length === 0) return false;
+    return lines.every((line) => {
+      const lineId = Number(line.id);
+      const assigned = assignedByLine[lineId] || 0;
+      return Number(line.quantity ?? 0) - assigned <= 0.000001;
+    });
+  }, [assignedByLine, lines]);
+  const canHubAssignWarehouse =
+    roleSlug === 'hub_manager' &&
+    !isDraft &&
+    normalizeOrderStatus(order?.status) !== 'completed' &&
+    !fullyAssigned &&
+    hubScopedWarehouses.length > 0;
+
   if (isLoading) {
     return <LoadingState message="Loading Receipt Order..." />;
   }
@@ -355,11 +423,6 @@ function ReceiptOrderDetailPage() {
   }
 
   const isLoading_ = confirmMutation.isPending || deleteMutation.isPending || assignMutation.isPending || reserveSpaceMutation.isPending;
-  const assignments = order.assignments || [];
-  const spaceReservations = order.space_reservations || [];
-  const lines = receiptLines(order);
-  const isDraft = String(order.status).toLowerCase() === 'draft';
-  const canCreateGrn = can('grns', 'create') && !isDraft;
 
   return (
     <Stack gap="md">
@@ -396,6 +459,17 @@ function ReceiptOrderDetailPage() {
               Create GRN
             </Button>
           )}
+          {canHubAssignWarehouse ? (
+            <Button
+              size="sm"
+              onClick={() => {
+                setActiveTab('assignments');
+                setShowWarehouseAssignmentModal(true);
+              }}
+            >
+              Assign Warehouse
+            </Button>
+          ) : null}
           <StatusBadge status={order.status} />
         </Group>
       </Group>
@@ -502,30 +576,36 @@ function ReceiptOrderDetailPage() {
             <Group justify="flex-end">
               {isDraft && (
                 <>
-                  <Button
-                    variant="light"
-                    onClick={() => navigate(`/officer/receipt-orders/${order.id}/edit`)}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    color="red"
-                    variant="light"
-                    onClick={() => deleteMutation.mutate()}
-                    loading={isLoading_}
-                  >
-                    Delete
-                  </Button>
-                  <Button
-                    onClick={() => setConfirmDialogOpen(true)}
-                    loading={isLoading_}
-                  >
-                    Confirm Order
-                  </Button>
+                  {canUpdateOrder ? (
+                    <Button
+                      variant="light"
+                      onClick={() => navigate(`/officer/receipt-orders/${order.id}/edit`)}
+                    >
+                      Edit
+                    </Button>
+                  ) : null}
+                  {canDeleteOrder ? (
+                    <Button
+                      color="red"
+                      variant="light"
+                      onClick={() => deleteMutation.mutate()}
+                      loading={isLoading_}
+                    >
+                      Delete
+                    </Button>
+                  ) : null}
+                  {canConfirmOrder ? (
+                    <Button
+                      onClick={() => setConfirmDialogOpen(true)}
+                      loading={isLoading_}
+                    >
+                      Confirm Order
+                    </Button>
+                  ) : null}
                 </>
               )}
               {!isDraft && (
-                <Button variant="light" onClick={() => navigate('/officer/receipt-orders')}>
+                <Button variant="light" onClick={() => navigate(listPath)}>
                   Back to List
                 </Button>
               )}
@@ -537,14 +617,22 @@ function ReceiptOrderDetailPage() {
           <Stack gap="md">
             <Group justify="space-between">
               <Text fw={600}>Warehouse Assignments</Text>
-              {String(order.status).toLowerCase() === 'confirmed' && (
+              {canHubAssignWarehouse ? (
+                <Button
+                  size="sm"
+                  onClick={() => setShowWarehouseAssignmentModal(true)}
+                >
+                  + Assign Warehouse
+                </Button>
+              ) : null}
+              {!canHubAssignWarehouse && roleSlug !== 'hub_manager' && String(order.status).toLowerCase() === 'confirmed' ? (
                 <Button
                   size="sm"
                   onClick={() => setShowAssignmentForm(true)}
                 >
                   + Assign
                 </Button>
-              )}
+              ) : null}
             </Group>
 
             {assignments.length === 0 ? (
@@ -558,7 +646,7 @@ function ReceiptOrderDetailPage() {
               ))
             )}
 
-            {showAssignmentForm && (
+            {showAssignmentForm && roleSlug !== 'hub_manager' && (
               <Card shadow="sm" padding="lg" radius="md" withBorder>
                 <Stack gap="md">
                   {!assignableManagersLoading && assignableManagersPayload?.managers_scope === 'hub' && assignableManagersPayload.hub_name ? (
@@ -783,6 +871,18 @@ function ReceiptOrderDetailPage() {
           </Button>
         </Group>
       </Dialog>
+
+      <ReceiptWarehouseAssignmentModal
+        opened={showWarehouseAssignmentModal}
+        onClose={() => setShowWarehouseAssignmentModal(false)}
+        receiptOrder={order}
+        warehouses={hubScopedWarehouses}
+        stores={allStores}
+        units={units}
+        uomConversions={uomConversions}
+        onSubmit={(payload) => assignMutation.mutate(payload)}
+        loading={isLoading_}
+      />
     </Stack>
   );
 }

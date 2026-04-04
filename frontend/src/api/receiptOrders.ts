@@ -194,7 +194,15 @@ export async function getReceiptOrderAssignableManagers(id: number): Promise<{
 
 export async function assignReceiptOrder(
   id: number,
-  payload: { assignments: Partial<ReceiptOrderAssignment>[] }
+  payload: {
+    assignments: Array<
+      Partial<ReceiptOrderAssignment> & {
+        receipt_order_line_id?: number;
+        warehouse_id?: number;
+        quantity?: number;
+      }
+    >;
+  }
 ): Promise<ReceiptOrder> {
   const response = await apiClient.post(`/receipt_orders/${id}/assign`, { payload });
   const raw = response.data.data || response.data;
