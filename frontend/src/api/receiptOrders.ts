@@ -83,6 +83,8 @@ function normalizeReceiptOrderAssignment(raw: Record<string, unknown>): ReceiptO
     hub_name: typeof raw.hub_name === 'string' ? raw.hub_name : undefined,
     warehouse_id: raw.warehouse_id != null ? Number(raw.warehouse_id) : undefined,
     warehouse_name: typeof raw.warehouse_name === 'string' ? raw.warehouse_name : undefined,
+    hub_warehouses_count:
+      raw.hub_warehouses_count != null ? Number(raw.hub_warehouses_count) : undefined,
     store_id: raw.store_id != null ? Number(raw.store_id) : undefined,
     store_name: typeof raw.store_name === 'string' ? raw.store_name : undefined,
     assigned_to_id: raw.assigned_to_id != null ? Number(raw.assigned_to_id) : undefined,
@@ -118,7 +120,10 @@ export function normalizeReceiptOrder(raw: Record<string, unknown>): ReceiptOrde
 export interface CreateReceiptOrderPayload {
   source_type: string;
   source_name: string;
-  destination_warehouse_id: number;
+  /** Set when destination is a specific warehouse; null/omit when destination is hub-only. */
+  destination_warehouse_id?: number | null;
+  /** Set when destination type is Hub (receiving into a hub, warehouse TBD) or to match a chosen warehouse. */
+  hub_id?: number | null;
   expected_delivery_date: string;
   notes?: string;
   lines: ReceiptOrderLine[];
@@ -160,17 +165,28 @@ export async function confirmReceiptOrder(id: number): Promise<ReceiptOrder> {
   return normalizeReceiptOrder(typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {});
 }
 
+export type AssignableManagersScope = 'hub' | 'warehouse' | null;
+
 export async function getReceiptOrderAssignableManagers(id: number): Promise<{
   assignable_managers: AssignableManagerOption[];
   hub_id?: number | null;
   hub_name?: string | null;
+  warehouse_id?: number | null;
+  warehouse_name?: string | null;
+  managers_scope?: AssignableManagersScope;
 }> {
   const response = await apiClient.get(`/receipt_orders/${id}/assignable_managers`);
   const data = response.data.data || response.data;
+  const scope = data.managers_scope;
+  const managersScope: AssignableManagersScope =
+    scope === 'hub' || scope === 'warehouse' ? scope : null;
   return {
     assignable_managers: Array.isArray(data.assignable_managers) ? data.assignable_managers : [],
     hub_id: data.hub_id ?? null,
     hub_name: data.hub_name ?? null,
+    warehouse_id: data.warehouse_id ?? null,
+    warehouse_name: data.warehouse_name ?? null,
+    managers_scope: managersScope,
   };
 }
 

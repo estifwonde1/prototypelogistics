@@ -1,8 +1,8 @@
 module Cats
   module Warehouse
     class ReceiptOrderCreator
-      def initialize(hub: nil, warehouse: nil, received_date: nil, created_by:, items: nil, source: nil, reference_no: nil, description: nil, name: nil)
-        @hub = hub
+      def initialize(explicit_hub: nil, warehouse: nil, received_date: nil, created_by:, items: nil, source: nil, reference_no: nil, description: nil, name: nil)
+        @explicit_hub = explicit_hub
         @warehouse = warehouse
         @received_date = received_date
         @created_by = created_by
@@ -15,8 +15,9 @@ module Cats
 
       def call
         ReceiptOrder.transaction do
+          resolved_hub = ReceiptOrderHubResolver.call(explicit_hub: @explicit_hub, warehouse: @warehouse)
           order = ReceiptOrder.create!(
-            hub: @hub,
+            hub: resolved_hub,
             warehouse: @warehouse,
             received_date: @received_date,
             created_by: @created_by,
@@ -24,7 +25,7 @@ module Cats
             reference_no: @reference_no.presence,
             name: @name,
             description: @description,
-            status: "Draft"
+            status: ContractConstants::DOCUMENT_STATUSES[:draft]
           )
 
           @items.each do |raw|

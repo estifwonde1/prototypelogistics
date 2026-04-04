@@ -16,7 +16,7 @@ module Cats
           items: build_items,
           source: @inspection,
           reference_no: "AUTO-GRN-#{@inspection.id}",
-          status: "Draft"
+          status: ContractConstants::DOCUMENT_STATUSES[:draft]
         ).call
 
         grn.update!(

@@ -542,7 +542,7 @@ function ReceiptOrderDetailPage() {
                   size="sm"
                   onClick={() => setShowAssignmentForm(true)}
                 >
-                  + Assign Warehouse
+                  + Assign
                 </Button>
               )}
             </Group>
@@ -561,20 +561,32 @@ function ReceiptOrderDetailPage() {
             {showAssignmentForm && (
               <Card shadow="sm" padding="lg" radius="md" withBorder>
                 <Stack gap="md">
-                  {order.hub_name ? (
+                  {!assignableManagersLoading && assignableManagersPayload?.managers_scope === 'hub' && assignableManagersPayload.hub_name ? (
                     <Text size="sm" c="dimmed">
-                      Managers for hub: {order.hub_name}
+                      Hub managers for {assignableManagersPayload.hub_name}
+                      {assignableManagersPayload.warehouse_name
+                        ? ` (destination warehouse: ${assignableManagersPayload.warehouse_name})`
+                        : ''}
                     </Text>
                   ) : null}
-                  {!order.hub_id ? (
+                  {!assignableManagersLoading && assignableManagersPayload?.managers_scope === 'warehouse' && assignableManagersPayload.warehouse_name ? (
                     <Text size="sm" c="dimmed">
-                      This order has no hub yet. Link the destination warehouse to a hub (or set a hub on the order) so
-                      hub and warehouse managers can appear here.
+                      Managers for stand-alone warehouse: {assignableManagersPayload.warehouse_name}
+                    </Text>
+                  ) : null}
+                  {!assignableManagersLoading &&
+                  !assignableManagersError &&
+                  assignableManagersPayload?.managers_scope == null &&
+                  !order.hub_id &&
+                  !order.warehouse_id ? (
+                    <Text size="sm" c="dimmed">
+                      This order has no destination hub or warehouse. Set a destination on the order so managers can be
+                      listed here.
                     </Text>
                   ) : null}
                   {assignableManagersError ? (
                     <Text size="sm" c="red">
-                      Could not load managers for this hub.
+                      Could not load assignable managers.
                     </Text>
                   ) : null}
                   <Select
@@ -582,21 +594,33 @@ function ReceiptOrderDetailPage() {
                     placeholder={
                       assignableManagersLoading
                         ? 'Loading managers…'
-                        : 'Select warehouse or hub manager'
+                        : assignableManagersPayload?.managers_scope === 'warehouse'
+                          ? 'Select warehouse manager'
+                          : 'Select hub manager'
                     }
                     data={managerSelectData}
-                    disabled={assignableManagersLoading || !order.hub_id}
+                    disabled={
+                      assignableManagersLoading ||
+                      (!assignableManagersError && managerSelectData.length === 0)
+                    }
                     value={selectedUserId}
                     onChange={setSelectedUserId}
                     searchable
                   />
                   {!assignableManagersLoading &&
-                  order.hub_id &&
                   managerSelectData.length === 0 &&
-                  !assignableManagersError ? (
+                  !assignableManagersError &&
+                  assignableManagersPayload?.managers_scope === 'hub' ? (
                     <Text size="sm" c="dimmed">
-                      No hub managers or warehouse managers are assigned to this hub in admin. Add assignments under Hub
-                      Manager (for this hub) or Warehouse Manager (for a warehouse in this hub).
+                      No Hub Manager is assigned to this hub in admin. Add a user under Hub Manager for this hub.
+                    </Text>
+                  ) : null}
+                  {!assignableManagersLoading &&
+                  managerSelectData.length === 0 &&
+                  !assignableManagersError &&
+                  assignableManagersPayload?.managers_scope === 'warehouse' ? (
+                    <Text size="sm" c="dimmed">
+                      No warehouse managers are assigned to this stand-alone warehouse in admin.
                     </Text>
                   ) : null}
                   <Textarea

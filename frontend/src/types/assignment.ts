@@ -8,6 +8,8 @@ export interface ReceiptOrderAssignment {
   hub_name?: string;
   warehouse_id?: number;
   warehouse_name?: string;
+  /** Hub-scoped assignments: number of warehouses under that hub */
+  hub_warehouses_count?: number;
   store_id?: number;
   store_name?: string;
   assigned_to_id?: number;

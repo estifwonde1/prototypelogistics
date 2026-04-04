@@ -44,6 +44,20 @@ export function AssignmentCard({
       ? new Date(assignedAtRaw).toLocaleString()
       : '—';
 
+  const locationSubtitle = (() => {
+    if (assignment.warehouse_name) {
+      return assignment.warehouse_name;
+    }
+    if (assignment.hub_name) {
+      const n = assignment.hub_warehouses_count;
+      if (typeof n === 'number' && !Number.isNaN(n)) {
+        return `${n} warehouse${n === 1 ? '' : 's'} under ${assignment.hub_name}`;
+      }
+      return `Hub: ${assignment.hub_name}`;
+    }
+    return 'No location';
+  })();
+
   return (
     <Card shadow="sm" padding="lg" radius="md" withBorder>
       <Stack gap="md">
@@ -53,7 +67,7 @@ export function AssignmentCard({
             <div>
               <Text fw={600}>{assignment.assigned_to_name || 'Unassigned'}</Text>
               <Text size="sm" c="dimmed">
-                {assignment.warehouse_name || 'No warehouse'}
+                {locationSubtitle}
               </Text>
             </div>
           </Group>

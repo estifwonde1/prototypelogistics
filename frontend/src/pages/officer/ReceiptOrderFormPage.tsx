@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
@@ -27,9 +27,13 @@ import {
   deleteReceiptOrder,
 } from '../../api/receiptOrders';
 import { getWarehouses } from '../../api/warehouses';
+import { getHubs } from '../../api/hubs';
 import { getCommodityReferences, getUnitReferences } from '../../api/referenceData';
 import type { ReceiptOrderLine } from '../../api/receiptOrders';
 import type { ApiError } from '../../types/common';
+
+/** Receipt destination: receive into a warehouse under a hub, or a stand-alone warehouse */
+type ReceiptDestinationKind = 'hub' | 'warehouse' | '';
 
 const createEmptyItem = (): ReceiptOrderLine => ({
   commodity_id: 0,
@@ -47,14 +51,22 @@ function ReceiptOrderFormPage() {
 
   const [sourceType, setSourceType] = useState('');
   const [sourceName, setSourceName] = useState('');
+  const [destinationKind, setDestinationKind] = useState<ReceiptDestinationKind>('');
+  const [destinationHubId, setDestinationHubId] = useState<string | null>(null);
   const [warehouseId, setWarehouseId] = useState<string | null>(null);
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState<Date | null>(new Date());
+  const destinationHydratedKeyRef = useRef<string | null>(null);
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<ReceiptOrderLine[]>([createEmptyItem()]);
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
     queryFn: getWarehouses,
+  });
+
+  const { data: hubs } = useQuery({
+    queryKey: ['hubs'],
+    queryFn: getHubs,
   });
 
   const { data: commodities = [] } = useQuery({
@@ -111,11 +123,75 @@ function ReceiptOrderFormPage() {
     );
   }, [isEdit, existingOrder]);
 
-  const warehouseOptions =
-    warehouses?.map((w) => ({
-      value: String(w.id),
-      label: w.name,
-    })) || [];
+  useEffect(() => {
+    if (!isEdit) {
+      destinationHydratedKeyRef.current = null;
+    }
+  }, [isEdit]);
+
+  useEffect(() => {
+    if (!isEdit || !id || !existingOrder) return;
+    const hydrateKey = `${id}:${existingOrder.updated_at ?? existingOrder.id}`;
+    if (destinationHydratedKeyRef.current === hydrateKey) return;
+    const wid = existingOrder.destination_warehouse_id ?? existingOrder.warehouse_id;
+
+    if (wid != null && warehouses?.length) {
+      const w = warehouses.find((x) => x.id === wid);
+      if (!w) return;
+      if (w.hub_id != null) {
+        setDestinationKind('hub');
+        setDestinationHubId(String(w.hub_id));
+      } else {
+        setDestinationKind('warehouse');
+        setDestinationHubId(null);
+      }
+      destinationHydratedKeyRef.current = hydrateKey;
+      return;
+    }
+
+    if (wid == null && existingOrder.hub_id != null) {
+      setDestinationKind('hub');
+      setDestinationHubId(String(existingOrder.hub_id));
+      destinationHydratedKeyRef.current = hydrateKey;
+    }
+  }, [isEdit, id, existingOrder, warehouses]);
+
+  const destinationKindOptions = [
+    { value: 'hub', label: 'Hub' },
+    { value: 'warehouse', label: 'Warehouse' },
+  ];
+
+  const hubSelectOptions = useMemo(
+    () => (hubs ?? []).map((h) => ({ value: String(h.id), label: h.name })),
+    [hubs]
+  );
+
+  const standaloneWarehouses = useMemo(
+    () => (warehouses ?? []).filter((w) => w.hub_id == null),
+    [warehouses]
+  );
+
+  const standaloneWarehouseOptions = useMemo(
+    () => standaloneWarehouses.map((w) => ({ value: String(w.id), label: w.name })),
+    [standaloneWarehouses]
+  );
+
+  const selectedWarehouse = warehouses?.find((w) => String(w.id) === warehouseId);
+  const selectedHubName =
+    destinationKind === 'hub' && destinationHubId
+      ? hubs?.find((h) => String(h.id) === destinationHubId)?.name
+      : undefined;
+
+  const handleDestinationKindChange = useCallback((val: string | null) => {
+    const next = (val || '') as ReceiptDestinationKind;
+    setDestinationKind(next);
+    setDestinationHubId(null);
+    setWarehouseId(null);
+  }, []);
+
+  const handleDestinationHubChange = useCallback((val: string | null) => {
+    setDestinationHubId(val);
+  }, []);
 
   const commodityOptions =
     commodities?.map((c) => ({
@@ -232,13 +308,51 @@ function ReceiptOrderFormPage() {
   };
 
   const handleSave = () => {
-    if (!sourceType || !sourceName || !warehouseId || !expectedDeliveryDate) {
+    if (!sourceType || !sourceName || !expectedDeliveryDate) {
       notifications.show({
         title: 'Validation Error',
         message: 'Please fill in all required fields',
         color: 'red',
       });
       return;
+    }
+
+    if (!destinationKind) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Please select a destination type (Hub or Warehouse)',
+        color: 'red',
+      });
+      return;
+    }
+
+    if (destinationKind === 'hub') {
+      if (!destinationHubId) {
+        notifications.show({
+          title: 'Validation Error',
+          message: 'Please select a hub',
+          color: 'red',
+        });
+        return;
+      }
+    } else if (destinationKind === 'warehouse') {
+      if (!warehouseId) {
+        notifications.show({
+          title: 'Validation Error',
+          message: 'Please select a destination warehouse',
+          color: 'red',
+        });
+        return;
+      }
+      const wh = warehouses?.find((w) => String(w.id) === warehouseId);
+      if (wh && wh.hub_id != null) {
+        notifications.show({
+          title: 'Validation Error',
+          message: 'Select a stand-alone warehouse, or choose destination type Hub',
+          color: 'red',
+        });
+        return;
+      }
     }
 
     if (
@@ -257,14 +371,26 @@ function ReceiptOrderFormPage() {
       ? expectedDeliveryDate.toISOString().split('T')[0]
       : expectedDeliveryDate;
 
-    const payload = {
-      source_type: sourceType,
-      source_name: sourceName,
-      destination_warehouse_id: Number(warehouseId),
-      expected_delivery_date: dateStr,
-      notes,
-      lines: items,
-    };
+    const payload =
+      destinationKind === 'hub'
+        ? {
+            source_type: sourceType,
+            source_name: sourceName,
+            destination_warehouse_id: null,
+            hub_id: Number(destinationHubId),
+            expected_delivery_date: dateStr,
+            notes,
+            lines: items,
+          }
+        : {
+            source_type: sourceType,
+            source_name: sourceName,
+            destination_warehouse_id: Number(warehouseId),
+            hub_id: selectedWarehouse?.hub_id ?? null,
+            expected_delivery_date: dateStr,
+            notes,
+            lines: items,
+          };
 
     if (isEdit) {
       updateMutation.mutate(payload);
@@ -352,15 +478,51 @@ function ReceiptOrderFormPage() {
                 required
                 disabled={!fieldsEditable}
               />
+            </SimpleGrid>
+
+            <Select
+              label="Destination Type"
+              placeholder="Select destination type"
+              description="Hub: receiving is directed to a hub (no warehouse yet). Warehouse: a stand-alone site only."
+              data={destinationKindOptions}
+              value={destinationKind || null}
+              onChange={handleDestinationKindChange}
+              required
+              disabled={!fieldsEditable}
+              mt="md"
+            />
+
+            {destinationKind === 'hub' && (
+              <Select
+                label="Hub"
+                placeholder="Select hub"
+                data={hubSelectOptions}
+                value={destinationHubId}
+                onChange={handleDestinationHubChange}
+                required
+                disabled={!fieldsEditable}
+                mt="sm"
+              />
+            )}
+
+            {destinationKind === 'warehouse' && (
               <Select
                 label="Destination Warehouse"
-                placeholder="Select warehouse"
-                data={warehouseOptions}
+                placeholder={
+                  standaloneWarehouses.length
+                    ? 'Select stand-alone warehouse'
+                    : 'No stand-alone warehouses available'
+                }
+                data={standaloneWarehouseOptions}
                 value={warehouseId}
                 onChange={setWarehouseId}
                 required
-                disabled={!fieldsEditable}
+                disabled={!fieldsEditable || standaloneWarehouses.length === 0}
+                mt="sm"
               />
+            )}
+
+            <SimpleGrid cols={{ base: 1, sm: 2 }} mt="md">
               <DateInput
                 label="Expected Delivery Date"
                 placeholder="Select date"
@@ -370,6 +532,18 @@ function ReceiptOrderFormPage() {
                 disabled={!fieldsEditable}
               />
             </SimpleGrid>
+            {destinationKind === 'hub' && selectedHubName && (
+              <Text size="sm" c="dimmed" mt="xs">
+                Goods will be received into hub: {selectedHubName}. A specific warehouse can be set when confirming
+                or receiving (e.g. on GRN).
+              </Text>
+            )}
+            {destinationKind === 'warehouse' && selectedWarehouse && (
+              <Text size="sm" c="dimmed" mt="xs">
+                Receiving hub:{' '}
+                {selectedWarehouse.hub_name ?? '— (standalone warehouse, not under a hub)'}
+              </Text>
+            )}
             <Textarea
               label="Notes"
               placeholder="Add any notes..."

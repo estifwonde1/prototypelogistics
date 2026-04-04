@@ -1,6 +1,8 @@
 module Cats
   module Warehouse
     class DocumentScopeQuery
+      include ContractConstants
+
       def initialize(user:, scope:)
         @access = AccessContext.new(user: user)
         @scope = scope
@@ -22,7 +24,7 @@ module Cats
         when "Cats::Warehouse::Inspection"
           scoped_relation.where(warehouse_id: access.accessible_warehouse_ids)
         when "Cats::Warehouse::ReceiptOrder"
-          scoped_relation.where(warehouse_id: access.accessible_warehouse_ids)
+          receipt_orders_scope
         when "Cats::Warehouse::DispatchOrder"
           scoped_relation.where(warehouse_id: access.accessible_warehouse_ids)
         when "Cats::Warehouse::Waybill"
@@ -89,6 +91,30 @@ module Cats
 
         scoped_relation.where(source_location_id: location_ids)
                       .or(scoped_relation.where(destination_location_id: location_ids))
+      end
+
+      # Hub-only receipt orders have warehouse_id nil but hub_id set; include those for hub (and related) roles.
+      # Hub Managers only see orders in their hub workflow queue: status must be +assigned+ (not draft/confirmed/etc.).
+      def receipt_orders_scope
+        wh_ids = access.accessible_warehouse_ids
+        hub_ids = receipt_order_visible_hub_ids
+        by_warehouse = scoped_relation.where(warehouse_id: wh_ids)
+        rel = hub_ids.blank? ? by_warehouse : by_warehouse.or(scoped_relation.where(hub_id: hub_ids))
+
+        return rel.where(status: DOCUMENT_STATUSES[:assigned]) if access.hub_manager?
+
+        rel
+      end
+
+      def receipt_order_visible_hub_ids
+        ids = []
+        ids.concat(access.assigned_hub_ids) if access.hub_manager?
+        if access.warehouse_manager?
+          ids.concat(
+            Warehouse.where(id: access.assigned_warehouse_ids).where.not(hub_id: nil).distinct.pluck(:hub_id)
+          )
+        end
+        ids.compact.uniq
       end
     end
   end

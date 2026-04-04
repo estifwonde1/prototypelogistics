@@ -24,7 +24,7 @@ module Cats
             reference_no: @reference_no.presence,
             name: @name,
             description: @description,
-            status: "Draft"
+            status: ContractConstants::DOCUMENT_STATUSES[:draft]
           )
 
           @items.each do |item|

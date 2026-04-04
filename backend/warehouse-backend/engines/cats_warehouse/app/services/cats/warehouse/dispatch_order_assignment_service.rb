@@ -1,6 +1,8 @@
 module Cats
   module Warehouse
     class DispatchOrderAssignmentService
+      ALLOWED_ASSIGNMENT_STATUSES = %w[pending assigned accepted in_progress completed rejected].freeze
+
       def initialize(order:, actor:, assignments:)
         @order = order
         @actor = actor
@@ -23,16 +25,29 @@ module Cats
               assigned_by: @actor,
               assigned_to_id: payload[:assigned_to_id],
               quantity: payload[:quantity],
-              status: payload[:status].presence || "Assigned"
+              status: normalize_assignment_status(payload[:status])
             )
           end
 
-          transition_order!("Assigned", "dispatch_order.assigned", assignments_count: @assignments.size)
+          transition_order!(
+            ContractConstants::DOCUMENT_STATUSES[:assigned],
+            "dispatch_order.assigned",
+            assignments_count: @assignments.size
+          )
           @order
         end
       end
 
       private
+
+      def normalize_assignment_status(raw)
+        return ContractConstants::DOCUMENT_STATUSES[:assigned] if raw.blank?
+
+        key = raw.to_s.strip.downcase.tr(" ", "_")
+        return key if ALLOWED_ASSIGNMENT_STATUSES.include?(key)
+
+        ContractConstants::DOCUMENT_STATUSES[:assigned]
+      end
 
       def find_line(id)
         return nil if id.blank?

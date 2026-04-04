@@ -13,7 +13,7 @@ module Cats
           @order.reference_no = generated_reference_no if @order.reference_no.blank?
           old_status = @order.status
           @order.update!(
-            status: "Confirmed",
+            status: ContractConstants::DOCUMENT_STATUSES[:confirmed],
             confirmed_by: @confirmed_by || @order.confirmed_by,
             confirmed_at: Time.current
           )

@@ -25,12 +25,25 @@ module Cats
 
       def ensure_confirmable!
         super
-        raise ArgumentError, "Receipt order warehouse is required" if warehouse.blank?
         derive_hub_from_destination_warehouse
-        if hub.blank?
-          raise ArgumentError,
-                "The destination warehouse is not linked to a hub. Link the warehouse to a hub in setup, or choose another warehouse."
+
+        if warehouse.blank? && hub.blank?
+          raise ArgumentError, "Receipt order requires a destination hub or warehouse"
         end
+
+        if warehouse.present?
+          if warehouse.hub.present?
+            raise ArgumentError,
+                  "The destination warehouse is not linked to a hub. Link the warehouse to a hub in setup, or choose another warehouse." if hub.blank?
+
+            if hub_id.present? && warehouse.hub_id.present? && warehouse.hub_id != hub_id
+              raise ArgumentError, "Receipt order hub does not match the destination warehouse"
+            end
+          end
+          # Stand-alone warehouse (no hub on the warehouse): confirmation allowed without order.hub
+        end
+        # Hub-only orders (warehouse blank, hub set): allowed
+
         raise ArgumentError, "Receipt order received date is required" if received_date.blank?
         raise ArgumentError, "Receipt order has no lines" if receipt_order_lines.empty?
 

@@ -18,7 +18,7 @@ module Cats
           items: build_items,
           destination: @waybill.dispatch_order&.destination,
           reference_no: "AUTO-GIN-#{@waybill.id}",
-          status: "Draft"
+          status: ContractConstants::DOCUMENT_STATUSES[:draft]
         ).call
 
         gin.update!(
