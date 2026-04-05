@@ -53,8 +53,9 @@ module Cats
 
       def accessible_warehouse_ids
         return Warehouse.select(:id) if admin?
-        return Warehouse.where(hub_id: assigned_hub_ids).select(:id) if hub_manager?
+        # Warehouse Manager before Hub Manager: users with both roles must not see every warehouse in the hub.
         return assigned_warehouse_ids if warehouse_manager?
+        return Warehouse.where(hub_id: assigned_hub_ids).select(:id) if hub_manager?
         return Warehouse.select(:id) if officer?
         return Store.where(id: assigned_store_ids).select(:warehouse_id) if storekeeper?
 
