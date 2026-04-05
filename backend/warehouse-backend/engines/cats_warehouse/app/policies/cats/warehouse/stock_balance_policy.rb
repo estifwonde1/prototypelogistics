@@ -3,7 +3,27 @@ module Cats
     class StockBalancePolicy < ApplicationPolicy
       class Scope < Scope
         def resolve
-          DocumentScopeQuery.new(user: user, scope: scope).call
+          return scope.all if admin? || officer?
+
+          ac = AccessContext.new(user: user)
+          warehouse_ids = ac.accessible_warehouse_ids
+
+          # Handle empty arrays - return no results if user has no accessible warehouses
+          if warehouse_ids.is_a?(Array) && warehouse_ids.empty?
+            return scope.none
+          end
+
+          scope.where(warehouse_id: warehouse_ids)
+        end
+
+        private
+
+        def admin?
+          user&.has_role?("Admin") || user&.has_role?("Superadmin")
+        end
+
+        def officer?
+          user&.has_role?("Officer")
         end
       end
 

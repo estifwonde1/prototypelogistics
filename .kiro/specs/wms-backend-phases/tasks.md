@@ -8,7 +8,7 @@ This implementation plan breaks down the WMS Backend Phases feature into three s
 
 ### Phase 1: Officer-Driven Orchestration
 
-- [~] 1. Set up database schema for receipt and dispatch orders
+- [ ] 1. Set up database schema for receipt and dispatch orders
   - [-] 1.1 Create migration for receipt orders table
     - Create `cats_warehouse_receipt_orders` table with order_number, status, source_type, warehouse_id, hub_id, notes, created_by_id, confirmed_by_id, confirmed_at, completed_at, timestamps
     - Add status check constraint for valid states: draft, confirmed, assigned, reserved, in_progress, completed, cancelled
@@ -17,13 +17,13 @@ This implementation plan breaks down the WMS Backend Phases feature into three s
     - Add unique index on order_number
     - _Requirements: 1.1, 1.2, 20.1_
   
-  - [~] 1.2 Create migration for receipt order lines table
+  - [ ] 1.2 Create migration for receipt order lines table
     - Create `cats_warehouse_receipt_order_lines` table with receipt_order_id, commodity_id, quantity, unit_id, notes, timestamps
     - Add foreign key constraints with CASCADE delete
     - Add indexes on receipt_order_id and commodity_id
     - _Requirements: 1.1, 20.1_
   
-  - [~] 1.3 Create migration for dispatch orders table
+  - [ ] 1.3 Create migration for dispatch orders table
     - Create `cats_warehouse_dispatch_orders` table with order_number, status, destination_type, destination_id, warehouse_id, notes, created_by_id, confirmed_by_id, confirmed_at, completed_at, timestamps
     - Add status check constraint for valid states
     - Add destination_type check constraint for valid types: distribution_center, warehouse, beneficiary, other
@@ -31,14 +31,14 @@ This implementation plan breaks down the WMS Backend Phases feature into three s
     - Add unique index on order_number
     - _Requirements: 2.1, 2.2, 20.1_
   
-  - [~] 1.4 Create migration for dispatch order lines table
+  - [ ] 1.4 Create migration for dispatch order lines table
     - Create `cats_warehouse_dispatch_order_lines` table with dispatch_order_id, commodity_id, quantity, unit_id, notes, timestamps
     - Add foreign key constraints with CASCADE delete
     - Add indexes on dispatch_order_id and commodity_id
     - _Requirements: 2.1, 20.1_
 
 
-  - [~] 1.5 Add nullable foreign keys to existing document tables
+  - [ ] 1.5 Add nullable foreign keys to existing document tables
     - Add nullable `receipt_order_id` column to `cats_warehouse_inspections` table
     - Add nullable `receipt_order_id` column to `cats_warehouse_grns` table
     - Add nullable `dispatch_order_id` column to `cats_warehouse_waybills` table
@@ -46,8 +46,8 @@ This implementation plan breaks down the WMS Backend Phases feature into three s
     - Add indexes on all new foreign key columns
     - _Requirements: 4.1, 4.2, 16.2, 16.3, 16.4, 16.5, 20.2_
 
-- [~] 2. Implement receipt order models and validations
-  - [~] 2.1 Create ReceiptOrder model
+- [ ] 2. Implement receipt order models and validations
+  - [ ] 2.1 Create ReceiptOrder model
     - Define model in `app/models/cats/warehouse/receipt_order.rb`
     - Add associations: has_many :receipt_order_lines, belongs_to :warehouse, belongs_to :hub, belongs_to :created_by, belongs_to :confirmed_by
     - Add validations: presence of order_number, status, source_type, warehouse_id, hub_id, created_by_id
@@ -63,7 +63,7 @@ This implementation plan breaks down the WMS Backend Phases feature into three s
     - Use rspec-propcheck with gen_receipt_order_params generator
     - _Requirements: 27.1, 27.3_
   
-  - [~] 2.3 Create ReceiptOrderLine model
+  - [ ] 2.3 Create ReceiptOrderLine model
     - Define model in `app/models/cats/warehouse/receipt_order_line.rb`
     - Add associations: belongs_to :receipt_order, belongs_to :commodity, belongs_to :unit
     - Add validations: presence of receipt_order_id, commodity_id, quantity, unit_id
@@ -77,8 +77,8 @@ This implementation plan breaks down the WMS Backend Phases feature into three s
     - Test status enum values
     - _Requirements: 27.1_
 
-- [~] 3. Implement dispatch order models and validations
-  - [~] 3.1 Create DispatchOrder model
+- [ ] 3. Implement dispatch order models and validations
+  - [ ] 3.1 Create DispatchOrder model
     - Define model in `app/models/cats/warehouse/dispatch_order.rb`
     - Add associations: has_many :dispatch_order_lines, belongs_to :warehouse, belongs_to :created_by, belongs_to :confirmed_by
     - Add validations: presence of order_number, status, destination_type, warehouse_id, created_by_id
@@ -87,7 +87,7 @@ This implementation plan breaks down the WMS Backend Phases feature into three s
     - Add before_create callback to generate unique order_number
     - _Requirements: 2.1, 2.2, 2.11, 5.1_
   
-  - [~] 3.2 Create DispatchOrderLine model
+  - [ ] 3.2 Create DispatchOrderLine model
     - Define model in `app/models/cats/warehouse/dispatch_order_line.rb`
     - Add associations: belongs_to :dispatch_order, belongs_to :commodity, belongs_to :unit
     - Add validations: presence of dispatch_order_id, commodity_id, quantity, unit_id
@@ -102,8 +102,8 @@ This implementation plan breaks down the WMS Backend Phases feature into three s
     - _Requirements: 27.1_
 
 
-- [~] 4. Implement order creation and confirmation services
-  - [~] 4.1 Create ReceiptOrderCreator service
+- [ ] 4. Implement order creation and confirmation services
+  - [ ] 4.1 Create ReceiptOrderCreator service
     - Define service in `app/services/cats/warehouse/receipt_order_creator.rb`
     - Accept params: source_type, warehouse_id, notes, lines array
     - Validate warehouse exists and is active
@@ -114,7 +114,7 @@ This implementation plan breaks down the WMS Backend Phases feature into three s
     - Return created order
     - _Requirements: 1.1, 1.2, 1.11, 5.1, 14.2_
   
-  - [~] 4.2 Create ReceiptOrderConfirmer service
+  - [ ] 4.2 Create ReceiptOrderConfirmer service
     - Define service in `app/services/cats/warehouse/receipt_order_confirmer.rb`
     - Validate order is in draft status
     - Validate all line items have positive quantities
@@ -132,7 +132,7 @@ This implementation plan breaks down the WMS Backend Phases feature into three s
     - Use rspec-propcheck with gen_order_with_invalid_quantities generator
     - _Requirements: 27.1, 27.3_
   
-  - [~] 4.4 Create DispatchOrderCreator service
+  - [ ] 4.4 Create DispatchOrderCreator service
     - Define service in `app/services/cats/warehouse/dispatch_order_creator.rb`
     - Accept params: destination_type, destination_id, warehouse_id, notes, lines array
     - Validate warehouse and destination references exist
@@ -143,7 +143,7 @@ This implementation plan breaks down the WMS Backend Phases feature into three s
     - Return created order
     - _Requirements: 2.1, 2.2, 2.11, 5.1, 14.2_
   
-  - [~] 4.5 Create DispatchOrderConfirmer service
+  - [ ] 4.5 Create DispatchOrderConfirmer service
     - Define service in `app/services/cats/warehouse/dispatch_order_confirmer.rb`
     - Validate order is in draft status
     - Validate all line items have positive quantities
@@ -176,8 +176,8 @@ This implementation plan breaks down the WMS Backend Phases feature into three s
     - _Requirements: 27.1, 27.2_
 
 
-- [~] 5. Implement API serializers for orders
-  - [~] 5.1 Create ReceiptOrderSerializer
+- [ ] 5. Implement API serializers for orders
+  - [ ] 5.1 Create ReceiptOrderSerializer
     - Define serializer in `app/serializers/cats/warehouse/receipt_order_serializer.rb`
     - Include id, type, attributes with all order fields
     - Include Display_Field values: warehouse_name, hub_name
@@ -186,12 +186,12 @@ This implementation plan breaks down the WMS Backend Phases feature into three s
     - Compute allowed_actions based on current status
     - _Requirements: 1.3, 15.1, 15.2, 15.3, 15.4, 15.5, 15.7, 15.8_
   
-  - [~] 5.2 Create ReceiptOrderLineSerializer
+  - [ ] 5.2 Create ReceiptOrderLineSerializer
     - Define serializer in `app/serializers/cats/warehouse/receipt_order_line_serializer.rb`
     - Include all line fields with Display_Field values for commodity and unit
     - _Requirements: 1.3, 15.2, 15.4, 15.5_
   
-  - [~] 5.3 Create DispatchOrderSerializer
+  - [ ] 5.3 Create DispatchOrderSerializer
     - Define serializer in `app/serializers/cats/warehouse/dispatch_order_serializer.rb`
     - Include id, type, attributes with all order fields
     - Include Display_Field values: warehouse_name, destination_name
@@ -200,7 +200,7 @@ This implementation plan breaks down the WMS Backend Phases feature into three s
     - Compute allowed_actions based on current status
     - _Requirements: 2.3, 15.1, 15.2, 15.7, 15.8_
   
-  - [~] 5.4 Create DispatchOrderLineSerializer
+  - [ ] 5.4 Create DispatchOrderLineSerializer
     - Define serializer in `app/serializers/cats/warehouse/dispatch_order_line_serializer.rb`
     - Include all line fields with Display_Field values
     - _Requirements: 2.3, 15.2_
@@ -222,8 +222,8 @@ This implementation plan breaks down the WMS Backend Phases feature into three s
     - _Requirements: 27.1, 27.3_
 
 
-- [~] 6. Implement receipt order API endpoints
-  - [~] 6.1 Create ReceiptOrdersController
+- [ ] 6. Implement receipt order API endpoints
+  - [ ] 6.1 Create ReceiptOrdersController
     - Define controller in `app/controllers/cats/warehouse/v1/receipt_orders_controller.rb`
     - Implement index action with pagination and filtering by status, warehouse_id
     - Implement show action with full order details
@@ -233,7 +233,7 @@ This implementation plan breaks down the WMS Backend Phases feature into three s
     - Add error handling with consistent error response format
     - _Requirements: 1.1, 1.5, 1.6, 1.7, 23.2, 26.1_
   
-  - [~] 6.2 Create ReceiptOrderPolicy
+  - [ ] 6.2 Create ReceiptOrderPolicy
     - Define policy in `app/policies/cats/warehouse/receipt_order_policy.rb`
     - Allow Officer role to create, view, and confirm orders
     - Scope orders by user's accessible warehouses
@@ -248,13 +248,13 @@ This implementation plan breaks down the WMS Backend Phases feature into three s
     - Test error responses for validation failures
     - _Requirements: 27.2, 27.4_
   
-  - [~] 6.4 Add routes for receipt orders
+  - [ ] 6.4 Add routes for receipt orders
     - Add routes in `config/routes.rb` under cats_warehouse/v1 namespace
     - Define resources :receipt_orders with member action :confirm
     - _Requirements: 1.1, 1.5, 1.6, 1.7_
 
-- [~] 7. Implement dispatch order API endpoints
-  - [~] 7.1 Create DispatchOrdersController
+- [ ] 7. Implement dispatch order API endpoints
+  - [ ] 7.1 Create DispatchOrdersController
     - Define controller in `app/controllers/cats/warehouse/v1/dispatch_orders_controller.rb`
     - Implement index action with pagination and filtering
     - Implement show action with full order details
@@ -264,7 +264,7 @@ This implementation plan breaks down the WMS Backend Phases feature into three s
     - Add error handling with consistent error response format
     - _Requirements: 2.1, 2.5, 2.6, 2.7, 23.2, 26.1_
   
-  - [~] 7.2 Create DispatchOrderPolicy
+  - [ ] 7.2 Create DispatchOrderPolicy
     - Define policy in `app/policies/cats/warehouse/dispatch_order_policy.rb`
     - Allow Officer role to create, view, and confirm orders
     - Scope orders by user's accessible warehouses
@@ -279,25 +279,25 @@ This implementation plan breaks down the WMS Backend Phases feature into three s
     - Test error responses for validation failures
     - _Requirements: 27.2, 27.4_
   
-  - [~] 7.4 Add routes for dispatch orders
+  - [ ] 7.4 Add routes for dispatch orders
     - Add routes in `config/routes.rb` under cats_warehouse/v1 namespace
     - Define resources :dispatch_orders with member action :confirm
     - _Requirements: 2.1, 2.5, 2.6, 2.7_
 
 
-- [~] 8. Integrate Officer role into authorization system
-  - [~] 8.1 Add Officer role to warehouse module
+- [ ] 8. Integrate Officer role into authorization system
+  - [ ] 8.1 Add Officer role to warehouse module
     - Update `Cats::Warehouse::WarehouseModule` to include Officer in valid roles
     - Add Officer role to seeding scripts
     - Update role lookup services to recognize Officer
     - _Requirements: 3.1, 3.6_
   
-  - [~] 8.2 Update authentication response to include Officer role
+  - [ ] 8.2 Update authentication response to include Officer role
     - Modify authentication controller to return Officer role information
     - Include accessible warehouses in auth response meta
     - _Requirements: 3.2, 3.3_
   
-  - [~] 8.3 Update existing policies to preserve current role permissions
+  - [ ] 8.3 Update existing policies to preserve current role permissions
     - Ensure Admin, Superadmin, Hub Manager, Warehouse Manager, Store Keeper roles maintain existing access
     - Prevent Officer from accessing role-specific functions of other roles
     - _Requirements: 3.5, 3.7, 16.10, 23.9_
@@ -309,14 +309,14 @@ This implementation plan breaks down the WMS Backend Phases feature into three s
     - Test Officer cannot access Store Keeper exclusive functions
     - _Requirements: 27.4_
 
-- [~] 9. Implement draft mutability and confirmed immutability
-  - [~] 9.1 Add update action to ReceiptOrdersController
+- [ ] 9. Implement draft mutability and confirmed immutability
+  - [ ] 9.1 Add update action to ReceiptOrdersController
     - Implement update action that allows modifications only in draft status
     - Validate order is in draft status before allowing updates
     - Return 422 error if order is confirmed or later status
     - _Requirements: 1.12, 1.13, 17.6_
   
-  - [~] 9.2 Add update action to DispatchOrdersController
+  - [ ] 9.2 Add update action to DispatchOrdersController
     - Implement update action that allows modifications only in draft status
     - Validate order is in draft status before allowing updates
     - Return 422 error if order is confirmed or later status
@@ -336,23 +336,23 @@ This implementation plan breaks down the WMS Backend Phases feature into three s
     - _Requirements: 27.1_
 
 
-- [~] 10. Update existing document models for order linking
-  - [~] 10.1 Add receipt_order association to Inspection model
+- [ ] 10. Update existing document models for order linking
+  - [ ] 10.1 Add receipt_order association to Inspection model
     - Add belongs_to :receipt_order, optional: true to Inspection model
     - Update InspectionSerializer to include receipt_order_id and receipt_order_number when present
     - _Requirements: 4.1, 4.5_
   
-  - [~] 10.2 Add receipt_order association to GRN model
+  - [ ] 10.2 Add receipt_order association to GRN model
     - Add belongs_to :receipt_order, optional: true to GRN model
     - Update GrnSerializer to include receipt_order_id and receipt_order_number when present
     - _Requirements: 4.1, 4.5_
   
-  - [~] 10.3 Add dispatch_order association to Waybill model
+  - [ ] 10.3 Add dispatch_order association to Waybill model
     - Add belongs_to :dispatch_order, optional: true to Waybill model
     - Update WaybillSerializer to include dispatch_order_id and dispatch_order_number when present
     - _Requirements: 4.2, 4.5_
   
-  - [~] 10.4 Add dispatch_order association to GIN model
+  - [ ] 10.4 Add dispatch_order association to GIN model
     - Add belongs_to :dispatch_order, optional: true to GIN model
     - Update GinSerializer to include dispatch_order_id and dispatch_order_number when present
     - _Requirements: 4.2, 4.5_
@@ -372,7 +372,7 @@ This implementation plan breaks down the WMS Backend Phases feature into three s
     - Test creating documents without order links (manual workflow)
     - _Requirements: 27.1, 27.6_
 
-- [~] 11. Checkpoint - Phase 1 core functionality complete
+- [ ] 11. Checkpoint - Phase 1 core functionality complete
   - Ensure all tests pass, ask the user if questions arise.
 
 ### Phase 2: Inventory Traceability

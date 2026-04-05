@@ -82,6 +82,7 @@ FactoryBot.define do
 
   factory :cats_core_commodity, class: "Cats::Core::Commodity" do
     batch_no { "BATCH-#{generate(:core_code)}" }
+    name { "Commodity #{generate(:core_name)}" }
     unit_of_measure { association :cats_core_unit_of_measure }
     project { association :cats_core_project }
     quantity { 100 }

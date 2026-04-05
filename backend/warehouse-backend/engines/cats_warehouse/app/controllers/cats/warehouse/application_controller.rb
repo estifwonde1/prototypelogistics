@@ -42,6 +42,7 @@ module Cats
       def render_internal_error(exception)
         log_exception(exception)
 
+        # Always raise in test environment to see the actual error
         raise exception if Rails.env.development? || Rails.env.test?
 
         render_error("Internal server error", status: :internal_server_error)

@@ -11,7 +11,7 @@ import {
   Alert,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconCheck, IconClipboardList, IconBoxMultiple } from '@tabler/icons-react';
+import { IconClipboardList, IconBoxMultiple } from '@tabler/icons-react';
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../../api/client';

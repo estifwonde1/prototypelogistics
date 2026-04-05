@@ -48,8 +48,9 @@ module Cats
         render_error(error.record.errors.full_messages.to_sentence, status: :unprocessable_entity, details: error.record.errors.to_hash)
       end
 
-      def render_forbidden(_error)
-        render_error("Not authorized", status: :forbidden)
+      def render_forbidden(error)
+        message = error.respond_to?(:message) ? error.message : "Not authorized"
+        render_error(message, status: :forbidden)
       end
 
       def normalize_payload_aliases(payload, aliases = {})

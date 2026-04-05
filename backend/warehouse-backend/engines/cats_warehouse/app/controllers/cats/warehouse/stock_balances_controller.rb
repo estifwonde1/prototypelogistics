@@ -3,7 +3,8 @@ module Cats
     class StockBalancesController < BaseController
       def index
         authorize StockBalance
-        render_resource(policy_scope(StockBalance).order(:id), each_serializer: StockBalanceSerializer)
+        balances = policy_scope(StockBalance).includes(:warehouse, :store, :stack, :commodity, :unit).order(:id)
+        render_resource(balances, each_serializer: StockBalanceSerializer)
       end
 
       def show
