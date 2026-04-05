@@ -8,9 +8,29 @@ module Cats
       end
 
       def show
-        order = policy_scope(ReceiptOrder).includes(*order_detail_includes).find(params[:id])
+        order = policy_scope(ReceiptOrder).includes(:hub, :warehouse).find(params[:id])
         authorize order
-        render_order_payload(order)
+
+        assignments = order.receipt_order_assignments
+          .includes(:assigned_to, :assigned_by, :store, :warehouse, :hub)
+
+        if hub_manager?
+          assignments = assignments.where(
+            "cats_warehouse_receipt_order_assignments.store_id IS NULL"
+          )
+        elsif warehouse_manager?
+          assignments = assignments.where(
+            "cats_warehouse_receipt_order_assignments.hub_id IS NULL"
+          )
+        end
+
+        serialized = ReceiptOrderSerializer.new(order).as_json
+        serialized[:receipt_order_assignments] = ActiveModelSerializers::SerializableResource.new(
+          assignments,
+          each_serializer: ReceiptOrderAssignmentSerializer
+        ).as_json
+
+        render_success(serialized)
       end
 
       def create
@@ -47,7 +67,7 @@ module Cats
       end
 
       def update
-        order = policy_scope(ReceiptOrder).includes(receipt_order_lines: [:commodity, :unit]).find(params[:id])
+        order = policy_scope(ReceiptOrder).includes(receipt_order_lines: [ :commodity, :unit ]).find(params[:id])
         authorize order
 
         raise ArgumentError, "Only draft receipt orders can be updated" unless order.status_draft?
@@ -154,14 +174,16 @@ module Cats
         order = policy_scope(ReceiptOrder).includes(:hub, warehouse: :hub).find(params[:id])
         authorize order, :assignable_managers?
 
-        # Prefer the destination warehouse's hub (source of truth); fall back to order.hub for hub-only receipts.
         effective_hub_id = order.warehouse&.hub_id.presence || order.hub_id
+        manager_only = params[:manager_only] == 'true'
 
         if effective_hub_id.present?
-          managers = receipt_order_managers_for_hub(effective_hub_id)
+          managers = manager_only ? receipt_order_managers_for_hub_managers_only(effective_hub_id) : receipt_order_managers_for_hub(effective_hub_id)
+          stores = manager_only ? [] : available_stores_for_hub(effective_hub_id)
           hub = Hub.find_by(id: effective_hub_id)
           return render_success(
             assignable_managers: managers,
+            stores: stores,
             hub_id: effective_hub_id,
             hub_name: hub&.name,
             warehouse_id: order.warehouse_id,
@@ -171,9 +193,11 @@ module Cats
         end
 
         if order.warehouse_id.present?
-          managers = receipt_order_managers_for_standalone_warehouse(order.warehouse_id)
+          managers = manager_only ? receipt_order_managers_for_standalone_warehouse_managers_only(order.warehouse_id) : receipt_order_managers_for_standalone_warehouse(order.warehouse_id)
+          stores = manager_only ? [] : available_stores_for_warehouse(order.warehouse_id)
           return render_success(
             assignable_managers: managers,
+            stores: stores,
             hub_id: nil,
             hub_name: nil,
             warehouse_id: order.warehouse_id,
@@ -184,6 +208,7 @@ module Cats
 
         render_success(
           assignable_managers: [],
+          stores: [],
           hub_id: nil,
           hub_name: nil,
           warehouse_id: nil,
@@ -239,9 +264,9 @@ module Cats
           :hub,
           :warehouse,
           {
-            receipt_order_lines: [:commodity, :unit],
-            receipt_order_assignments: [:assigned_to, :assigned_by, :hub, :warehouse, :store],
-            space_reservations: [:warehouse, :store, :reserved_by]
+            receipt_order_lines: [ :commodity, :unit ],
+            receipt_order_assignments: [ :assigned_to, :assigned_by, :hub, :warehouse, :store ],
+            space_reservations: [ :warehouse, :store, :reserved_by ]
           }
         ]
       end
@@ -311,28 +336,110 @@ module Cats
         ])
       end
 
-      # Hub-scoped receipt orders: only users assigned as Hub Manager for this hub (not warehouse managers).
+      # Hub-scoped receipt orders: includes Hub Managers, Warehouse Managers, and Storekeepers for the hub.
       def receipt_order_managers_for_hub(hub_id)
-        user_ids = UserAssignment.where(role_name: "Hub Manager", hub_id: hub_id).distinct.pluck(:user_id)
-        map_users_for_assignable_managers(user_ids)
+        warehouse_ids = Warehouse.where(hub_id: hub_id).pluck(:id)
+
+        hub_manager_ids = UserAssignment.where(role_name: "Hub Manager", hub_id: hub_id).distinct.pluck(:user_id)
+        warehouse_manager_ids = UserAssignment
+          .where(role_name: "Warehouse Manager")
+          .where(warehouse_id: warehouse_ids)
+          .distinct
+          .pluck(:user_id)
+        storekeeper_ids = UserAssignment
+          .where(role_name: "Storekeeper")
+          .where(store_id: Store.where(warehouse_id: warehouse_ids).select(:id))
+          .distinct
+          .pluck(:user_id)
+
+        all_user_ids = hub_manager_ids + warehouse_manager_ids + storekeeper_ids
+        map_users_for_assignable_managers(all_user_ids)
+      end
+
+      # Hub-scoped: only Hub Managers and Warehouse Managers (for officer assignment)
+      def receipt_order_managers_for_hub_managers_only(hub_id)
+        warehouse_ids = Warehouse.where(hub_id: hub_id).pluck(:id)
+
+        hub_manager_ids = UserAssignment.where(role_name: "Hub Manager", hub_id: hub_id).distinct.pluck(:user_id)
+        warehouse_manager_ids = UserAssignment
+          .where(role_name: "Warehouse Manager")
+          .where(warehouse_id: warehouse_ids)
+          .distinct
+          .pluck(:user_id)
+
+        all_user_ids = hub_manager_ids + warehouse_manager_ids
+        map_users_for_assignable_managers(all_user_ids)
       end
 
       def receipt_order_managers_for_standalone_warehouse(warehouse_id)
-        user_ids = UserAssignment.where(role_name: "Warehouse Manager", warehouse_id: warehouse_id).distinct.pluck(:user_id)
-        map_users_for_assignable_managers(user_ids)
+        warehouse_ids = [ warehouse_id ]
+        warehouse_manager_ids = UserAssignment.where(role_name: "Warehouse Manager", warehouse_id: warehouse_id).distinct.pluck(:user_id)
+        storekeeper_ids = UserAssignment
+          .where(role_name: "Storekeeper")
+          .where(store_id: Store.where(warehouse_id: warehouse_ids).select(:id))
+          .distinct
+          .pluck(:user_id)
+
+        all_user_ids = warehouse_manager_ids + storekeeper_ids
+        map_users_for_assignable_managers(all_user_ids)
+      end
+
+      # Standalone warehouse: only Warehouse Managers (for officer assignment)
+      def receipt_order_managers_for_standalone_warehouse_managers_only(warehouse_id)
+        warehouse_manager_ids = UserAssignment.where(role_name: "Warehouse Manager", warehouse_id: warehouse_id).distinct.pluck(:user_id)
+        map_users_for_assignable_managers(warehouse_manager_ids)
+      end
+
+      def available_stores_for_hub(hub_id)
+        warehouse_ids = Warehouse.where(hub_id: hub_id).pluck(:id)
+        Store.where(warehouse_id: warehouse_ids)
+          .order(:name)
+          .map { |s| { id: s.id, name: s.name, code: s.code, warehouse_id: s.warehouse_id } }
+      end
+
+      def available_stores_for_warehouse(warehouse_id)
+        Store.where(warehouse_id: warehouse_id)
+          .order(:name)
+          .map { |s| { id: s.id, name: s.name, code: s.code, warehouse_id: s.warehouse_id } }
       end
 
       def map_users_for_assignable_managers(user_ids)
+        return [] if user_ids.empty?
+
         mod_id = warehouse_module.id
-        users =
-          Cats::Core::User
-            .where(id: user_ids, active: true, application_module_id: mod_id)
-            .order(:last_name, :first_name, :id)
-        users.map do |u|
-          display = [ u.first_name, u.last_name ].compact.join(" ").strip
-          display = u.email if display.blank?
-          { id: u.id, name: display }
+        assignments = UserAssignment
+          .where(user_id: user_ids)
+          .includes(:user)
+          .distinct
+
+        result = []
+        assignments.each do |assignment|
+          next unless assignment.user&.active? && assignment.user.application_module_id == mod_id
+
+          display = [ assignment.user.first_name, assignment.user.last_name ].compact.join(" ").strip
+          display = assignment.user.email if display.blank?
+
+          user_info = {
+            id: assignment.user.id,
+            name: display,
+            role: assignment.role_name
+          }
+
+          case assignment.role_name
+          when "Storekeeper"
+            user_info[:store_id] = assignment.store_id
+            user_info[:store_name] = assignment.store&.name
+          when "Warehouse Manager"
+            user_info[:warehouse_id] = assignment.warehouse_id
+            user_info[:warehouse_name] = assignment.warehouse&.name
+          when "Hub Manager"
+            user_info[:hub_id] = assignment.hub_id
+            user_info[:hub_name] = assignment.hub&.name
+          end
+
+          result << user_info
         end
+        result.sort_by { |u| [ u[:name], u[:id] ] }
       end
 
       def find_optional_hub(id)

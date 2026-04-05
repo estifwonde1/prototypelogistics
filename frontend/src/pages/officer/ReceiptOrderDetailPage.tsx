@@ -118,6 +118,7 @@ function ReceiptOrderDetailPage() {
   const [showAssignmentForm, setShowAssignmentForm] = useState(false);
   const [showWarehouseAssignmentModal, setShowWarehouseAssignmentModal] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [selectedAssignmentStoreId, setSelectedAssignmentStoreId] = useState<string | null>(null);
   const [assignmentNotes, setAssignmentNotes] = useState('');
   
   // Space reservation form state
@@ -224,19 +225,39 @@ function ReceiptOrderDetailPage() {
     isLoading: assignableManagersLoading,
     isError: assignableManagersError,
   } = useQuery({
-    queryKey: ['receipt_orders', id, 'assignable_managers'],
-    queryFn: () => getReceiptOrderAssignableManagers(Number(id)),
+    queryKey: ['receipt_orders', id, 'assignable_managers', roleSlug],
+    queryFn: () => getReceiptOrderAssignableManagers(Number(id), roleSlug === 'officer'),
     enabled:
       !!order &&
       showAssignmentForm &&
-      roleSlug !== 'hub_manager' &&
-      String(order.status).toLowerCase() === 'confirmed',
+      ['confirmed', 'assigned', 'reserved', 'in_progress'].includes(String(order.status).toLowerCase()),
   });
 
   const managerSelectData = useMemo(() => {
     const rows = assignableManagersPayload?.assignable_managers ?? [];
-    return rows.map((m) => ({ value: String(m.id), label: m.name }));
+    const seen = new Set<string>();
+    return rows
+      .filter((m) => {
+        const key = String(m.id);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map((m) => ({
+        value: String(m.id),
+        label: `${m.name}${m.role === 'Storekeeper' && m.store_name ? ` (${m.store_name})` : ''}`,
+      }));
   }, [assignableManagersPayload]);
+
+  const assignmentStoreSelectData = useMemo(() => {
+    const rows = assignableManagersPayload?.stores ?? [];
+    return rows.map((s) => ({ value: String(s.id), label: `${s.name} (${s.code})` }));
+  }, [assignableManagersPayload]);
+
+  const selectedManager = useMemo(() => {
+    const rows = assignableManagersPayload?.assignable_managers ?? [];
+    return rows.find((m) => m.id === Number(selectedUserId));
+  }, [assignableManagersPayload, selectedUserId]);
 
   const confirmMutation = useMutation({
     mutationFn: () => confirmReceiptOrder(Number(id)),
@@ -295,6 +316,7 @@ function ReceiptOrderDetailPage() {
       setShowAssignmentForm(false);
       setShowWarehouseAssignmentModal(false);
       setSelectedUserId(null);
+      setSelectedAssignmentStoreId(null);
       setAssignmentNotes('');
       refetch();
     },
@@ -338,20 +360,45 @@ function ReceiptOrderDetailPage() {
   });
 
   const handleCreateAssignment = () => {
-    if (!selectedUserId) {
-      notifications.show({
-        title: 'Error',
-        message: 'Please select a user to assign',
-        color: 'red',
+    if (roleSlug === 'officer') {
+      if (!selectedUserId) {
+        notifications.show({
+          title: 'Error',
+          message: 'Please select a manager to assign',
+          color: 'red',
+        });
+        return;
+      }
+
+      assignMutation.mutate({
+        assignments: [{
+          assigned_to_id: Number(selectedUserId),
+          notes: assignmentNotes,
+        }],
       });
-      return;
+    } else {
+      if (!selectedAssignmentStoreId) {
+        notifications.show({
+          title: 'Error',
+          message: 'Please select a store',
+          color: 'red',
+        });
+        return;
+      }
+
+      const payload: any = {
+        assignments: [{
+          store_id: Number(selectedAssignmentStoreId),
+          notes: assignmentNotes,
+        }],
+      };
+
+      if (selectedUserId) {
+        payload.assignments[0].assigned_to_id = Number(selectedUserId);
+      }
+
+      assignMutation.mutate(payload);
     }
-    assignMutation.mutate({
-      assignments: [{
-        assigned_to_id: Number(selectedUserId),
-        notes: assignmentNotes,
-      }],
-    });
   };
 
   const handleCreateSpaceReservation = () => {
@@ -625,14 +672,22 @@ function ReceiptOrderDetailPage() {
                   + Assign Warehouse
                 </Button>
               ) : null}
-              {!canHubAssignWarehouse && roleSlug !== 'hub_manager' && String(order.status).toLowerCase() === 'confirmed' ? (
+              {roleSlug === 'warehouse_manager' && ['confirmed', 'assigned', 'reserved', 'in_progress'].includes(String(order.status).toLowerCase()) && (
                 <Button
                   size="sm"
                   onClick={() => setShowAssignmentForm(true)}
                 >
-                  + Assign
+                  + Assign Store
                 </Button>
-              ) : null}
+              )}
+              {roleSlug === 'officer' && String(order.status).toLowerCase() === 'confirmed' && (
+                <Button
+                  size="sm"
+                  onClick={() => setShowAssignmentForm(true)}
+                >
+                  + Assign Manager
+                </Button>
+              )}
             </Group>
 
             {assignments.length === 0 ? (
@@ -646,71 +701,111 @@ function ReceiptOrderDetailPage() {
               ))
             )}
 
-            {showAssignmentForm && roleSlug !== 'hub_manager' && (
+            {showAssignmentForm && (
               <Card shadow="sm" padding="lg" radius="md" withBorder>
                 <Stack gap="md">
-                  {!assignableManagersLoading && assignableManagersPayload?.managers_scope === 'hub' && assignableManagersPayload.hub_name ? (
-                    <Text size="sm" c="dimmed">
-                      Hub managers for {assignableManagersPayload.hub_name}
-                      {assignableManagersPayload.warehouse_name
-                        ? ` (destination warehouse: ${assignableManagersPayload.warehouse_name})`
-                        : ''}
-                    </Text>
-                  ) : null}
-                  {!assignableManagersLoading && assignableManagersPayload?.managers_scope === 'warehouse' && assignableManagersPayload.warehouse_name ? (
-                    <Text size="sm" c="dimmed">
-                      Managers for stand-alone warehouse: {assignableManagersPayload.warehouse_name}
-                    </Text>
-                  ) : null}
-                  {!assignableManagersLoading &&
-                  !assignableManagersError &&
-                  assignableManagersPayload?.managers_scope == null &&
-                  !order.hub_id &&
-                  !order.warehouse_id ? (
-                    <Text size="sm" c="dimmed">
-                      This order has no destination hub or warehouse. Set a destination on the order so managers can be
-                      listed here.
-                    </Text>
-                  ) : null}
-                  {assignableManagersError ? (
-                    <Text size="sm" c="red">
-                      Could not load assignable managers.
-                    </Text>
-                  ) : null}
-                  <Select
-                    label="Assign to User"
-                    placeholder={
-                      assignableManagersLoading
-                        ? 'Loading managers…'
-                        : assignableManagersPayload?.managers_scope === 'warehouse'
-                          ? 'Select warehouse manager'
-                          : 'Select hub manager'
-                    }
-                    data={managerSelectData}
-                    disabled={
-                      assignableManagersLoading ||
-                      (!assignableManagersError && managerSelectData.length === 0)
-                    }
-                    value={selectedUserId}
-                    onChange={setSelectedUserId}
-                    searchable
-                  />
-                  {!assignableManagersLoading &&
-                  managerSelectData.length === 0 &&
-                  !assignableManagersError &&
-                  assignableManagersPayload?.managers_scope === 'hub' ? (
-                    <Text size="sm" c="dimmed">
-                      No Hub Manager is assigned to this hub in admin. Add a user under Hub Manager for this hub.
-                    </Text>
-                  ) : null}
-                  {!assignableManagersLoading &&
-                  managerSelectData.length === 0 &&
-                  !assignableManagersError &&
-                  assignableManagersPayload?.managers_scope === 'warehouse' ? (
-                    <Text size="sm" c="dimmed">
-                      No warehouse managers are assigned to this stand-alone warehouse in admin.
-                    </Text>
-                  ) : null}
+                  {roleSlug === 'officer' ? (
+                    <>
+                      <Text fw={600}>Assign Manager</Text>
+                      <Text size="sm" c="dimmed">
+                        {order.hub_id
+                          ? `Assign a Hub Manager for ${assignableManagersPayload?.hub_name || 'this hub'} to handle this receipt order.`
+                          : `Assign a Warehouse Manager for ${assignableManagersPayload?.warehouse_name || 'this warehouse'} to handle this receipt order.`}
+                      </Text>
+                      {assignableManagersError ? (
+                        <Text size="sm" c="red">
+                          Could not load available managers.
+                        </Text>
+                      ) : null}
+                      <Select
+                        label="Manager"
+                        placeholder={
+                          assignableManagersLoading
+                            ? 'Loading managers…'
+                            : 'Select a manager to assign'
+                        }
+                        data={managerSelectData}
+                        disabled={
+                          assignableManagersLoading ||
+                          (!assignableManagersError && managerSelectData.length === 0)
+                        }
+                        value={selectedUserId}
+                        onChange={setSelectedUserId}
+                        searchable
+                        required
+                      />
+                      {!assignableManagersLoading &&
+                      managerSelectData.length === 0 &&
+                      !assignableManagersError ? (
+                        <Text size="sm" c="dimmed">
+                          No managers are assigned to this {order.hub_id ? 'hub' : 'warehouse'} in admin. Add a user under Hub Manager or Warehouse Manager roles.
+                        </Text>
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      <Text fw={600}>Assign Store for Commodity</Text>
+                      <Text size="sm" c="dimmed">
+                        Select the store where the commodity will be received. The storekeeper assigned to this store will be automatically notified.
+                      </Text>
+                      {assignableManagersError ? (
+                        <Text size="sm" c="red">
+                          Could not load available stores.
+                        </Text>
+                      ) : null}
+                      <Select
+                        label="Store"
+                        placeholder={
+                          assignableManagersLoading
+                            ? 'Loading stores…'
+                            : 'Select a store'
+                        }
+                        data={assignmentStoreSelectData}
+                        disabled={
+                          assignableManagersLoading ||
+                          (!assignableManagersError && assignmentStoreSelectData.length === 0)
+                        }
+                        value={selectedAssignmentStoreId}
+                        onChange={(val) => {
+                          setSelectedAssignmentStoreId(val);
+                          const store = assignableManagersPayload?.stores?.find(
+                            (s) => s.id === Number(val)
+                          );
+                          if (store) {
+                            const storekeeper = assignableManagersPayload?.assignable_managers?.find(
+                              (m) => m.role === 'Storekeeper' && m.store_id === store.id
+                            );
+                            if (storekeeper) {
+                              setSelectedUserId(String(storekeeper.id));
+                            } else {
+                              setSelectedUserId(null);
+                            }
+                          } else {
+                            setSelectedUserId(null);
+                          }
+                        }}
+                        required
+                        searchable
+                      />
+                      {selectedAssignmentStoreId && selectedManager && (
+                        <Text size="sm" c="dimmed">
+                          Storekeeper: <strong>{selectedManager.name}</strong>
+                        </Text>
+                      )}
+                      {selectedAssignmentStoreId && !selectedManager && (
+                        <Text size="sm" c="orange">
+                          No storekeeper is assigned to this store. The assignment will still be created.
+                        </Text>
+                      )}
+                      {!assignableManagersLoading &&
+                      assignmentStoreSelectData.length === 0 &&
+                      !assignableManagersError ? (
+                        <Text size="sm" c="dimmed">
+                          No stores are available for this warehouse. Add stores first.
+                        </Text>
+                      ) : null}
+                    </>
+                  )}
                   <Textarea
                     label="Notes"
                     placeholder="Assignment notes..."

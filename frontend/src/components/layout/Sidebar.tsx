@@ -16,6 +16,7 @@ import {
   IconInbox,
   IconTruck,
   IconReportAnalytics,
+  IconClipboardList,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../../store/authStore';
 import { usePermission } from '../../hooks/usePermission';
@@ -159,6 +160,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
             { label: 'Stores', icon: <IconBox size={20} />, path: '/stores', resource: 'stores' },
             { label: 'Stacks', icon: <IconStack2 size={20} />, path: '/stacks', resource: 'stacks' },
             { label: 'Stacking', icon: <IconBox size={20} />, path: '/stacks/layout', resource: 'stacks' },
+          ],
+        },
+        {
+          label: 'Assignments',
+          items: [
+            { label: 'My Assignments', icon: <IconClipboardList size={20} />, path: '/storekeeper/assignments', resource: 'receipt_orders' },
           ],
         },
         {

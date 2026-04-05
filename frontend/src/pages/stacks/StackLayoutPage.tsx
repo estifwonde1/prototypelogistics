@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import {
+  Alert,
   Badge,
   Button,
   Card,
@@ -27,6 +28,7 @@ import {
   IconInfoCircle,
   IconMapPin,
   IconX,
+  IconCalculator,
 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import type { AxiosError } from 'axios';
@@ -186,14 +188,16 @@ function createInitialValues(storeId: string | null): StackFormValues {
 export default function StackLayoutPage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [storeId, setStoreId] = useState<string | null>(null);
+  const [storeId, setStoreId] = useState<string | null>(searchParams.get('store_id'));
   const [editMode, setEditMode] = useState(searchParams.get('mode') === 'create');
   const [modalOpened, setModalOpened] = useState(false);
   const [selectedStack, setSelectedStack] = useState<StackType | null>(null);
   const [draftArea, setDraftArea] = useState<DraftArea | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
 
-  const { data: stores } = useQuery({
+  const autoPrepare = searchParams.get('auto_prepare') === 'true';
+
+  const { data: stores, isLoading: storesLoading } = useQuery({
     queryKey: ['stores'],
     queryFn: getStores,
   });
@@ -450,7 +454,7 @@ export default function StackLayoutPage() {
     upsertMutation.mutate(values);
   };
 
-  if (isLoading) {
+  if (isLoading || storesLoading) {
     return <LoadingState message="Loading stack layout..." />;
   }
 
@@ -460,6 +464,20 @@ export default function StackLayoutPage() {
 
   return (
     <>
+      {autoPrepare && (
+        <Alert
+          title="Prepare Stacking Space"
+          color="blue"
+          radius="md"
+          style={{ marginTop: 8 }}
+        >
+          <Text size="sm">
+            An incoming receipt order has been accepted. Use the layout editor below to allocate and
+            adjust stacking space for the commodities. Click on empty areas to create new stacks
+            or edit existing ones.
+          </Text>
+        </Alert>
+      )}
       <Stack
         gap="xl"
         style={{
@@ -495,6 +513,27 @@ export default function StackLayoutPage() {
                 },
               }}
             />
+
+            {autoPrepare && (
+              <Card
+                radius="md"
+                padding="sm"
+                style={{
+                  background: '#e8f5e9',
+                  border: '1px solid #c8e6c9',
+                }}
+              >
+                <Group gap="xs">
+                  <IconCalculator size={18} color="#2e7d32" />
+                  <Text size="sm" fw={600} c="#2e7d32">
+                    Space Preparation Mode
+                  </Text>
+                </Group>
+                <Text size="xs" c="#558b2f" mt={4}>
+                  Allocate stacks for the incoming receipt order
+                </Text>
+              </Card>
+            )}
 
             <Group gap="sm">
               <Badge

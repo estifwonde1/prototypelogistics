@@ -19,6 +19,20 @@ export interface ReceiptOrderLine {
 export interface AssignableManagerOption {
   id: number;
   name: string;
+  role: 'Hub Manager' | 'Warehouse Manager' | 'Storekeeper';
+  store_id?: number;
+  store_name?: string;
+  warehouse_id?: number;
+  warehouse_name?: string;
+  hub_id?: number;
+  hub_name?: string;
+}
+
+export interface StoreOption {
+  id: number;
+  name: string;
+  code: string;
+  warehouse_id: number;
 }
 
 export interface ReceiptOrder {
@@ -167,21 +181,25 @@ export async function confirmReceiptOrder(id: number): Promise<ReceiptOrder> {
 
 export type AssignableManagersScope = 'hub' | 'warehouse' | null;
 
-export async function getReceiptOrderAssignableManagers(id: number): Promise<{
+export async function getReceiptOrderAssignableManagers(id: number, managerOnly = false): Promise<{
   assignable_managers: AssignableManagerOption[];
+  stores: StoreOption[];
   hub_id?: number | null;
   hub_name?: string | null;
   warehouse_id?: number | null;
   warehouse_name?: string | null;
   managers_scope?: AssignableManagersScope;
 }> {
-  const response = await apiClient.get(`/receipt_orders/${id}/assignable_managers`);
+  const response = await apiClient.get(`/receipt_orders/${id}/assignable_managers`, {
+    params: { manager_only: managerOnly },
+  });
   const data = response.data.data || response.data;
   const scope = data.managers_scope;
   const managersScope: AssignableManagersScope =
     scope === 'hub' || scope === 'warehouse' ? scope : null;
   return {
     assignable_managers: Array.isArray(data.assignable_managers) ? data.assignable_managers : [],
+    stores: Array.isArray(data.stores) ? data.stores : [],
     hub_id: data.hub_id ?? null,
     hub_name: data.hub_name ?? null,
     warehouse_id: data.warehouse_id ?? null,

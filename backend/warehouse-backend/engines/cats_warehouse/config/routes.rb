@@ -49,6 +49,12 @@ Cats::Warehouse::Engine.routes.draw do
       post :reserve_space, on: :member
       get :workflow, on: :member
     end
+    resources :storekeeper_assignments, only: [ :index ] do
+      member do
+        post :accept
+        post :reject
+      end
+    end
     resources :dispatch_orders, only: [ :index, :show, :create, :update ] do
       post :confirm, on: :member
       post :assign, on: :member

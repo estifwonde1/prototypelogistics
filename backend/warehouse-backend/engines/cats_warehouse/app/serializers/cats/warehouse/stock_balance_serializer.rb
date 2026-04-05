@@ -5,7 +5,8 @@ module Cats
                  :inventory_lot_id, :batch_no, :expiry_date, :entered_unit_id, :entered_unit_name,
                  :base_unit_id, :base_unit_name, :base_quantity, :reserved_quantity, :available_quantity, :created_at, :updated_at,
                  :warehouse_name, :warehouse_code, :store_name, :store_code, :stack_code,
-                 :commodity_name, :commodity_batch_no, :unit_name, :unit_abbreviation
+                 :commodity_name, :commodity_batch_no, :unit_name, :unit_abbreviation,
+                 :commodity_status, :days_until_expiry
 
       def warehouse_name
         object.warehouse&.name
@@ -57,6 +58,16 @@ module Cats
 
       def base_unit_name
         object.base_unit&.name
+      end
+
+      def commodity_status
+        object.stack&.commodity_status || "Good"
+      end
+
+      def days_until_expiry
+        return nil unless object.expiry_date
+
+        (object.expiry_date - Date.current).to_i
       end
     end
   end
