@@ -2,8 +2,30 @@
 
 ## Prerequisites
 
-### 1. Restart Backend Service
-After pulling the changes, restart the backend to load the updated code:
+### 1. Fix Storekeeper Assignments (IMPORTANT - Run Once)
+
+The seed data had incorrect assignments where storekeeper 2 was assigned to 3 stores instead of 1. Run this fix script:
+
+```bash
+cd backend/warehouse-backend
+docker-compose exec backend rails runner fix_storekeeper_assignments.rb
+```
+
+Expected output:
+```
+Storekeeper 1 (store_keeper@example.com):
+  Current assignments: 1
+  After fix: 1 assignment(s)
+    - Store 1: Bole Central Warehouse Store 1
+
+Storekeeper 2 (store_keeper2@example.com):
+  Current assignments: 3
+  After fix: 1 assignment(s)
+    - Store 4: Yeka Logistics Warehouse Store 2
+```
+
+### 2. Restart Backend Service
+After pulling the changes AND running the fix script, restart the backend to load the updated code:
 
 ```bash
 cd backend/warehouse-backend
@@ -12,7 +34,7 @@ docker-compose restart backend
 
 Wait about 30 seconds for the backend to fully start.
 
-### 2. Verify Services are Running
+### 3. Verify Services are Running
 ```bash
 # Check backend (should show "healthy")
 docker-compose ps
