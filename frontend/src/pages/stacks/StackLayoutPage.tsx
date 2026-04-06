@@ -219,8 +219,8 @@ export default function StackLayoutPage() {
     [resolvedStoreId, stacks]
   );
 
-  const commodityOptions = useMemo(() => buildCommodityOptions(stacks), [stacks]);
-  const unitOptions = useMemo(() => buildUnitOptions(stacks), [stacks]);
+  const commodityOptions = useMemo(() => buildCommodityOptions(storeStacks), [storeStacks]);
+  const unitOptions = useMemo(() => buildUnitOptions(storeStacks), [storeStacks]);
 
   const form = useForm<StackFormValues>({
     initialValues: createInitialValues(storeId),

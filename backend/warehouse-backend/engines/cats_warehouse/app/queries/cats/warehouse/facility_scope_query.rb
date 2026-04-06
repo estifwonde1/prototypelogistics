@@ -54,8 +54,10 @@ module Cats
 
       def stores_scope
         return scoped_relation if access.admin?
-        return scoped_relation.where(warehouse_id: access.accessible_warehouse_ids) if access.hub_manager? || access.warehouse_manager?
+        # Storekeeper role takes precedence - they should only see their assigned stores
+        # even if they have other roles like Officer
         return scoped_relation.where(id: access.assigned_store_ids) if access.storekeeper?
+        return scoped_relation.where(warehouse_id: access.accessible_warehouse_ids) if access.hub_manager? || access.warehouse_manager?
         return scoped_relation if access.officer?
 
         scoped_relation.none
