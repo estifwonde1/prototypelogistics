@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -13,13 +13,63 @@ import {
   Select,
 } from '@mantine/core';
 import { IconPlus, IconSearch, IconEye } from '@tabler/icons-react';
-import { getReceiptOrders } from '../../api/receiptOrders';
+import { getReceiptOrders, type ReceiptOrder } from '../../api/receiptOrders';
 import { getWarehouses } from '../../api/warehouses';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
 import { usePermission } from '../../hooks/usePermission';
+
+/** Matches Rails `ReceiptOrderSerializer#status` (enum value + `.titleize`). */
+const RECEIPT_ORDER_STATUS_FILTER_OPTIONS = [
+  { value: 'Draft', label: 'Draft' },
+  { value: 'Assigned', label: 'Assigned' },
+  { value: 'Reserved', label: 'Reserved' },
+  { value: 'In Progress', label: 'In Progress' },
+  { value: 'Confirmed', label: 'Confirmed' },
+  { value: 'Completed', label: 'Completed' },
+  { value: 'Cancelled', label: 'Cancelled' },
+] as const;
+
+const NO_DESTINATION_WAREHOUSE_VALUE = '__none__';
+
+function normalizeStatusKey(status: string | null | undefined): string {
+  return (status ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+}
+
+function receiptOrderMatchesSearch(order: ReceiptOrder, raw: string): boolean {
+  const q = raw.trim();
+  if (!q) return true;
+
+  const roMatch = /^ro[-\s]?(\d+)$/i.exec(q);
+  if (roMatch) {
+    return order.id === Number(roMatch[1]);
+  }
+
+  if (/^\d+$/.test(q)) {
+    return order.id === Number(q);
+  }
+
+  const lower = q.toLowerCase();
+  const sourceLabel = (
+    order.source_name ||
+    order.name ||
+    (order.source_reference != null ? String(order.source_reference) : '') ||
+    ''
+  ).toLowerCase();
+  const ref = order.reference_no ? String(order.reference_no).toLowerCase() : '';
+  const displayRo = `ro-${order.id}`;
+  return (
+    sourceLabel.includes(lower) ||
+    ref.includes(lower) ||
+    displayRo.includes(lower) ||
+    String(order.id).includes(q)
+  );
+}
 
 function ReceiptOrdersListPage() {
   const navigate = useNavigate();
@@ -38,32 +88,41 @@ function ReceiptOrdersListPage() {
     queryFn: getWarehouses,
   });
 
-  const filteredOrders = orders?.filter((order) => {
-    const sourceLabel = (
-      order.source_name ||
-      order.name ||
-      (order.source_reference != null ? String(order.source_reference) : '') ||
-      ''
-    ).toLowerCase();
-    const matchesSearch =
-      order.id.toString().includes(search) || sourceLabel.includes(search.toLowerCase());
-    const matchesStatus = !statusFilter || order.status === statusFilter;
-    const whId = order.destination_warehouse_id ?? order.warehouse_id;
-    const matchesWarehouse =
-      !warehouseFilter || (whId != null && String(whId) === warehouseFilter);
-    return matchesSearch && matchesStatus && matchesWarehouse;
-  });
+  const filteredOrders = useMemo(() => {
+    if (!orders?.length) return orders;
 
-  const statusOptions = [
-    { value: 'Draft', label: 'Draft' },
-    { value: 'Confirmed', label: 'Confirmed' },
-  ];
+    return orders.filter((order) => {
+      if (!receiptOrderMatchesSearch(order, search)) return false;
 
-  const warehouseOptions =
-    warehouses?.map((w) => ({
+      if (statusFilter) {
+        const selected = normalizeStatusKey(statusFilter);
+        const actual = normalizeStatusKey(order.status);
+        if (selected !== actual) return false;
+      }
+
+      if (warehouseFilter) {
+        if (warehouseFilter === NO_DESTINATION_WAREHOUSE_VALUE) {
+          const whId = order.destination_warehouse_id ?? order.warehouse_id;
+          if (whId != null) return false;
+        } else {
+          const whId = order.destination_warehouse_id ?? order.warehouse_id;
+          if (whId == null || String(whId) !== warehouseFilter) return false;
+        }
+      }
+
+      return true;
+    });
+  }, [orders, search, statusFilter, warehouseFilter]);
+
+  const statusOptions = [...RECEIPT_ORDER_STATUS_FILTER_OPTIONS];
+
+  const warehouseOptions = [
+    { value: NO_DESTINATION_WAREHOUSE_VALUE, label: 'No destination warehouse' },
+    ...(warehouses?.map((w) => ({
       value: w.id.toString(),
       label: w.name,
-    })) || [];
+    })) ?? []),
+  ];
   const canCreateReceiptOrder = can('receipt_orders', 'create');
 
   if (isLoading) {

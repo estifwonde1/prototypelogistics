@@ -56,7 +56,7 @@ export interface ReceiptOrder {
   expected_delivery_date?: string;
   /** Backend serializer field */
   received_date?: string;
-  status: 'Draft' | 'Confirmed' | 'Assigned' | 'Reserved' | 'In Progress' | 'Completed';
+  status: 'Draft' | 'Confirmed' | 'Assigned' | 'Reserved' | 'In Progress' | 'Completed' | 'Cancelled';
   notes?: string;
   description?: string;
   lines?: ReceiptOrderLine[];
