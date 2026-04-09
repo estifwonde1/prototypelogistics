@@ -82,9 +82,17 @@ FactoryBot.define do
 
   factory :cats_core_commodity, class: "Cats::Core::Commodity" do
     batch_no { "BATCH-#{generate(:core_code)}" }
+    name { "Commodity #{generate(:core_name)}" }
     unit_of_measure { association :cats_core_unit_of_measure }
     project { association :cats_core_project }
     quantity { 100 }
     best_use_before { Date.today + 365 }
+  end
+
+  factory :cats_core_transporter, class: "Cats::Core::Transporter" do
+    name { "Transporter #{generate(:core_code)}" }
+    code { generate(:core_code) }
+    address { "Test Address" }
+    contact_phone { "0910000000" }
   end
 end

@@ -1,0 +1,566 @@
+{
+  "version": "3.13.6",
+  "examples": [
+    {
+      "id": "./spec/models/cats/warehouse/validations_spec.rb[1:1]",
+      "description": "validates hub name",
+      "full_description": "Cats::Warehouse model validations validates hub name",
+      "status": "passed",
+      "file_path": "./spec/models/cats/warehouse/validations_spec.rb",
+      "line_number": 4,
+      "run_time": 0.2511324,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/models/cats/warehouse/validations_spec.rb[1:2]",
+      "description": "validates warehouse name",
+      "full_description": "Cats::Warehouse model validations validates warehouse name",
+      "status": "passed",
+      "file_path": "./spec/models/cats/warehouse/validations_spec.rb",
+      "line_number": 10,
+      "run_time": 0.0226115,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/models/cats/warehouse/validations_spec.rb[1:3]",
+      "description": "validates store dimensions and space",
+      "full_description": "Cats::Warehouse model validations validates store dimensions and space",
+      "status": "passed",
+      "file_path": "./spec/models/cats/warehouse/validations_spec.rb",
+      "line_number": 16,
+      "run_time": 0.0300088,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/models/cats/warehouse/validations_spec.rb[1:4]",
+      "description": "validates stack dimensions",
+      "full_description": "Cats::Warehouse model validations validates stack dimensions",
+      "status": "passed",
+      "file_path": "./spec/models/cats/warehouse/validations_spec.rb",
+      "line_number": 23,
+      "run_time": 0.1091396,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/models/cats/warehouse/validations_spec.rb[1:5]",
+      "description": "validates stock balance quantity",
+      "full_description": "Cats::Warehouse model validations validates stock balance quantity",
+      "status": "passed",
+      "file_path": "./spec/models/cats/warehouse/validations_spec.rb",
+      "line_number": 29,
+      "run_time": 0.0281078,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/models/cats/warehouse/validations_spec.rb[1:6]",
+      "description": "validates GRN received_on",
+      "full_description": "Cats::Warehouse model validations validates GRN received_on",
+      "status": "passed",
+      "file_path": "./spec/models/cats/warehouse/validations_spec.rb",
+      "line_number": 35,
+      "run_time": 0.1306899,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/models/cats/warehouse/validations_spec.rb[1:7]",
+      "description": "validates GIN issued_on",
+      "full_description": "Cats::Warehouse model validations validates GIN issued_on",
+      "status": "passed",
+      "file_path": "./spec/models/cats/warehouse/validations_spec.rb",
+      "line_number": 41,
+      "run_time": 0.0370266,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/models/cats/warehouse/validations_spec.rb[1:8]",
+      "description": "validates inspection inspected_on",
+      "full_description": "Cats::Warehouse model validations validates inspection inspected_on",
+      "status": "passed",
+      "file_path": "./spec/models/cats/warehouse/validations_spec.rb",
+      "line_number": 47,
+      "run_time": 0.0491823,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/models/cats/warehouse/validations_spec.rb[1:9]",
+      "description": "validates waybill issued_on",
+      "full_description": "Cats::Warehouse model validations validates waybill issued_on",
+      "status": "passed",
+      "file_path": "./spec/models/cats/warehouse/validations_spec.rb",
+      "line_number": 53,
+      "run_time": 0.0252774,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/admin_roles_spec.rb[1:1]",
+      "description": "lists roles for the warehouse module",
+      "full_description": "Cats Warehouse Admin Roles lists roles for the warehouse module",
+      "status": "passed",
+      "file_path": "./spec/requests/cats_warehouse/admin_roles_spec.rb",
+      "line_number": 4,
+      "run_time": 0.5177303,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/admin_user_assignments_spec.rb[1:1]",
+      "description": "bulk updates assignments for a hub manager",
+      "full_description": "Cats Warehouse Admin UserAssignments bulk updates assignments for a hub manager",
+      "status": "passed",
+      "file_path": "./spec/requests/cats_warehouse/admin_user_assignments_spec.rb",
+      "line_number": 4,
+      "run_time": 0.4038112,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/admin_user_assignments_spec.rb[1:2]",
+      "description": "deletes an assignment",
+      "full_description": "Cats Warehouse Admin UserAssignments deletes an assignment",
+      "status": "passed",
+      "file_path": "./spec/requests/cats_warehouse/admin_user_assignments_spec.rb",
+      "line_number": 26,
+      "run_time": 0.3206957,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/admin_user_assignments_spec.rb[1:3]",
+      "description": "rejects invalid bulk payloads",
+      "full_description": "Cats Warehouse Admin UserAssignments rejects invalid bulk payloads",
+      "status": "passed",
+      "file_path": "./spec/requests/cats_warehouse/admin_user_assignments_spec.rb",
+      "line_number": 35,
+      "run_time": 0.2701531,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/admin_user_assignments_spec.rb[1:4]",
+      "description": "rejects non-admin access",
+      "full_description": "Cats Warehouse Admin UserAssignments rejects non-admin access",
+      "status": "passed",
+      "file_path": "./spec/requests/cats_warehouse/admin_user_assignments_spec.rb",
+      "line_number": 49,
+      "run_time": 0.2437619,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/admin_users_spec.rb[1:1]",
+      "description": "lists users filtered by warehouse and role",
+      "full_description": "Cats Warehouse Admin Users lists users filtered by warehouse and role",
+      "status": "passed",
+      "file_path": "./spec/requests/cats_warehouse/admin_users_spec.rb",
+      "line_number": 4,
+      "run_time": 0.3522375,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/admin_users_spec.rb[1:2]",
+      "description": "creates a user with role",
+      "full_description": "Cats Warehouse Admin Users creates a user with role",
+      "status": "passed",
+      "file_path": "./spec/requests/cats_warehouse/admin_users_spec.rb",
+      "line_number": 20,
+      "run_time": 0.3453834,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/admin_users_spec.rb[1:3]",
+      "description": "updates and deletes a user",
+      "full_description": "Cats Warehouse Admin Users updates and deletes a user",
+      "status": "passed",
+      "file_path": "./spec/requests/cats_warehouse/admin_users_spec.rb",
+      "line_number": 42,
+      "run_time": 0.6052526,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/admin_users_spec.rb[1:4]",
+      "description": "rejects non-admin access",
+      "full_description": "Cats Warehouse Admin Users rejects non-admin access",
+      "status": "passed",
+      "file_path": "./spec/requests/cats_warehouse/admin_users_spec.rb",
+      "line_number": 58,
+      "run_time": 0.2282076,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/document_contracts_spec.rb[1:1:1]",
+      "description": "accepts legacy grn_items and normalizes them to items",
+      "full_description": "Cats::Warehouse document contract aliases POST /cats_warehouse/v1/grns accepts legacy grn_items and normalizes them to items",
+      "status": "failed",
+      "file_path": "./spec/requests/cats_warehouse/document_contracts_spec.rb",
+      "line_number": 12,
+      "run_time": 0.378273,
+      "pending_message": null,
+      "exception": {
+        "class": "RSpec::Expectations::ExpectationNotMetError",
+        "message": "expected the response to have status code :created (201) but it was :unprocessable_entity (422)",
+        "backtrace": [
+          "./spec/requests/cats_warehouse/document_contracts_spec.rb:32:in 'block (3 levels) in <main>'"
+        ]
+      }
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/document_contracts_spec.rb[1:2:1]",
+      "description": "accepts legacy gin_items and normalizes them to items",
+      "full_description": "Cats::Warehouse document contract aliases POST /cats_warehouse/v1/gins accepts legacy gin_items and normalizes them to items",
+      "status": "failed",
+      "file_path": "./spec/requests/cats_warehouse/document_contracts_spec.rb",
+      "line_number": 38,
+      "run_time": 0.4020376,
+      "pending_message": null,
+      "exception": {
+        "class": "RSpec::Expectations::ExpectationNotMetError",
+        "message": "expected the response to have status code :created (201) but it was :unprocessable_entity (422)",
+        "backtrace": [
+          "./spec/requests/cats_warehouse/document_contracts_spec.rb:58:in 'block (3 levels) in <main>'"
+        ]
+      }
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/document_contracts_spec.rb[1:3:1]",
+      "description": "accepts legacy inspection_items and normalizes them to items",
+      "full_description": "Cats::Warehouse document contract aliases POST /cats_warehouse/v1/inspections accepts legacy inspection_items and normalizes them to items",
+      "status": "failed",
+      "file_path": "./spec/requests/cats_warehouse/document_contracts_spec.rb",
+      "line_number": 64,
+      "run_time": 0.3256957,
+      "pending_message": null,
+      "exception": {
+        "class": "RSpec::Expectations::ExpectationNotMetError",
+        "message": "expected the response to have status code :created (201) but it was :unprocessable_entity (422)",
+        "backtrace": [
+          "./spec/requests/cats_warehouse/document_contracts_spec.rb:87:in 'block (3 levels) in <main>'"
+        ]
+      }
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/document_contracts_spec.rb[1:4:1]",
+      "description": "accepts legacy waybill_items and waybill_transport aliases",
+      "full_description": "Cats::Warehouse document contract aliases POST /cats_warehouse/v1/waybills accepts legacy waybill_items and waybill_transport aliases",
+      "status": "failed",
+      "file_path": "./spec/requests/cats_warehouse/document_contracts_spec.rb",
+      "line_number": 102,
+      "run_time": 0.3443352,
+      "pending_message": null,
+      "exception": {
+        "class": "RSpec::Expectations::ExpectationNotMetError",
+        "message": "expected the response to have status code :created (201) but it was :unprocessable_entity (422)",
+        "backtrace": [
+          "./spec/requests/cats_warehouse/document_contracts_spec.rb:128:in 'block (3 levels) in <main>'"
+        ]
+      }
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/documents_spec.rb[1:1]",
+      "description": "lists document endpoints",
+      "full_description": "Cats Warehouse Documents lists document endpoints",
+      "status": "passed",
+      "file_path": "./spec/requests/cats_warehouse/documents_spec.rb",
+      "line_number": 4,
+      "run_time": 1.7260156,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/hubs_spec.rb[1:1]",
+      "description": "supports CRUD without exposing location_id in the overview payload",
+      "full_description": "Cats Warehouse Hubs supports CRUD without exposing location_id in the overview payload",
+      "status": "passed",
+      "file_path": "./spec/requests/cats_warehouse/hubs_spec.rb",
+      "line_number": 53,
+      "run_time": 1.0920142,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/hubs_spec.rb[1:2]",
+      "description": "returns computed capacity totals from child warehouses",
+      "full_description": "Cats Warehouse Hubs returns computed capacity totals from child warehouses",
+      "status": "passed",
+      "file_path": "./spec/requests/cats_warehouse/hubs_spec.rb",
+      "line_number": 80,
+      "run_time": 0.5382523,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/hubs_spec.rb[1:3]",
+      "description": "returns live Hub Manager contact details from assignments",
+      "full_description": "Cats Warehouse Hubs returns live Hub Manager contact details from assignments",
+      "status": "passed",
+      "file_path": "./spec/requests/cats_warehouse/hubs_spec.rb",
+      "line_number": 103,
+      "run_time": 0.571795,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/locations_spec.rb[1:1]",
+      "description": "lists regions, zones, and woredas",
+      "full_description": "Cats Warehouse Locations lists regions, zones, and woredas",
+      "status": "failed",
+      "file_path": "./spec/requests/cats_warehouse/locations_spec.rb",
+      "line_number": 4,
+      "run_time": 0.5152662,
+      "pending_message": null,
+      "exception": {
+        "class": "RSpec::Expectations::ExpectationNotMetError",
+        "message": "expected the response to have status code :ok (200) but it was :not_found (404)",
+        "backtrace": [
+          "./spec/requests/cats_warehouse/locations_spec.rb:12:in 'block (2 levels) in <main>'"
+        ]
+      }
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/locations_spec.rb[1:2]",
+      "description": "lists hubs, warehouses, and stores",
+      "full_description": "Cats Warehouse Locations lists hubs, warehouses, and stores",
+      "status": "passed",
+      "file_path": "./spec/requests/cats_warehouse/locations_spec.rb",
+      "line_number": 19,
+      "run_time": 0.7796098,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/locations_spec.rb[1:3]",
+      "description": "rejects non-admin access to location endpoints",
+      "full_description": "Cats Warehouse Locations rejects non-admin access to location endpoints",
+      "status": "passed",
+      "file_path": "./spec/requests/cats_warehouse/locations_spec.rb",
+      "line_number": 34,
+      "run_time": 0.2429253,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb[1:1:1]",
+      "description": "increases stock balance and exposes readable bin card fields",
+      "full_description": "Cats::Warehouse Phase 1 inventory workflows GRN confirmation increases stock balance and exposes readable bin card fields",
+      "status": "failed",
+      "file_path": "./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb",
+      "line_number": 132,
+      "run_time": 0.4253211,
+      "pending_message": null,
+      "exception": {
+        "class": "RSpec::Expectations::ExpectationNotMetError",
+        "message": "expected the response to have status code :created (201) but it was :unprocessable_entity (422)",
+        "backtrace": [
+          "./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb:73:in 'RSpec::ExampleGroups::CatsWarehousePhase1InventoryWorkflows#create_grn!'",
+          "./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb:133:in 'block (3 levels) in <main>'"
+        ]
+      }
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb[1:2:1]",
+      "description": "decreases stock and blocks negative inventory",
+      "full_description": "Cats::Warehouse Phase 1 inventory workflows GIN confirmation decreases stock and blocks negative inventory",
+      "status": "failed",
+      "file_path": "./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb",
+      "line_number": 166,
+      "run_time": 0.4627358,
+      "pending_message": null,
+      "exception": {
+        "class": "RSpec::Expectations::ExpectationNotMetError",
+        "message": "expected the response to have status code :created (201) but it was :unprocessable_entity (422)",
+        "backtrace": [
+          "./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb:73:in 'RSpec::ExampleGroups::CatsWarehousePhase1InventoryWorkflows#create_grn!'",
+          "./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb:167:in 'block (3 levels) in <main>'"
+        ]
+      }
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb[1:3:1]",
+      "description": "applies stock adjustments and blocks losses above available stock",
+      "full_description": "Cats::Warehouse Phase 1 inventory workflows Inspection confirmation applies stock adjustments and blocks losses above available stock",
+      "status": "failed",
+      "file_path": "./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb",
+      "line_number": 203,
+      "run_time": 0.3426278,
+      "pending_message": null,
+      "exception": {
+        "class": "RSpec::Expectations::ExpectationNotMetError",
+        "message": "expected the response to have status code :created (201) but it was :unprocessable_entity (422)",
+        "backtrace": [
+          "./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb:73:in 'RSpec::ExampleGroups::CatsWarehousePhase1InventoryWorkflows#create_grn!'",
+          "./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb:204:in 'block (3 levels) in <main>'"
+        ]
+      }
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb[1:4:1]",
+      "description": "returns only balances inside the assigned warehouse scope",
+      "full_description": "Cats::Warehouse Phase 1 inventory workflows assignment scoped inventory visibility returns only balances inside the assigned warehouse scope",
+      "status": "passed",
+      "file_path": "./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb",
+      "line_number": 253,
+      "run_time": 0.5156747,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb[1:5:1]",
+      "description": "allows draft GRN creation within the assigned store and blocks confirmation",
+      "full_description": "Cats::Warehouse Phase 1 inventory workflows storekeeper workflow scope allows draft GRN creation within the assigned store and blocks confirmation",
+      "status": "failed",
+      "file_path": "./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb",
+      "line_number": 323,
+      "run_time": 0.3002034,
+      "pending_message": null,
+      "exception": {
+        "class": "RSpec::Expectations::ExpectationNotMetError",
+        "message": "expected the response to have status code :created (201) but it was :unprocessable_entity (422)",
+        "backtrace": [
+          "./spec/requests/cats_warehouse/phase1_inventory_workflows_spec.rb:355:in 'block (3 levels) in <main>'"
+        ]
+      }
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/stacks_spec.rb[1:1]",
+      "description": "supports CRUD",
+      "full_description": "Cats Warehouse Stacks supports CRUD",
+      "status": "passed",
+      "file_path": "./spec/requests/cats_warehouse/stacks_spec.rb",
+      "line_number": 4,
+      "run_time": 1.0656518,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/stores_spec.rb[1:1]",
+      "description": "supports CRUD",
+      "full_description": "Cats Warehouse Stores supports CRUD",
+      "status": "passed",
+      "file_path": "./spec/requests/cats_warehouse/stores_spec.rb",
+      "line_number": 4,
+      "run_time": 1.1130667,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/warehouses_spec.rb[1:1]",
+      "description": "derives warehouse location and managed_under from the hub",
+      "full_description": "Cats Warehouse Warehouses derives warehouse location and managed_under from the hub",
+      "status": "passed",
+      "file_path": "./spec/requests/cats_warehouse/warehouses_spec.rb",
+      "line_number": 44,
+      "run_time": 1.1650387,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/warehouses_spec.rb[1:2]",
+      "description": "requires a rental agreement document for rental warehouses",
+      "full_description": "Cats Warehouse Warehouses requires a rental agreement document for rental warehouses",
+      "status": "passed",
+      "file_path": "./spec/requests/cats_warehouse/warehouses_spec.rb",
+      "line_number": 74,
+      "run_time": 0.2999716,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/requests/cats_warehouse/warehouses_spec.rb[1:3]",
+      "description": "accepts rental warehouses when a rental agreement document is attached",
+      "full_description": "Cats Warehouse Warehouses accepts rental warehouses when a rental agreement document is attached",
+      "status": "passed",
+      "file_path": "./spec/requests/cats_warehouse/warehouses_spec.rb",
+      "line_number": 88,
+      "run_time": 0.4303042,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/requests/cats_warehouse_auth_spec.rb[1:1]",
+      "description": "returns a token for valid credentials",
+      "full_description": "Cats::Warehouse Auth returns a token for valid credentials",
+      "status": "failed",
+      "file_path": "./spec/requests/cats_warehouse_auth_spec.rb",
+      "line_number": 4,
+      "run_time": 0.2713483,
+      "pending_message": null,
+      "exception": {
+        "class": "RSpec::Expectations::ExpectationNotMetError",
+        "message": "expected the response to have status code :ok (200) but it was :not_found (404)",
+        "backtrace": [
+          "./spec/requests/cats_warehouse_auth_spec.rb:18:in 'block (2 levels) in <main>'"
+        ]
+      }
+    },
+    {
+      "id": "./spec/requests/cats_warehouse_stock_balances_spec.rb[1:1]",
+      "description": "lists stock balances with auth",
+      "full_description": "Cats::Warehouse StockBalances lists stock balances with auth",
+      "status": "passed",
+      "file_path": "./spec/requests/cats_warehouse_stock_balances_spec.rb",
+      "line_number": 4,
+      "run_time": 0.252512,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/services/cats/warehouse/gin_confirmer_spec.rb[1:1]",
+      "description": "confirms GIN and reduces stock/stack",
+      "full_description": "Cats::Warehouse::GinConfirmer confirms GIN and reduces stock/stack",
+      "status": "passed",
+      "file_path": "./spec/services/cats/warehouse/gin_confirmer_spec.rb",
+      "line_number": 4,
+      "run_time": 0.1936983,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/services/cats/warehouse/grn_confirmer_spec.rb[1:1]",
+      "description": "confirms GRN and updates stock/stack",
+      "full_description": "Cats::Warehouse::GrnConfirmer confirms GRN and updates stock/stack",
+      "status": "passed",
+      "file_path": "./spec/services/cats/warehouse/grn_confirmer_spec.rb",
+      "line_number": 4,
+      "run_time": 0.14606,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/services/cats/warehouse/grn_creator_spec.rb[1:1]",
+      "description": "creates a GRN with items",
+      "full_description": "Cats::Warehouse::GrnCreator creates a GRN with items",
+      "status": "passed",
+      "file_path": "./spec/services/cats/warehouse/grn_creator_spec.rb",
+      "line_number": 4,
+      "run_time": 0.0868103,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/services/cats/warehouse/grn_creator_spec.rb[1:2]",
+      "description": "raises when items are missing",
+      "full_description": "Cats::Warehouse::GrnCreator raises when items are missing",
+      "status": "passed",
+      "file_path": "./spec/services/cats/warehouse/grn_creator_spec.rb",
+      "line_number": 30,
+      "run_time": 0.0486779,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/services/cats/warehouse/inspection_confirmer_spec.rb[1:1]",
+      "description": "confirms inspection and applies GRN item updates",
+      "full_description": "Cats::Warehouse::InspectionConfirmer confirms inspection and applies GRN item updates",
+      "status": "passed",
+      "file_path": "./spec/services/cats/warehouse/inspection_confirmer_spec.rb",
+      "line_number": 4,
+      "run_time": 0.1763157,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/services/cats/warehouse/waybill_confirmer_spec.rb[1:1]",
+      "description": "confirms a waybill",
+      "full_description": "Cats::Warehouse::WaybillConfirmer confirms a waybill",
+      "status": "passed",
+      "file_path": "./spec/services/cats/warehouse/waybill_confirmer_spec.rb",
+      "line_number": 4,
+      "run_time": 0.0224698,
+      "pending_message": null
+    },
+    {
+      "id": "./spec/services/cats/warehouse/waybill_creator_spec.rb[1:1]",
+      "description": "creates a waybill with transport and items",
+      "full_description": "Cats::Warehouse::WaybillCreator creates a waybill with transport and items",
+      "status": "passed",
+      "file_path": "./spec/services/cats/warehouse/waybill_creator_spec.rb",
+      "line_number": 4,
+      "run_time": 0.0998701,
+      "pending_message": null
+    }
+  ],
+  "summary": {
+    "duration": 18.3228503,
+    "example_count": 48,
+    "failure_count": 10,
+    "pending_count": 0,
+    "errors_outside_of_examples_count": 0
+  },
+  "summary_line": "48 examples, 10 failures"
+}

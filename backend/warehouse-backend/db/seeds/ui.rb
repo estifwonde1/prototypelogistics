@@ -17,6 +17,7 @@ roles = {
   hub_manager: find_or_create_with(Cats::Core::Role, { name: "Hub Manager", application_module: application_module }),
   warehouse_manager: find_or_create_with(Cats::Core::Role, { name: "Warehouse Manager", application_module: application_module }),
   store_keeper: find_or_create_with(Cats::Core::Role, { name: "Storekeeper", application_module: application_module }),
+  officer: find_or_create_with(Cats::Core::Role, { name: "Officer", application_module: application_module }),
   admin: find_or_create_with(Cats::Core::Role, { name: "Admin", application_module: application_module }),
   superadmin: find_or_create_with(Cats::Core::Role, { name: "Superadmin", application_module: application_module })
 }
@@ -31,6 +32,7 @@ hub_management_menu = find_or_create_with(Cats::Core::Menu, { label: "Hub Manage
 hub_operations_menu = find_or_create_with(Cats::Core::Menu, { label: "Hub Operation", application_module: application_module }, { icon: "pi pi-globe" })
 warehouse_management_menu = find_or_create_with(Cats::Core::Menu, { label: "Warehouse Management", application_module: application_module }, { icon: "pi pi-telegram" })
 warehouse_operations_menu = find_or_create_with(Cats::Core::Menu, { label: "Warehouse Operation", application_module: application_module }, { icon: "pi pi-building" })
+officer_operations_menu = find_or_create_with(Cats::Core::Menu, { label: "Officer Operation", application_module: application_module }, { icon: "pi pi-briefcase" })
 password_mgt_menu = find_or_create_with(Cats::Core::Menu, { label: "Manage Password", application_module: application_module }, { icon: "fa fa-paypal" })
 
 # Admin menu items
@@ -57,6 +59,11 @@ find_or_create_with(Cats::Core::MenuItem, { label: "Dispatch", menu: warehouse_m
 find_or_create_with(Cats::Core::MenuItem, { label: "Download GRN", menu: warehouse_operations_menu, route: "/main/warehouse-receipts/goods-receipt-note" }, { icon: "pi pi-download" })
 find_or_create_with(Cats::Core::MenuItem, { label: "Download GIN", menu: warehouse_operations_menu, route: "/main/warehouse-dispatches/goods-issue-note" }, { icon: "pi pi-download" })
 
+# Officer menu items
+find_or_create_with(Cats::Core::MenuItem, { label: "Receipt Orders", menu: officer_operations_menu, route: "/main/officer/receipt-orders" }, { icon: "pi pi-file-import" })
+find_or_create_with(Cats::Core::MenuItem, { label: "Dispatch Orders", menu: officer_operations_menu, route: "/main/officer/dispatch-orders" }, { icon: "pi pi-file-export" })
+find_or_create_with(Cats::Core::MenuItem, { label: "Dashboard", menu: officer_operations_menu, route: "/main/officer/dashboard" }, { icon: "pi pi-chart-bar" })
+
 puts "Assigning menus to roles..."
 find_or_create_with(Cats::Core::RoleMenu, { role: roles[:warehouse_manager], menu: warehouse_management_menu })
 find_or_create_with(Cats::Core::RoleMenu, { role: roles[:warehouse_manager], menu: warehouse_operations_menu })
@@ -64,14 +71,14 @@ find_or_create_with(Cats::Core::RoleMenu, { role: roles[:store_keeper], menu: st
 find_or_create_with(Cats::Core::RoleMenu, { role: roles[:store_keeper], menu: receipt_management_menu })
 find_or_create_with(Cats::Core::RoleMenu, { role: roles[:admin], menu: user_mgmt_menu })
 find_or_create_with(Cats::Core::RoleMenu, { role: roles[:admin], menu: setup_menu })
-find_or_create_with(Cats::Core::RoleMenu, { role: roles[:hub_manager], menu: hub_management_menu })
 find_or_create_with(Cats::Core::RoleMenu, { role: roles[:hub_manager], menu: hub_operations_menu })
+find_or_create_with(Cats::Core::RoleMenu, { role: roles[:officer], menu: officer_operations_menu })
 find_or_create_with(Cats::Core::RoleMenu, { role: roles[:admin], menu: password_mgt_menu })
 
 # Superadmin gets all menus and menu items
 [setup_menu, user_mgmt_menu, store_management_menu, report_menu, receipt_management_menu,
  dispatch_management_menu, hub_management_menu, hub_operations_menu,
- warehouse_management_menu, warehouse_operations_menu, password_mgt_menu].each do |menu|
+ warehouse_management_menu, warehouse_operations_menu, officer_operations_menu, password_mgt_menu].each do |menu|
   role_menu = find_or_create_with(Cats::Core::RoleMenu, { role: roles[:superadmin], menu: menu })
   menu.menu_items.each do |item|
     role_menu.menu_items << item unless role_menu.menu_items.exists?(item.id)

@@ -8,7 +8,7 @@ module Cats
       end
 
       def index?
-        admin? || hub_manager? || warehouse_manager? || storekeeper?
+        admin? || hub_manager? || warehouse_manager? || storekeeper? || officer?
       end
 
       def show?
@@ -29,6 +29,12 @@ module Cats
 
         assigned = AccessContext.new(user: user).assigned_warehouse_ids.map(&:to_i)
         assigned.include?(record.warehouse_id.to_i)
+      end
+
+      private
+
+      def officer?
+        user&.has_role?("Officer")
       end
     end
   end

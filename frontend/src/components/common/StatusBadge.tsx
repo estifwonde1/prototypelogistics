@@ -20,6 +20,14 @@ export function StatusBadge({ status }: StatusBadgeProps) {
         return 'blue';
       case 'confirmed':
         return 'green';
+      case 'assigned':
+        return 'violet';
+      case 'reserved':
+        return 'indigo';
+      case 'in_progress':
+        return 'cyan';
+      case 'completed':
+        return 'teal';
       case 'cancelled':
         return 'red';
       default:

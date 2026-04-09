@@ -3,7 +3,8 @@ require "rails_helper"
 RSpec.describe "Cats Warehouse Locations", type: :request do
   it "lists regions, zones, and woredas" do
     headers = auth_headers(role: "Admin")
-    region = Cats::Core::Location.find_by(name: "Addis Ababa")
+    region = Cats::Core::Location.find_or_create_by!(name: "Addis Ababa", location_type: Cats::Core::Location::REGION, code: "AA")
+    zone = Cats::Core::Location.find_or_create_by!(name: "Some Zone", location_type: Cats::Core::Location::ZONE, code: "SZ", ancestry: region.id.to_s)
 
     get "/cats_warehouse/v1/locations/regions", headers: headers
     expect(response).to have_http_status(:ok)

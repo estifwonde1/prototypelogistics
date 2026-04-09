@@ -66,6 +66,10 @@ module Cats
       def dispatcher?
         user&.has_role?("Dispatcher")
       end
+
+      def officer?
+        user&.has_role?("Officer")
+      end
     end
   end
 end

@@ -1,7 +1,7 @@
 module Cats
   module Warehouse
     class HubSerializer < ApplicationSerializer
-      attributes :id, :code, :name, :hub_type, :status, :description, :location_id, :location_name,
+      attributes :id, :code, :name, :hub_type, :status, :description, :location_name,
                  :subcity_name, :woreda_name, :geo_id, :created_at, :updated_at, :hub_contacts
 
       has_one :hub_capacity, serializer: HubCapacitySerializer

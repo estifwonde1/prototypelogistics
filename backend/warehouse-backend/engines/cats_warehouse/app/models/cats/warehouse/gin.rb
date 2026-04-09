@@ -8,6 +8,8 @@ module Cats
       belongs_to :destination, polymorphic: true, optional: true
       belongs_to :issued_by, class_name: "Cats::Core::User"
       belongs_to :approved_by, class_name: "Cats::Core::User", optional: true
+      belongs_to :dispatch_order, class_name: "Cats::Warehouse::DispatchOrder", optional: true
+      belongs_to :generated_from_waybill, class_name: "Cats::Warehouse::Waybill", optional: true
 
       has_many :gin_items, class_name: "Cats::Warehouse::GinItem", dependent: :destroy
 

@@ -24,7 +24,9 @@ module Cats
           items: payload[:items],
           transport: payload[:transport],
           dispatch: resolve_dispatch(payload[:dispatch_id]),
-          status: payload[:status]
+          status: payload[:status],
+          dispatch_order: payload[:dispatch_order_id].present? ? DispatchOrder.find(payload[:dispatch_order_id]) : nil,
+          prepared_by: current_user
         ).call
 
         render_resource(waybill, status: :created, serializer: WaybillSerializer)
@@ -33,7 +35,7 @@ module Cats
       def confirm
         waybill = policy_scope(Waybill).find(params[:id])
         authorize waybill, :confirm?
-        WaybillConfirmer.new(waybill: waybill).call
+        WaybillConfirmer.new(waybill: waybill, actor: current_user).call
         render_resource(waybill, serializer: WaybillSerializer)
       end
 
@@ -52,6 +54,7 @@ module Cats
           :source_location_id,
           :destination_location_id,
           :dispatch_id,
+          :dispatch_order_id,
           :status,
           transport: [
             :transporter_id,
@@ -62,7 +65,13 @@ module Cats
           items: [
             :commodity_id,
             :quantity,
-            :unit_id
+            :unit_id,
+            :inventory_lot_id,
+            :batch_no,
+            :expiry_date,
+            :entered_unit_id,
+            :base_unit_id,
+            :base_quantity
           ]
         )
       end

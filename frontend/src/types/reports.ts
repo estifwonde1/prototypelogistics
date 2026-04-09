@@ -21,4 +21,12 @@ export interface BinCardEntry {
   destination_store_name?: string | null;
   source_warehouse_name?: string | null;
   destination_warehouse_name?: string | null;
+  // Phase 2: Lot/UOM fields
+  batch_no?: string | null;
+  expiry_date?: string | null;
+  inventory_lot_id?: number | null;
+  entered_unit_name?: string | null;
+  entered_quantity?: number | null;
+  base_unit_name?: string | null;
+  base_quantity?: number | null;
 }

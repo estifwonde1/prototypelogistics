@@ -16,6 +16,12 @@ module Cats
         payload = grn_params
 
         authorize Grn
+        receipt_order =
+          payload[:receipt_order_id].present? ? ReceiptOrder.find(payload[:receipt_order_id]) : nil
+        if receipt_order.present? && payload[:warehouse_id].present? && receipt_order.warehouse_id.to_i != payload[:warehouse_id].to_i
+          raise ArgumentError, "receipt order must belong to the selected warehouse"
+        end
+
         grn = GrnCreator.new(
           warehouse: accessible_document_warehouse_scope.find(payload[:warehouse_id]),
           received_on: payload[:received_on],
@@ -23,8 +29,12 @@ module Cats
           items: payload[:items],
           source: PolymorphicReferenceResolver.resolve_source(payload[:source_type], payload[:source_id]),
           reference_no: payload[:reference_no],
-          status: payload[:status] || "Draft"
+          status: payload[:status] || "draft"
         ).call
+
+        if receipt_order.present?
+          grn.update!(receipt_order: receipt_order, workflow_status: grn.workflow_status.presence || "Generated")
+        end
 
         render_grn_payload(grn, status: :created)
       end
@@ -42,7 +52,7 @@ module Cats
       private
 
       def render_grn_payload(grn, status: :ok)
-        grn = Grn.includes(:warehouse, :grn_items).find(grn.id)
+        grn = Grn.includes(:warehouse, :grn_items, receipt_order: [:hub, :warehouse]).find(grn.id)
         payload = ActiveModelSerializers::SerializableResource.new(
           grn,
           serializer: GrnSerializer
@@ -62,10 +72,19 @@ module Cats
           :status,
           :source_type,
           :source_id,
+          :receipt_order_id,
           items: [
             :commodity_id,
             :quantity,
             :unit_id,
+            :inventory_lot_id,
+            :lot_code,
+            :batch_no,
+            :expiry_date,
+            :entered_unit_id,
+            :base_unit_id,
+            :base_quantity,
+            :manufactured_on,
             :quality_status,
             :store_id,
             :stack_id

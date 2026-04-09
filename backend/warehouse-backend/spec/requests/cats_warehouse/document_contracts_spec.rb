@@ -90,6 +90,7 @@ RSpec.describe "Cats::Warehouse document contract aliases", type: :request do
   end
 
   describe "POST /cats_warehouse/v1/waybills" do
+    let!(:destination_location) { create(:cats_core_location, code: "LOC-DEST", name: "Destination Location") }
     let!(:transporter) do
       Cats::Core::Transporter.create!(
         code: "TR-001",
@@ -106,7 +107,7 @@ RSpec.describe "Cats::Warehouse document contract aliases", type: :request do
                reference_no: "WB-LEGACY-1",
                issued_on: Date.current.to_s,
                source_location_id: location.id,
-               destination_location_id: location.id,
+               destination_location_id: destination_location.id,
                waybill_transport: {
                  transporter_id: transporter.id,
                  vehicle_plate_no: "ABC-123",

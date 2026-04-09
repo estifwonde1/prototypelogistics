@@ -11,6 +11,14 @@ import { getDefaultRouteForRole, type RoleSlug } from './contracts/warehouse';
 // Lazy load pages
 const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage'));
+const OfficerDashboardPage = lazy(() => import('./pages/officer/OfficerDashboardPage'));
+const FacilitiesOverviewPage = lazy(() => import('./pages/officer/FacilitiesOverviewPage'));
+const ReceiptOrdersListPage = lazy(() => import('./pages/officer/ReceiptOrdersListPage'));
+const ReceiptOrderFormPage = lazy(() => import('./pages/officer/ReceiptOrderFormPage'));
+const ReceiptOrderDetailPage = lazy(() => import('./pages/officer/ReceiptOrderDetailPage'));
+const DispatchOrdersListPage = lazy(() => import('./pages/officer/DispatchOrdersListPage'));
+const DispatchOrderFormPage = lazy(() => import('./pages/officer/DispatchOrderFormPage'));
+const DispatchOrderDetailPage = lazy(() => import('./pages/officer/DispatchOrderDetailPage'));
 const HubListPage = lazy(() => import('./pages/hubs/HubListPage'));
 const HubDetailPage = lazy(() => import('./pages/hubs/HubDetailPage'));
 const HubFormPage = lazy(() => import('./pages/hubs/HubFormPage'));
@@ -39,7 +47,7 @@ const UserAssignmentsPage = lazy(() => import('./pages/admin/assignments/UserAss
 const LocationsSetupPage = lazy(() => import('./pages/admin/setup/LocationsSetupPage'));
 const HubSetupPage = lazy(() => import('./pages/admin/setup/HubSetupPage'));
 const WarehouseSetupPage = lazy(() => import('./pages/admin/setup/WarehouseSetupPage'));
-const ReceiptListPage = lazy(() => import('./pages/receipts/ReceiptListPage'));
+const StorekeeperAssignmentsPage = lazy(() => import('./pages/storekeeper/StorekeeperAssignmentsPage'));
 const DispatchListPage = lazy(() => import('./pages/dispatches/DispatchListPage'));
 const BinCardReportPage = lazy(() => import('./pages/reports/BinCardReportPage'));
 const StackLayoutPage = lazy(() => import('./pages/stacks/StackLayoutPage'));
@@ -125,6 +133,102 @@ export const router = createBrowserRouter([
       {
         path: 'dashboard',
         element: <DashboardPage />,
+      },
+      {
+        path: 'officer/dashboard',
+        element: (
+          <RequirePermission resource="receipt_orders" action="read">
+            <OfficerDashboardPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/facilities',
+        element: (
+          <RequirePermission resource="receipt_orders" action="read">
+            <FacilitiesOverviewPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/receipt-orders',
+        element: (
+          <RequirePermission resource="receipt_orders" action="read">
+            <ReceiptOrdersListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'receipt-orders',
+        element: (
+          <RequirePermission resource="receipt_orders" action="read">
+            <ReceiptOrdersListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/receipt-orders/new',
+        element: (
+          <RequirePermission resource="receipt_orders" action="create">
+            <ReceiptOrderFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/receipt-orders/:id',
+        element: (
+          <RequirePermission resource="receipt_orders" action="read">
+            <ReceiptOrderDetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'receipt-orders/:id',
+        element: (
+          <RequirePermission resource="receipt_orders" action="read">
+            <ReceiptOrderDetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/receipt-orders/:id/edit',
+        element: (
+          <RequirePermission resource="receipt_orders" action="update">
+            <ReceiptOrderFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/dispatch-orders',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <DispatchOrdersListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/dispatch-orders/new',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="create">
+            <DispatchOrderFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/dispatch-orders/:id',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <DispatchOrderDetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/dispatch-orders/:id/edit',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="update">
+            <DispatchOrderFormPage />
+          </RequirePermission>
+        ),
       },
       {
         path: 'hubs',
@@ -345,8 +449,8 @@ export const router = createBrowserRouter([
       {
         path: 'receipts',
         element: (
-          <RequirePermission resource="receipts" action="read">
-            <ReceiptListPage />
+          <RequirePermission resource="receipt_orders" action="read">
+            <ReceiptOrdersListPage />
           </RequirePermission>
         ),
       },
@@ -355,6 +459,14 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission resource="dispatches" action="read">
             <DispatchListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'storekeeper/assignments',
+        element: (
+          <RequirePermission resource="receipt_orders" action="read">
+            <StorekeeperAssignmentsPage />
           </RequirePermission>
         ),
       },

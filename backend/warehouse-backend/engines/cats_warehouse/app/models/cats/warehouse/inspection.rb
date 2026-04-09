@@ -7,6 +7,10 @@ module Cats
       belongs_to :warehouse, class_name: "Cats::Warehouse::Warehouse"
       belongs_to :inspector, class_name: "Cats::Core::User"
       belongs_to :source, polymorphic: true, optional: true
+      belongs_to :receipt_order, class_name: "Cats::Warehouse::ReceiptOrder", optional: true
+      belongs_to :dispatch_order, class_name: "Cats::Warehouse::DispatchOrder", optional: true
+      belongs_to :auto_generated_grn, class_name: "Cats::Warehouse::Grn", optional: true
+      belongs_to :auto_generated_gin, class_name: "Cats::Warehouse::Gin", optional: true
 
       has_many :inspection_items, class_name: "Cats::Warehouse::InspectionItem", dependent: :destroy
 

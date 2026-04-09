@@ -18,6 +18,8 @@ import { getWarehouses } from '../../api/warehouses';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { StatusBadge } from '../../components/common/StatusBadge';
+import { ExpiryBadge } from '../../components/common/ExpiryBadge';
+import { UomConversionDisplay } from '../../components/common/UomConversionDisplay';
 import { notifications } from '@mantine/notifications';
 import { DocumentStatus } from '../../utils/constants';
 import { useState } from 'react';
@@ -122,6 +124,28 @@ function GinDetailPage() {
         )}
       </Group>
 
+      {gin.dispatch_order_id && gin.dispatch_order && (
+        <Card shadow="sm" padding="lg" radius="md" withBorder bg="blue.0">
+          <Group justify="space-between">
+            <div>
+              <Text fw={600} size="sm" c="blue.9">
+                Generated from Dispatch Order
+              </Text>
+              <Text size="sm" c="dimmed" mt={4}>
+                Order DO-{gin.dispatch_order.id} • {gin.dispatch_order.destination_type}: {gin.dispatch_order.destination_name}
+              </Text>
+            </div>
+            <Button
+              variant="light"
+              size="sm"
+              onClick={() => navigate(`/officer/dispatch-orders/${gin.dispatch_order_id}`)}
+            >
+              View Order
+            </Button>
+          </Group>
+        </Card>
+      )}
+
       <Card shadow="sm" padding="lg" radius="md" withBorder>
         <Stack gap="md">
           <Group justify="space-between">
@@ -192,6 +216,7 @@ function GinDetailPage() {
                     <Table.Th>Unit</Table.Th>
                     <Table.Th>Store</Table.Th>
                     <Table.Th>Stack</Table.Th>
+                    <Table.Th>Batch/Expiry</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -200,10 +225,34 @@ function GinDetailPage() {
                       <Table.Td>{item.commodity_name || item.commodity_code || item.commodity_id}</Table.Td>
                       <Table.Td style={{ fontWeight: 600 }}>
                         {item.quantity.toLocaleString()}
+                        {item.entered_quantity && item.entered_unit_name && (
+                          <Text size="xs" c="dimmed" mt={4}>
+                            <UomConversionDisplay
+                              enteredQuantity={item.entered_quantity}
+                              enteredUnit={item.entered_unit_name}
+                              baseQuantity={item.base_quantity || item.quantity}
+                              baseUnit={item.base_unit_name || item.unit_abbreviation || item.unit_name || ''}
+                            />
+                          </Text>
+                        )}
                       </Table.Td>
                       <Table.Td>{item.unit_abbreviation || item.unit_name || item.unit_id}</Table.Td>
                       <Table.Td>{item.store_name || item.store_code || item.store_id || '-'}</Table.Td>
                       <Table.Td>{item.stack_name || item.stack_code || item.stack_id || '-'}</Table.Td>
+                      <Table.Td>
+                        {item.batch_no || item.expiry_date ? (
+                          <Stack gap="xs">
+                            {item.batch_no && (
+                              <Text size="sm" fw={500}>
+                                {item.batch_no}
+                              </Text>
+                            )}
+                            {item.expiry_date && <ExpiryBadge expiryDate={item.expiry_date} size="sm" />}
+                          </Stack>
+                        ) : (
+                          <Text c="dimmed">-</Text>
+                        )}
+                      </Table.Td>
                     </Table.Tr>
                   ))}
                 </Table.Tbody>

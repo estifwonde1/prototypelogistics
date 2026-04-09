@@ -20,6 +20,13 @@ module Cats
       has_many :grns, class_name: "Cats::Warehouse::Grn", dependent: :destroy
       has_many :gins, class_name: "Cats::Warehouse::Gin", dependent: :destroy
       has_many :inspections, class_name: "Cats::Warehouse::Inspection", dependent: :destroy
+      has_many :receipt_orders, class_name: "Cats::Warehouse::ReceiptOrder", dependent: :nullify
+      has_many :dispatch_orders, class_name: "Cats::Warehouse::DispatchOrder", dependent: :nullify
+      has_many :receipt_order_assignments, class_name: "Cats::Warehouse::ReceiptOrderAssignment", dependent: :destroy
+      has_many :dispatch_order_assignments, class_name: "Cats::Warehouse::DispatchOrderAssignment", dependent: :destroy
+      has_many :stock_reservations, class_name: "Cats::Warehouse::StockReservation", dependent: :destroy
+      has_many :space_reservations, class_name: "Cats::Warehouse::SpaceReservation", dependent: :destroy
+      has_many :inventory_lots, class_name: "Cats::Warehouse::InventoryLot", dependent: :destroy
 
       enum :ownership_type, {
         self_owned: "self_owned",

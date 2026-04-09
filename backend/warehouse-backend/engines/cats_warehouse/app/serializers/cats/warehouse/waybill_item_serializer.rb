@@ -2,7 +2,9 @@ module Cats
   module Warehouse
     class WaybillItemSerializer < ApplicationSerializer
       attributes :id, :waybill_id, :commodity_id, :commodity_name, :commodity_code, :quantity, :unit_id,
-                 :unit_name, :unit_abbreviation, :created_at, :updated_at
+                 :unit_name, :unit_abbreviation, :inventory_lot_id, :batch_no, :expiry_date,
+                 :entered_unit_id, :entered_unit_name, :base_unit_id, :base_unit_name, :base_quantity,
+                 :created_at, :updated_at
 
       def commodity_name
         object.commodity&.[](:name) || object.commodity&.batch_no
@@ -18,6 +20,22 @@ module Cats
 
       def unit_abbreviation
         object.unit&.abbreviation
+      end
+
+      def batch_no
+        object.inventory_lot&.batch_no
+      end
+
+      def expiry_date
+        object.inventory_lot&.expiry_date
+      end
+
+      def entered_unit_name
+        object.entered_unit&.name
+      end
+
+      def base_unit_name
+        object.base_unit&.name
       end
     end
   end

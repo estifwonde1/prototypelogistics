@@ -17,13 +17,16 @@
 
 **Setup**
 1. `bundle install`
-2. `bin/rails db:create db:migrate`
+2. `bin/rails db:create`
+3. `bundle exec rails runner "ActiveRecord::Base.connection.migration_context.migrate"`
+4. `bundle exec rails db:seed`
 
 **Docker (Production-like)**
 1. Set `RAILS_MASTER_KEY` (from `config/master.key`) in your environment.
 2. Set `ALLOWED_ORIGINS` and `APP_HOST` for the target environment.
 3. `docker compose up --build`
-4. App will be available at `http://localhost:3000`
+4. The container entrypoint will create the DB, run migrations, and optionally seed it.
+5. App will be available at `http://localhost:3000`
 
 **Tests**
 1. `bin/rails db:prepare RAILS_ENV=test`

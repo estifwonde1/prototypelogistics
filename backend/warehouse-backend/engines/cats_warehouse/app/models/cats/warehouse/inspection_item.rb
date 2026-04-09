@@ -5,6 +5,10 @@ module Cats
 
       belongs_to :inspection, class_name: "Cats::Warehouse::Inspection"
       belongs_to :commodity, class_name: "Cats::Core::Commodity"
+      belongs_to :unit, class_name: "Cats::Core::UnitOfMeasure", optional: true
+      belongs_to :inventory_lot, class_name: "Cats::Warehouse::InventoryLot", optional: true
+      belongs_to :entered_unit, class_name: "Cats::Core::UnitOfMeasure", optional: true
+      belongs_to :base_unit, class_name: "Cats::Core::UnitOfMeasure", optional: true
 
       validates :quantity_received, presence: true
       validates :quantity_received, :quantity_damaged, :quantity_lost, numericality: { greater_than_or_equal_to: 0 }

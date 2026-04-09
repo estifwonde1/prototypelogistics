@@ -6,6 +6,7 @@ module Cats
       belongs_to :store, class_name: "Cats::Warehouse::Store"
       belongs_to :commodity, class_name: "Cats::Core::Commodity"
       belongs_to :unit, class_name: "Cats::Core::UnitOfMeasure"
+      belongs_to :base_unit, class_name: "Cats::Core::UnitOfMeasure", optional: true
 
       has_many :outgoing_stack_transactions,
                class_name: "Cats::Warehouse::StackTransaction",
@@ -16,10 +17,12 @@ module Cats
                foreign_key: :destination_id,
                dependent: :nullify
       has_many :stock_balances, class_name: "Cats::Warehouse::StockBalance", dependent: :destroy
+      has_many :stock_reservations, class_name: "Cats::Warehouse::StockReservation", dependent: :destroy
 
       validates :length, :width, :height, presence: true
       validates :length, :width, :height, numericality: { greater_than: 0 }
       validates :quantity, numericality: { greater_than_or_equal_to: 0 }
+      validates :base_quantity, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
       validate :fits_inside_store
 
       def footprint_area

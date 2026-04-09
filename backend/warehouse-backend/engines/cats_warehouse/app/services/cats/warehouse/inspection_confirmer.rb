@@ -1,17 +1,21 @@
 module Cats
   module Warehouse
     class InspectionConfirmer
-      def initialize(inspection:)
+      def initialize(inspection:, actor: nil)
         @inspection = inspection
+        @actor = actor
       end
 
       def call
         @inspection.ensure_confirmable!
 
         Inspection.transaction do
-          @inspection.update!(status: "Confirmed")
+          old_status = @inspection.status
+          @inspection.update!(status: :confirmed)
 
           apply_grn_updates if @inspection.source.is_a?(Cats::Warehouse::Grn)
+          InspectionResultApplier.new(inspection: @inspection, actor: @actor || @inspection.inspector).call
+          WorkflowEventRecorder.record!(entity: @inspection, event_type: "inspection.confirmed", actor: @actor || @inspection.inspector, from_status: old_status, to_status: @inspection.status)
 
           enqueue_notification("inspection.confirmed", inspection_id: @inspection.id)
 
@@ -46,7 +50,8 @@ module Cats
           store_id: grn_item.store_id,
           stack_id: grn_item.stack_id,
           commodity_id: grn_item.commodity_id,
-          unit_id: grn_item.unit_id
+          unit_id: grn_item.unit_id,
+          inventory_lot_id: grn_item.inventory_lot_id
         )&.quantity.to_f
 
         return if available_quantity >= loss_qty

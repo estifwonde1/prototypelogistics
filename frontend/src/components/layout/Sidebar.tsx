@@ -16,6 +16,7 @@ import {
   IconInbox,
   IconTruck,
   IconReportAnalytics,
+  IconClipboardList,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../../store/authStore';
 import { usePermission } from '../../hooks/usePermission';
@@ -162,6 +163,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
           ],
         },
         {
+          label: 'Assignments',
+          items: [
+            { label: 'My Assignments', icon: <IconClipboardList size={20} />, path: '/storekeeper/assignments', resource: 'receipt_orders' },
+          ],
+        },
+        {
           label: 'Documents',
           items: [
             { label: 'GRN', icon: <IconFileImport size={20} />, path: '/grns', resource: 'grns' },
@@ -176,6 +183,20 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
           items: [
             { label: 'Bin Card', icon: <IconReportAnalytics size={20} />, path: '/reports/bin-card', resource: 'reports' },
             { label: 'Stock Balances', icon: <IconChartBar size={20} />, path: '/stock-balances', resource: 'stock_balances' },
+          ],
+        },
+      ];
+    }
+
+    if (role === 'officer') {
+      return [
+        {
+          label: 'Officer Operations',
+          items: [
+            { label: 'Dashboard', icon: <IconChartBar size={20} />, path: '/officer/dashboard', resource: 'receipt_orders' },
+            { label: 'Facilities', icon: <IconBuildingWarehouse size={20} />, path: '/officer/facilities', resource: 'receipt_orders' },
+            { label: 'Receipt Orders', icon: <IconFileImport size={20} />, path: '/officer/receipt-orders', resource: 'receipt_orders' },
+            { label: 'Dispatch Orders', icon: <IconFileExport size={20} />, path: '/officer/dispatch-orders', resource: 'dispatch_orders' },
           ],
         },
       ];

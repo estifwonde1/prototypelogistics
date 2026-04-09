@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import {
@@ -17,7 +17,7 @@ import {
   Alert,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
-import { IconTrash, IconPlus } from '@tabler/icons-react';
+import { IconTrash, IconPlus, IconChevronDown, IconChevronUp } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { createGrn, getGrns } from '../../api/grns';
 import { getReceipts } from '../../api/receipts';
@@ -25,10 +25,13 @@ import { getWaybills } from '../../api/waybills';
 import { getWarehouses } from '../../api/warehouses';
 import { getStores } from '../../api/stores';
 import { getStacks } from '../../api/stacks';
-import { getCommodityReferences, getUnitReferences } from '../../api/referenceData';
+import { getCommodityReferences, getUnitReferences, getUomConversions } from '../../api/referenceData';
+import { getReceiptOrder, getReceiptOrders } from '../../api/receiptOrders';
+import type { ReceiptOrder } from '../../api/receiptOrders';
 import { useAuthStore } from '../../store/authStore';
 import { QualityStatus } from '../../utils/constants';
 import type { GrnItem } from '../../types/grn';
+import type { Stack as WarehouseStack } from '../../types/stack';
 import type { ApiError } from '../../types/common';
 
 const createEmptyItem = (): GrnItem => ({
@@ -38,14 +41,60 @@ const createEmptyItem = (): GrnItem => ({
   quality_status: QualityStatus.GOOD,
 });
 
+/** Stacks usable for GRN receiving: reserved/available/active and similar; excludes full or in-use bins. */
+function isStackEligibleForGrn(stack: WarehouseStack): boolean {
+  const s = String(stack.stack_status || '')
+    .toLowerCase()
+    .trim();
+  if (s === 'full' || s === 'in use' || s === 'in_use') return false;
+  return true;
+}
+
+/** Prefill GRN rows from receipt order lines; store/stack come from space reservations + reserved stacks when available. */
+function mapReceiptOrderLinesToGrnItems(
+  order: ReceiptOrder,
+  reservedStacksList: WarehouseStack[]
+): GrnItem[] {
+  const lines = order.receipt_order_lines ?? order.lines ?? [];
+  const reservations = order.space_reservations ?? [];
+
+  return lines.map((line) => {
+    const res = reservations.find(
+      (r) => r.receipt_order_line_id != null && line.id != null && r.receipt_order_line_id === line.id
+    );
+    const storeId = res?.store_id;
+    let stackId: number | undefined;
+    if (storeId && line.commodity_id) {
+      const match = reservedStacksList.find(
+        (s) =>
+          s.store_id === storeId &&
+          s.commodity_id === line.commodity_id &&
+          isStackEligibleForGrn(s)
+      );
+      stackId = match?.id;
+    }
+
+    return {
+      commodity_id: line.commodity_id,
+      quantity: line.quantity,
+      unit_id: line.unit_id,
+      quality_status: QualityStatus.GOOD,
+      store_id: storeId,
+      stack_id: stackId,
+    };
+  });
+}
+
 function GrnCreatePage() {
   const sourceTypeOptions = [
     { value: 'Receipt', label: 'Receipt' },
+    { value: 'Receipt Order', label: 'Receipt Order' },
     { value: 'Waybill', label: 'Waybill' },
     { value: 'Grn', label: 'GRN' },
   ];
 
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const currentUserId = useAuthStore((state) => state.userId);
 
@@ -55,6 +104,7 @@ function GrnCreatePage() {
   const [sourceType, setSourceType] = useState('');
   const [sourceId, setSourceId] = useState('');
   const [items, setItems] = useState<GrnItem[]>([createEmptyItem()]);
+  const [showLotTracking, setShowLotTracking] = useState<{ [key: number]: boolean }>({});
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
@@ -86,6 +136,42 @@ function GrnCreatePage() {
     queryFn: getGrns,
   });
 
+  const { data: receiptOrders = [] } = useQuery({
+    queryKey: ['receipt_orders'],
+    queryFn: getReceiptOrders,
+  });
+
+  const receiptOrderIdParam = useMemo(() => {
+    const raw = searchParams.get('receipt_order_id');
+    if (!raw) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }, [searchParams]);
+
+  /** Load full receipt order when linked via URL or when Source Reference selects an RO. */
+  const receiptOrderDetailId = useMemo(() => {
+    if (sourceType === 'Receipt Order' && sourceId) {
+      const n = Number(sourceId);
+      return Number.isFinite(n) ? n : null;
+    }
+    if (receiptOrderIdParam != null) return receiptOrderIdParam;
+    return null;
+  }, [receiptOrderIdParam, sourceType, sourceId]);
+
+  const { data: receiptOrderDetail } = useQuery({
+    queryKey: ['receipt_orders', receiptOrderDetailId],
+    queryFn: () => getReceiptOrder(receiptOrderDetailId!),
+    enabled: receiptOrderDetailId != null,
+  });
+
+  const activeReceiptOrder =
+    receiptOrderDetailId != null && receiptOrderDetail?.id === receiptOrderDetailId
+      ? receiptOrderDetail
+      : undefined;
+
+  const prefillRoIdRef = useRef<number | null>(null);
+  const stackMergeDoneRef = useRef<number | null>(null);
+
   const { data: commodities = [] } = useQuery({
     queryKey: ['reference-data', 'commodities'],
     queryFn: getCommodityReferences,
@@ -94,6 +180,11 @@ function GrnCreatePage() {
   const { data: units = [] } = useQuery({
     queryKey: ['reference-data', 'units'],
     queryFn: getUnitReferences,
+  });
+
+  useQuery({
+    queryKey: ['reference-data', 'uom_conversions'],
+    queryFn: getUomConversions,
   });
 
   const warehouseOptions =
@@ -161,7 +252,7 @@ function GrnCreatePage() {
 
   const reservedStacks = stacks.filter((stack) => {
     if (!availableStoreIds.has(stack.store_id)) return false;
-    return String(stack.stack_status || '').toLowerCase() === 'reserved';
+    return isStackEligibleForGrn(stack);
   });
 
   const qualityOptions = Object.entries(QualityStatus).map(([key, value]) => ({
@@ -193,6 +284,11 @@ function GrnCreatePage() {
           value: receipt.id.toString(),
           label: receipt.reference_no || `Receipt #${receipt.id}`,
         }))
+      : sourceType === 'Receipt Order'
+        ? receiptOrders.map((order) => ({
+            value: order.id.toString(),
+            label: order.reference_no || `RO-${order.id}`,
+          }))
       : sourceType === 'Waybill'
         ? waybills.map((waybill) => ({
             value: waybill.id.toString(),
@@ -204,6 +300,66 @@ function GrnCreatePage() {
               label: grn.reference_no || `GRN #${grn.id}`,
             }))
           : [];
+
+  useEffect(() => {
+    if (!activeReceiptOrder) return;
+
+    setSourceType('Receipt Order');
+    setSourceId(String(activeReceiptOrder.id));
+
+    const wid = activeReceiptOrder.warehouse_id ?? activeReceiptOrder.destination_warehouse_id;
+    if (wid != null) setWarehouseId(String(wid));
+
+    setReferenceNo((current) => {
+      if (current.trim()) return current;
+      const roRef = activeReceiptOrder.reference_no?.trim() || `RO-${activeReceiptOrder.id}`;
+      const date = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+      return `GRN-${roRef}-${date}`;
+    });
+  }, [activeReceiptOrder]);
+
+  useEffect(() => {
+    if (!activeReceiptOrder) {
+      prefillRoIdRef.current = null;
+      stackMergeDoneRef.current = null;
+      return;
+    }
+
+    const roId = activeReceiptOrder.id;
+    const wid = activeReceiptOrder.warehouse_id ?? activeReceiptOrder.destination_warehouse_id;
+    if (!wid) return;
+
+    const storeIds = new Set(stores.filter((s) => s.warehouse_id === wid).map((s) => s.id));
+    const reservedForWh = stacks.filter(
+      (stack) => storeIds.has(stack.store_id) && isStackEligibleForGrn(stack)
+    );
+
+    const mapped = mapReceiptOrderLinesToGrnItems(activeReceiptOrder, reservedForWh);
+
+    const isNewRo = prefillRoIdRef.current !== roId;
+    if (isNewRo) {
+      prefillRoIdRef.current = roId;
+      stackMergeDoneRef.current = null;
+      setItems(mapped.length > 0 ? mapped : [createEmptyItem()]);
+      return;
+    }
+
+    if (stackMergeDoneRef.current === roId) return;
+
+    setItems((prev) => {
+      const shouldMerge = mapped.some((m, i) => prev[i] && !prev[i].stack_id && m.stack_id);
+      if (!shouldMerge) {
+        stackMergeDoneRef.current = roId;
+        return prev;
+      }
+      stackMergeDoneRef.current = roId;
+      return prev.map((row, i) => ({
+        ...row,
+        store_id: row.store_id ?? mapped[i]?.store_id,
+        stack_id: row.stack_id ?? mapped[i]?.stack_id,
+      }));
+    });
+  }, [activeReceiptOrder, stores, stacks]);
 
   const selectedStackForItem = (item: GrnItem) =>
     reservedStacks.find((stack) => stack.id === item.stack_id);
@@ -224,21 +380,54 @@ function GrnCreatePage() {
     return commodities.find((commodity) => commodity.id === item.commodity_id);
   };
 
+  /** Full commodity catalog from reference data (not only commodities on reserved stacks in this store). */
   const commodityOptionsForItem = (item: GrnItem) => {
     if (!item.store_id) return [];
 
-    const seen = new Set<number>();
-    return reservedStacks
-      .filter((stack) => stack.store_id === item.store_id)
-      .filter((stack) => {
-        if (seen.has(stack.commodity_id)) return false;
-        seen.add(stack.commodity_id);
-        return true;
-      })
-      .map((stack) => ({
-        value: stack.commodity_id.toString(),
-        label: stack.commodity_name || stack.commodity_code || `Commodity #${stack.commodity_id}`,
-      }));
+    const byId = new Map<string, { value: string; label: string }>();
+
+    for (const c of commodities) {
+      byId.set(c.id.toString(), {
+        value: c.id.toString(),
+        label: c.name || c.code || `Commodity #${c.id}`,
+      });
+    }
+
+    if (activeReceiptOrder) {
+      const lines = activeReceiptOrder.receipt_order_lines ?? activeReceiptOrder.lines ?? [];
+      for (const line of lines) {
+        if (!line.commodity_id) continue;
+        const id = line.commodity_id.toString();
+        if (!byId.has(id)) {
+          byId.set(id, {
+            value: id,
+            label: line.commodity_name?.trim() || `Commodity #${line.commodity_id}`,
+          });
+        }
+      }
+    }
+
+    if (item.commodity_id && !byId.has(item.commodity_id.toString())) {
+      const ref = commodities.find((c) => c.id === item.commodity_id);
+      byId.set(item.commodity_id.toString(), {
+        value: item.commodity_id.toString(),
+        label: ref?.name || `Commodity #${item.commodity_id}`,
+      });
+    }
+
+    const reservedInStore = new Set(
+      reservedStacks.filter((s) => s.store_id === item.store_id).map((s) => s.commodity_id)
+    );
+
+    const list = Array.from(byId.values());
+    list.sort((a, b) => {
+      const ar = reservedInStore.has(Number(a.value)) ? 0 : 1;
+      const br = reservedInStore.has(Number(b.value)) ? 0 : 1;
+      if (ar !== br) return ar - br;
+      return a.label.localeCompare(b.label);
+    });
+
+    return list;
   };
 
   const selectedCommodityTemplateStack = (item: GrnItem) =>
@@ -250,9 +439,14 @@ function GrnCreatePage() {
 
   const unitOptionsForItem = (item: GrnItem) => {
     const templateStack = selectedCommodityTemplateStack(item);
-    if (!templateStack?.unit_id) return unitOptions;
-
-    return unitOptions.filter((unit) => unit.value === templateStack.unit_id.toString());
+    if (templateStack?.unit_id) {
+      return unitOptions.filter((unit) => unit.value === templateStack.unit_id.toString());
+    }
+    const ref = commodities.find((c) => c.id === item.commodity_id);
+    if (ref?.unit_id) {
+      return unitOptions.filter((unit) => unit.value === ref?.unit_id?.toString());
+    }
+    return unitOptions;
   };
 
   const hasNoReservedStackForCommodity = (item: GrnItem) =>
@@ -313,6 +507,7 @@ function GrnCreatePage() {
       received_by_id: currentUserId,
       source_type: sourceType || undefined,
       source_id: sourceId ? parseInt(sourceId, 10) : undefined,
+      receipt_order_id: sourceType === 'Receipt Order' && sourceId ? parseInt(sourceId, 10) : undefined,
       items,
     });
   };
@@ -347,7 +542,29 @@ function GrnCreatePage() {
               value={effectiveWarehouseId}
               onChange={(value) => {
                 setWarehouseId(value);
-                setItems([createEmptyItem()]);
+                if (
+                  sourceType === 'Receipt Order' &&
+                  activeReceiptOrder &&
+                  value ===
+                    String(
+                      activeReceiptOrder.warehouse_id ?? activeReceiptOrder.destination_warehouse_id
+                    )
+                ) {
+                  const wid =
+                    activeReceiptOrder.warehouse_id ?? activeReceiptOrder.destination_warehouse_id;
+                  if (wid) {
+                    const storeIds = new Set(
+                      stores.filter((s) => s.warehouse_id === wid).map((s) => s.id)
+                    );
+                    const reservedForWh = stacks.filter(
+                      (stack) => storeIds.has(stack.store_id) && isStackEligibleForGrn(stack)
+                    );
+                    const mapped = mapReceiptOrderLinesToGrnItems(activeReceiptOrder, reservedForWh);
+                    setItems(mapped.length > 0 ? mapped : [createEmptyItem()]);
+                  }
+                } else {
+                  setItems([createEmptyItem()]);
+                }
               }}
               searchable
               required
@@ -415,7 +632,7 @@ function GrnCreatePage() {
           </Group>
 
           <Alert color="blue" variant="light">
-            Choose the destination store first, then the commodity. The stack list only shows reserved stacks for that store and commodity so the GRN receives goods into the correct reserved location.
+            Choose the destination store first, then the commodity. Options come from the full commodity catalog (commodities with reserved space in this store are sorted first). The stack list shows receivable stacks for the selected store and commodity (reserved, available, or active slots; full or in-use stacks are hidden).
           </Alert>
 
           <Table.ScrollContainer minWidth={1100}>
@@ -437,7 +654,8 @@ function GrnCreatePage() {
                   const selectedCommodity = selectedCommodityForItem(item);
 
                   return (
-                    <Table.Tr key={index}>
+                    <Fragment key={index}>
+                      <Table.Tr>
                       <Table.Td>
                         <Select
                           placeholder={effectiveWarehouseId ? 'Select store' : 'Select warehouse first'}
@@ -468,10 +686,15 @@ function GrnCreatePage() {
                                 entry.store_id === item.store_id &&
                                 entry.commodity_id === nextCommodityId
                             );
+                            const refCommodity = commodities.find((c) => c.id === nextCommodityId);
 
                             handleItemChange(index, 'commodity_id', nextCommodityId);
                             handleItemChange(index, 'stack_id', undefined);
-                            handleItemChange(index, 'unit_id', templateStack?.unit_id || 0);
+                            handleItemChange(
+                              index,
+                              'unit_id',
+                              templateStack?.unit_id || refCommodity?.unit_id || 0
+                            );
                           }}
                           searchable
                           clearable
@@ -481,7 +704,7 @@ function GrnCreatePage() {
 
                       <Table.Td>
                         <Select
-                          placeholder={item.commodity_id ? 'Select reserved stack' : 'Select commodity first'}
+                          placeholder={item.commodity_id ? 'Select stack' : 'Select commodity first'}
                           data={stackOptionsForItem(item)}
                           value={item.stack_id?.toString() || null}
                           onChange={(value) => {
@@ -496,11 +719,11 @@ function GrnCreatePage() {
                         />
                         {hasNoReservedStackForCommodity(item) ? (
                           <Text size="xs" c="red" mt={4}>
-                            No reserved stack is available for this commodity in the selected store. Reserve one first before creating the GRN.
+                            No receivable stack is available for this commodity in this store. Reserve space on the receipt order first (which creates a receiving stack), or add a stack for this store and commodity.
                           </Text>
                         ) : selectedStack ? (
                           <Text size="xs" c="dimmed" mt={4}>
-                            Reserved stack selected: {selectedStack.code}
+                            Stack selected: {selectedStack.code}
                           </Text>
                         ) : null}
                       </Table.Td>
@@ -544,23 +767,101 @@ function GrnCreatePage() {
                       </Table.Td>
 
                       <Table.Td>
-                        <ActionIcon
-                          color="red"
-                          variant="subtle"
-                          onClick={() => handleRemoveItem(index)}
-                          disabled={items.length === 1}
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
+                        <Group gap="xs">
+                          <ActionIcon
+                            color="blue"
+                            variant="subtle"
+                            onClick={() => setShowLotTracking((prev) => ({ ...prev, [index]: !prev[index] }))}
+                            title="Toggle lot tracking"
+                          >
+                            {showLotTracking[index] ? <IconChevronUp size={16} /> : <IconChevronDown size={16} />}
+                          </ActionIcon>
+                          <ActionIcon
+                            color="red"
+                            variant="subtle"
+                            onClick={() => handleRemoveItem(index)}
+                            disabled={items.length === 1}
+                          >
+                            <IconTrash size={16} />
+                          </ActionIcon>
+                        </Group>
                       </Table.Td>
                     </Table.Tr>
-                  );
-                })}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
-        </Stack>
-      </Card>
+                    {showLotTracking[index] && (
+                      <Table.Tr key={`${index}-lot`}>
+                        <Table.Td colSpan={7}>
+                          <Card bg="gray.0" p="md">
+                            <Stack gap="md">
+                              <Text size="sm" fw={600}>
+                                Lot & UOM Tracking (Optional)
+                              </Text>
+                              <Group grow>
+                                <TextInput
+                                  label="Batch Number"
+                                  placeholder="e.g., BATCH-2026-001"
+                                  value={item.batch_no || ''}
+                                  onChange={(e) => handleItemChange(index, 'batch_no', e.target.value)}
+                                />
+                                <DateInput
+                                  label="Expiry Date"
+                                  placeholder="Select expiry date"
+                                  value={item.expiry_date ? new Date(item.expiry_date as string) : null}
+                                  onChange={(date) => {
+                                    if (!date) {
+                                      handleItemChange(index, 'expiry_date', undefined);
+                                      return;
+                                    }
+                                    const d = date as unknown as Date;
+                                    handleItemChange(index, 'expiry_date', d.toISOString().split('T')[0]);
+                                  }}
+                                  minDate={new Date()}
+                                />
+                              </Group>
+                              <Group grow>
+                                <Select
+                                  label="Entered Unit"
+                                  description="Unit as received (e.g., bags)"
+                                  placeholder="Select entered unit"
+                                  data={unitOptions}
+                                  value={item.entered_unit_id?.toString() || null}
+                                  onChange={(value) =>
+                                    handleItemChange(index, 'entered_unit_id', value ? parseInt(value, 10) : undefined)
+                                  }
+                                  searchable
+                                  clearable
+                                />
+                                <NumberInput
+                                  label="Entered Quantity"
+                                  description="Quantity in entered unit"
+                                  placeholder="Enter quantity"
+                                  value={item.entered_quantity || ''}
+                                  onChange={(value) => handleItemChange(index, 'entered_quantity', Number(value))}
+                                  min={0}
+                                  hideControls
+                                />
+                              </Group>
+                              {item.entered_unit_id && item.entered_quantity && (
+                                <Alert color="blue" variant="light">
+                                  <Text size="sm">
+                                    Conversion: {item.entered_quantity}{' '}
+                                    {units.find((u) => u.id === item.entered_unit_id)?.abbreviation || 'units'} ={' '}
+                                    {item.quantity} {item.unit_abbreviation || 'base units'}
+                                  </Text>
+                                </Alert>
+                              )}
+                            </Stack>
+                          </Card>
+                        </Table.Td>
+                      </Table.Tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      </Stack>
+    </Card>
 
       <Group justify="flex-end">
         <Button variant="default" onClick={() => navigate('/grns')}>

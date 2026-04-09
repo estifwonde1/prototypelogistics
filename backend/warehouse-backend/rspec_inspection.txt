@@ -1,0 +1,20 @@
+Run options: include {locations: {"./spec/requests/cats_warehouse/document_contracts_spec.rb" => [64]}}
+
+Cats::Warehouse document contract aliases
+  POST /cats_warehouse/v1/inspections
+    accepts legacy inspection_items and normalizes them to items (FAILED - 1)
+
+Failures:
+
+  1) Cats::Warehouse document contract aliases POST /cats_warehouse/v1/inspections accepts legacy inspection_items and normalizes them to items
+     Failure/Error: expect(response).to have_http_status(:created)
+       expected the response to have status code :created (201) but it was :unprocessable_entity (422)
+     # ./spec/requests/cats_warehouse/document_contracts_spec.rb:87:in 'block (3 levels) in <main>'
+
+Finished in 0.57406 seconds (files took 6.14 seconds to load)
+1 example, 1 failure
+
+Failed examples:
+
+rspec ./spec/requests/cats_warehouse/document_contracts_spec.rb:64 # Cats::Warehouse document contract aliases POST /cats_warehouse/v1/inspections accepts legacy inspection_items and normalizes them to items
+

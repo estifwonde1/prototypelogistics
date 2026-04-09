@@ -15,7 +15,22 @@ module Cats
       end
 
       def ensure_confirmable!
-        raise ArgumentError, "#{self.class.name.demodulize} is already confirmed" if status_confirmed?
+        ensure_transition_allowed!(:confirmed)
+      end
+
+      def transition_allowed?(to_status)
+        current_status = canonical_document_status_key_for(status)
+        target_status = canonical_document_status_key_for(to_status)
+        return false if current_status.blank? || target_status.blank?
+
+        DOCUMENT_STATUS_TRANSITIONS.fetch(current_status, []).include?(target_status)
+      end
+
+      def ensure_transition_allowed!(to_status)
+        return if transition_allowed?(to_status)
+
+        target_status = canonical_document_status_for(to_status) || to_status.to_s
+        raise ArgumentError, "#{self.class.name.demodulize} cannot transition from #{status} to #{target_status}"
       end
 
       private
@@ -42,11 +57,20 @@ module Cats
       end
 
       def canonical_document_status_for(value)
+        key = canonical_document_status_key_for(value)
+        return if key.blank?
+
+        DOCUMENT_STATUSES[key]
+      end
+
+      def canonical_document_status_key_for(value)
         raw_status = value.to_s.strip
         return if raw_status.blank?
 
-        DOCUMENT_STATUSES[raw_status.downcase.to_sym] ||
-          DOCUMENT_STATUSES.values.find { |candidate| candidate.casecmp?(raw_status) }
+        status_key = raw_status.downcase.tr(" ", "_").to_sym
+        return status_key if DOCUMENT_STATUSES.key?(status_key)
+
+        DOCUMENT_STATUSES.find { |_key, candidate| candidate.casecmp?(raw_status) }&.first
       end
     end
   end

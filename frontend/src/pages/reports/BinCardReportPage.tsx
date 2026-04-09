@@ -4,12 +4,16 @@ import { Stack, Title, Text, Group, Select, Table } from '@mantine/core';
 import { getBinCardReport } from '../../api/reports';
 import { getStores } from '../../api/stores';
 import { getStacks } from '../../api/stacks';
+import { getInventoryLots } from '../../api/referenceData';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
+import { ExpiryBadge } from '../../components/common/ExpiryBadge';
+import { UomConversionDisplay } from '../../components/common/UomConversionDisplay';
 
 export default function BinCardReportPage() {
   const [storeId, setStoreId] = useState<string | null>(null);
   const [stackId, setStackId] = useState<string | null>(null);
+  const [lotFilter, setLotFilter] = useState<string | null>(null);
 
   const { data: stores } = useQuery({
     queryKey: ['stores'],
@@ -19,6 +23,11 @@ export default function BinCardReportPage() {
   const { data: stacks } = useQuery({
     queryKey: ['stacks'],
     queryFn: getStacks,
+  });
+
+  const { data: inventoryLots = [] } = useQuery({
+    queryKey: ['reference-data', 'inventory_lots'],
+    queryFn: getInventoryLots,
   });
 
   const { data: entries, isLoading, error, refetch } = useQuery({
@@ -42,6 +51,21 @@ export default function BinCardReportPage() {
         .map((s) => ({ value: String(s.id), label: s.code })) || [],
     [stacks, storeId]
   );
+
+  const lotOptions = useMemo(
+    () =>
+      inventoryLots.map((lot) => ({
+        value: lot.id.toString(),
+        label: lot.display_name || `${lot.batch_no} - Exp: ${new Date(lot.expiry_date).toLocaleDateString()}`,
+      })),
+    [inventoryLots]
+  );
+
+  const filteredEntries = useMemo(() => {
+    if (!entries) return [];
+    if (!lotFilter) return entries;
+    return entries.filter((entry) => entry.inventory_lot_id?.toString() === lotFilter);
+  }, [entries, lotFilter]);
 
   if (isLoading) return <LoadingState message="Loading bin card..." />;
   if (error) return <ErrorState message="Failed to load bin card" onRetry={() => refetch()} />;
@@ -77,9 +101,19 @@ export default function BinCardReportPage() {
           w={240}
           clearable
         />
+        <Select
+          label="Lot"
+          placeholder="Filter by lot"
+          data={lotOptions}
+          value={lotFilter}
+          onChange={setLotFilter}
+          w={300}
+          clearable
+          searchable
+        />
       </Group>
 
-      <Table.ScrollContainer minWidth={900}>
+      <Table.ScrollContainer minWidth={1200}>
         <Table striped highlightOnHover>
           <Table.Thead>
             <Table.Tr>
@@ -91,10 +125,11 @@ export default function BinCardReportPage() {
               <Table.Th>Reference</Table.Th>
               <Table.Th>Commodity</Table.Th>
               <Table.Th>Location</Table.Th>
+              <Table.Th>Batch/Expiry</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {entries?.map((e) => {
+            {filteredEntries?.map((e) => {
               const isIn = e.movement_type === 'inbound' || (!e.movement_type && e.destination_id && !e.source_id);
               const isOut = e.movement_type === 'outbound' || (!e.movement_type && e.source_id && !e.destination_id);
               const referenceLabel = [e.reference_type, e.reference_no].filter(Boolean).join(' • ') || '-';
@@ -111,11 +146,37 @@ export default function BinCardReportPage() {
                   <Table.Td>{new Date(e.transaction_date).toLocaleDateString()}</Table.Td>
                   <Table.Td>{isIn ? e.quantity : '-'}</Table.Td>
                   <Table.Td>{isOut ? e.quantity : '-'}</Table.Td>
-                  <Table.Td>{e.quantity}</Table.Td>
+                  <Table.Td>
+                    {e.quantity}
+                    {e.entered_quantity && e.entered_unit_name && (
+                      <Text size="xs" c="dimmed" mt={4}>
+                        <UomConversionDisplay
+                          enteredQuantity={e.entered_quantity}
+                          enteredUnit={e.entered_unit_name}
+                          baseQuantity={e.base_quantity || e.quantity}
+                          baseUnit={e.base_unit_name || String(unitLabel)}
+                        />
+                      </Text>
+                    )}
+                  </Table.Td>
                   <Table.Td>{String(unitLabel)}</Table.Td>
                   <Table.Td>{referenceLabel}</Table.Td>
                   <Table.Td>{e.commodity_name || e.commodity_id || '-'}</Table.Td>
                   <Table.Td>{locationLabel}</Table.Td>
+                  <Table.Td>
+                    {e.batch_no || e.expiry_date ? (
+                      <Stack gap="xs">
+                        {e.batch_no && (
+                          <Text size="sm" fw={500}>
+                            {e.batch_no}
+                          </Text>
+                        )}
+                        {e.expiry_date && <ExpiryBadge expiryDate={e.expiry_date} size="sm" />}
+                      </Stack>
+                    ) : (
+                      <Text c="dimmed">-</Text>
+                    )}
+                  </Table.Td>
                 </Table.Tr>
               );
             })}

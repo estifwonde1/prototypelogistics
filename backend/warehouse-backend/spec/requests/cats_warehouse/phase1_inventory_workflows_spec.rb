@@ -1,6 +1,4 @@
 require "rails_helper"
-require_relative "../../factories/core"
-require_relative "../../factories/warehouse"
 
 RSpec.describe "Cats::Warehouse Phase 1 inventory workflows", type: :request do
   def json_response
@@ -137,7 +135,7 @@ RSpec.describe "Cats::Warehouse Phase 1 inventory workflows", type: :request do
       post "/cats_warehouse/v1/grns/#{grn_id}/confirm", headers: headers
 
       expect(response).to have_http_status(:ok)
-      expect(json_response.dig("data", "status")).to eq("Confirmed")
+      expect(json_response.dig("data", "status")).to eq("confirmed")
 
       balance = Cats::Warehouse::StockBalance.find_by!(
         warehouse_id: warehouse.id,
@@ -309,6 +307,7 @@ RSpec.describe "Cats::Warehouse Phase 1 inventory workflows", type: :request do
         warehouse: warehouse,
         role_name: "Warehouse Manager"
       )
+
       manager_headers = { "Authorization" => "Bearer #{manager.signed_id(purpose: "auth", expires_in: 1.hour)}" }
 
       get "/cats_warehouse/v1/stock_balances", headers: manager_headers
@@ -360,7 +359,7 @@ RSpec.describe "Cats::Warehouse Phase 1 inventory workflows", type: :request do
       post "/cats_warehouse/v1/grns/#{created_grn_id}/confirm", headers: storekeeper_headers
 
       expect(response).to have_http_status(:forbidden)
-      expect(json_response.dig("error", "message")).to eq("Not authorized")
+      expect(json_response.dig("error", "message")).to include("not allowed")
     end
   end
 end

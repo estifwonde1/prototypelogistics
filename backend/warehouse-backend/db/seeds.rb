@@ -7,6 +7,10 @@ def find_or_create_with(model, attrs, updates = {})
   record
 end
 
+def table_exists?(table_name)
+  ActiveRecord::Base.connection.data_source_exists?(table_name)
+end
+
 def add_role(user, role_name)
   user.add_role(role_name)
   user
@@ -23,6 +27,7 @@ roles = {
   hub_manager: find_or_create_with(Cats::Core::Role, { name: "Hub Manager", application_module: application_module }),
   warehouse_manager: find_or_create_with(Cats::Core::Role, { name: "Warehouse Manager", application_module: application_module }),
   store_keeper: find_or_create_with(Cats::Core::Role, { name: "Storekeeper", application_module: application_module }),
+  officer: find_or_create_with(Cats::Core::Role, { name: "Officer", application_module: application_module }),
   admin: find_or_create_with(Cats::Core::Role, { name: "Admin", application_module: application_module }),
   superadmin: find_or_create_with(Cats::Core::Role, { name: "Superadmin", application_module: application_module })
 }
@@ -142,6 +147,19 @@ store_keeper_user_2 = find_or_create_with(
 )
 add_role(store_keeper_user_2, "Storekeeper")
 
+officer_user = find_or_create_with(
+  Cats::Core::User,
+  { email: "officer@example.com" },
+  {
+    first_name: "Abebe",
+    last_name: "Bikila",
+    password: "password123",
+    phone_number: "0911111119",
+    application_module: application_module
+  }
+)
+add_role(officer_user, "Officer")
+
 puts "Seeding Addis Ababa locations (Region -> Subcity -> Woreda)..."
 region_addis = find_or_create_with(
   Cats::Core::Location,
@@ -217,10 +235,27 @@ end
 puts "Seeding core reference data..."
 units = {
   kg: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "kg" }, { name: "Kilogram", unit_type: Cats::Core::UnitOfMeasure::WEIGHT }),
+  mt: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "mt" }, { name: "Metric Ton", unit_type: Cats::Core::UnitOfMeasure::WEIGHT }),
   l: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "l" }, { name: "Liter", unit_type: Cats::Core::UnitOfMeasure::VOLUME }),
   pcs: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "pcs" }, { name: "Pieces", unit_type: Cats::Core::UnitOfMeasure::ITEM }),
   bag: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "bag" }, { name: "Bag", unit_type: Cats::Core::UnitOfMeasure::ITEM })
 }
+
+if table_exists?("cats_warehouse_uom_conversions")
+  puts "Seeding UOM conversions..."
+  find_or_create_with(
+    Cats::Warehouse::UomConversion,
+    { from_unit: units[:bag], to_unit: units[:kg] },
+    { multiplier: 50.0 }
+  )
+  find_or_create_with(
+    Cats::Warehouse::UomConversion,
+    { from_unit: units[:kg], to_unit: units[:mt] },
+    { multiplier: 0.001 }
+  )
+else
+  puts "Skipping UOM conversions: table cats_warehouse_uom_conversions is not present in the current database."
+end
 
 currencies = {
   etb: find_or_create_with(Cats::Core::Currency, { code: "ETB" }, { name: "Ethiopian Birr" })
@@ -504,6 +539,34 @@ warehouses = [
   )
 end
 
+if table_exists?("cats_warehouse_inventory_lots")
+  puts "Seeding inventory lots..."
+  inventory_lot_warehouse = warehouses.first
+
+  find_or_create_with(
+    Cats::Warehouse::InventoryLot,
+    { warehouse: inventory_lot_warehouse, commodity: commodities.first, batch_no: "LOT-RICE-001" },
+    {
+      lot_code: "ADD-LOT-RICE-001",
+      received_on: Date.current - 2,
+      expiry_date: 1.year.from_now.to_date,
+      status: "Active"
+    }
+  )
+  find_or_create_with(
+    Cats::Warehouse::InventoryLot,
+    { warehouse: inventory_lot_warehouse, commodity: commodities.second, batch_no: "LOT-WHEAT-001" },
+    {
+      lot_code: "ADD-LOT-WHEAT-001",
+      received_on: Date.current - 2,
+      expiry_date: 6.months.from_now.to_date,
+      status: "Active"
+    }
+  )
+else
+  puts "Skipping inventory lots: table cats_warehouse_inventory_lots is not present in the current database."
+end
+
 warehouses.each_with_index do |warehouse, idx|
   find_or_create_with(
     Cats::Warehouse::WarehouseCapacity,
@@ -606,7 +669,7 @@ grn = find_or_create_with(
     received_on: Date.today - 2,
     received_by: store_keeper_user,
     approved_by: warehouse_manager_user,
-    status: "Draft",
+    status: "draft",
     source: gift_certificates.first
   }
 )
@@ -625,7 +688,7 @@ grn_items = commodities.first(3).map.with_index do |commodity, idx|
   )
 end
 
-Cats::Warehouse::GrnConfirmer.new(grn: grn, approved_by: warehouse_manager_user).call if grn.status != "Confirmed"
+Cats::Warehouse::GrnConfirmer.new(grn: grn, approved_by: warehouse_manager_user).call if grn.status != "confirmed"
 
 gin = find_or_create_with(
   Cats::Warehouse::Gin,
@@ -635,7 +698,7 @@ gin = find_or_create_with(
     issued_on: Date.today - 1,
     issued_by: store_keeper_user,
     approved_by: warehouse_manager_user,
-    status: "Draft",
+    status: "draft",
     destination: fdps.last
   }
 )
@@ -653,7 +716,7 @@ commodities.first(2).each_with_index do |commodity, idx|
   )
 end
 
-Cats::Warehouse::GinConfirmer.new(gin: gin, approved_by: warehouse_manager_user).call if gin.status != "Confirmed"
+Cats::Warehouse::GinConfirmer.new(gin: gin, approved_by: warehouse_manager_user).call if gin.status != "confirmed"
 
 waybill = find_or_create_with(
   Cats::Warehouse::Waybill,
@@ -663,7 +726,7 @@ waybill = find_or_create_with(
     dispatch: dispatch,
     source_location: warehouse_locations.first,
     destination_location: fdps.last,
-    status: "Draft"
+    status: "draft"
   }
 )
 
@@ -717,6 +780,13 @@ find_or_create_with(
   { user: store_keeper_user_2, store: stores.second },
   { role_name: "Storekeeper" }
 )
+warehouses.each do |warehouse|
+  find_or_create_with(
+    Cats::Warehouse::UserAssignment,
+    { user: officer_user, warehouse: warehouse },
+    { role_name: "Officer" }
+  )
+end
 
 ui_seed = Rails.root.join("db", "seeds", "ui.rb")
 load(ui_seed) if File.exist?(ui_seed)

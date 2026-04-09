@@ -15,4 +15,14 @@ export interface StockBalance {
   unit_id: number;
   unit_name?: string | null;
   unit_abbreviation?: string | null;
+  // Phase 2: Lot/UOM fields
+  batch_no?: string | null;
+  expiry_date?: string | null;
+  inventory_lot_id?: number | null;
+  entered_unit_id?: number | null;
+  entered_unit_name?: string | null;
+  entered_quantity?: number | null;
+  base_unit_id?: number | null;
+  base_unit_name?: string | null;
+  base_quantity?: number | null;
 }

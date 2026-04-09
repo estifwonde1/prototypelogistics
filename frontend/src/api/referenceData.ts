@@ -5,6 +5,8 @@ import type {
   FacilityOptions,
   TransporterReference,
   UnitReference,
+  InventoryLot,
+  UomConversion,
 } from '../types/referenceData';
 
 export const getFacilityOptions = async (): Promise<FacilityOptions> => {
@@ -31,4 +33,18 @@ export const getTransporterReferences = async (): Promise<TransporterReference[]
     '/reference_data/transporters'
   );
   return response.data.data.transporters;
+};
+
+export const getInventoryLots = async (): Promise<InventoryLot[]> => {
+  const response = await apiClient.get<ApiResponse<{ inventory_lots: InventoryLot[] }>>(
+    '/reference_data/inventory_lots'
+  );
+  return response.data.data.inventory_lots;
+};
+
+export const getUomConversions = async (): Promise<UomConversion[]> => {
+  const response = await apiClient.get<ApiResponse<{ uom_conversions: UomConversion[] }>>(
+    '/reference_data/uom_conversions'
+  );
+  return response.data.data.uom_conversions;
 };

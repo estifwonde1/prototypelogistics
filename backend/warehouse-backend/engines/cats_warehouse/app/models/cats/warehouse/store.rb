@@ -7,6 +7,10 @@ module Cats
 
       has_many :stacks, class_name: "Cats::Warehouse::Stack", dependent: :destroy
       has_many :stock_balances, class_name: "Cats::Warehouse::StockBalance", dependent: :destroy
+      has_many :receipt_order_assignments, class_name: "Cats::Warehouse::ReceiptOrderAssignment", dependent: :destroy
+      has_many :dispatch_order_assignments, class_name: "Cats::Warehouse::DispatchOrderAssignment", dependent: :destroy
+      has_many :stock_reservations, class_name: "Cats::Warehouse::StockReservation", dependent: :destroy
+      has_many :space_reservations, class_name: "Cats::Warehouse::SpaceReservation", dependent: :destroy
 
       before_validation :calculate_capacity_metrics
 
