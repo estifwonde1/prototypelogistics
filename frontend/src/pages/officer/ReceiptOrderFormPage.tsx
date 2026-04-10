@@ -207,8 +207,7 @@ function ReceiptOrderFormPage() {
 
   const sourceTypeOptions = [
     { value: 'Supplier', label: 'Supplier' },
-    { value: 'Hub', label: 'Hub' },
-    { value: 'Warehouse', label: 'Warehouse' },
+    { value: 'Gift', label: 'Gift (Donation)' },
   ];
 
   const createMutation = useMutation({
