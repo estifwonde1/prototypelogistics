@@ -3,11 +3,18 @@ require "rails_helper"
 RSpec.describe "Cats Warehouse Locations", type: :request do
   it "lists regions, zones, and woredas" do
     headers = auth_headers(role: "Admin")
-    region = Cats::Core::Location.find_or_create_by!(name: "Addis Ababa", location_type: Cats::Core::Location::REGION, code: "AA")
+    region = Cats::Core::Location.find_or_create_by!(name: "Afar", location_type: Cats::Core::Location::REGION, code: "AF")
+    Cats::Core::Location.find_or_create_by!(name: "Addis Ababa", location_type: Cats::Core::Location::REGION, code: "AA")
+    Cats::Core::Location.find_or_create_by!(name: "Central Ethiopia", location_type: Cats::Core::Location::REGION, code: "CE")
     zone = Cats::Core::Location.find_or_create_by!(name: "Some Zone", location_type: Cats::Core::Location::ZONE, code: "SZ", ancestry: region.id.to_s)
+    Cats::Core::Location.find_or_create_by!(name: "Some Woreda", location_type: Cats::Core::Location::WOREDA, code: "SW", ancestry: "#{region.id}/#{zone.id}")
 
     get "/cats_warehouse/v1/locations/regions", headers: headers
     expect(response).to have_http_status(:ok)
+    region_names = JSON.parse(response.body).dig("data", "locations").map { |location| location["name"] }
+    expect(region_names).to eq(Cats::Warehouse::LocationsController::ETHIOPIA_REGION_NAMES & region_names)
+    expect(region_names).to include("Afar", "Addis Ababa")
+    expect(region_names).not_to include("Central Ethiopia")
 
     get "/cats_warehouse/v1/locations/zones", params: { region_id: region&.id }, headers: headers
     expect(response).to have_http_status(:ok)

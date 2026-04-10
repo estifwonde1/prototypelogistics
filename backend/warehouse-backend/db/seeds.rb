@@ -1,4 +1,4 @@
-puts "Seeding CATS Warehouse (Addis Ababa only)..."
+puts "Seeding CATS Warehouse (Ethiopia regions enabled)..."
 
 def find_or_create_with(model, attrs, updates = {})
   record = model.find_or_initialize_by(attrs)
@@ -160,12 +160,50 @@ officer_user = find_or_create_with(
 )
 add_role(officer_user, "Officer")
 
+puts "Seeding Ethiopian regions..."
+ethiopian_regions = [
+  { code: "TIG-REG", name: "Tigray" },
+  { code: "AFA-REG", name: "Afar" },
+  { code: "AMH-REG", name: "Amhara" },
+  { code: "ORO-REG", name: "Oromia" },
+  { code: "SOM-REG", name: "Somali" },
+  { code: "BEN-REG", name: "Benishangul-Gumuz" },
+  { code: "GAM-REG", name: "Gambella" },
+  { code: "SNNPR-REG", name: "Southern Nations Nationalities and People Region (SNNPR)" },
+  { code: "HAR-REG", name: "Harari" },
+  { code: "SWEPR-REG", name: "South West Ethiopia Peoples' Region (SWEPR)" },
+  { code: "ADD-REG", name: "Addis Ababa" },
+  { code: "DD-REG", name: "Dire Dawa" }
+]
+
+region_records = ethiopian_regions.to_h do |region|
+  record = find_or_create_with(
+    Cats::Core::Location,
+    { code: region[:code] },
+    { name: region[:name], location_type: Cats::Core::Location::REGION }
+  )
+  [region[:name], record]
+end
+
+puts "Seeding default zone and woreda coverage for non-Addis regions..."
+region_records.each do |region_name, region|
+  next if region_name == "Addis Ababa"
+
+  zone = find_or_create_with(
+    Cats::Core::Location,
+    { code: "#{region.code}-Z01" },
+    { name: "#{region_name} Zone 1", location_type: Cats::Core::Location::ZONE, parent: region }
+  )
+
+  find_or_create_with(
+    Cats::Core::Location,
+    { code: "#{region.code}-W01" },
+    { name: "#{region_name} Woreda 1", location_type: Cats::Core::Location::WOREDA, parent: zone }
+  )
+end
+
 puts "Seeding Addis Ababa locations (Region -> Subcity -> Woreda)..."
-region_addis = find_or_create_with(
-  Cats::Core::Location,
-  { code: "ADD-REG" },
-  { name: "Addis Ababa", location_type: Cats::Core::Location::REGION }
-)
+region_addis = region_records.fetch("Addis Ababa")
 
 subcity_woredas = {
   "Addis Ketema" => 14,

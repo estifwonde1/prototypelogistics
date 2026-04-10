@@ -44,7 +44,7 @@ module Cats
 
       after_commit :recalculate_related_hub_capacities
 
-      MANAGED_UNDER_VALUES = ["Hub", "Addis Ababa Government", "Subcity", "Woreda"].freeze
+      MANAGED_UNDER_VALUES = ["Hub", "Regional Government", "Zone/Subcity", "Woreda"].freeze
       private
 
       def inherit_location_and_management_from_hub
@@ -64,7 +64,7 @@ module Cats
           end
 
           unless MANAGED_UNDER_VALUES.include?(managed_under) && managed_under != "Hub"
-            errors.add(:managed_under, "must be one of: Addis Ababa Government, Subcity, Woreda")
+            errors.add(:managed_under, "must be one of: Regional Government, Zone/Subcity, Woreda")
           end
         end
       end

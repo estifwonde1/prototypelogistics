@@ -7,6 +7,8 @@ import { getRegions, getZones, getWoredas } from '../../../api/locations';
 import { LoadingState } from '../../../components/common/LoadingState';
 import { ErrorState } from '../../../components/common/ErrorState';
 
+const DEFAULT_REGION_NAME = 'Addis Ababa';
+
 export default function LocationsSetupPage() {
   const navigate = useNavigate();
   const [regionId, setRegionId] = useState<string | null>(null);
@@ -32,21 +34,32 @@ export default function LocationsSetupPage() {
 
   useEffect(() => {
     if (regions && regions.length > 0 && !regionId) {
-      setRegionId(String(regions[0].id));
+      const defaultRegion = regions.find((region) => region.name === DEFAULT_REGION_NAME) || regions[0];
+      setRegionId(String(defaultRegion.id));
     }
   }, [regions, regionId]);
 
   useEffect(() => {
-    if (zones && zones.length > 0) {
-      setZoneId((prev) => prev || String(zones[0].id));
+    if (!zones || zones.length === 0) {
+      setZoneId(null);
+      return;
     }
-  }, [zones]);
+
+    if (!zoneId || !zones.some((zone) => String(zone.id) === zoneId)) {
+      setZoneId(String(zones[0].id));
+    }
+  }, [zones, zoneId]);
 
   useEffect(() => {
-    if (woredas && woredas.length > 0) {
-      setWoredaId((prev) => prev || String(woredas[0].id));
+    if (!woredas || woredas.length === 0) {
+      setWoredaId(null);
+      return;
     }
-  }, [woredas]);
+
+    if (!woredaId || !woredas.some((woreda) => String(woreda.id) === woredaId)) {
+      setWoredaId(String(woredas[0].id));
+    }
+  }, [woredas, woredaId]);
 
   const regionOptions = useMemo(
     () => regions?.map((r) => ({ value: String(r.id), label: r.name })) || [],
@@ -61,11 +74,14 @@ export default function LocationsSetupPage() {
   if (regionsLoading) return <LoadingState message="Loading regions..." />;
   if (regionsError) return <ErrorState message="Failed to load regions" />;
 
-  const selectedSubcityName = zoneOptions.find((option) => option.value === zoneId)?.label || '';
+  const selectedRegionName = regionOptions.find((option) => option.value === regionId)?.label || '';
+  const selectedZoneName = zoneOptions.find((option) => option.value === zoneId)?.label || '';
   const selectedWoredaName =
     woredas?.find((woreda) => String(woreda.id) === woredaId)?.name || '';
-  const inheritedQuery = `zone_id=${zoneId ?? ''}&woreda_id=${woredaId ?? ''}&subcity_name=${encodeURIComponent(
-    selectedSubcityName
+  const inheritedQuery = `region_id=${regionId ?? ''}&region_name=${encodeURIComponent(
+    selectedRegionName
+  )}&zone_id=${zoneId ?? ''}&woreda_id=${woredaId ?? ''}&subcity_name=${encodeURIComponent(
+    selectedZoneName
   )}&woreda_name=${encodeURIComponent(selectedWoredaName)}`;
 
   return (
@@ -73,7 +89,7 @@ export default function LocationsSetupPage() {
       <div>
         <Title order={2}>Location Setup</Title>
         <Text c="dimmed" size="sm">
-          Addis Ababa only. Choose a subcity and woreda from seeded data.
+          Choose a region, then select a zone or subcity and woreda from the available location data.
         </Text>
       </div>
 
@@ -83,17 +99,23 @@ export default function LocationsSetupPage() {
             label="Region"
             data={regionOptions}
             value={regionId}
-            onChange={setRegionId}
+            onChange={(value) => {
+              setRegionId(value);
+              setZoneId(null);
+              setWoredaId(null);
+            }}
             w={260}
-            disabled
           />
           <Select
-            label="Subcity"
+            label="Zone / Subcity"
             data={zoneOptions}
             value={zoneId}
-            onChange={setZoneId}
+            onChange={(value) => {
+              setZoneId(value);
+              setWoredaId(null);
+            }}
             w={300}
-            disabled={zonesLoading}
+            disabled={!regionId || zonesLoading}
           />
           <Select
             label="Woreda"

@@ -28,8 +28,8 @@ import {
 } from '../../../utils/locationContext';
 
 const MANAGED_UNDER_OPTIONS = [
-  { value: 'Addis Ababa Government', label: 'Addis Ababa Government' },
-  { value: 'Subcity', label: 'Subcity' },
+  { value: 'Regional Government', label: 'Regional Government' },
+  { value: 'Zone/Subcity', label: 'Zone/Subcity' },
   { value: 'Woreda', label: 'Woreda' },
 ];
 
@@ -37,6 +37,8 @@ const OWNERSHIP_TYPE_OPTIONS = [
   { value: 'self_owned', label: 'Self Owned' },
   { value: 'rental', label: 'Rental' },
 ];
+
+const DEFAULT_REGION_NAME = 'Addis Ababa';
 
 export default function WarehouseSetupPage() {
   const navigate = useNavigate();
@@ -104,9 +106,14 @@ export default function WarehouseSetupPage() {
 
   useEffect(() => {
     if (regions && regions.length > 0 && !regionId) {
-      setRegionId(String(regions[0].id));
+      const inheritedRegionId = hubId ? inheritedContext?.regionId : inheritedContextFromQuery.regionId;
+      const defaultRegion =
+        regions.find((region) => region.id === inheritedRegionId) ||
+        regions.find((region) => region.name === DEFAULT_REGION_NAME) ||
+        regions[0];
+      setRegionId(String(defaultRegion.id));
     }
-  }, [regions, regionId]);
+  }, [regions, regionId, hubId, inheritedContext?.regionId, inheritedContextFromQuery.regionId]);
 
   useEffect(() => {
     if (hubId && inheritedContext) {
@@ -120,10 +127,15 @@ export default function WarehouseSetupPage() {
       return;
     }
 
-    if (zones && zones.length > 0) {
-      setZoneId((current) => current || String(zones[0].id));
+    if (!zones || zones.length === 0) {
+      setZoneId(null);
+      return;
     }
-  }, [hubId, inheritedContext, isInheritedFromLocationPage, inheritedContextFromQuery.zoneId, zones]);
+
+    if (!zoneId || !zones.some((zone) => String(zone.id) === zoneId)) {
+      setZoneId(String(zones[0].id));
+    }
+  }, [hubId, inheritedContext, isInheritedFromLocationPage, inheritedContextFromQuery.zoneId, zoneId, zones]);
 
   useEffect(() => {
     if (hubId) return;
@@ -131,10 +143,14 @@ export default function WarehouseSetupPage() {
       if (inheritedContextFromQuery.woredaId) setWoredaId(String(inheritedContextFromQuery.woredaId));
       return;
     }
-    if (woredas && woredas.length > 0) {
-      setWoredaId((current) => current || String(woredas[0].id));
+    if (!woredas || woredas.length === 0) {
+      setWoredaId(null);
+      return;
     }
-  }, [hubId, isInheritedFromLocationPage, inheritedContextFromQuery.woredaId, woredas]);
+    if (!woredaId || !woredas.some((woreda) => String(woreda.id) === woredaId)) {
+      setWoredaId(String(woredas[0].id));
+    }
+  }, [hubId, isInheritedFromLocationPage, inheritedContextFromQuery.woredaId, woredaId, woredas]);
 
   const createMutation = useMutation({
     mutationFn: createWarehouse,
@@ -245,8 +261,8 @@ export default function WarehouseSetupPage() {
             {(hubId || isInheritedFromLocationPage) && (
               <Alert color="blue" variant="light">
                 {hubId
-                  ? 'This warehouse inherits subcity and woreda from its parent hub. Those fields are locked here.'
-                  : 'Subcity and woreda were selected on the location page and are locked for this warehouse.'}
+                  ? 'This warehouse inherits region, zone/subcity, and woreda from its parent hub. Those fields are locked here.'
+                  : 'Region, zone/subcity, and woreda were selected on the location page and are locked for this warehouse.'}
               </Alert>
             )}
 
@@ -277,12 +293,34 @@ export default function WarehouseSetupPage() {
             </Group>
 
             <Group grow align="flex-start">
-              <Select label="Region" data={regionOptions} value={regionId} onChange={setRegionId} disabled />
               <Select
-                label="Subcity"
+                label="Region"
+                data={regionOptions}
+                value={regionId}
+                onChange={(value) => {
+                  setRegionId(value);
+                  if (!hubId && !isInheritedFromLocationPage) {
+                    setZoneId(null);
+                    setWoredaId(null);
+                  }
+                }}
+                disabled={!!hubId || isInheritedFromLocationPage}
+                description={
+                  hubId
+                    ? inheritedContext?.regionName || 'Inherited from selected hub'
+                    : isInheritedFromLocationPage
+                      ? inheritedContextFromQuery.regionName || 'Inherited from location page'
+                      : undefined
+                }
+              />
+              <Select
+                label="Zone / Subcity"
                 data={displayedZoneOptions}
                 value={effectiveZoneId ? String(effectiveZoneId) : null}
-                onChange={setZoneId}
+                onChange={(value) => {
+                  setZoneId(value);
+                  setWoredaId(null);
+                }}
                 disabled={zonesLoading || !!hubId || isInheritedFromLocationPage}
                 description={
                   hubId
