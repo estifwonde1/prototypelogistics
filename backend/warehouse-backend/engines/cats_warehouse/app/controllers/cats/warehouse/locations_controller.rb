@@ -46,6 +46,15 @@ module Cats
         render_success(locations: woredas.map { |l| location_payload(l) })
       end
 
+      def kebeles
+        woreda = Cats::Core::Location.find(params[:woreda_id])
+        kebeles = Cats::Core::Location.where(
+          ancestry: child_ancestry_for(woreda),
+          location_type: location_type_constant(:KEBELE, "kebele")
+        ).order(:id)
+        render_success(locations: kebeles.map { |l| location_payload(l) })
+      end
+
       def create
         payload = params.require(:payload).permit(:name, :code, :location_type, :parent_id)
         parent = payload[:parent_id].present? ? Cats::Core::Location.find(payload[:parent_id]) : nil
@@ -92,6 +101,12 @@ module Cats
         return parent.id.to_s if parent.ancestry.blank?
 
         "#{parent.ancestry}/#{parent.id}"
+      end
+
+      def location_type_constant(constant_name, fallback)
+        return Cats::Core::Location.const_get(constant_name) if Cats::Core::Location.const_defined?(constant_name)
+
+        fallback
       end
 
       def require_admin!

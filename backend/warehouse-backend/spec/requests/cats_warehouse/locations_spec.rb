@@ -1,13 +1,15 @@
 require "rails_helper"
 
 RSpec.describe "Cats Warehouse Locations", type: :request do
-  it "lists regions, zones, and woredas" do
+  it "lists regions, zones, woredas, and kebeles" do
     headers = auth_headers(role: "Admin")
     region = Cats::Core::Location.find_or_create_by!(name: "Afar", location_type: Cats::Core::Location::REGION, code: "AF")
     Cats::Core::Location.find_or_create_by!(name: "Addis Ababa", location_type: Cats::Core::Location::REGION, code: "AA")
     Cats::Core::Location.find_or_create_by!(name: "Central Ethiopia", location_type: Cats::Core::Location::REGION, code: "CE")
     zone = Cats::Core::Location.find_or_create_by!(name: "Some Zone", location_type: Cats::Core::Location::ZONE, code: "SZ", ancestry: region.id.to_s)
-    Cats::Core::Location.find_or_create_by!(name: "Some Woreda", location_type: Cats::Core::Location::WOREDA, code: "SW", ancestry: "#{region.id}/#{zone.id}")
+    woreda = Cats::Core::Location.find_or_create_by!(name: "Some Woreda", location_type: Cats::Core::Location::WOREDA, code: "SW", ancestry: "#{region.id}/#{zone.id}")
+    kebele_type = Cats::Core::Location.const_defined?(:KEBELE) ? Cats::Core::Location::KEBELE : "kebele"
+    Cats::Core::Location.find_or_create_by!(name: "Some Kebele", location_type: kebele_type, code: "SK", ancestry: "#{region.id}/#{zone.id}/#{woreda.id}")
 
     get "/cats_warehouse/v1/locations/regions", headers: headers
     expect(response).to have_http_status(:ok)
@@ -21,6 +23,10 @@ RSpec.describe "Cats Warehouse Locations", type: :request do
 
     zone_id = JSON.parse(response.body).dig("data", "locations")&.first&.dig("id")
     get "/cats_warehouse/v1/locations/woredas", params: { zone_id: zone_id }, headers: headers
+    expect(response).to have_http_status(:ok)
+
+    woreda_id = JSON.parse(response.body).dig("data", "locations")&.first&.dig("id")
+    get "/cats_warehouse/v1/locations/kebeles", params: { woreda_id: woreda_id }, headers: headers
     expect(response).to have_http_status(:ok)
   end
 

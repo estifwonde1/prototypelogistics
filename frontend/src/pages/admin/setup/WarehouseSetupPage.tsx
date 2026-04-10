@@ -18,12 +18,12 @@ import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createWarehouse } from '../../../api/warehouses';
 import { getHub } from '../../../api/hubs';
-import { getRegions, getWoredas, getZones } from '../../../api/locations';
+import { getKebeles, getRegions, getWoredas, getZones } from '../../../api/locations';
 import { ErrorState } from '../../../components/common/ErrorState';
 import { LoadingState } from '../../../components/common/LoadingState';
 import { RentalAgreementUpload } from '../../../components/common/RentalAgreementUpload';
 import {
-  resolveLocationContextByWoredaId,
+  resolveLocationContextByLocationId,
   resolveLocationContextFromQuery,
 } from '../../../utils/locationContext';
 
@@ -52,6 +52,7 @@ export default function WarehouseSetupPage() {
   const [regionId, setRegionId] = useState<string | null>(null);
   const [zoneId, setZoneId] = useState<string | null>(null);
   const [woredaId, setWoredaId] = useState<string | null>(null);
+  const [kebeleId, setKebeleId] = useState<string | null>(null);
   const [rentalAgreementFile, setRentalAgreementFile] = useState<File | null>(null);
 
   const { data: hub } = useQuery({
@@ -61,10 +62,10 @@ export default function WarehouseSetupPage() {
   });
 
   const { data: inheritedContext } = useQuery({
-    queryKey: ['warehouse-setup-location-context', hubId, inheritedContextFromQuery.woredaId],
+    queryKey: ['warehouse-setup-location-context', hubId, inheritedContextFromQuery.woredaId, inheritedContextFromQuery.kebeleId],
     queryFn: async () => {
-      if (inheritedContextFromQuery.woredaId) return inheritedContextFromQuery;
-      return resolveLocationContextByWoredaId(hub?.location_id);
+      if (inheritedContextFromQuery.woredaId || inheritedContextFromQuery.kebeleId) return inheritedContextFromQuery;
+      return resolveLocationContextByLocationId(hub?.location_id);
     },
     enabled: !!hubId,
   });
@@ -84,6 +85,13 @@ export default function WarehouseSetupPage() {
     queryKey: ['locations', 'woredas', zoneId],
     queryFn: () => getWoredas(Number(zoneId)),
     enabled: !!zoneId,
+  });
+
+  const activeWoredaId = hubId ? inheritedContext?.woredaId : woredaId ? Number(woredaId) : undefined;
+  const { data: kebeles, isLoading: kebelesLoading } = useQuery({
+    queryKey: ['locations', 'kebeles', activeWoredaId],
+    queryFn: () => getKebeles(Number(activeWoredaId)),
+    enabled: !!activeWoredaId,
   });
 
   const form = useForm({
@@ -119,6 +127,7 @@ export default function WarehouseSetupPage() {
     if (hubId && inheritedContext) {
       if (inheritedContext.zoneId) setZoneId(String(inheritedContext.zoneId));
       if (inheritedContext.woredaId) setWoredaId(String(inheritedContext.woredaId));
+      setKebeleId(inheritedContext.kebeleId ? String(inheritedContext.kebeleId) : null);
       return;
     }
 
@@ -129,6 +138,7 @@ export default function WarehouseSetupPage() {
 
     if (!zones || zones.length === 0) {
       setZoneId(null);
+      setKebeleId(null);
       return;
     }
 
@@ -141,16 +151,36 @@ export default function WarehouseSetupPage() {
     if (hubId) return;
     if (isInheritedFromLocationPage) {
       if (inheritedContextFromQuery.woredaId) setWoredaId(String(inheritedContextFromQuery.woredaId));
+      setKebeleId(inheritedContextFromQuery.kebeleId ? String(inheritedContextFromQuery.kebeleId) : null);
       return;
     }
     if (!woredas || woredas.length === 0) {
       setWoredaId(null);
+      setKebeleId(null);
       return;
     }
     if (!woredaId || !woredas.some((woreda) => String(woreda.id) === woredaId)) {
       setWoredaId(String(woredas[0].id));
     }
   }, [hubId, isInheritedFromLocationPage, inheritedContextFromQuery.woredaId, woredaId, woredas]);
+
+  useEffect(() => {
+    if (hubId) {
+      setKebeleId(inheritedContext?.kebeleId ? String(inheritedContext.kebeleId) : null);
+      return;
+    }
+    if (isInheritedFromLocationPage) {
+      setKebeleId(inheritedContextFromQuery.kebeleId ? String(inheritedContextFromQuery.kebeleId) : null);
+      return;
+    }
+    if (!kebeles || kebeles.length === 0) {
+      setKebeleId(null);
+      return;
+    }
+    if (kebeleId && !kebeles.some((kebele) => String(kebele.id) === kebeleId)) {
+      setKebeleId(null);
+    }
+  }, [hubId, inheritedContext?.kebeleId, isInheritedFromLocationPage, inheritedContextFromQuery.kebeleId, kebeles, kebeleId]);
 
   const createMutation = useMutation({
     mutationFn: createWarehouse,
@@ -189,6 +219,10 @@ export default function WarehouseSetupPage() {
     () => woredas?.map((woreda) => ({ value: String(woreda.id), label: woreda.name })) || [],
     [woredas]
   );
+  const kebeleOptions = useMemo(
+    () => kebeles?.map((kebele) => ({ value: String(kebele.id), label: kebele.name })) || [],
+    [kebeles]
+  );
 
   const displayedZoneOptions = useMemo(() => {
     const context = hubId ? inheritedContext : inheritedContextFromQuery;
@@ -204,6 +238,13 @@ export default function WarehouseSetupPage() {
     return [{ value: String(context.woredaId), label: context.woredaName }, ...woredaOptions];
   }, [hubId, inheritedContext, inheritedContextFromQuery, woredaOptions]);
 
+  const displayedKebeleOptions = useMemo(() => {
+    const context = hubId ? inheritedContext : inheritedContextFromQuery;
+    if (!context?.kebeleId || !context.kebeleName) return kebeleOptions;
+    if (kebeleOptions.some((option) => option.value === String(context.kebeleId))) return kebeleOptions;
+    return [{ value: String(context.kebeleId), label: context.kebeleName }, ...kebeleOptions];
+  }, [hubId, inheritedContext, inheritedContextFromQuery, kebeleOptions]);
+
   if (regionsLoading) return <LoadingState message="Loading regions..." />;
   if (regionsError) return <ErrorState message="Failed to load regions" />;
 
@@ -217,9 +258,15 @@ export default function WarehouseSetupPage() {
     : isInheritedFromLocationPage
       ? inheritedContextFromQuery.woredaId
       : woredaId ? Number(woredaId) : undefined;
+  const effectiveKebeleId = hubId
+    ? inheritedContext?.kebeleId
+    : isInheritedFromLocationPage
+      ? inheritedContextFromQuery.kebeleId
+      : kebeleId ? Number(kebeleId) : undefined;
 
   const handleSubmit = (values: typeof form.values) => {
-    if (!effectiveWoredaId) return;
+    const targetLocationId = effectiveKebeleId || effectiveWoredaId;
+    if (!targetLocationId) return;
 
     if (values.ownership_type === 'rental' && !rentalAgreementFile) {
       notifications.show({
@@ -237,7 +284,7 @@ export default function WarehouseSetupPage() {
       status: values.status,
       description: values.description || undefined,
       hub_id: hubId || undefined,
-      location_id: effectiveWoredaId,
+      location_id: targetLocationId,
       managed_under: hubId ? 'Hub' : values.managed_under,
       ownership_type: values.ownership_type,
       rental_agreement_document: values.ownership_type === 'rental' ? rentalAgreementFile : null,
@@ -261,8 +308,8 @@ export default function WarehouseSetupPage() {
             {(hubId || isInheritedFromLocationPage) && (
               <Alert color="blue" variant="light">
                 {hubId
-                  ? 'This warehouse inherits region, zone/subcity, and woreda from its parent hub. Those fields are locked here.'
-                  : 'Region, zone/subcity, and woreda were selected on the location page and are locked for this warehouse.'}
+                  ? 'This warehouse inherits region, zone/subcity, woreda, and any selected kebele from its parent hub. Those fields are locked here.'
+                  : 'Region, zone/subcity, woreda, and any selected kebele were chosen on the location page and are locked for this warehouse.'}
               </Alert>
             )}
 
@@ -302,6 +349,7 @@ export default function WarehouseSetupPage() {
                   if (!hubId && !isInheritedFromLocationPage) {
                     setZoneId(null);
                     setWoredaId(null);
+                    setKebeleId(null);
                   }
                 }}
                 disabled={!!hubId || isInheritedFromLocationPage}
@@ -320,6 +368,7 @@ export default function WarehouseSetupPage() {
                 onChange={(value) => {
                   setZoneId(value);
                   setWoredaId(null);
+                  setKebeleId(null);
                 }}
                 disabled={zonesLoading || !!hubId || isInheritedFromLocationPage}
                 description={
@@ -334,7 +383,10 @@ export default function WarehouseSetupPage() {
                 label="Woreda"
                 data={displayedWoredaOptions}
                 value={effectiveWoredaId ? String(effectiveWoredaId) : null}
-                onChange={setWoredaId}
+                onChange={(value) => {
+                  setWoredaId(value);
+                  setKebeleId(null);
+                }}
                 disabled={woredasLoading || !!hubId || isInheritedFromLocationPage}
                 description={
                   hubId
@@ -342,6 +394,21 @@ export default function WarehouseSetupPage() {
                     : isInheritedFromLocationPage
                       ? inheritedContextFromQuery.woredaName || 'Inherited from location page'
                       : undefined
+                }
+              />
+              <Select
+                label="Kebele"
+                data={displayedKebeleOptions}
+                value={effectiveKebeleId ? String(effectiveKebeleId) : null}
+                onChange={setKebeleId}
+                disabled={kebelesLoading || !effectiveWoredaId || !!hubId || isInheritedFromLocationPage}
+                clearable={!hubId && !isInheritedFromLocationPage}
+                description={
+                  hubId
+                    ? inheritedContext?.kebeleName || 'Optional inherited kebele'
+                    : isInheritedFromLocationPage
+                      ? inheritedContextFromQuery.kebeleName || 'Optional inherited kebele'
+                      : 'Optional'
                 }
               />
             </Group>

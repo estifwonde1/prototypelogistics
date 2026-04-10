@@ -12,6 +12,7 @@ Cats::Warehouse::Engine.routes.draw do
     get "locations/regions", to: "locations#regions"
     get "locations/zones", to: "locations#zones"
     get "locations/woredas", to: "locations#woredas"
+    get "locations/kebeles", to: "locations#kebeles"
     get "locations/hubs", to: "locations#hubs"
     get "locations/warehouses", to: "locations#warehouses"
     get "locations/stores", to: "locations#stores"
