@@ -299,15 +299,17 @@ module Cats
             :commodity_id,
             :quantity,
             :unit_id,
-            :unit_price,              # NEW: Accept frontend param name
-            :notes                    # NEW: Accept frontend param name
+            :notes,                   # NEW: Accept frontend param name
+            :packaging_unit_id,
+            :packaging_size
           ],
           lines: [                    # NEW: Accept frontend param name
             :commodity_id,
             :quantity,
             :unit_id,
-            :unit_price,
-            :notes
+            :notes,
+            :packaging_unit_id,
+            :packaging_size
           ]
         )
       end

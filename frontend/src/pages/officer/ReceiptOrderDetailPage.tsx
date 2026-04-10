@@ -595,7 +595,8 @@ function ReceiptOrderDetailPage() {
                       <Table.Th>Commodity</Table.Th>
                       <Table.Th>Quantity</Table.Th>
                       <Table.Th>Unit</Table.Th>
-                      <Table.Th>Unit Price</Table.Th>
+                      <Table.Th>Packaging</Table.Th>
+                      <Table.Th>Total</Table.Th>
                       <Table.Th>Notes</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
@@ -611,7 +612,16 @@ function ReceiptOrderDetailPage() {
                           {line.unit_name?.trim() ||
                             (line.unit_id ? `Unit #${line.unit_id}` : '—')}
                         </Table.Td>
-                        <Table.Td>{formatUnitPrice(line.unit_price)}</Table.Td>
+                        <Table.Td>
+                          {line.packaging_size && line.packaging_unit_name
+                            ? `${line.packaging_size} ${line.packaging_unit_name}/pkg`
+                            : '—'}
+                        </Table.Td>
+                        <Table.Td>
+                          {line.total_quantity != null
+                            ? `${line.total_quantity} ${line.unit_name?.trim() || ''}`
+                            : '—'}
+                        </Table.Td>
                         <Table.Td>{line.notes?.trim() ? line.notes : '—'}</Table.Td>
                       </Table.Tr>
                     ))}

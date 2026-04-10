@@ -39,8 +39,9 @@ const createEmptyItem = (): ReceiptOrderLine => ({
   commodity_id: 0,
   quantity: 0,
   unit_id: 0,
-  unit_price: 0,
   notes: '',
+  packaging_unit_id: undefined,
+  packaging_size: undefined,
 });
 
 function ReceiptOrderFormPage() {
@@ -116,7 +117,6 @@ function ReceiptOrderFormPage() {
             commodity_id: line.commodity_id,
             quantity: line.quantity,
             unit_id: line.unit_id,
-            unit_price: line.unit_price ?? 0,
             notes: line.notes ?? '',
           }))
         : [createEmptyItem()]
@@ -578,74 +578,102 @@ function ReceiptOrderFormPage() {
                     <Table.Th>Commodity</Table.Th>
                     <Table.Th>Quantity</Table.Th>
                     <Table.Th>Unit</Table.Th>
-                    <Table.Th>Unit Price</Table.Th>
+                    <Table.Th>Packaging Unit</Table.Th>
+                    <Table.Th>Size per Package</Table.Th>
+                    <Table.Th>Total</Table.Th>
                     <Table.Th>Notes</Table.Th>
                     {fieldsEditable && <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>}
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {items.map((item, index) => (
-                    <Table.Tr key={index}>
-                      <Table.Td>
-                        <Select
-                          placeholder="Select commodity"
-                          data={commodityOptions}
-                          value={item.commodity_id?.toString()}
-                          onChange={(val) =>
-                            handleItemChange(index, 'commodity_id', parseInt(val || '0'))
-                          }
-                          searchable
-                          disabled={!fieldsEditable}
-                        />
-                      </Table.Td>
-                      <Table.Td>
-                        <NumberInput
-                          placeholder="0"
-                          value={item.quantity}
-                          onChange={(val) => handleItemChange(index, 'quantity', Number(val) || 0)}
-                          disabled={!fieldsEditable}
-                        />
-                      </Table.Td>
-                      <Table.Td>
-                        <Select
-                          placeholder="Select unit"
-                          data={unitOptions}
-                          value={item.unit_id?.toString()}
-                          onChange={(val) =>
-                            handleItemChange(index, 'unit_id', parseInt(val || '0'))
-                          }
-                          disabled={!fieldsEditable}
-                        />
-                      </Table.Td>
-                      <Table.Td>
-                        <NumberInput
-                          placeholder="0"
-                          value={item.unit_price}
-                          onChange={(val) => handleItemChange(index, 'unit_price', Number(val) || 0)}
-                          disabled={!fieldsEditable}
-                        />
-                      </Table.Td>
-                      <Table.Td>
-                        <TextInput
-                          placeholder="Notes"
-                          value={item.notes}
-                          onChange={(e) => handleItemChange(index, 'notes', e.target.value)}
-                          disabled={!fieldsEditable}
-                        />
-                      </Table.Td>
-                      {fieldsEditable && (
+                  {items.map((item, index) => {
+                    const total =
+                      item.packaging_size && item.quantity
+                        ? (item.quantity * item.packaging_size).toFixed(2)
+                        : null;
+                    return (
+                      <Table.Tr key={index}>
                         <Table.Td>
-                          <ActionIcon
-                            color="red"
-                            variant="subtle"
-                            onClick={() => handleRemoveItem(index)}
-                          >
-                            <IconTrash size={16} />
-                          </ActionIcon>
+                          <Select
+                            placeholder="Select commodity"
+                            data={commodityOptions}
+                            value={item.commodity_id?.toString()}
+                            onChange={(val) =>
+                              handleItemChange(index, 'commodity_id', parseInt(val || '0'))
+                            }
+                            searchable
+                            disabled={!fieldsEditable}
+                          />
                         </Table.Td>
-                      )}
-                    </Table.Tr>
-                  ))}
+                        <Table.Td>
+                          <NumberInput
+                            placeholder="0"
+                            value={item.quantity}
+                            onChange={(val) => handleItemChange(index, 'quantity', Number(val) || 0)}
+                            disabled={!fieldsEditable}
+                          />
+                        </Table.Td>
+                        <Table.Td>
+                          <Select
+                            placeholder="Select unit"
+                            data={unitOptions}
+                            value={item.unit_id?.toString()}
+                            onChange={(val) =>
+                              handleItemChange(index, 'unit_id', parseInt(val || '0'))
+                            }
+                            disabled={!fieldsEditable}
+                          />
+                        </Table.Td>
+                        <Table.Td>
+                          <Select
+                            placeholder="e.g. Bag"
+                            data={unitOptions}
+                            value={item.packaging_unit_id?.toString() ?? null}
+                            onChange={(val) =>
+                              handleItemChange(index, 'packaging_unit_id', val ? parseInt(val) : undefined)
+                            }
+                            clearable
+                            disabled={!fieldsEditable}
+                          />
+                        </Table.Td>
+                        <Table.Td>
+                          <NumberInput
+                            placeholder="e.g. 25"
+                            value={item.packaging_size ?? ''}
+                            onChange={(val) =>
+                              handleItemChange(index, 'packaging_size', val !== '' ? Number(val) : undefined)
+                            }
+                            disabled={!fieldsEditable}
+                            min={0}
+                          />
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm" fw={600} c={total ? 'blue' : 'dimmed'}>
+                            {total ? `${total} ${unitOptions.find(u => u.value === item.unit_id?.toString())?.label ?? ''}` : '—'}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <TextInput
+                            placeholder="Notes"
+                            value={item.notes}
+                            onChange={(e) => handleItemChange(index, 'notes', e.target.value)}
+                            disabled={!fieldsEditable}
+                          />
+                        </Table.Td>
+                        {fieldsEditable && (
+                          <Table.Td>
+                            <ActionIcon
+                              color="red"
+                              variant="subtle"
+                              onClick={() => handleRemoveItem(index)}
+                            >
+                              <IconTrash size={16} />
+                            </ActionIcon>
+                          </Table.Td>
+                        )}
+                      </Table.Tr>
+                    );
+                  })}
                 </Table.Tbody>
               </Table>
             </Table.ScrollContainer>

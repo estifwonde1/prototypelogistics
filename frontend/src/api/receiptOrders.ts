@@ -12,8 +12,11 @@ export interface ReceiptOrderLine {
   quantity: number;
   unit_id: number;
   unit_name?: string;
-  unit_price?: number;
   notes?: string;
+  packaging_unit_id?: number;
+  packaging_unit_name?: string;
+  packaging_size?: number;
+  total_quantity?: number;
 }
 
 export interface AssignableManagerOption {
