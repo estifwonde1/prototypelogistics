@@ -10,6 +10,7 @@ export interface Warehouse {
   subcity_name?: string;
   woreda_name?: string;
   kebele_name?: string;
+  kebele?: number;
   hub_id?: number;
   hub_name?: string;
   geo_id?: number;
@@ -44,6 +45,7 @@ export interface WarehouseUpsertPayload {
   ownership_type?: string;
   rental_agreement_document?: File | null;
   rental_agreement_document_signed_id?: string;
+  kebele?: number;
 }
 
 export interface WarehouseGeo {

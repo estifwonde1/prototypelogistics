@@ -12,6 +12,7 @@ import {
   Button,
   Card,
   Text,
+  NumberInput,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -120,10 +121,18 @@ export default function HubSetupPage() {
       hub_type: 'regional',
       status: 'active',
       description: '',
+      kebele: '' as number | '',
     },
     validate: {
       name: (value) => (!value ? 'Name is required' : null),
       code: (value) => (!value ? 'Code is required' : null),
+      kebele: (value) => {
+        if (value === '' || value === null || value === undefined) return null;
+        const num = Number(value);
+        if (isNaN(num)) return 'Kebele must be a number';
+        if (num < 1 || num > 40) return 'Kebele must be between 1 and 40';
+        return null;
+      },
     },
   });
 
@@ -192,6 +201,7 @@ export default function HubSetupPage() {
       status: values.status,
       description: values.description || undefined,
       location_id: Number(targetLocationId),
+      kebele: values.kebele !== '' ? Number(values.kebele) : undefined,
     });
   };
 
@@ -220,11 +230,13 @@ export default function HubSetupPage() {
 
             <Group grow>
               <Select
-                label="Hub Type"
+                label="Hierarchical Level"
                 data={[
+                  { value: 'federal', label: 'Federal' },
                   { value: 'regional', label: 'Regional' },
                   { value: 'zonal', label: 'Zonal' },
                   { value: 'woreda', label: 'Woreda' },
+                  { value: 'kebele', label: 'Kebele' },
                 ]}
                 {...form.getInputProps('hub_type')}
               />
@@ -273,23 +285,17 @@ export default function HubSetupPage() {
                 value={woredaId}
                 onChange={(value) => {
                   setWoredaId(value);
-                  setKebeleId(null);
                 }}
                 disabled={woredasLoading || isInheritedFromLocationPage}
                 description={isInheritedFromLocationPage ? inheritedContext.woredaName || 'Inherited from location page' : undefined}
               />
-              <Select
-                label="Kebele"
-                data={displayedKebeleOptions}
-                value={kebeleId}
-                onChange={setKebeleId}
-                disabled={kebelesLoading || !woredaId || isInheritedFromLocationPage}
-                clearable={!isInheritedFromLocationPage}
-                description={
-                  isInheritedFromLocationPage
-                    ? inheritedContext.kebeleName || 'Optional inherited kebele'
-                    : 'Optional'
-                }
+              <NumberInput
+                label="Kebele (Optional)"
+                placeholder="1-40"
+                min={1}
+                max={40}
+                description="Optional"
+                {...form.getInputProps('kebele')}
               />
             </Group>
 

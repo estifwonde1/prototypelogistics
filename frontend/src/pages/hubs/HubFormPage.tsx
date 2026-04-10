@@ -42,10 +42,19 @@ function HubFormPage() {
       description: '',
       location_id: '',
       geo_id: '',
+      kebele: '' as number | '',
     },
     validate: {
       name: (value) => (!value ? 'Name is required' : null),
       code: (value) => (!value ? 'Code is required' : null),
+      hub_type: (value) => (!value ? 'Hierarchical level is required' : null),
+      kebele: (value) => {
+        if (value === '' || value === null || value === undefined) return null;
+        const num = Number(value);
+        if (isNaN(num)) return 'Kebele must be a number';
+        if (num < 1 || num > 40) return 'Kebele must be between 1 and 40';
+        return null;
+      },
     },
   });
 
@@ -59,6 +68,7 @@ function HubFormPage() {
         description: hub.description || '',
         location_id: hub.location_id?.toString() || '',
         geo_id: hub.geo_id?.toString() || '',
+        kebele: hub.kebele ?? '',
       });
     }
   }, [hub]);
@@ -113,6 +123,7 @@ function HubFormPage() {
       description: values.description || undefined,
       location_id: values.location_id ? Number(values.location_id) : undefined,
       geo_id: values.geo_id ? Number(values.geo_id) : undefined,
+      kebele: values.kebele !== '' ? Number(values.kebele) : undefined,
     };
 
     if (isEdit) {
@@ -166,13 +177,15 @@ function HubFormPage() {
 
               <Group grow>
                 <Select
-                  label="Hub Type"
-                  placeholder="Select type"
+                  label="Hierarchical Level"
+                  placeholder="Select level"
                   required
                   data={[
+                    { value: 'federal', label: 'Federal' },
                     { value: 'regional', label: 'Regional' },
                     { value: 'zonal', label: 'Zonal' },
                     { value: 'woreda', label: 'Woreda' },
+                    { value: 'kebele', label: 'Kebele' },
                   ]}
                   {...form.getInputProps('hub_type')}
                 />
@@ -189,14 +202,7 @@ function HubFormPage() {
                 />
               </Group>
 
-              <Textarea
-                label="Description"
-                placeholder="Enter hub description..."
-                minRows={3}
-                {...form.getInputProps('description')}
-              />
-
-              <Group grow>
+              <Group grow align="flex-start">
                 <NumberInput
                   label="Location ID"
                   placeholder="Enter location ID"
@@ -209,7 +215,21 @@ function HubFormPage() {
                   min={1}
                   {...form.getInputProps('geo_id')}
                 />
+                <NumberInput
+                  label="Kebele (Optional)"
+                  placeholder="1-40"
+                  min={1}
+                  max={40}
+                  {...form.getInputProps('kebele')}
+                />
               </Group>
+
+              <Textarea
+                label="Description"
+                placeholder="Enter hub description..."
+                minRows={3}
+                {...form.getInputProps('description')}
+              />
             </Stack>
           </Card>
 

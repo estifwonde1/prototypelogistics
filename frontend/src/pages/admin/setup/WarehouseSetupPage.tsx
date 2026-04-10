@@ -12,6 +12,7 @@ import {
   TextInput,
   Textarea,
   Title,
+  NumberInput,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
@@ -28,9 +29,11 @@ import {
 } from '../../../utils/locationContext';
 
 const MANAGED_UNDER_OPTIONS = [
-  { value: 'Regional Government', label: 'Regional Government' },
-  { value: 'Zone/Subcity', label: 'Zone/Subcity' },
-  { value: 'Woreda', label: 'Woreda' },
+  { value: 'federal', label: 'Federal' },
+  { value: 'regional', label: 'Regional' },
+  { value: 'zonal', label: 'Zonal' },
+  { value: 'woreda', label: 'Woreda' },
+  { value: 'kebele', label: 'Kebele' },
 ];
 
 const OWNERSHIP_TYPE_OPTIONS = [
@@ -103,12 +106,20 @@ export default function WarehouseSetupPage() {
       managed_under: hubId ? 'Hub' : MANAGED_UNDER_OPTIONS[0].value,
       ownership_type: 'self_owned',
       description: '',
+      kebele: '' as number | '',
     },
     validate: {
       code: (value) => (!value ? 'Code is required' : null),
       name: (value) => (!value ? 'Name is required' : null),
-      managed_under: (value) => (!value ? 'Managed under is required' : null),
+      managed_under: (value) => (!value ? 'Hierarchical level is required' : null),
       ownership_type: (value) => (!value ? 'Ownership type is required' : null),
+      kebele: (value) => {
+        if (value === '' || value === null || value === undefined) return null;
+        const num = Number(value);
+        if (isNaN(num)) return 'Kebele must be a number';
+        if (num < 1 || num > 40) return 'Kebele must be between 1 and 40';
+        return null;
+      },
     },
   });
 
@@ -288,6 +299,7 @@ export default function WarehouseSetupPage() {
       managed_under: hubId ? 'Hub' : values.managed_under,
       ownership_type: values.ownership_type,
       rental_agreement_document: values.ownership_type === 'rental' ? rentalAgreementFile : null,
+      kebele: values.kebele !== '' ? Number(values.kebele) : undefined,
     });
   };
 
@@ -385,7 +397,6 @@ export default function WarehouseSetupPage() {
                 value={effectiveWoredaId ? String(effectiveWoredaId) : null}
                 onChange={(value) => {
                   setWoredaId(value);
-                  setKebeleId(null);
                 }}
                 disabled={woredasLoading || !!hubId || isInheritedFromLocationPage}
                 description={
@@ -396,26 +407,19 @@ export default function WarehouseSetupPage() {
                       : undefined
                 }
               />
-              <Select
-                label="Kebele"
-                data={displayedKebeleOptions}
-                value={effectiveKebeleId ? String(effectiveKebeleId) : null}
-                onChange={setKebeleId}
-                disabled={kebelesLoading || !effectiveWoredaId || !!hubId || isInheritedFromLocationPage}
-                clearable={!hubId && !isInheritedFromLocationPage}
-                description={
-                  hubId
-                    ? inheritedContext?.kebeleName || 'Optional inherited kebele'
-                    : isInheritedFromLocationPage
-                      ? inheritedContextFromQuery.kebeleName || 'Optional inherited kebele'
-                      : 'Optional'
-                }
+              <NumberInput
+                label="Kebele (Optional)"
+                placeholder="1-40"
+                min={1}
+                max={40}
+                description="Optional"
+                {...form.getInputProps('kebele')}
               />
             </Group>
 
             <Group grow align="flex-start">
               <Select
-                label="Managed Under"
+                label="Hierarchical Level"
                 data={hubId ? [{ value: 'Hub', label: 'Hub' }] : MANAGED_UNDER_OPTIONS}
                 value={form.values.managed_under}
                 onChange={(value) => form.setFieldValue('managed_under', value || '')}

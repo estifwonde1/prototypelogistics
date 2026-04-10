@@ -81,7 +81,8 @@ module Cats
           :status,
           :description,
           :rental_agreement_document,
-          :rental_agreement_document_signed_id
+          :rental_agreement_document_signed_id,
+          :kebele
         )
       end
 

@@ -2,7 +2,7 @@ module Cats
   module Warehouse
     class WarehouseSerializer < ApplicationSerializer
       attributes :id, :code, :name, :warehouse_type, :status, :description, :location_id, :location_name,
-                 :subcity_name, :woreda_name, :kebele_name, :hub_id, :hub_name, :geo_id, :managed_under, :ownership_type,
+                 :subcity_name, :woreda_name, :kebele_name, :kebele, :hub_id, :hub_name, :geo_id, :managed_under, :ownership_type,
                  :rental_agreement_document, :created_at, :updated_at
 
       has_one :warehouse_capacity, serializer: WarehouseCapacitySerializer
