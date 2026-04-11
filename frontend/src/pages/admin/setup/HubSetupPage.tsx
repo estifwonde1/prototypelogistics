@@ -54,7 +54,7 @@ export default function HubSetupPage() {
     enabled: !!zoneId,
   });
 
-  const { data: kebeles, isLoading: kebelesLoading } = useQuery({
+  const { data: kebeles } = useQuery({
     queryKey: ['locations', 'kebeles', woredaId],
     queryFn: () => getKebeles(Number(woredaId)),
     enabled: !!woredaId,
@@ -181,12 +181,6 @@ export default function HubSetupPage() {
     if (woredaOptions.some((option) => option.value === String(inheritedContext.woredaId))) return woredaOptions;
     return [{ value: String(inheritedContext.woredaId), label: inheritedContext.woredaName }, ...woredaOptions];
   }, [isInheritedFromLocationPage, inheritedContext, woredaOptions]);
-
-  const displayedKebeleOptions = useMemo(() => {
-    if (!isInheritedFromLocationPage || !inheritedContext.kebeleId || !inheritedContext.kebeleName) return kebeleOptions;
-    if (kebeleOptions.some((option) => option.value === String(inheritedContext.kebeleId))) return kebeleOptions;
-    return [{ value: String(inheritedContext.kebeleId), label: inheritedContext.kebeleName }, ...kebeleOptions];
-  }, [isInheritedFromLocationPage, inheritedContext, kebeleOptions]);
 
   if (regionsLoading) return <LoadingState message="Loading regions..." />;
   if (regionsError) return <ErrorState message="Failed to load regions" />;

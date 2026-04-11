@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_04_10_102930) do
+ActiveRecord::Schema[7.0].define(version: 2026_04_11_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1166,11 +1166,13 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_10_102930) do
     t.bigint "entered_unit_id"
     t.bigint "base_unit_id"
     t.decimal "base_quantity", precision: 15, scale: 3
+    t.string "line_reference_no", null: false
     t.index ["base_unit_id"], name: "index_cats_warehouse_grn_items_on_base_unit_id"
     t.index ["commodity_id"], name: "index_cats_warehouse_grn_items_on_commodity_id"
     t.index ["entered_unit_id"], name: "index_cats_warehouse_grn_items_on_entered_unit_id"
     t.index ["grn_id"], name: "index_cats_warehouse_grn_items_on_grn_id"
     t.index ["inventory_lot_id"], name: "index_cats_warehouse_grn_items_on_inventory_lot_id"
+    t.index ["line_reference_no"], name: "index_cats_warehouse_grn_items_on_line_reference_no", unique: true
     t.index ["stack_id"], name: "index_cats_warehouse_grn_items_on_stack_id"
     t.index ["store_id"], name: "index_cats_warehouse_grn_items_on_store_id"
     t.index ["unit_id"], name: "index_cats_warehouse_grn_items_on_unit_id"
@@ -1279,11 +1281,13 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_10_102930) do
     t.bigint "entered_unit_id"
     t.bigint "base_unit_id"
     t.decimal "base_quantity", precision: 15, scale: 3
+    t.string "line_reference_no", null: false
     t.index ["base_unit_id"], name: "index_cats_warehouse_inspection_items_on_base_unit_id"
     t.index ["commodity_id"], name: "index_cats_warehouse_inspection_items_on_commodity_id"
     t.index ["entered_unit_id"], name: "index_cats_warehouse_inspection_items_on_entered_unit_id"
     t.index ["inspection_id"], name: "index_cats_warehouse_inspection_items_on_inspection_id"
     t.index ["inventory_lot_id"], name: "index_cats_warehouse_inspection_items_on_inventory_lot_id"
+    t.index ["line_reference_no"], name: "index_cats_warehouse_inspection_items_on_line_reference_no", unique: true
   end
 
   create_table "cats_warehouse_inspections", force: :cascade do |t|
@@ -1376,7 +1380,9 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_10_102930) do
     t.datetime "updated_at", null: false
     t.decimal "unit_price", precision: 15, scale: 4
     t.text "notes"
+    t.string "line_reference_no", null: false
     t.index ["commodity_id"], name: "index_cats_warehouse_receipt_order_lines_on_commodity_id"
+    t.index ["line_reference_no"], name: "index_cats_warehouse_receipt_order_lines_on_line_reference_no", unique: true
     t.index ["receipt_order_id"], name: "index_receipt_order_lines_on_order_id"
     t.index ["unit_id"], name: "index_cats_warehouse_receipt_order_lines_on_unit_id"
   end

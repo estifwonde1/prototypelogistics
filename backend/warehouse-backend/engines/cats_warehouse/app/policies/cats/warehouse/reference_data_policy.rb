@@ -9,6 +9,10 @@ module Cats
         facility_options?
       end
 
+      def create_commodity?
+        officer? || admin?
+      end
+
       def units?
         facility_options?
       end

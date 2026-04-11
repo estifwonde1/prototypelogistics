@@ -1,7 +1,7 @@
 module Cats
   module Warehouse
     class ReceiptOrderLineSerializer < ApplicationSerializer
-      attributes :id, :commodity_id, :commodity_name, :quantity, :unit_id, :unit_name
+      attributes :id, :commodity_id, :commodity_name, :quantity, :unit_id, :unit_name, :line_reference_no
 
       attribute :notes, if: :line_has_notes?
       attribute :packaging_unit_id, if: :line_has_packaging?

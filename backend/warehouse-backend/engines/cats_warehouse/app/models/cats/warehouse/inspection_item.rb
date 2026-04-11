@@ -12,9 +12,18 @@ module Cats
 
       validates :quantity_received, presence: true
       validates :quantity_received, :quantity_damaged, :quantity_lost, numericality: { greater_than_or_equal_to: 0 }
+      validates :line_reference_no, presence: true
       validate :losses_cannot_exceed_received
+      validate :line_reference_no_unique_across_source_details
 
       private
+
+      def line_reference_no_unique_across_source_details
+        return if line_reference_no.blank?
+        return unless SourceDetailReference.taken?(line_reference_no, exclude_record: self)
+
+        errors.add(:line_reference_no, "is already assigned to another source detail")
+      end
 
       def losses_cannot_exceed_received
         return unless quantity_received.present?

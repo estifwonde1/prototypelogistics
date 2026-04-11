@@ -16,6 +16,11 @@ export interface InspectionItem {
   commodity_id: number;
   commodity_name?: string;
   commodity_code?: string;
+  /** Unique source-detail reference; doubles as batch identity on intake. */
+  line_reference_no?: string;
+  /** Resolved lot batch when present (API). */
+  batch_no?: string;
+  unit_id?: number;
   quantity_received: number;
   quantity_damaged?: number;
   quantity_lost?: number;

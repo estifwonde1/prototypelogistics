@@ -13,9 +13,18 @@ module Cats
       belongs_to :stack, class_name: "Cats::Warehouse::Stack", optional: true
 
       validates :quantity, presence: true
+      validates :line_reference_no, presence: true
       validate :store_and_stack_match_header
+      validate :line_reference_no_unique_across_source_details
 
       private
+
+      def line_reference_no_unique_across_source_details
+        return if line_reference_no.blank?
+        return unless SourceDetailReference.taken?(line_reference_no, exclude_record: self)
+
+        errors.add(:line_reference_no, "is already assigned to another source detail")
+      end
 
       def store_and_stack_match_header
         return unless grn && (store || stack)

@@ -97,13 +97,6 @@ function lineQuantityForReservation(order: ReceiptOrder, reservation: { receipt_
   return totalReceiptOrderLineQuantity(order);
 }
 
-function formatUnitPrice(value: number | string | undefined | null): string {
-  if (value === null || value === undefined || value === '') return '—';
-  const n = typeof value === 'number' ? value : Number(value);
-  if (Number.isNaN(n)) return '—';
-  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
-}
-
 function ReceiptOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -588,11 +581,12 @@ function ReceiptOrderDetailPage() {
               <Text size="sm" fw={600} mb="md">
                 Order Items
               </Text>
-              <Table.ScrollContainer minWidth={600}>
+              <Table.ScrollContainer minWidth={720}>
                 <Table striped>
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Commodity</Table.Th>
+                      <Table.Th>Line ref</Table.Th>
                       <Table.Th>Quantity</Table.Th>
                       <Table.Th>Unit</Table.Th>
                       <Table.Th>Packaging</Table.Th>
@@ -606,6 +600,9 @@ function ReceiptOrderDetailPage() {
                         <Table.Td>
                           {line.commodity_name?.trim() ||
                             (line.commodity_id ? `Commodity #${line.commodity_id}` : '—')}
+                        </Table.Td>
+                        <Table.Td style={{ fontWeight: 600 }}>
+                          {line.line_reference_no?.trim() || '—'}
                         </Table.Td>
                         <Table.Td>{line.quantity}</Table.Td>
                         <Table.Td>

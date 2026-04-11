@@ -91,7 +91,7 @@ export default function WarehouseSetupPage() {
   });
 
   const activeWoredaId = hubId ? inheritedContext?.woredaId : woredaId ? Number(woredaId) : undefined;
-  const { data: kebeles, isLoading: kebelesLoading } = useQuery({
+  const { data: kebeles } = useQuery({
     queryKey: ['locations', 'kebeles', activeWoredaId],
     queryFn: () => getKebeles(Number(activeWoredaId)),
     enabled: !!activeWoredaId,
@@ -230,10 +230,6 @@ export default function WarehouseSetupPage() {
     () => woredas?.map((woreda) => ({ value: String(woreda.id), label: woreda.name })) || [],
     [woredas]
   );
-  const kebeleOptions = useMemo(
-    () => kebeles?.map((kebele) => ({ value: String(kebele.id), label: kebele.name })) || [],
-    [kebeles]
-  );
 
   const displayedZoneOptions = useMemo(() => {
     const context = hubId ? inheritedContext : inheritedContextFromQuery;
@@ -248,13 +244,6 @@ export default function WarehouseSetupPage() {
     if (woredaOptions.some((option) => option.value === String(context.woredaId))) return woredaOptions;
     return [{ value: String(context.woredaId), label: context.woredaName }, ...woredaOptions];
   }, [hubId, inheritedContext, inheritedContextFromQuery, woredaOptions]);
-
-  const displayedKebeleOptions = useMemo(() => {
-    const context = hubId ? inheritedContext : inheritedContextFromQuery;
-    if (!context?.kebeleId || !context.kebeleName) return kebeleOptions;
-    if (kebeleOptions.some((option) => option.value === String(context.kebeleId))) return kebeleOptions;
-    return [{ value: String(context.kebeleId), label: context.kebeleName }, ...kebeleOptions];
-  }, [hubId, inheritedContext, inheritedContextFromQuery, kebeleOptions]);
 
   if (regionsLoading) return <LoadingState message="Loading regions..." />;
   if (regionsError) return <ErrorState message="Failed to load regions" />;

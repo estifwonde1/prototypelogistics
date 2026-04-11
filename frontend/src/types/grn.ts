@@ -44,6 +44,8 @@ export interface GrnItem {
   stack_id?: number;
   stack_name?: string;
   stack_code?: string;
+  /** Unique per commodity line; used as inventory batch when receiving. */
+  line_reference_no?: string;
   // Phase 2: Lot/UOM fields
   batch_no?: string;
   expiry_date?: string;

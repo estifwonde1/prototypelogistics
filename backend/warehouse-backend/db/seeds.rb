@@ -743,7 +743,8 @@ grn_items = commodities.first(3).map.with_index do |commodity, idx|
       unit: commodity.unit_of_measure,
       quality_status: "Good",
       store: stores.first,
-      stack: stacks.first
+      stack: stacks.first,
+      line_reference_no: "SEED-GRN-ADD-001-#{idx}-#{commodity.id}"
     }
   )
 end

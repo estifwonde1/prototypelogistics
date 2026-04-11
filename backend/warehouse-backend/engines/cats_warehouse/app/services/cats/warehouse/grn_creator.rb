@@ -29,14 +29,32 @@ module Cats
 
             commodity_id = fetch_id(item, :commodity)
             unit_id = fetch_id(item, :unit)
-            
-            # Resolve Inventory Lot
+
             lot_id = fetch_id(item, :inventory_lot, optional: true)
-            if lot_id.nil? && item[:batch_no].present?
+            line_ref = item[:line_reference_no].presence || item[:batch_no].presence
+
+            if lot_id.present?
+              lot = InventoryLot.find_by(id: lot_id)
+              raise ArgumentError, "inventory lot not found" unless lot
+
+              # Line reference identifies this document row; it may differ from the lot's batch when
+              # reusing an existing lot (e.g. auto GRN from inspection already has a ref on the inspection line).
+              line_ref = line_ref.presence || SourceDetailReference.generate_unique
+
+              if SourceDetailReference.taken?(line_ref)
+                raise ArgumentError, "line_reference_no #{line_ref} is already in use"
+              end
+            else
+              line_ref = SourceDetailReference.generate_unique if line_ref.blank?
+
+              if SourceDetailReference.taken?(line_ref)
+                raise ArgumentError, "line_reference_no #{line_ref} is already in use"
+              end
+
               lot_id = InventoryLotResolver.resolve(
                 warehouse: @warehouse,
                 commodity_id: commodity_id,
-                batch_no: item[:batch_no],
+                batch_no: line_ref,
                 expiry_date: item[:expiry_date],
                 source: @source,
                 lot_code: item[:lot_code],
@@ -49,12 +67,12 @@ module Cats
             base_unit_id = fetch_id(item, :base_unit, optional: true)
             base_quantity = item[:base_quantity]
 
-            # batch_no / expiry_date are only for InventoryLotResolver above — not GrnItem columns
             grn.grn_items.create!(
               commodity_id: commodity_id,
               quantity: item[:quantity],
               unit_id: unit_id,
               inventory_lot_id: lot_id,
+              line_reference_no: line_ref,
               entered_unit_id: entered_unit_id,
               base_unit_id: base_unit_id,
               base_quantity: base_quantity,

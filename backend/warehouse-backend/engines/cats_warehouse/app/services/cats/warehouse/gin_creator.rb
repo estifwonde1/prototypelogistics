@@ -32,16 +32,27 @@ module Cats
             base_unit_id = fetch_id(item, :base_unit, optional: true)
             base_quantity = item[:base_quantity]
 
+            store_id = fetch_id(item, :store, optional: true)
+            stack_id = fetch_id(item, :stack, optional: true)
+            lot_id = fetch_id(item, :inventory_lot, optional: true)
+            lot_id ||= infer_inventory_lot_for_issue(
+              warehouse: @warehouse,
+              commodity_id: fetch_id(item, :commodity),
+              unit_id: unit_id,
+              store_id: store_id,
+              stack_id: stack_id
+            )
+
             gin.gin_items.create!(
               commodity_id: fetch_id(item, :commodity),
               quantity: item[:quantity],
               unit_id: unit_id,
-              inventory_lot_id: fetch_id(item, :inventory_lot, optional: true),
+              inventory_lot_id: lot_id,
               entered_unit_id: entered_unit_id,
               base_unit_id: base_unit_id,
               base_quantity: base_quantity,
-              store_id: fetch_id(item, :store, optional: true),
-              stack_id: fetch_id(item, :stack, optional: true)
+              store_id: store_id,
+              stack_id: stack_id
             )
           end
 
@@ -58,6 +69,22 @@ module Cats
         return nil if optional
 
         raise ArgumentError, "#{key} is required"
+      end
+
+      # When the client omits lot on a GIN line, attach the only lot with on-hand stock at the
+      # store/stack (matches GRN intake that always records a lot per line reference / batch).
+      def infer_inventory_lot_for_issue(warehouse:, commodity_id:, unit_id:, store_id:, stack_id:)
+        return nil if store_id.blank? || stack_id.blank?
+
+        lot_ids = StockBalance.where(
+          warehouse_id: warehouse.id,
+          store_id: store_id,
+          stack_id: stack_id,
+          commodity_id: commodity_id,
+          unit_id: unit_id
+        ).where("quantity > 0").where.not(inventory_lot_id: nil).distinct.pluck(:inventory_lot_id)
+
+        lot_ids.one? ? lot_ids.first : nil
       end
     end
   end

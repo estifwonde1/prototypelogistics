@@ -11,6 +11,10 @@ module Cats
       has_many :space_reservations, class_name: "Cats::Warehouse::SpaceReservation", dependent: :nullify
 
       validates :quantity, presence: true, numericality: { greater_than: 0 }
+      validates :line_reference_no, presence: true
+      validate :line_reference_no_unique_across_source_details
+
+      before_validation :assign_line_reference_no_if_blank
 
       # Build attrs for create/update from API payload; omits notes if DB not migrated yet.
       def self.attributes_from_line_payload(raw_item)
@@ -31,6 +35,9 @@ module Cats
         if cols.include?("packaging_size")
           attrs[:packaging_size] = parse_optional_line_decimal(item[:packaging_size])
         end
+        if cols.include?("line_reference_no")
+          attrs[:line_reference_no] = item[:line_reference_no].presence
+        end
         attrs
       end
 
@@ -40,6 +47,19 @@ module Cats
         BigDecimal(value.to_s)
       rescue ArgumentError
         nil
+      end
+
+      private
+
+      def assign_line_reference_no_if_blank
+        self.line_reference_no = SourceDetailReference.generate_unique if line_reference_no.blank?
+      end
+
+      def line_reference_no_unique_across_source_details
+        return if line_reference_no.blank?
+        return unless SourceDetailReference.taken?(line_reference_no, exclude_record: self)
+
+        errors.add(:line_reference_no, "is already assigned to another source detail")
       end
     end
   end

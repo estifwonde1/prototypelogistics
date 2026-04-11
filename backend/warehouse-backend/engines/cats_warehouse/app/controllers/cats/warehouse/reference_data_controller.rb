@@ -6,6 +6,27 @@ module Cats
         render_success(FacilityReferenceData.as_json)
       end
 
+      def create_commodity
+        authorize :reference_data, :create_commodity?, policy_class: ReferenceDataPolicy
+
+        payload = params.require(:commodity).permit(:name, :code, :batch_no, :unit_id, :commodity_category_id)
+
+        attrs = payload.to_h.slice("name", "code", "batch_no")
+        attrs["unit_of_measure_id"] = payload[:unit_id] if payload[:unit_id].present?
+        attrs["commodity_category_id"] = payload[:commodity_category_id] if payload[:commodity_category_id].present?
+
+        commodity = Cats::Core::Commodity.create!(attrs)
+
+        render_success({
+          id: commodity.id,
+          name: commodity.name,
+          code: commodity.code,
+          batch_no: commodity.batch_no,
+          unit_id: commodity.unit_of_measure_id,
+          unit_name: commodity.unit_of_measure&.name
+        })
+      end
+
       def commodities
         authorize :reference_data, :commodities?, policy_class: ReferenceDataPolicy
 

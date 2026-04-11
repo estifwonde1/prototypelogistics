@@ -59,3 +59,9 @@ export interface UomConversion {
   active: boolean;
   conversion_type?: string;
 }
+
+export interface CommodityCategory {
+  id: number;
+  name: string;
+  code?: string;
+}

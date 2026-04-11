@@ -299,6 +299,7 @@ module Cats
             :commodity_id,
             :quantity,
             :unit_id,
+            :line_reference_no,
             :notes,                   # NEW: Accept frontend param name
             :packaging_unit_id,
             :packaging_size
@@ -307,6 +308,7 @@ module Cats
             :commodity_id,
             :quantity,
             :unit_id,
+            :line_reference_no,
             :notes,
             :packaging_unit_id,
             :packaging_size

@@ -18,6 +18,7 @@ Cats::Warehouse::Engine.routes.draw do
     get "locations/stores", to: "locations#stores"
     get "reference_data/facility_options", to: "reference_data#facility_options"
     get "reference_data/commodities", to: "reference_data#commodities"
+    post "reference_data/commodities", to: "reference_data#create_commodity"
     get "reference_data/units", to: "reference_data#units"
     get "reference_data/transporters", to: "reference_data#transporters"
     get "reference_data/lots", to: "reference_data#lots"

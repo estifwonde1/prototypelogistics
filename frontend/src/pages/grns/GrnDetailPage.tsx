@@ -229,6 +229,7 @@ function GrnDetailPage() {
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>Commodity</Table.Th>
+                    <Table.Th>Line ref / batch</Table.Th>
                     <Table.Th>Quantity</Table.Th>
                     <Table.Th>Unit</Table.Th>
                     <Table.Th>Quality Status</Table.Th>
@@ -241,6 +242,9 @@ function GrnDetailPage() {
                   {grn.grn_items.map((item, index) => (
                     <Table.Tr key={item.id || index}>
                       <Table.Td>{item.commodity_name || item.commodity_code || item.commodity_id}</Table.Td>
+                      <Table.Td style={{ fontWeight: 600 }}>
+                        {item.line_reference_no || item.batch_no || '—'}
+                      </Table.Td>
                       <Table.Td style={{ fontWeight: 600 }}>
                         {item.quantity.toLocaleString()}
                         {item.entered_quantity && item.entered_unit_name && (

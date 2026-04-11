@@ -16,6 +16,7 @@ import {
   NumberInput,
   Textarea,
   SimpleGrid,
+  Modal,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { IconTrash, IconPlus } from '@tabler/icons-react';
@@ -28,7 +29,7 @@ import {
 } from '../../api/receiptOrders';
 import { getWarehouses } from '../../api/warehouses';
 import { getHubs } from '../../api/hubs';
-import { getCommodityReferences, getUnitReferences } from '../../api/referenceData';
+import { getCommodityReferences, getUnitReferences, createCommodity, type CreateCommodityPayload } from '../../api/referenceData';
 import type { ReceiptOrderLine } from '../../api/receiptOrders';
 import type { ApiError } from '../../types/common';
 
@@ -40,6 +41,7 @@ const createEmptyItem = (): ReceiptOrderLine => ({
   quantity: 0,
   unit_id: 0,
   notes: '',
+  line_reference_no: '',
   packaging_unit_id: undefined,
   packaging_size: undefined,
 });
@@ -59,6 +61,11 @@ function ReceiptOrderFormPage() {
   const destinationHydratedKeyRef = useRef<string | null>(null);
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<ReceiptOrderLine[]>([createEmptyItem()]);
+  const [commodityModalOpen, setCommodityModalOpen] = useState(false);
+  const [newCommodityName, setNewCommodityName] = useState('');
+  const [newCommodityCode, setNewCommodityCode] = useState('');
+  const [newCommodityUnit, setNewCommodityUnit] = useState<string | null>(null);
+  const [newCommodityCategory, setNewCommodityCategory] = useState<string | null>(null);
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
@@ -118,6 +125,7 @@ function ReceiptOrderFormPage() {
             quantity: line.quantity,
             unit_id: line.unit_id,
             notes: line.notes ?? '',
+            line_reference_no: line.line_reference_no ?? '',
           }))
         : [createEmptyItem()]
     );
@@ -193,11 +201,13 @@ function ReceiptOrderFormPage() {
     setDestinationHubId(val);
   }, []);
 
-  const commodityOptions =
-    commodities?.map((c) => ({
+  const commodityOptions = [
+    { value: '__new__', label: '+ Add new commodity' },
+    ...(commodities?.map((c) => ({
       value: String(c.id),
       label: c.name ?? `Commodity #${c.id}`,
-    })) || [];
+    })) || []),
+  ];
 
   const unitOptions =
     units?.map((u) => ({
@@ -209,6 +219,29 @@ function ReceiptOrderFormPage() {
     { value: 'Supplier', label: 'Supplier' },
     { value: 'Gift', label: 'Gift (Donation)' },
   ];
+
+  const commodityCategoryOptions = [
+    { value: 'FOOD', label: 'Food' },
+    { value: 'NONFOOD', label: 'Non-Food' },
+  ];
+
+  const handleCreateCommodity = () => {
+    if (!newCommodityName.trim()) {
+      notifications.show({
+        title: 'Error',
+        message: 'Commodity name is required',
+        color: 'red',
+      });
+      return;
+    }
+    createCommodityMutation.mutate({
+      name: newCommodityName.trim(),
+      code: newCommodityCode.trim() || undefined,
+      batch_no: undefined,
+      unit_id: newCommodityUnit ? parseInt(newCommodityUnit) : undefined,
+      commodity_category_id: newCommodityCategory ? parseInt(newCommodityCategory) : undefined,
+    });
+  };
 
   const createMutation = useMutation({
     mutationFn: createReceiptOrder,
@@ -277,6 +310,41 @@ function ReceiptOrderFormPage() {
     },
   });
 
+  const createCommodityMutation = useMutation({
+    mutationFn: async (payload: CreateCommodityPayload) => {
+      const payloadClean: CreateCommodityPayload = {
+        name: payload.name,
+        code: payload.code || undefined,
+        batch_no: payload.batch_no || undefined,
+        unit_id: payload.unit_id || undefined,
+        commodity_category_id: payload.commodity_category_id || undefined,
+      };
+      return createCommodity(payloadClean);
+    },
+    onSuccess: (newCommodity) => {
+      queryClient.invalidateQueries({ queryKey: ['reference-data', 'commodities'] });
+      setCommodityModalOpen(false);
+      setNewCommodityName('');
+      setNewCommodityCode('');
+      setNewCommodityUnit(null);
+      setNewCommodityCategory(null);
+      notifications.show({
+        title: 'Success',
+        message: `Commodity "${newCommodity.name}" created successfully`,
+        color: 'green',
+      });
+    },
+    onError: (error: unknown) => {
+      notifications.show({
+        title: 'Error',
+        message:
+          (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) ||
+          'Failed to create commodity',
+        color: 'red',
+      });
+    },
+  });
+
   const handleAddItem = () => {
     setItems((current) => [...current, createEmptyItem()]);
   };
@@ -294,13 +362,18 @@ function ReceiptOrderFormPage() {
       const next = [...current];
       next[index] = { ...next[index], [field]: value };
       
-      // Auto-select unit when commodity is selected
-      if (field === 'commodity_id' && value) {
-        const commodity = commodities.find((c) => c.id === value);
-        if (commodity && commodity.unit_id) {
-          next[index].unit_id = commodity.unit_id;
+// Auto-select unit when commodity is selected
+        if (field === 'commodity_id' && value) {
+          if (value === '__new__') {
+            setCommodityModalOpen(true);
+            next[index].commodity_id = 0;
+            return next;
+          }
+          const commodity = commodities.find((c) => c.id === value);
+          if (commodity && commodity.unit_id) {
+            next[index].unit_id = commodity.unit_id;
+          }
         }
-      }
       
       return next;
     });
@@ -571,11 +644,12 @@ function ReceiptOrderFormPage() {
               )}
             </Group>
 
-            <Table.ScrollContainer minWidth={600}>
+            <Table.ScrollContainer minWidth={720}>
               <Table striped>
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>Commodity</Table.Th>
+                    <Table.Th>Line ref</Table.Th>
                     <Table.Th>Quantity</Table.Th>
                     <Table.Th>Unit</Table.Th>
                     <Table.Th>Packaging Unit</Table.Th>
@@ -602,6 +676,16 @@ function ReceiptOrderFormPage() {
                               handleItemChange(index, 'commodity_id', parseInt(val || '0'))
                             }
                             searchable
+                            disabled={!fieldsEditable}
+                          />
+                        </Table.Td>
+                        <Table.Td>
+                          <TextInput
+                            placeholder="Optional; auto if empty"
+                            value={item.line_reference_no ?? ''}
+                            onChange={(e) =>
+                              handleItemChange(index, 'line_reference_no', e.target.value)
+                            }
                             disabled={!fieldsEditable}
                           />
                         </Table.Td>
@@ -701,6 +785,55 @@ function ReceiptOrderFormPage() {
           </Group>
         </Stack>
       </Card>
+
+      <Modal
+        opened={commodityModalOpen}
+        onClose={() => setCommodityModalOpen(false)}
+        title="Add New Commodity"
+      >
+        <Stack>
+          <TextInput
+            label="Commodity Name"
+            placeholder="e.g. Sugar, Rice, Blankets"
+            required
+            value={newCommodityName}
+            onChange={(e) => setNewCommodityName(e.target.value)}
+          />
+          <TextInput
+            label="Code (optional)"
+            placeholder="e.g. SGR-001"
+            value={newCommodityCode}
+            onChange={(e) => setNewCommodityCode(e.target.value)}
+          />
+          <Select
+            label="Default Unit (optional)"
+            placeholder="Select unit"
+            data={unitOptions}
+            value={newCommodityUnit}
+            onChange={setNewCommodityUnit}
+            clearable
+          />
+          <Select
+            label="Category (optional)"
+            placeholder="Select category"
+            data={commodityCategoryOptions}
+            value={newCommodityCategory}
+            onChange={setNewCommodityCategory}
+            clearable
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setCommodityModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateCommodity}
+              loading={createCommodityMutation.isPending}
+            >
+              Create Commodity
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Stack>
   );
 }
