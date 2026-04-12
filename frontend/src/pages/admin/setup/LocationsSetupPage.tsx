@@ -152,7 +152,7 @@ export default function LocationsSetupPage() {
     const createdKebele = await createKebeleMutation.mutateAsync({
       name: normalizedLabel,
       code: `KEB-${woredaId}-${normalizedCode || Date.now()}`,
-      location_type: 'kebele',
+      location_type: 'Kebele',
       parent_id: Number(woredaId),
     });
     setKebeleId(String(createdKebele.id));

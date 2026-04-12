@@ -50,7 +50,7 @@ module Cats
         woreda = Cats::Core::Location.find(params[:woreda_id])
         kebeles = Cats::Core::Location.where(
           ancestry: child_ancestry_for(woreda),
-          location_type: location_type_constant(:KEBELE, "kebele")
+          location_type: location_type_constant(:KEBELE, "Kebele")
         ).order(:id)
         render_success(locations: kebeles.map { |l| location_payload(l) })
       end

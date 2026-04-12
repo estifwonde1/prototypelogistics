@@ -46,9 +46,9 @@ module Cats
       end
 
       def kebele_ancestor
-        return object.location if location_type_matches?(object.location, :KEBELE, "kebele")
+        return object.location if location_type_matches?(object.location, :KEBELE, "Kebele")
 
-        location_ancestors.find { |location| location_type_matches?(location, :KEBELE, "kebele") }
+        location_ancestors.find { |location| location_type_matches?(location, :KEBELE, "Kebele") }
       end
 
       def location_type_matches?(location, constant_name, fallback)

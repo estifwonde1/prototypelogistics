@@ -17,9 +17,9 @@ def add_role(user, role_name)
 end
 
 def kebele_location_type
-  # Kebele is not a supported location type in cats_core
-  # Use Woreda as the lowest level instead
-  nil
+  return unless Cats::Core::Location.kebele_enabled?
+
+  Cats::Core::Location::KEBELE
 end
 
 puts "Creating application module and roles..."
@@ -207,12 +207,13 @@ region_records.each do |region_name, region|
     { name: "#{region_name} Woreda 1", location_type: Cats::Core::Location::WOREDA, parent: zone }
   )
 
-  # Skip kebele creation as it's not a supported location type
-  # find_or_create_with(
-  #   Cats::Core::Location,
-  #   { code: "#{region.code}-K01" },
-  #   { name: "#{region_name} Kebele 1", location_type: kebele_location_type, parent: woreda }
-  # )
+  if kebele_location_type
+    find_or_create_with(
+      Cats::Core::Location,
+      { code: "#{region.code}-K01" },
+      { name: "#{region_name} Kebele 1", location_type: kebele_location_type, parent: woreda }
+    )
+  end
 end
 
 puts "Seeding Addis Ababa locations (Region -> Subcity -> Woreda)..."
@@ -251,14 +252,17 @@ woredas = zones.flat_map.with_index do |zone, idx|
   end
 end
 
-# Skip kebele creation as it's not a supported location type
-# kebeles = woredas.map.with_index do |woreda, idx|
-#   find_or_create_with(
-#     Cats::Core::Location,
-#     { code: format("ADD-K%02d", idx + 1) },
-#     { name: "Kebele #{idx + 1}", location_type: kebele_location_type, parent: woreda }
-#   )
-# end
+kebeles = if kebele_location_type
+  woredas.map.with_index do |woreda, idx|
+    find_or_create_with(
+      Cats::Core::Location,
+      { code: format("ADD-K%02d", idx + 1) },
+      { name: "Kebele #{idx + 1}", location_type: kebele_location_type, parent: woreda }
+    )
+  end
+else
+  []
+end
 
 fdps = woredas.first(6).map.with_index do |woreda, idx|
   find_or_create_with(
