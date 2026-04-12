@@ -5,12 +5,13 @@ module Cats
         skip_after_action :verify_authorized, raise: false
 
         def index
-          scope = Cats::Warehouse::UserAssignment.includes(:user, :hub, :warehouse, :store)
+          scope = Cats::Warehouse::UserAssignment.includes(:user, :hub, :warehouse, :store, :location)
           scope = scope.where(role_name: params[:role_name]) if params[:role_name].present?
           scope = scope.where(user_id: params[:user_id]) if params[:user_id].present?
           scope = scope.where(hub_id: params[:hub_id]) if params[:hub_id].present?
           scope = scope.where(warehouse_id: params[:warehouse_id]) if params[:warehouse_id].present?
           scope = scope.where(store_id: params[:store_id]) if params[:store_id].present?
+          scope = scope.where(location_id: params[:location_id]) if params[:location_id].present?
 
           render_success(assignments: scope.map { |a| assignment_payload(a) })
         end
@@ -26,6 +27,11 @@ module Cats
 
           ids = assignment_ids_for(role_name, payload)
           if ids.empty?
+            if role_name == "Federal Officer"
+              assignment = find_or_create_with(Cats::Warehouse::UserAssignment, user: user, role_name: role_name)
+              return render_success(assignments: [assignment_payload(assignment)], status: :created)
+            end
+
             return render_error("No locations selected for assignment", status: :unprocessable_entity)
           end
 
@@ -38,6 +44,10 @@ module Cats
               attrs[:warehouse_id] = id
             when "Storekeeper"
               attrs[:store_id] = id
+            when "Officer"
+              attrs[:warehouse_id] = id
+            when "Regional Officer", "Zonal Officer", "Woreda Officer", "Kebele Officer"
+              attrs[:location_id] = id
             end
 
             find_or_create_with(Cats::Warehouse::UserAssignment, attrs)
@@ -60,6 +70,12 @@ module Cats
           ids = assignment_ids_for(role_name, payload)
 
           if ids.empty?
+            if role_name == "Federal Officer"
+              Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name).delete_all
+              assignment = find_or_create_with(Cats::Warehouse::UserAssignment, user: user, role_name: role_name)
+              return render_success(assignments: [assignment_payload(assignment)])
+            end
+
             Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name).delete_all
             return render_success(assignments: [])
           end
@@ -80,12 +96,27 @@ module Cats
             delete_ids = existing_ids - ids
             Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name, warehouse_id: delete_ids).delete_all if delete_ids.any?
             create_ids.each { |id| find_or_create_with(Cats::Warehouse::UserAssignment, user: user, role_name: role_name, warehouse_id: id) }
+          when "Officer"
+            existing_ids = Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name).pluck(:warehouse_id)
+            create_ids = ids - existing_ids
+            delete_ids = existing_ids - ids
+            Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name, warehouse_id: delete_ids).delete_all if delete_ids.any?
+            create_ids.each { |id| find_or_create_with(Cats::Warehouse::UserAssignment, user: user, role_name: role_name, warehouse_id: id) }
           when "Storekeeper"
             existing_ids = Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name).pluck(:store_id)
             create_ids = ids - existing_ids
             delete_ids = existing_ids - ids
             Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name, store_id: delete_ids).delete_all if delete_ids.any?
             create_ids.each { |id| find_or_create_with(Cats::Warehouse::UserAssignment, user: user, role_name: role_name, store_id: id) }
+          when "Regional Officer", "Zonal Officer", "Woreda Officer", "Kebele Officer"
+            existing_ids = Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name).pluck(:location_id)
+            create_ids = ids - existing_ids
+            delete_ids = existing_ids - ids
+            Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name, location_id: delete_ids).delete_all if delete_ids.any?
+            create_ids.each { |id| find_or_create_with(Cats::Warehouse::UserAssignment, user: user, role_name: role_name, location_id: id) }
+          when "Federal Officer"
+            Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name).delete_all
+            find_or_create_with(Cats::Warehouse::UserAssignment, user: user, role_name: role_name)
           end
 
           assignments = Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name)
@@ -106,7 +137,8 @@ module Cats
             :role_name,
             hub_ids: [],
             warehouse_ids: [],
-            store_ids: []
+            store_ids: [],
+            location_ids: []
           )
         end
 
@@ -122,13 +154,17 @@ module Cats
             payload[:warehouse_ids].to_a
           when "Storekeeper"
             payload[:store_ids].to_a
+          when "Officer"
+            payload[:warehouse_ids].to_a
+          when "Regional Officer", "Zonal Officer", "Woreda Officer", "Kebele Officer"
+            payload[:location_ids].to_a
           else
             []
           end
         end
 
         def valid_role_name?(role_name)
-          ["Hub Manager", "Warehouse Manager", "Storekeeper"].include?(role_name)
+          ["Hub Manager", "Warehouse Manager", "Storekeeper", "Officer", "Federal Officer", "Regional Officer", "Zonal Officer", "Woreda Officer", "Kebele Officer"].include?(role_name)
         end
 
         def assignment_payload(assignment)
@@ -138,7 +174,8 @@ module Cats
             user: assignment.user && { id: assignment.user.id, name: "#{assignment.user.first_name} #{assignment.user.last_name}", email: assignment.user.email },
             hub: assignment.hub && { id: assignment.hub.id, name: assignment.hub.name },
             warehouse: assignment.warehouse && { id: assignment.warehouse.id, name: assignment.warehouse.name },
-            store: assignment.store && { id: assignment.store.id, name: assignment.store.name }
+            store: assignment.store && { id: assignment.store.id, name: assignment.store.name },
+            location: assignment.location && { id: assignment.location.id, name: assignment.location.name }
           }
         end
 

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_04_11_120000) do
+ActiveRecord::Schema[7.0].define(version: 2026_04_12_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1727,7 +1727,9 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_11_120000) do
     t.string "role_name"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "location_id"
     t.index ["hub_id"], name: "index_cats_warehouse_user_assignments_on_hub_id"
+    t.index ["location_id"], name: "index_cats_warehouse_user_assignments_on_location_id"
     t.index ["store_id"], name: "index_cats_warehouse_user_assignments_on_store_id"
     t.index ["user_id", "hub_id"], name: "idx_cwua_user_hub", unique: true, where: "(hub_id IS NOT NULL)"
     t.index ["user_id", "store_id"], name: "idx_cwua_user_store", unique: true, where: "(store_id IS NOT NULL)"
@@ -2195,6 +2197,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_11_120000) do
   add_foreign_key "cats_warehouse_uom_conversions", "cats_core_commodities", column: "commodity_id"
   add_foreign_key "cats_warehouse_uom_conversions", "cats_core_unit_of_measures", column: "from_unit_id"
   add_foreign_key "cats_warehouse_uom_conversions", "cats_core_unit_of_measures", column: "to_unit_id"
+  add_foreign_key "cats_warehouse_user_assignments", "cats_core_locations", column: "location_id"
   add_foreign_key "cats_warehouse_user_assignments", "cats_core_users", column: "user_id"
   add_foreign_key "cats_warehouse_user_assignments", "cats_warehouse_hubs", column: "hub_id"
   add_foreign_key "cats_warehouse_user_assignments", "cats_warehouse_stores", column: "store_id"

@@ -20,6 +20,7 @@ export interface AdminUserAssignment {
   hub?: { id: number; name: string } | null;
   warehouse?: { id: number; name: string } | null;
   store?: { id: number; name: string } | null;
+  location?: { id: number; name: string } | null;
 }
 
 export interface LocationOption {

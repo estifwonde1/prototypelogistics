@@ -34,6 +34,11 @@ roles = {
   warehouse_manager: find_or_create_with(Cats::Core::Role, { name: "Warehouse Manager", application_module: application_module }),
   store_keeper: find_or_create_with(Cats::Core::Role, { name: "Storekeeper", application_module: application_module }),
   officer: find_or_create_with(Cats::Core::Role, { name: "Officer", application_module: application_module }),
+  federal_officer: find_or_create_with(Cats::Core::Role, { name: "Federal Officer", application_module: application_module }),
+  regional_officer: find_or_create_with(Cats::Core::Role, { name: "Regional Officer", application_module: application_module }),
+  zonal_officer: find_or_create_with(Cats::Core::Role, { name: "Zonal Officer", application_module: application_module }),
+  woreda_officer: find_or_create_with(Cats::Core::Role, { name: "Woreda Officer", application_module: application_module }),
+  kebele_officer: find_or_create_with(Cats::Core::Role, { name: "Kebele Officer", application_module: application_module }),
   admin: find_or_create_with(Cats::Core::Role, { name: "Admin", application_module: application_module }),
   superadmin: find_or_create_with(Cats::Core::Role, { name: "Superadmin", application_module: application_module })
 }

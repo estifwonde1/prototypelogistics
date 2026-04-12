@@ -5,17 +5,29 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { getAdminUsers } from '../../../api/adminUsers';
 import { getAssignments, bulkUpdateAssignments } from '../../../api/adminAssignments';
-import { getHubsForAssignment, getWarehousesForAssignment, getStoresForAssignment } from '../../../api/locations';
+import { getHubsForAssignment, getKebeles, getRegions, getStoresForAssignment, getWarehousesForAssignment, getWoredas, getZones } from '../../../api/locations';
 import { LoadingState } from '../../../components/common/LoadingState';
 import { ErrorState } from '../../../components/common/ErrorState';
 
-const ROLE_OPTIONS = ['Hub Manager', 'Warehouse Manager', 'Storekeeper'];
+const ROLE_OPTIONS = [
+  'Hub Manager',
+  'Warehouse Manager',
+  'Storekeeper',
+  'Federal Officer',
+  'Regional Officer',
+  'Zonal Officer',
+  'Woreda Officer',
+  'Kebele Officer',
+];
 
 export default function UserAssignmentsPage() {
   const queryClient = useQueryClient();
   const [roleName, setRoleName] = useState<string | null>(ROLE_OPTIONS[0]);
   const [userId, setUserId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [regionId, setRegionId] = useState<string | null>(null);
+  const [zoneId, setZoneId] = useState<string | null>(null);
+  const [woredaId, setWoredaId] = useState<string | null>(null);
 
   const { data: users } = useQuery({
     queryKey: ['admin-users', roleName],
@@ -23,14 +35,49 @@ export default function UserAssignmentsPage() {
     enabled: !!roleName,
   });
 
+  const isRegionalOfficer = roleName === 'Regional Officer';
+  const isZonalOfficer = roleName === 'Zonal Officer';
+  const isWoredaOfficer = roleName === 'Woreda Officer';
+  const isKebeleOfficer = roleName === 'Kebele Officer';
+  const isFederalOfficer = roleName === 'Federal Officer';
+
+  const { data: regions } = useQuery({
+    queryKey: ['assignment-regions'],
+    queryFn: getRegions,
+    enabled: isRegionalOfficer || isZonalOfficer || isWoredaOfficer || isKebeleOfficer,
+  });
+
+  const { data: zones } = useQuery({
+    queryKey: ['assignment-zones', regionId],
+    queryFn: () => getZones(regionId ? Number(regionId) : undefined),
+    enabled: (isZonalOfficer || isWoredaOfficer || isKebeleOfficer) && !!regionId,
+  });
+
+  const { data: woredas } = useQuery({
+    queryKey: ['assignment-woredas', zoneId],
+    queryFn: () => getWoredas(Number(zoneId)),
+    enabled: (isWoredaOfficer || isKebeleOfficer) && !!zoneId,
+  });
+
+  const { data: kebeles } = useQuery({
+    queryKey: ['assignment-kebeles', woredaId],
+    queryFn: () => getKebeles(Number(woredaId)),
+    enabled: isKebeleOfficer && !!woredaId,
+  });
+
   const { data: locations } = useQuery({
-    queryKey: ['assignment-locations', roleName],
+    queryKey: ['assignment-locations', roleName, regionId, zoneId, woredaId],
     queryFn: () => {
       if (roleName === 'Hub Manager') return getHubsForAssignment();
       if (roleName === 'Warehouse Manager') return getWarehousesForAssignment();
-      return getStoresForAssignment();
+      if (roleName === 'Storekeeper') return getStoresForAssignment();
+      if (isRegionalOfficer) return getRegions();
+      if (isZonalOfficer) return getZones(regionId ? Number(regionId) : undefined);
+      if (isWoredaOfficer) return getWoredas(Number(zoneId));
+      if (isKebeleOfficer) return getKebeles(Number(woredaId));
+      return [];
     },
-    enabled: !!roleName,
+    enabled: !!roleName && !isFederalOfficer,
   });
 
   const { data: assignments, isLoading, error, refetch } = useQuery({
@@ -66,6 +113,9 @@ export default function UserAssignmentsPage() {
     if (roleName === 'Hub Manager') payload.hub_ids = selectedIds.map(Number);
     if (roleName === 'Warehouse Manager') payload.warehouse_ids = selectedIds.map(Number);
     if (roleName === 'Storekeeper') payload.store_ids = selectedIds.map(Number);
+    if (isRegionalOfficer || isZonalOfficer || isWoredaOfficer || isKebeleOfficer) {
+      payload.location_ids = selectedIds.map(Number);
+    }
 
     bulkMutation.mutate(payload);
   };
@@ -86,6 +136,9 @@ export default function UserAssignmentsPage() {
             setRoleName(value);
             setUserId(null);
             setSelectedIds([]);
+            setRegionId(null);
+            setZoneId(null);
+            setWoredaId(null);
           }}
           w={260}
         />
@@ -97,6 +150,50 @@ export default function UserAssignmentsPage() {
           onChange={setUserId}
           w={320}
         />
+        {(isZonalOfficer || isWoredaOfficer || isKebeleOfficer) && (
+          <Select
+            label="Region"
+            placeholder="Select region"
+            data={regions?.map((r) => ({ value: String(r.id), label: r.name })) || []}
+            value={regionId}
+            onChange={(value) => {
+              setRegionId(value);
+              setZoneId(null);
+              setWoredaId(null);
+              setSelectedIds([]);
+            }}
+            w={260}
+          />
+        )}
+        {(isWoredaOfficer || isKebeleOfficer) && (
+          <Select
+            label="Zone"
+            placeholder="Select zone"
+            data={zones?.map((z) => ({ value: String(z.id), label: z.name })) || []}
+            value={zoneId}
+            onChange={(value) => {
+              setZoneId(value);
+              setWoredaId(null);
+              setSelectedIds([]);
+            }}
+            w={260}
+            disabled={!regionId}
+          />
+        )}
+        {isKebeleOfficer && (
+          <Select
+            label="Woreda"
+            placeholder="Select woreda"
+            data={woredas?.map((w) => ({ value: String(w.id), label: w.name })) || []}
+            value={woredaId}
+            onChange={(value) => {
+              setWoredaId(value);
+              setSelectedIds([]);
+            }}
+            w={260}
+            disabled={!zoneId}
+          />
+        )}
         <MultiSelect
           label="Assign Locations"
           placeholder="Select locations"
@@ -104,6 +201,7 @@ export default function UserAssignmentsPage() {
           value={selectedIds}
           onChange={setSelectedIds}
           w={380}
+          disabled={isFederalOfficer}
         />
         <Button onClick={handleAssign} loading={bulkMutation.isPending}>
           Save Assignments
@@ -126,7 +224,7 @@ export default function UserAssignmentsPage() {
                   <Badge variant="light">{a.role_name}</Badge>
                 </Table.Td>
                 <Table.Td>{a.user?.name || '-'}</Table.Td>
-                <Table.Td>{a.hub?.name || a.warehouse?.name || a.store?.name || '-'}</Table.Td>
+                <Table.Td>{a.hub?.name || a.warehouse?.name || a.store?.name || a.location?.name || '-'}</Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>
