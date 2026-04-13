@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMemo, useState } from 'react';
-import { Stack, Title, Group, Select, MultiSelect, Button, Table, Badge } from '@mantine/core';
+import { Stack, Title, Group, Select, MultiSelect, Button, Table, Badge, Text } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { getAdminUsers } from '../../../api/adminUsers';
@@ -40,6 +40,7 @@ export default function UserAssignmentsPage() {
   const isWoredaOfficer = roleName === 'Woreda Officer';
   const isKebeleOfficer = roleName === 'Kebele Officer';
   const isFederalOfficer = roleName === 'Federal Officer';
+  const canAssign = !!roleName && !!userId && !isFederalOfficer;
 
   const { data: regions } = useQuery({
     queryKey: ['assignment-regions'],
@@ -203,10 +204,15 @@ export default function UserAssignmentsPage() {
           w={380}
           disabled={isFederalOfficer}
         />
-        <Button onClick={handleAssign} loading={bulkMutation.isPending}>
+        <Button onClick={handleAssign} loading={bulkMutation.isPending} disabled={!canAssign}>
           Save Assignments
         </Button>
       </Group>
+      {isFederalOfficer && (
+        <Text c="dimmed" size="sm">
+          Federal officers do not require assignments; access is system-wide by role.
+        </Text>
+      )}
 
       <Table.ScrollContainer minWidth={800}>
         <Table striped highlightOnHover>

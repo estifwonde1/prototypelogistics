@@ -16,6 +16,15 @@ export const ROLES = {
 
 export type RoleSlug = (typeof ROLES)[keyof typeof ROLES];
 
+export const OFFICER_ROLE_SLUGS: RoleSlug[] = [
+  ROLES.OFFICER,
+  ROLES.FEDERAL_OFFICER,
+  ROLES.REGIONAL_OFFICER,
+  ROLES.ZONAL_OFFICER,
+  ROLES.WOREDA_OFFICER,
+  ROLES.KEBELE_OFFICER,
+];
+
 export const ROLE_LABELS: Record<RoleSlug, string> = {
   [ROLES.ADMIN]: 'Admin',
   [ROLES.SUPERADMIN]: 'Superadmin',
@@ -103,50 +112,22 @@ const FULL_ACCESS: PermissionMatrix = {
   reports: ['read'],
 };
 
+const OFFICER_ACCESS: PermissionMatrix = {
+  receipt_orders: ['read', 'create', 'update', 'delete', 'confirm'],
+  dispatch_orders: ['read', 'create', 'update', 'delete', 'confirm'],
+  receipts: ['read'],
+  dispatches: ['read'],
+};
+
 export const ROLE_CAPABILITIES: Record<RoleSlug, PermissionMatrix> = {
   [ROLES.ADMIN]: FULL_ACCESS,
   [ROLES.SUPERADMIN]: FULL_ACCESS,
-  [ROLES.OFFICER]: {
-    receipt_orders: ['read', 'create', 'update', 'delete', 'confirm'],
-    dispatch_orders: ['read', 'create', 'update', 'delete', 'confirm'],
-    receipts: ['read'],
-    dispatches: ['read'],
-  },
-  [ROLES.FEDERAL_OFFICER]: {
-    receipt_orders: ['read'],
-    dispatch_orders: ['read'],
-    receipts: ['read'],
-    dispatches: ['read'],
-    reports: ['read'],
-  },
-  [ROLES.REGIONAL_OFFICER]: {
-    receipt_orders: ['read'],
-    dispatch_orders: ['read'],
-    receipts: ['read'],
-    dispatches: ['read'],
-    reports: ['read'],
-  },
-  [ROLES.ZONAL_OFFICER]: {
-    receipt_orders: ['read'],
-    dispatch_orders: ['read'],
-    receipts: ['read'],
-    dispatches: ['read'],
-    reports: ['read'],
-  },
-  [ROLES.WOREDA_OFFICER]: {
-    receipt_orders: ['read'],
-    dispatch_orders: ['read'],
-    receipts: ['read'],
-    dispatches: ['read'],
-    reports: ['read'],
-  },
-  [ROLES.KEBELE_OFFICER]: {
-    receipt_orders: ['read'],
-    dispatch_orders: ['read'],
-    receipts: ['read'],
-    dispatches: ['read'],
-    reports: ['read'],
-  },
+  [ROLES.OFFICER]: OFFICER_ACCESS,
+  [ROLES.FEDERAL_OFFICER]: OFFICER_ACCESS,
+  [ROLES.REGIONAL_OFFICER]: OFFICER_ACCESS,
+  [ROLES.ZONAL_OFFICER]: OFFICER_ACCESS,
+  [ROLES.WOREDA_OFFICER]: OFFICER_ACCESS,
+  [ROLES.KEBELE_OFFICER]: OFFICER_ACCESS,
   [ROLES.HUB_MANAGER]: {
     hubs: ['read'],
     warehouses: ['read', 'create', 'update'],

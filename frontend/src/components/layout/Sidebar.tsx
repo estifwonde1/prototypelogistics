@@ -20,7 +20,7 @@ import {
 } from '@tabler/icons-react';
 import { useAuthStore } from '../../store/authStore';
 import { usePermission } from '../../hooks/usePermission';
-import type { Resource } from '../../contracts/warehouse';
+import { OFFICER_ROLE_SLUGS, type Resource, type RoleSlug } from '../../contracts/warehouse';
 
 interface NavItem {
   label: string;
@@ -44,6 +44,8 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
   const location = useLocation();
   const isAdmin = role === 'admin' || role === 'superadmin';
   const isSuperAdmin = role === 'superadmin';
+  const roleSlug = (role as RoleSlug | null) ?? null;
+  const isOfficerRole = roleSlug ? OFFICER_ROLE_SLUGS.includes(roleSlug) : false;
 
   const adminMenus: NavGroup[] = [
     {
@@ -188,7 +190,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
       ];
     }
 
-    if (role === 'officer') {
+    if (isOfficerRole) {
       return [
         {
           label: 'Officer Operations',
@@ -203,7 +205,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
     }
 
     return [];
-  }, [isAdmin, role]);
+  }, [isAdmin, role, isOfficerRole]);
 
   const filterGroupItems = (group: NavGroup) => ({
     ...group,

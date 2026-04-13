@@ -36,7 +36,7 @@ module Cats
       def hubs_scope
         return scoped_relation if access.admin?
         return scoped_relation.where(id: access.assigned_hub_ids) if access.hub_manager?
-        return scoped_relation if access.officer?
+        return scoped_relation.where(id: access.accessible_hub_ids) if access.officer?
 
         scoped_relation.none
       end
@@ -47,7 +47,7 @@ module Cats
         return scoped_relation.where(hub_id: access.assigned_hub_ids) if access.hub_manager?
         return scoped_relation.where(id: access.assigned_warehouse_ids) if access.warehouse_manager?
         return scoped_relation.where(id: access.accessible_warehouse_ids) if access.storekeeper?
-        return scoped_relation if access.officer?
+        return scoped_relation.where(id: access.accessible_warehouse_ids) if access.officer?
 
         scoped_relation.none
       end
@@ -58,14 +58,14 @@ module Cats
         # even if they have other roles like Officer
         return scoped_relation.where(id: access.assigned_store_ids) if access.storekeeper?
         return scoped_relation.where(warehouse_id: access.accessible_warehouse_ids) if access.hub_manager? || access.warehouse_manager?
-        return scoped_relation if access.officer?
+        return scoped_relation.where(warehouse_id: access.accessible_warehouse_ids) if access.officer?
 
         scoped_relation.none
       end
 
       def stacks_scope
         return scoped_relation if access.admin?
-        return scoped_relation if access.officer?
+        return scoped_relation.where(store_id: access.accessible_store_ids) if access.officer?
 
         scoped_relation.where(store_id: access.accessible_store_ids)
       end

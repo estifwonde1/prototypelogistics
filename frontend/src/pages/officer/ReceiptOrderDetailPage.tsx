@@ -42,7 +42,7 @@ import { useMemo, useState } from 'react';
 import type { ReceiptOrder } from '../../api/receiptOrders';
 import { usePermission } from '../../hooks/usePermission';
 import { useAuthStore } from '../../store/authStore';
-import { normalizeRoleSlug } from '../../contracts/warehouse';
+import { OFFICER_ROLE_SLUGS, normalizeRoleSlug } from '../../contracts/warehouse';
 
 function formatReceiptDate(order: ReceiptOrder): string {
   const raw = order.received_date || order.expected_delivery_date;
@@ -104,6 +104,7 @@ function ReceiptOrderDetailPage() {
   const queryClient = useQueryClient();
   const { can } = usePermission();
   const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
+  const isOfficerRole = roleSlug ? OFFICER_ROLE_SLUGS.includes(roleSlug) : false;
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('details');
   
@@ -143,7 +144,7 @@ function ReceiptOrderDetailPage() {
 
   const canReserveSpace = useMemo(() => {
     if (!order) return false;
-    if (roleSlug === 'officer') return false;
+    if (isOfficerRole) return false;
     if (
       !['admin', 'superadmin', 'warehouse_manager', 'storekeeper'].includes(roleSlug || '')
     ) {
@@ -156,15 +157,15 @@ function ReceiptOrderDetailPage() {
     const { totalOrdered, remaining } = reservationTotals;
     if (totalOrdered <= 0) return false;
     return remaining > 1e-6;
-  }, [order, roleSlug, reservationTotals]);
+  }, [order, isOfficerRole, roleSlug, reservationTotals]);
 
   const showOfficerSpaceReservationHint = useMemo(() => {
     if (!order) return false;
     const status = normalizeOrderStatus(order.status);
-    if (roleSlug !== 'officer') return false;
+    if (!isOfficerRole) return false;
     if (status === 'draft' || status === 'completed') return false;
     return ['confirmed', 'assigned', 'reserved', 'in_progress'].includes(status);
-  }, [order, roleSlug]);
+  }, [order, isOfficerRole]);
 
   const {
     data: stores = [],
@@ -219,7 +220,7 @@ function ReceiptOrderDetailPage() {
     isError: assignableManagersError,
   } = useQuery({
     queryKey: ['receipt_orders', id, 'assignable_managers', roleSlug],
-    queryFn: () => getReceiptOrderAssignableManagers(Number(id), roleSlug === 'officer'),
+    queryFn: () => getReceiptOrderAssignableManagers(Number(id), isOfficerRole),
     enabled:
       !!order &&
       showAssignmentForm &&
@@ -353,7 +354,7 @@ function ReceiptOrderDetailPage() {
   });
 
   const handleCreateAssignment = () => {
-    if (roleSlug === 'officer') {
+    if (isOfficerRole) {
       if (!selectedUserId) {
         notifications.show({
           title: 'Error',
@@ -687,7 +688,7 @@ function ReceiptOrderDetailPage() {
                   + Assign Store
                 </Button>
               )}
-              {roleSlug === 'officer' && String(order.status).toLowerCase() === 'confirmed' && (
+              {isOfficerRole && String(order.status).toLowerCase() === 'confirmed' && (
                 <Button
                   size="sm"
                   onClick={() => setShowAssignmentForm(true)}
@@ -711,7 +712,7 @@ function ReceiptOrderDetailPage() {
             {showAssignmentForm && (
               <Card shadow="sm" padding="lg" radius="md" withBorder>
                 <Stack gap="md">
-                  {roleSlug === 'officer' ? (
+                  {isOfficerRole ? (
                     <>
                       <Text fw={600}>Assign Manager</Text>
                       <Text size="sm" c="dimmed">

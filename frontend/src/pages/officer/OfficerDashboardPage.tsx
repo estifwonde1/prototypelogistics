@@ -10,6 +10,8 @@ import {
 import { getReceiptOrders } from '../../api/receiptOrders';
 import { getDispatchOrders } from '../../api/dispatchOrders';
 import { getHubs } from '../../api/hubs';
+import { useAuthStore } from '../../store/authStore';
+import { getRoleLabel, type RoleSlug } from '../../contracts/warehouse';
 
 interface StatCardProps {
   title: string;
@@ -38,6 +40,26 @@ function StatCard({ title, value, icon, loading }: StatCardProps) {
 
 function OfficerDashboardPage() {
   const navigate = useNavigate();
+  const roleSlug = useAuthStore((state) => state.role) as RoleSlug | null;
+  const roleLabel = getRoleLabel(roleSlug ?? 'officer');
+
+  const scopeDescription = (() => {
+    switch (roleSlug) {
+      case 'federal_officer':
+      case 'officer':
+        return 'System-wide overview across all regions, warehouses, and orders.';
+      case 'regional_officer':
+        return 'Regional overview for your assigned region(s).';
+      case 'zonal_officer':
+        return 'Zonal overview for your assigned zone(s).';
+      case 'woreda_officer':
+        return 'Woreda overview for your assigned woreda(s).';
+      case 'kebele_officer':
+        return 'Kebele overview for your assigned kebele(s).';
+      default:
+        return 'Orchestrate warehouse receipt and dispatch operations.';
+    }
+  })();
 
   const { data: hubs, isLoading: hubsLoading } = useQuery({
     queryKey: ['hubs'],
@@ -67,9 +89,9 @@ function OfficerDashboardPage() {
   return (
     <Stack gap="xl">
       <div>
-        <Title order={2}>Officer Dashboard</Title>
+        <Title order={2}>{roleLabel} Dashboard</Title>
         <Text c="dimmed" size="sm">
-          Orchestrate warehouse receipt and dispatch operations
+          {scopeDescription}
         </Text>
       </div>
 

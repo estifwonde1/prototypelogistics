@@ -83,7 +83,7 @@ module Cats
       end
 
       def officer?
-        user&.has_role?("Officer")
+        super
       end
     end
   end

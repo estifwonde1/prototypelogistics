@@ -1,6 +1,7 @@
 module Cats
   module Warehouse
     class ApplicationPolicy
+      include ContractConstants
       attr_reader :user, :record
 
       class Scope
@@ -68,7 +69,7 @@ module Cats
       end
 
       def officer?
-        user&.has_role?("Officer")
+        OFFICER_ROLE_NAMES.any? { |role| user&.has_role?(role) }
       end
     end
   end
