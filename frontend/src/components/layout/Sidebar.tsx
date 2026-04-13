@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Stack, NavLink as MantineNavLink } from '@mantine/core';
+import { Stack, NavLink as MantineNavLink, Badge, Text } from '@mantine/core';
 import {
   IconBuilding,
   IconBuildingWarehouse,
@@ -17,9 +17,11 @@ import {
   IconTruck,
   IconReportAnalytics,
   IconClipboardList,
+  IconMapPin,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../../store/authStore';
 import { usePermission } from '../../hooks/usePermission';
+import { useOfficerScope } from '../../hooks/useOfficerScope';
 import { OFFICER_ROLE_SLUGS, type Resource, type RoleSlug } from '../../contracts/warehouse';
 
 interface NavItem {
@@ -46,6 +48,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
   const isSuperAdmin = role === 'superadmin';
   const roleSlug = (role as RoleSlug | null) ?? null;
   const isOfficerRole = roleSlug ? OFFICER_ROLE_SLUGS.includes(roleSlug) : false;
+  const { scopeLabel, isFullAccess } = useOfficerScope();
 
   const adminMenus: NavGroup[] = [
     {
@@ -191,12 +194,33 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
     }
 
     if (isOfficerRole) {
+      // Federal / generic officer: full operational menu
+      if (isFullAccess) {
+        return [
+          {
+            label: 'Officer Operations',
+            items: [
+              { label: 'Dashboard', icon: <IconChartBar size={20} />, path: '/officer/dashboard', resource: 'receipt_orders' },
+              { label: 'Facilities', icon: <IconBuildingWarehouse size={20} />, path: '/officer/facilities', resource: 'receipt_orders' },
+              { label: 'Receipt Orders', icon: <IconFileImport size={20} />, path: '/officer/receipt-orders', resource: 'receipt_orders' },
+              { label: 'Dispatch Orders', icon: <IconFileExport size={20} />, path: '/officer/dispatch-orders', resource: 'dispatch_orders' },
+            ],
+          },
+        ];
+      }
+
+      // Regional / Zonal / Woreda / Kebele: monitoring-focused menu (read-only scope)
       return [
         {
-          label: 'Officer Operations',
+          label: 'Overview',
           items: [
             { label: 'Dashboard', icon: <IconChartBar size={20} />, path: '/officer/dashboard', resource: 'receipt_orders' },
             { label: 'Facilities', icon: <IconBuildingWarehouse size={20} />, path: '/officer/facilities', resource: 'receipt_orders' },
+          ],
+        },
+        {
+          label: 'Orders',
+          items: [
             { label: 'Receipt Orders', icon: <IconFileImport size={20} />, path: '/officer/receipt-orders', resource: 'receipt_orders' },
             { label: 'Dispatch Orders', icon: <IconFileExport size={20} />, path: '/officer/dispatch-orders', resource: 'dispatch_orders' },
           ],
@@ -249,6 +273,23 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
             </MantineNavLink>
           </div>
         ))}
+
+      {!isAdmin && isOfficerRole && (
+        <div style={{ padding: '4px 8px' }}>
+          <Badge
+            leftSection={<IconMapPin size={12} />}
+            color={isFullAccess ? 'green' : 'blue'}
+            variant="light"
+            size="sm"
+            fullWidth
+            style={{ justifyContent: 'flex-start' }}
+          >
+            <Text size="xs" truncate>
+              {isFullAccess ? 'System-wide' : scopeLabel}
+            </Text>
+          </Badge>
+        </div>
+      )}
 
       {!isAdmin &&
         roleMenus

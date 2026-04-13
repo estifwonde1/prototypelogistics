@@ -1,6 +1,7 @@
 import { Group, Text, Button, Menu, Avatar, Burger } from '@mantine/core';
 import { IconLogout, IconUser } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
 import { getRoleLabel } from '../../utils/constants';
 
@@ -13,10 +14,12 @@ interface HeaderProps {
 
 export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDesktop }: HeaderProps) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { userId, role, clearAuth } = useAuthStore();
 
   const handleLogout = () => {
     clearAuth();
+    queryClient.clear(); // wipe cached data so next user gets fresh scoped results
     navigate('/login');
   };
 

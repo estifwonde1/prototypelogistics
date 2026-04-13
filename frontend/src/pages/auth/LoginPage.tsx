@@ -4,14 +4,19 @@ import { isAxiosError } from 'axios';
 import { TextInput, PasswordInput, Button, Paper, Title, Container, Alert } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { IconAlertCircle } from '@tabler/icons-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { login } from '../../api/auth';
+import { getMyAssignments } from '../../api/me';
 import { useAuthStore } from '../../store/authStore';
 import { normalizeRoleSlug, getDefaultRouteForRole, type RoleSlug } from '../../utils/constants';
+import { OFFICER_ROLE_SLUGS } from '../../contracts/warehouse';
 import type { ApiError } from '../../types/common';
 
 function LoginPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const setAuth = useAuthStore((state) => state.setAuth);
+  const setAssignments = useAuthStore((state) => state.setAssignments);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +54,21 @@ function LoginPage() {
       }
 
       setAuth(response.token, response.user_id, roleSlug);
+
+      // Clear ALL cached query data so the new user gets fresh, role-scoped data
+      // (prevents a previous admin session's unscoped hub/warehouse data from leaking)
+      queryClient.clear();
+
+      // Fetch assignments for officer roles so the dashboard can show scoped data
+      if (OFFICER_ROLE_SLUGS.includes(roleSlug)) {
+        try {
+          const assignments = await getMyAssignments();
+          setAssignments(assignments);
+        } catch {
+          // non-fatal — dashboard will still render with empty scope
+        }
+      }
+
       navigate(getDefaultRouteForRole(roleSlug));
     } catch (err: unknown) {
       const errorMessage =

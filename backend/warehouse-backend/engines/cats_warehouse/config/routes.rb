@@ -1,6 +1,7 @@
 Cats::Warehouse::Engine.routes.draw do
   scope :v1 do
     post "auth/login", to: "auth#login"
+    get "me/assignments", to: "me#assignments"
 
     namespace :admin do
       resources :users, only: [ :index, :create, :update, :destroy ]
