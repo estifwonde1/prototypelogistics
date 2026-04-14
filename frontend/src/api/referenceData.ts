@@ -2,6 +2,7 @@ import apiClient from './client';
 import type { ApiResponse } from '../types/common';
 import type {
   CommodityReference,
+  CommodityCategory,
   FacilityOptions,
   TransporterReference,
   UnitReference,
@@ -11,10 +12,11 @@ import type {
 
 export interface CreateCommodityPayload {
   name: string;
-  code?: string;
   batch_no?: string;
+  quantity?: number;
   unit_id?: number;
   commodity_category_id?: number;
+  best_use_before?: string;
 }
 
 export const getFacilityOptions = async (): Promise<FacilityOptions> => {
@@ -34,6 +36,13 @@ export const getUnitReferences = async (): Promise<UnitReference[]> => {
     '/reference_data/units'
   );
   return response.data.data.units;
+};
+
+export const getCategoryReferences = async (): Promise<CommodityCategory[]> => {
+  const response = await apiClient.get<ApiResponse<{ categories: CommodityCategory[] }>>(
+    '/reference_data/categories'
+  );
+  return response.data.data.categories;
 };
 
 export const getTransporterReferences = async (): Promise<TransporterReference[]> => {

@@ -16,7 +16,6 @@ import {
   NumberInput,
   Textarea,
   SimpleGrid,
-  Modal,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { IconTrash, IconPlus } from '@tabler/icons-react';
@@ -29,7 +28,7 @@ import {
 } from '../../api/receiptOrders';
 import { getWarehouses } from '../../api/warehouses';
 import { getHubs } from '../../api/hubs';
-import { getCommodityReferences, getUnitReferences, createCommodity, type CreateCommodityPayload } from '../../api/referenceData';
+import { getCommodityReferences, getUnitReferences } from '../../api/referenceData';
 import type { ReceiptOrderLine } from '../../api/receiptOrders';
 import type { ApiError } from '../../types/common';
 
@@ -61,11 +60,6 @@ function ReceiptOrderFormPage() {
   const destinationHydratedKeyRef = useRef<string | null>(null);
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<ReceiptOrderLine[]>([createEmptyItem()]);
-  const [commodityModalOpen, setCommodityModalOpen] = useState(false);
-  const [newCommodityName, setNewCommodityName] = useState('');
-  const [newCommodityCode, setNewCommodityCode] = useState('');
-  const [newCommodityUnit, setNewCommodityUnit] = useState<string | null>(null);
-  const [newCommodityCategory, setNewCommodityCategory] = useState<string | null>(null);
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
@@ -201,13 +195,10 @@ function ReceiptOrderFormPage() {
     setDestinationHubId(val);
   }, []);
 
-  const commodityOptions = [
-    { value: '__new__', label: '+ Add new commodity' },
-    ...(commodities?.map((c) => ({
+  const commodityOptions = commodities?.map((c) => ({
       value: String(c.id),
       label: c.name ?? `Commodity #${c.id}`,
-    })) || []),
-  ];
+    })) || [];
 
   const unitOptions =
     units?.map((u) => ({
@@ -219,29 +210,6 @@ function ReceiptOrderFormPage() {
     { value: 'Supplier', label: 'Supplier' },
     { value: 'Gift', label: 'Gift (Donation)' },
   ];
-
-  const commodityCategoryOptions = [
-    { value: 'FOOD', label: 'Food' },
-    { value: 'NONFOOD', label: 'Non-Food' },
-  ];
-
-  const handleCreateCommodity = () => {
-    if (!newCommodityName.trim()) {
-      notifications.show({
-        title: 'Error',
-        message: 'Commodity name is required',
-        color: 'red',
-      });
-      return;
-    }
-    createCommodityMutation.mutate({
-      name: newCommodityName.trim(),
-      code: newCommodityCode.trim() || undefined,
-      batch_no: undefined,
-      unit_id: newCommodityUnit ? parseInt(newCommodityUnit) : undefined,
-      commodity_category_id: newCommodityCategory ? parseInt(newCommodityCategory) : undefined,
-    });
-  };
 
   const createMutation = useMutation({
     mutationFn: createReceiptOrder,
@@ -310,41 +278,6 @@ function ReceiptOrderFormPage() {
     },
   });
 
-  const createCommodityMutation = useMutation({
-    mutationFn: async (payload: CreateCommodityPayload) => {
-      const payloadClean: CreateCommodityPayload = {
-        name: payload.name,
-        code: payload.code || undefined,
-        batch_no: payload.batch_no || undefined,
-        unit_id: payload.unit_id || undefined,
-        commodity_category_id: payload.commodity_category_id || undefined,
-      };
-      return createCommodity(payloadClean);
-    },
-    onSuccess: (newCommodity) => {
-      queryClient.invalidateQueries({ queryKey: ['reference-data', 'commodities'] });
-      setCommodityModalOpen(false);
-      setNewCommodityName('');
-      setNewCommodityCode('');
-      setNewCommodityUnit(null);
-      setNewCommodityCategory(null);
-      notifications.show({
-        title: 'Success',
-        message: `Commodity "${newCommodity.name}" created successfully`,
-        color: 'green',
-      });
-    },
-    onError: (error: unknown) => {
-      notifications.show({
-        title: 'Error',
-        message:
-          (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) ||
-          'Failed to create commodity',
-        color: 'red',
-      });
-    },
-  });
-
   const handleAddItem = () => {
     setItems((current) => [...current, createEmptyItem()]);
   };
@@ -360,20 +293,30 @@ function ReceiptOrderFormPage() {
   ) => {
     setItems((current) => {
       const next = [...current];
+      
+      const stringValue = String(value);
+      
+      if (!stringValue) {
+        return current;
+      }
+      
       next[index] = { ...next[index], [field]: value };
       
-// Auto-select unit when commodity is selected
-        if (field === 'commodity_id' && value) {
-          if (value === '__new__') {
-            setCommodityModalOpen(true);
-            next[index].commodity_id = 0;
-            return next;
-          }
-          const commodity = commodities.find((c) => c.id === value);
-          if (commodity && commodity.unit_id) {
+      // Auto-fill unit and line_ref when commodity is selected
+      if (field === 'commodity_id') {
+        const numericId = Number(stringValue);
+        const commodity = commodities.find((c) => c.id === numericId);
+        if (commodity) {
+          // Auto-select unit if defined
+          if (commodity.unit_id) {
             next[index].unit_id = commodity.unit_id;
           }
+          // Auto-fill line_reference_no from batch_no if empty
+          if (commodity.batch_no && !next[index].line_reference_no) {
+            next[index].line_reference_no = commodity.batch_no;
+          }
         }
+      }
       
       return next;
     });
@@ -633,14 +576,24 @@ function ReceiptOrderFormPage() {
                 Order Items
               </Text>
               {fieldsEditable && (
-                <Button
-                  size="xs"
-                  variant="light"
-                  leftSection={<IconPlus size={14} />}
-                  onClick={handleAddItem}
-                >
-                  Add Item
-                </Button>
+                <Group gap="xs">
+                  <Button
+                    size="xs"
+                    variant="light"
+                    leftSection={<IconPlus size={14} />}
+                    onClick={() => navigate('/officer/commodities/new')}
+                  >
+                    New Commodity
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="light"
+                    leftSection={<IconPlus size={14} />}
+                    onClick={handleAddItem}
+                  >
+                    Add Item
+                  </Button>
+                </Group>
               )}
             </Group>
 
@@ -783,57 +736,8 @@ function ReceiptOrderFormPage() {
               </Button>
             )}
           </Group>
-        </Stack>
+</Stack>
       </Card>
-
-      <Modal
-        opened={commodityModalOpen}
-        onClose={() => setCommodityModalOpen(false)}
-        title="Add New Commodity"
-      >
-        <Stack>
-          <TextInput
-            label="Commodity Name"
-            placeholder="e.g. Sugar, Rice, Blankets"
-            required
-            value={newCommodityName}
-            onChange={(e) => setNewCommodityName(e.target.value)}
-          />
-          <TextInput
-            label="Code (optional)"
-            placeholder="e.g. SGR-001"
-            value={newCommodityCode}
-            onChange={(e) => setNewCommodityCode(e.target.value)}
-          />
-          <Select
-            label="Default Unit (optional)"
-            placeholder="Select unit"
-            data={unitOptions}
-            value={newCommodityUnit}
-            onChange={setNewCommodityUnit}
-            clearable
-          />
-          <Select
-            label="Category (optional)"
-            placeholder="Select category"
-            data={commodityCategoryOptions}
-            value={newCommodityCategory}
-            onChange={setNewCommodityCategory}
-            clearable
-          />
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => setCommodityModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleCreateCommodity}
-              loading={createCommodityMutation.isPending}
-            >
-              Create Commodity
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
     </Stack>
   );
 }

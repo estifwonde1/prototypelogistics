@@ -9,22 +9,57 @@ module Cats
       def create_commodity
         authorize :reference_data, :create_commodity?, policy_class: ReferenceDataPolicy
 
-        payload = params.require(:commodity).permit(:name, :code, :batch_no, :unit_id, :commodity_category_id)
+        payload = params.require(:commodity).permit(:name, :batch_no, :unit_id, :commodity_category_id, :best_use_before, :quantity)
 
-        attrs = payload.to_h.slice("name", "code", "batch_no")
-        attrs["unit_of_measure_id"] = payload[:unit_id] if payload[:unit_id].present?
-        attrs["commodity_category_id"] = payload[:commodity_category_id] if payload[:commodity_category_id].present?
+        # Find first project or use default
+        project = Cats::Core::Project.order(:id).first
+        if project.nil?
+          return render_error("Cannot create commodity: No project found in the system. Please seed or create a project first.", status: :unprocessable_entity)
+        end
+        
+        # Auto-generate batch_no if not provided
+        batch_no = payload[:batch_no].presence ||
+                   "BATCH-#{Time.current.strftime('%Y%m%d')}-#{SecureRandom.hex(3).upcase}"
+
+        # Build attributes without .compact to ensure Rails validations/DB constraints are triggered properly
+        attrs = {
+          name: payload[:name],
+          batch_no: batch_no,
+          status: Cats::Core::Commodity::DRAFT,
+          arrival_status: Cats::Core::Commodity::AT_SOURCE,
+          quantity: payload[:quantity].present? ? payload[:quantity].to_f : 0,
+          project_id: project&.id,
+          unit_of_measure_id: payload[:unit_id],
+          commodity_category_id: payload[:commodity_category_id],
+          best_use_before: payload[:best_use_before]
+        }
 
         commodity = Cats::Core::Commodity.create!(attrs)
 
         render_success({
           id: commodity.id,
-          name: commodity.name,
-          code: commodity.code,
+          name: commodity.read_attribute(:name).presence || commodity.batch_no || "Commodity ##{commodity.id}",
           batch_no: commodity.batch_no,
+          quantity: commodity.quantity,
           unit_id: commodity.unit_of_measure_id,
           unit_name: commodity.unit_of_measure&.name
         })
+      end
+
+      def categories
+        authorize :reference_data, :facility_options?, policy_class: ReferenceDataPolicy
+
+        categories = Cats::Core::CommodityCategory
+          .order(:name, :id)
+          .map do |cat|
+            {
+              id: cat.id,
+              name: cat.name,
+              code: cat.code
+            }
+          end
+
+        render_success(categories: categories)
       end
 
       def commodities
@@ -34,12 +69,11 @@ module Cats
           .includes(:unit_of_measure)
           .order(:name, :batch_no, :id)
           .map do |commodity|
-            commodity_name = commodity[:name].presence || commodity[:batch_no].presence || commodity[:code].presence
+            commodity_name = commodity[:name].presence || commodity[:batch_no].presence
 
             {
               id: commodity.id,
               name: commodity_name || "Commodity ##{commodity.id}",
-              code: commodity[:code],
               batch_no: commodity[:batch_no],
               unit_id: commodity.unit_of_measure_id,
               unit_name: commodity.unit_of_measure&.name,
