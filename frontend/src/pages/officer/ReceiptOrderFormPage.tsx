@@ -29,6 +29,7 @@ import {
 import { getWarehouses } from '../../api/warehouses';
 import { getHubs } from '../../api/hubs';
 import { getCommodityReferences, getUnitReferences } from '../../api/referenceData';
+import { getStockBalances } from '../../api/stockBalances';
 import type { ReceiptOrderLine } from '../../api/receiptOrders';
 import type { ApiError } from '../../types/common';
 
@@ -51,8 +52,6 @@ function ReceiptOrderFormPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [sourceType, setSourceType] = useState('');
-  const [sourceName, setSourceName] = useState('');
   const [destinationKind, setDestinationKind] = useState<ReceiptDestinationKind>('');
   const [destinationHubId, setDestinationHubId] = useState<string | null>(null);
   const [warehouseId, setWarehouseId] = useState<string | null>(null);
@@ -81,6 +80,11 @@ function ReceiptOrderFormPage() {
     queryFn: getUnitReferences,
   });
 
+  const { data: stockBalances = [] } = useQuery({
+    queryKey: ['stock_balances'],
+    queryFn: getStockBalances,
+  });
+
   const { data: existingOrder, isLoading: orderLoading, isError: orderError, refetch: refetchOrder } =
     useQuery({
       queryKey: ['receipt_orders', id],
@@ -98,13 +102,6 @@ function ReceiptOrderFormPage() {
     const warehouseNumeric =
       existingOrder.destination_warehouse_id ?? existingOrder.warehouse_id;
     setWarehouseId(warehouseNumeric != null ? String(warehouseNumeric) : null);
-
-    setSourceType(existingOrder.source_type || '');
-    setSourceName(
-      existingOrder.source_name ||
-        (existingOrder.name != null ? String(existingOrder.name) : '') ||
-        (existingOrder.source_reference != null ? String(existingOrder.source_reference) : '')
-    );
 
     const dateRaw = existingOrder.expected_delivery_date || existingOrder.received_date;
     setExpectedDeliveryDate(dateRaw ? new Date(dateRaw) : null);
@@ -195,10 +192,24 @@ function ReceiptOrderFormPage() {
     setDestinationHubId(val);
   }, []);
 
-  const commodityOptions = commodities?.map((c) => ({
-      value: String(c.id),
-      label: c.name ?? `Commodity #${c.id}`,
-    })) || [];
+  const commodityOptions =
+    commodities?.map((c) => {
+      const name = c.name ?? `Commodity #${c.id}`;
+      const label = c.batch_no ? `${name} — ${c.batch_no}` : name;
+      return {
+        value: String(c.id),
+        label,
+      };
+    }) || [];
+
+  const commodityLabelById = useMemo(() => {
+    const map = new Map<number, string>();
+    commodities.forEach((c) => {
+      const name = c.name ?? `Commodity #${c.id}`;
+      map.set(c.id, c.batch_no ? `${name} — ${c.batch_no}` : name);
+    });
+    return map;
+  }, [commodities]);
 
   const unitOptions =
     units?.map((u) => ({
@@ -206,10 +217,22 @@ function ReceiptOrderFormPage() {
       label: u.name,
     })) || [];
 
-  const sourceTypeOptions = [
-    { value: 'Supplier', label: 'Supplier' },
-    { value: 'Gift', label: 'Gift (Donation)' },
-  ];
+  const stockWarehouseId =
+    destinationKind === 'warehouse' && warehouseId ? Number(warehouseId) : null;
+
+  const availableByCommodityId = useMemo(() => {
+    const map = new Map<number, { quantity: number; unitLabel?: string }>();
+    if (!stockWarehouseId) return map;
+    stockBalances
+      .filter((balance) => balance.warehouse_id === stockWarehouseId)
+      .forEach((balance) => {
+        const existing = map.get(balance.commodity_id);
+        const nextQuantity = (existing?.quantity || 0) + (balance.quantity || 0);
+        const unitLabel = existing?.unitLabel || balance.unit_abbreviation || balance.unit_name || undefined;
+        map.set(balance.commodity_id, { quantity: nextQuantity, unitLabel });
+      });
+    return map;
+  }, [stockBalances, stockWarehouseId]);
 
   const createMutation = useMutation({
     mutationFn: createReceiptOrder,
@@ -323,7 +346,7 @@ function ReceiptOrderFormPage() {
   };
 
   const handleSave = () => {
-    if (!sourceType || !sourceName || !expectedDeliveryDate) {
+    if (!expectedDeliveryDate) {
       notifications.show({
         title: 'Validation Error',
         message: 'Please fill in all required fields',
@@ -382,6 +405,23 @@ function ReceiptOrderFormPage() {
       return;
     }
 
+    if (stockWarehouseId) {
+      const insufficient = items.find((item) => {
+        const available = availableByCommodityId.get(item.commodity_id)?.quantity ?? 0;
+        return item.quantity > available;
+      });
+
+      if (insufficient) {
+        const label = commodityLabelById.get(insufficient.commodity_id) || 'selected commodity';
+        notifications.show({
+          title: 'Validation Error',
+          message: `Destination quantity exceeds available stock for ${label}.`,
+          color: 'red',
+        });
+        return;
+      }
+    }
+
     const dateStr = expectedDeliveryDate instanceof Date 
       ? expectedDeliveryDate.toISOString().split('T')[0]
       : expectedDeliveryDate;
@@ -389,8 +429,6 @@ function ReceiptOrderFormPage() {
     const payload =
       destinationKind === 'hub'
         ? {
-            source_type: sourceType,
-            source_name: sourceName,
             destination_warehouse_id: null,
             hub_id: Number(destinationHubId),
             expected_delivery_date: dateStr,
@@ -398,8 +436,6 @@ function ReceiptOrderFormPage() {
             lines: items,
           }
         : {
-            source_type: sourceType,
-            source_name: sourceName,
             destination_warehouse_id: Number(warehouseId),
             hub_id: selectedWarehouse?.hub_id ?? null,
             expected_delivery_date: dateStr,
@@ -475,25 +511,6 @@ function ReceiptOrderFormPage() {
             <Text size="sm" fw={600} mb="md">
               Order Details
             </Text>
-            <SimpleGrid cols={{ base: 1, sm: 2 }}>
-              <Select
-                label="Source Type"
-                placeholder="Select source type"
-                data={sourceTypeOptions}
-                value={sourceType}
-                onChange={(val) => setSourceType(val || '')}
-                required
-                disabled={!fieldsEditable}
-              />
-              <TextInput
-                label="Source Name"
-                placeholder="Enter source name"
-                value={sourceName}
-                onChange={(e) => setSourceName(e.target.value)}
-                required
-                disabled={!fieldsEditable}
-              />
-            </SimpleGrid>
 
             <Select
               label="Destination Type"
@@ -581,14 +598,6 @@ function ReceiptOrderFormPage() {
                     size="xs"
                     variant="light"
                     leftSection={<IconPlus size={14} />}
-                    onClick={() => navigate('/officer/commodities/new')}
-                  >
-                    New Commodity
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="light"
-                    leftSection={<IconPlus size={14} />}
                     onClick={handleAddItem}
                   >
                     Add Item
@@ -597,13 +606,19 @@ function ReceiptOrderFormPage() {
               )}
             </Group>
 
+            {destinationKind === 'hub' && (
+              <Text size="xs" c="dimmed" mb="sm">
+                Destination is a hub; available stock validation is skipped until a warehouse is set.
+              </Text>
+            )}
+
             <Table.ScrollContainer minWidth={720}>
               <Table striped>
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>Commodity</Table.Th>
                     <Table.Th>Line ref</Table.Th>
-                    <Table.Th>Quantity</Table.Th>
+                    <Table.Th>Destination Quantity</Table.Th>
                     <Table.Th>Unit</Table.Th>
                     <Table.Th>Packaging Unit</Table.Th>
                     <Table.Th>Size per Package</Table.Th>
@@ -643,12 +658,24 @@ function ReceiptOrderFormPage() {
                           />
                         </Table.Td>
                         <Table.Td>
-                          <NumberInput
-                            placeholder="0"
-                            value={item.quantity}
-                            onChange={(val) => handleItemChange(index, 'quantity', Number(val) || 0)}
-                            disabled={!fieldsEditable}
-                          />
+                          <Stack gap={2}>
+                            <NumberInput
+                              placeholder="0"
+                              value={item.quantity}
+                              onChange={(val) => handleItemChange(index, 'quantity', Number(val) || 0)}
+                              disabled={!fieldsEditable}
+                            />
+                            {stockWarehouseId && item.commodity_id ? (() => {
+                              const availableEntry = availableByCommodityId.get(item.commodity_id);
+                              const available = availableEntry?.quantity ?? 0;
+                              const isOver = item.quantity > available;
+                              return (
+                                <Text size="xs" c={isOver ? 'red' : 'dimmed'}>
+                                  Available: {available.toFixed(2)} {availableEntry?.unitLabel || ''}
+                                </Text>
+                              );
+                            })() : null}
+                          </Stack>
                         </Table.Td>
                         <Table.Td>
                           <Select

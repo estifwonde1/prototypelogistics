@@ -15,9 +15,15 @@ export interface CommodityReference {
   name: string;
   code?: string | null;
   batch_no?: string | null;
+  quantity?: number | null;
   unit_id?: number | null;
   unit_name?: string | null;
   unit_abbreviation?: string | null;
+  package_unit_id?: number | null;
+  package_unit_name?: string | null;
+  package_size?: number | null;
+  source_type?: string | null;
+  source_name?: string | null;
 }
 
 export interface UnitReference {

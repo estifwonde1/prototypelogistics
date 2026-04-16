@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
@@ -29,6 +29,7 @@ import {
 import { getWarehouses } from '../../api/warehouses';
 import { getHubs } from '../../api/hubs';
 import { getCommodityReferences, getUnitReferences } from '../../api/referenceData';
+import { getStockBalances } from '../../api/stockBalances';
 import type { DispatchOrderLine } from '../../api/dispatchOrders';
 import type { ApiError } from '../../types/common';
 
@@ -72,6 +73,11 @@ function DispatchOrderFormPage() {
     queryFn: getUnitReferences,
   });
 
+  const { data: stockBalances = [] } = useQuery({
+    queryKey: ['stock_balances'],
+    queryFn: getStockBalances,
+  });
+
   const { data: existingOrder } = useQuery({
     queryKey: ['dispatch_orders', id],
     queryFn: () => getDispatchOrder(Number(id)),
@@ -109,10 +115,23 @@ function DispatchOrderFormPage() {
       : [];
 
   const commodityOptions =
-    commodities?.map((c) => ({
-      value: c.id.toString(),
-      label: c.name,
-    })) || [];
+    commodities?.map((c) => {
+      const name = c.name ?? `Commodity #${c.id}`;
+      const label = c.batch_no ? `${name} — ${c.batch_no}` : name;
+      return {
+        value: c.id.toString(),
+        label,
+      };
+    }) || [];
+
+  const commodityLabelById = useMemo(() => {
+    const map = new Map<number, string>();
+    commodities.forEach((c) => {
+      const name = c.name ?? `Commodity #${c.id}`;
+      map.set(c.id, c.batch_no ? `${name} — ${c.batch_no}` : name);
+    });
+    return map;
+  }, [commodities]);
 
   const unitOptions =
     units?.map((u) => ({
@@ -125,6 +144,22 @@ function DispatchOrderFormPage() {
     { value: 'Warehouse', label: 'Warehouse' },
     { value: 'Beneficiary', label: 'Beneficiary' },
   ];
+
+  const stockWarehouseId = warehouseId ? Number(warehouseId) : null;
+
+  const availableByCommodityId = useMemo(() => {
+    const map = new Map<number, { quantity: number; unitLabel?: string }>();
+    if (!stockWarehouseId) return map;
+    stockBalances
+      .filter((balance) => balance.warehouse_id === stockWarehouseId)
+      .forEach((balance) => {
+        const existing = map.get(balance.commodity_id);
+        const nextQuantity = (existing?.quantity || 0) + (balance.quantity || 0);
+        const unitLabel = existing?.unitLabel || balance.unit_abbreviation || balance.unit_name || undefined;
+        map.set(balance.commodity_id, { quantity: nextQuantity, unitLabel });
+      });
+    return map;
+  }, [stockBalances, stockWarehouseId]);
 
   const createMutation = useMutation({
     mutationFn: createDispatchOrder,
@@ -238,6 +273,23 @@ function DispatchOrderFormPage() {
         color: 'red',
       });
       return;
+    }
+
+    if (stockWarehouseId) {
+      const insufficient = items.find((item) => {
+        const available = availableByCommodityId.get(item.commodity_id)?.quantity ?? 0;
+        return item.quantity > available;
+      });
+
+      if (insufficient) {
+        const label = commodityLabelById.get(insufficient.commodity_id) || 'selected commodity';
+        notifications.show({
+          title: 'Validation Error',
+          message: `Destination quantity exceeds available stock for ${label}.`,
+          color: 'red',
+        });
+        return;
+      }
     }
 
     const dateStr = expectedPickupDate instanceof Date 
@@ -358,7 +410,7 @@ function DispatchOrderFormPage() {
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>Commodity</Table.Th>
-                    <Table.Th>Quantity</Table.Th>
+                    <Table.Th>Destination Quantity</Table.Th>
                     <Table.Th>Unit</Table.Th>
                     <Table.Th>Notes</Table.Th>
                     {!isEdit && <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>}
@@ -380,12 +432,24 @@ function DispatchOrderFormPage() {
                         />
                       </Table.Td>
                       <Table.Td>
-                        <NumberInput
-                          placeholder="0"
-                          value={item.quantity}
-                          onChange={(val) => handleItemChange(index, 'quantity', Number(val) || 0)}
-                          disabled={isEdit}
-                        />
+                        <Stack gap={2}>
+                          <NumberInput
+                            placeholder="0"
+                            value={item.quantity}
+                            onChange={(val) => handleItemChange(index, 'quantity', Number(val) || 0)}
+                            disabled={isEdit}
+                          />
+                          {stockWarehouseId && item.commodity_id ? (() => {
+                            const availableEntry = availableByCommodityId.get(item.commodity_id);
+                            const available = availableEntry?.quantity ?? 0;
+                            const isOver = item.quantity > available;
+                            return (
+                              <Text size="xs" c={isOver ? 'red' : 'dimmed'}>
+                                Available: {available.toFixed(2)} {availableEntry?.unitLabel || ''}
+                              </Text>
+                            );
+                          })() : null}
+                        </Stack>
                       </Table.Td>
                       <Table.Td>
                         <Select

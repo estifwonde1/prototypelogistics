@@ -9,7 +9,18 @@ module Cats
       def create_commodity
         authorize :reference_data, :create_commodity?, policy_class: ReferenceDataPolicy
 
-        payload = params.require(:commodity).permit(:name, :batch_no, :unit_id, :commodity_category_id, :best_use_before, :quantity)
+        payload = params.require(:commodity).permit(
+          :name,
+          :batch_no,
+          :unit_id,
+          :commodity_category_id,
+          :best_use_before,
+          :quantity,
+          :package_unit_id,
+          :package_size,
+          :source_type,
+          :source_name
+        )
 
         # Find first project or use default
         project = Cats::Core::Project.order(:id).first
@@ -30,11 +41,17 @@ module Cats
           quantity: payload[:quantity].present? ? payload[:quantity].to_f : 0,
           project_id: project&.id,
           unit_of_measure_id: payload[:unit_id],
+          package_unit_id: payload[:package_unit_id],
+          package_size: payload[:package_size].present? ? payload[:package_size].to_f : nil,
           commodity_category_id: payload[:commodity_category_id],
-          best_use_before: payload[:best_use_before]
+          best_use_before: payload[:best_use_before],
+          source_type: payload[:source_type],
+          source_name: payload[:source_name]
         }
 
         commodity = Cats::Core::Commodity.create!(attrs)
+
+        package_unit = Cats::Core::UnitOfMeasure.find_by(id: commodity.package_unit_id)
 
         render_success({
           id: commodity.id,
@@ -42,7 +59,12 @@ module Cats
           batch_no: commodity.batch_no,
           quantity: commodity.quantity,
           unit_id: commodity.unit_of_measure_id,
-          unit_name: commodity.unit_of_measure&.name
+          unit_name: commodity.unit_of_measure&.name,
+          package_unit_id: commodity.package_unit_id,
+          package_unit_name: package_unit&.abbreviation || package_unit&.name,
+          package_size: commodity.respond_to?(:package_size) ? commodity.package_size : nil,
+          source_type: commodity.source_type,
+          source_name: commodity.source_name
         })
       end
 
@@ -70,14 +92,21 @@ module Cats
           .order(:name, :batch_no, :id)
           .map do |commodity|
             commodity_name = commodity[:name].presence || commodity[:batch_no].presence
+            package_unit = Cats::Core::UnitOfMeasure.find_by(id: commodity.package_unit_id)
 
             {
               id: commodity.id,
               name: commodity_name || "Commodity ##{commodity.id}",
               batch_no: commodity[:batch_no],
+              quantity: commodity.quantity,
               unit_id: commodity.unit_of_measure_id,
               unit_name: commodity.unit_of_measure&.name,
-              unit_abbreviation: commodity.unit_of_measure&.abbreviation
+              unit_abbreviation: commodity.unit_of_measure&.abbreviation,
+              package_unit_id: commodity.package_unit_id,
+              package_unit_name: package_unit&.abbreviation || package_unit&.name,
+              package_size: commodity.respond_to?(:package_size) ? commodity.package_size : nil,
+              source_type: commodity.source_type,
+              source_name: commodity.source_name
             }
           end
 

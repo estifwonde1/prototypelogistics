@@ -17,6 +17,10 @@ export interface CreateCommodityPayload {
   unit_id?: number;
   commodity_category_id?: number;
   best_use_before?: string;
+  package_unit_id?: number;
+  package_size?: number;
+  source_type?: string;
+  source_name?: string;
 }
 
 export const getFacilityOptions = async (): Promise<FacilityOptions> => {

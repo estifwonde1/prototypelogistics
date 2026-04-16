@@ -204,6 +204,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               { label: 'Facilities', icon: <IconBuildingWarehouse size={20} />, path: '/officer/facilities', resource: 'receipt_orders' },
               { label: 'Receipt Orders', icon: <IconFileImport size={20} />, path: '/officer/receipt-orders', resource: 'receipt_orders' },
               { label: 'Dispatch Orders', icon: <IconFileExport size={20} />, path: '/officer/dispatch-orders', resource: 'dispatch_orders' },
+              { label: 'Commodities', icon: <IconBox size={20} />, path: '/officer/commodities/new', resource: 'receipt_orders' },
             ],
           },
         ];
@@ -223,6 +224,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
           items: [
             { label: 'Receipt Orders', icon: <IconFileImport size={20} />, path: '/officer/receipt-orders', resource: 'receipt_orders' },
             { label: 'Dispatch Orders', icon: <IconFileExport size={20} />, path: '/officer/dispatch-orders', resource: 'dispatch_orders' },
+            { label: 'Commodities', icon: <IconBox size={20} />, path: '/officer/commodities/new', resource: 'receipt_orders' },
           ],
         },
       ];
