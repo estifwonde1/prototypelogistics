@@ -43,7 +43,7 @@ export interface StoreOption {
 export interface ReceiptOrder {
   id: number;
   reference_no?: string;
-  source_type: string;
+  source_type?: string;
   /** Free-text or resolved label from API */
   source_name?: string;
   source_reference?: string | number;
@@ -137,8 +137,6 @@ export function normalizeReceiptOrder(raw: Record<string, unknown>): ReceiptOrde
 }
 
 export interface CreateReceiptOrderPayload {
-  source_type: string;
-  source_name: string;
   /** Set when destination is a specific warehouse; null/omit when destination is hub-only. */
   destination_warehouse_id?: number | null;
   /** Set when destination type is Hub (receiving into a hub, warehouse TBD) or to match a chosen warehouse. */

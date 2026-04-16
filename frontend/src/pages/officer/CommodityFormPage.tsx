@@ -211,14 +211,6 @@ function CommodityFormPage() {
     { value: "Gift", label: "Gift (Donation)" },
   ];
 
-  const unitNameById = useMemo(() => {
-    const map = new Map<number, string>();
-    units.forEach((u) => {
-      map.set(u.id, u.abbreviation || u.name);
-    });
-    return map;
-  }, [units]);
-
   const commodityNameOptions = useMemo(() => {
     const names = commodities
       .map((c) => c.name?.trim())
