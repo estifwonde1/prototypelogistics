@@ -18,9 +18,19 @@ import {
   Badge,
   Tooltip,
   ActionIcon,
+  Collapse,
+  Box,
+  Divider,
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
-import { IconArrowLeft, IconPlus, IconRefresh } from "@tabler/icons-react";
+import {
+  IconArrowLeft,
+  IconPlus,
+  IconRefresh,
+  IconChevronDown,
+  IconChevronRight,
+  IconSearch,
+} from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { isAxiosError } from "axios";
 import {
@@ -31,6 +41,7 @@ import {
 } from "../../api/referenceData";
 import type { ApiError } from "../../types/common";
 import type { CreateCommodityPayload } from "../../api/referenceData";
+import type { CommodityReference } from "../../types/referenceData";
 
 function CommodityFormPage() {
   const navigate = useNavigate();
@@ -47,6 +58,10 @@ function CommodityFormPage() {
   const [packageSize, setPackageSize] = useState<number | string>("");
   const [sourceType, setSourceType] = useState("");
   const [sourceName, setSourceName] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [expandedCommodities, setExpandedCommodities] = useState<Set<string>>(
+    new Set(),
+  );
 
   const generateBatchNo = () =>
     `BATCH-${dayjs().format("YYYYMMDD")}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
@@ -219,6 +234,62 @@ function CommodityFormPage() {
     [commodityNameOptions, normalizedName],
   );
 
+  // Group commodities by name
+  const groupedCommodities = useMemo(() => {
+    const groups = new Map<
+      string,
+      { name: string; batches: CommodityReference[] }
+    >();
+
+    commodities.forEach((commodity) => {
+      const commodityName = commodity.name || "Unnamed";
+      if (!groups.has(commodityName)) {
+        groups.set(commodityName, { name: commodityName, batches: [] });
+      }
+      groups.get(commodityName)!.batches.push(commodity);
+    });
+
+    // Sort batches within each group by ID (most recent first)
+    groups.forEach((group) => {
+      group.batches.sort((a, b) => b.id - a.id);
+    });
+
+    return Array.from(groups.values()).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+  }, [commodities]);
+
+  // Filter commodities based on search query
+  const filteredGroups = useMemo(() => {
+    if (!searchQuery.trim()) return groupedCommodities;
+
+    const query = searchQuery.toLowerCase().trim();
+    return groupedCommodities
+      .map((group) => ({
+        ...group,
+        batches: group.batches.filter(
+          (batch) =>
+            group.name.toLowerCase().includes(query) ||
+            batch.batch_no?.toLowerCase().includes(query) ||
+            batch.source_type?.toLowerCase().includes(query) ||
+            batch.source_name?.toLowerCase().includes(query),
+        ),
+      }))
+      .filter((group) => group.batches.length > 0);
+  }, [groupedCommodities, searchQuery]);
+
+  const toggleCommodityExpansion = (commodityName: string) => {
+    setExpandedCommodities((prev) => {
+      const next = new Set(prev);
+      if (next.has(commodityName)) {
+        next.delete(commodityName);
+      } else {
+        next.add(commodityName);
+      }
+      return next;
+    });
+  };
+
   return (
     <Stack gap="md">
       <Group>
@@ -380,49 +451,172 @@ function CommodityFormPage() {
       </Card>
 
       <Card padding="lg">
-        <Title order={3} mb="md">
-          Existing Commodities
-        </Title>
-        {isLoading ? (
-          <Text>Loading...</Text>
-        ) : (
-          <Table striped>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>ID</Table.Th>
-                <Table.Th>Name</Table.Th>
-                <Table.Th>Batch No</Table.Th>
-                <Table.Th>Source Type</Table.Th>
-                <Table.Th>Source Name</Table.Th>
-                <Table.Th>Quantity</Table.Th>
-                <Table.Th>Default Unit</Table.Th>
-                <Table.Th>Packaging Unit</Table.Th>
-                <Table.Th>Size per Package</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {commodities.map((c) => (
-                <Table.Tr key={c.id}>
-                  <Table.Td>{c.id}</Table.Td>
-                  <Table.Td>{c.name}</Table.Td>
-                  <Table.Td>{c.batch_no || "—"}</Table.Td>
-                  <Table.Td>{c.source_type || "—"}</Table.Td>
-                  <Table.Td>{c.source_name || "—"}</Table.Td>
-                  <Table.Td>{c.quantity ?? "—"}</Table.Td>
-                  <Table.Td>{c.unit_name || "—"}</Table.Td>
-                  <Table.Td>
-                    {c.package_unit_name ||
-                      (c.package_unit_id
-                        ? unitNameById.get(c.package_unit_id)
-                        : undefined) ||
-                      "—"}
-                  </Table.Td>
-                  <Table.Td>{c.package_size ?? "—"}</Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        )}
+        <Stack gap="md">
+          <Group justify="space-between">
+            <Title order={3}>Existing Commodities</Title>
+            <Badge size="lg" variant="light">
+              {filteredGroups.length} Commodit
+{filteredGroups.length === 1 ? "y" : "ies"}
+            </Badge>
+          </Group>
+
+          <TextInput
+            placeholder="Search by name, batch number, source type, or source name..."
+            leftSection={<IconSearch size={16} />}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            rightSection={
+              searchQuery && (
+                <ActionIcon
+                  variant="subtle"
+                  onClick={() => setSearchQuery("")}
+                  size="sm"
+                >
+                  ×
+                </ActionIcon>
+              )
+            }
+          />
+
+          {isLoading ? (
+            <Text>Loading...</Text>
+          ) : filteredGroups.length === 0 ? (
+            <Text c="dimmed" ta="center" py="xl">
+              {searchQuery
+                ? "No commodities found matching your search"
+                : "No commodities created yet"}
+            </Text>
+          ) : (
+            <Box>
+              {filteredGroups.map((group) => {
+                const isExpanded = expandedCommodities.has(group.name);
+                const latestBatch = group.batches[0];
+                const totalBatches = group.batches.length;
+
+                return (
+                  <Card
+                    key={group.name}
+                    withBorder
+                    mb="sm"
+                    padding="md"
+                    style={{ cursor: "pointer" }}
+                  >
+                    <Box
+                      onClick={() => toggleCommodityExpansion(group.name)}
+                      style={{ userSelect: "none" }}
+                    >
+                      <Group justify="space-between" wrap="nowrap">
+                        <Group gap="xs">
+                          <ActionIcon
+                            variant="subtle"
+                            size="sm"
+                            color="gray"
+                          >
+                            {isExpanded ? (
+                              <IconChevronDown size={16} />
+                            ) : (
+                              <IconChevronRight size={16} />
+                            )}
+                          </ActionIcon>
+                          <div>
+                            <Text fw={600} size="lg">
+                              {group.name}
+                            </Text>
+                            <Group gap="xs" mt={4}>
+                              <Badge size="sm" variant="light" color="blue">
+                                {totalBatches} Batch
+                                {totalBatches === 1 ? "" : "es"}
+                              </Badge>
+                              {latestBatch.source_type && (
+                                <Badge size="sm" variant="dot" color="green">
+                                  {latestBatch.source_type}
+                                </Badge>
+                              )}
+                            </Group>
+                          </div>
+                        </Group>
+                        <Box ta="right">
+                          <Text size="sm" c="dimmed">
+                            Latest Batch
+                          </Text>
+                          <Text size="sm" fw={500} style={{ fontFamily: "monospace" }}>
+                            {latestBatch.batch_no || "—"}
+                          </Text>
+                        </Box>
+                      </Group>
+                    </Box>
+
+                    <Collapse in={isExpanded}>
+                      <Divider my="md" />
+                      <Table striped highlightOnHover>
+                        <Table.Thead>
+                          <Table.Tr>
+                            <Table.Th>Batch No</Table.Th>
+                            <Table.Th>Source Type</Table.Th>
+                            <Table.Th>Source Name</Table.Th>
+                            <Table.Th>Quantity</Table.Th>
+                            <Table.Th>Unit</Table.Th>
+                            <Table.Th>Packaging</Table.Th>
+                          </Table.Tr>
+                        </Table.Thead>
+                        <Table.Tbody>
+                          {group.batches.map((batch) => (
+                            <Table.Tr key={batch.id}>
+                              <Table.Td>
+                                <Text
+                                  size="sm"
+                                  fw={500}
+                                  style={{ fontFamily: "monospace" }}
+                                >
+                                  {batch.batch_no || "—"}
+                                </Text>
+                              </Table.Td>
+                              <Table.Td>
+                                {batch.source_type ? (
+                                  <Badge size="sm" variant="light" color="green">
+                                    {batch.source_type}
+                                  </Badge>
+                                ) : (
+                                  "—"
+                                )}
+                              </Table.Td>
+                              <Table.Td>
+                                <Text size="sm">
+                                  {batch.source_name || "—"}
+                                </Text>
+                              </Table.Td>
+                              <Table.Td>
+                                <Text size="sm" fw={500}>
+                                  {batch.quantity?.toLocaleString() ?? "—"}
+                                </Text>
+                              </Table.Td>
+                              <Table.Td>
+                                <Text size="sm">
+                                  {batch.unit_abbreviation ||
+                                    batch.unit_name ||
+                                    "—"}
+                                </Text>
+                              </Table.Td>
+                              <Table.Td>
+                                {batch.package_size && batch.package_unit_name ? (
+                                  <Text size="sm">
+                                    {batch.package_size} {batch.package_unit_name}
+                                  </Text>
+                                ) : (
+                                  "—"
+                                )}
+                              </Table.Td>
+                            </Table.Tr>
+                          ))}
+                        </Table.Tbody>
+                      </Table>
+                    </Collapse>
+                  </Card>
+                );
+              })}
+            </Box>
+          )}
+        </Stack>
       </Card>
     </Stack>
   );
