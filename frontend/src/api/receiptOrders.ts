@@ -141,6 +141,9 @@ export interface CreateReceiptOrderPayload {
   destination_warehouse_id?: number | null;
   /** Set when destination type is Hub (receiving into a hub, warehouse TBD) or to match a chosen warehouse. */
   hub_id?: number | null;
+  /** Optional source details for traceability. */
+  source_type?: string;
+  source_name?: string;
   expected_delivery_date: string;
   notes?: string;
   lines: ReceiptOrderLine[];
