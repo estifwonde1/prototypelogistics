@@ -1329,20 +1329,21 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_12_120000) do
   end
 
   create_table "cats_warehouse_inventory_lots", force: :cascade do |t|
-    t.bigint "commodity_id", null: false
-    t.string "batch_no", null: false
-    t.date "expiry_date"
-    t.string "description"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
     t.bigint "warehouse_id"
+    t.bigint "commodity_id", null: false
     t.string "source_type"
     t.bigint "source_id"
     t.string "lot_code"
+    t.string "batch_no", null: false
+    t.date "expiry_date"
     t.date "manufactured_on"
     t.date "received_on"
-    t.string "status", default: "Active"
+    t.string "status", default: "Active", null: false
+    t.string "description"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
     t.index ["commodity_id"], name: "index_cats_warehouse_inventory_lots_on_commodity_id"
+    t.index ["source_type", "source_id"], name: "idx_cw_inventory_lots_source"
     t.index ["source_type", "source_id"], name: "index_cats_warehouse_inventory_lots_on_source"
     t.index ["warehouse_id", "commodity_id", "batch_no", "expiry_date"], name: "idx_lot_warehouse_commodity_batch_expiry", unique: true
     t.index ["warehouse_id"], name: "index_cats_warehouse_inventory_lots_on_warehouse_id"
@@ -1377,11 +1378,13 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_12_120000) do
     t.bigint "unit_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.decimal "unit_price", precision: 15, scale: 4
     t.text "notes"
+    t.bigint "packaging_unit_id"
+    t.decimal "packaging_size", precision: 15, scale: 4
     t.string "line_reference_no", null: false
     t.index ["commodity_id"], name: "index_cats_warehouse_receipt_order_lines_on_commodity_id"
     t.index ["line_reference_no"], name: "index_cats_warehouse_receipt_order_lines_on_line_reference_no", unique: true
+    t.index ["packaging_unit_id"], name: "index_cats_warehouse_receipt_order_lines_on_packaging_unit_id"
     t.index ["receipt_order_id"], name: "index_receipt_order_lines_on_order_id"
     t.index ["unit_id"], name: "index_cats_warehouse_receipt_order_lines_on_unit_id"
   end
@@ -1572,11 +1575,11 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_12_120000) do
     t.bigint "from_unit_id", null: false
     t.bigint "to_unit_id", null: false
     t.decimal "multiplier", precision: 15, scale: 6, null: false
+    t.string "conversion_type"
+    t.boolean "active", default: true, null: false
     t.boolean "is_inter_unit", default: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.string "conversion_type"
-    t.boolean "active", default: true, null: false
     t.index ["commodity_id"], name: "index_cats_warehouse_uom_conversions_on_commodity_id"
     t.index ["from_unit_id"], name: "index_cats_warehouse_uom_conversions_on_from_unit_id"
     t.index ["to_unit_id"], name: "index_cats_warehouse_uom_conversions_on_to_unit_id"
@@ -1624,9 +1627,6 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_12_120000) do
     t.string "ownership_type"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.float "length_m"
-    t.float "width_m"
-    t.float "height_m"
     t.index ["warehouse_id"], name: "index_cats_warehouse_warehouse_capacity_on_warehouse_id"
   end
 
@@ -1977,6 +1977,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_12_120000) do
   add_foreign_key "cats_warehouse_receipt_order_assignments", "cats_warehouse_stores", column: "store_id"
   add_foreign_key "cats_warehouse_receipt_order_assignments", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_receipt_order_lines", "cats_core_commodities", column: "commodity_id"
+  add_foreign_key "cats_warehouse_receipt_order_lines", "cats_core_unit_of_measures", column: "packaging_unit_id"
   add_foreign_key "cats_warehouse_receipt_order_lines", "cats_core_unit_of_measures", column: "unit_id"
   add_foreign_key "cats_warehouse_receipt_order_lines", "cats_warehouse_receipt_orders", column: "receipt_order_id"
   add_foreign_key "cats_warehouse_receipt_orders", "cats_core_users", column: "confirmed_by_id"

@@ -259,23 +259,50 @@ function CommodityFormPage() {
         <Title order={3} mb="md">Existing Commodities</Title>
         {isLoading ? (
           <Text>Loading...</Text>
+        ) : commodities.length === 0 ? (
+          <Text c="dimmed" size="sm">No commodities registered yet.</Text>
         ) : (
-          <Table striped>
+          <Table striped highlightOnHover>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>ID</Table.Th>
                 <Table.Th>Name</Table.Th>
+                <Table.Th>Batch No</Table.Th>
                 <Table.Th>Default Unit</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {commodities.map((c) => (
-                <Table.Tr key={c.id}>
-                  <Table.Td>{c.id}</Table.Td>
-                  <Table.Td>{c.name}</Table.Td>
-                  <Table.Td>{c.unit_name || '—'}</Table.Td>
-                </Table.Tr>
-              ))}
+              {(() => {
+                // Group commodities by name
+                const grouped = commodities.reduce<Record<string, typeof commodities>>((acc, c) => {
+                  const key = c.name || `Commodity #${c.id}`;
+                  if (!acc[key]) acc[key] = [];
+                  acc[key].push(c);
+                  return acc;
+                }, {});
+
+                return Object.entries(grouped).flatMap(([groupName, items]) => [
+                  // Group header row
+                  <Table.Tr key={`group-${groupName}`} style={{ backgroundColor: 'var(--mantine-color-blue-0)' }}>
+                    <Table.Td colSpan={3}>
+                      <Text fw={700} size="sm">{groupName}</Text>
+                    </Table.Td>
+                  </Table.Tr>,
+                  // Batch rows under this name
+                  ...items.map((c) => (
+                    <Table.Tr key={c.id}>
+                      <Table.Td />
+                      <Table.Td>
+                        <Text size="sm" c="dimmed" style={{ fontFamily: 'monospace' }}>
+                          {c.batch_no || '—'}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm">{c.unit_name || '—'}</Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  )),
+                ]);
+              })()}
             </Table.Tbody>
           </Table>
         )}
