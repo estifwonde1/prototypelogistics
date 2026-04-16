@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { isAxiosError } from 'axios';
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { isAxiosError } from "axios";
 import {
   Stack,
   Title,
@@ -16,32 +16,35 @@ import {
   NumberInput,
   Textarea,
   SimpleGrid,
-} from '@mantine/core';
-import { DateInput } from '@mantine/dates';
-import { IconTrash, IconPlus } from '@tabler/icons-react';
-import { notifications } from '@mantine/notifications';
+} from "@mantine/core";
+import { DateInput } from "@mantine/dates";
+import { IconTrash, IconPlus } from "@tabler/icons-react";
+import { notifications } from "@mantine/notifications";
 import {
   createReceiptOrder,
   getReceiptOrder,
   updateReceiptOrder,
   deleteReceiptOrder,
-} from '../../api/receiptOrders';
-import { getWarehouses } from '../../api/warehouses';
-import { getHubs } from '../../api/hubs';
-import { getCommodityReferences, getUnitReferences } from '../../api/referenceData';
-import { getStockBalances } from '../../api/stockBalances';
-import type { ReceiptOrderLine } from '../../api/receiptOrders';
-import type { ApiError } from '../../types/common';
+} from "../../api/receiptOrders";
+import { getWarehouses } from "../../api/warehouses";
+import { getHubs } from "../../api/hubs";
+import {
+  getCommodityReferences,
+  getUnitReferences,
+} from "../../api/referenceData";
+import { getStockBalances } from "../../api/stockBalances";
+import type { ReceiptOrderLine } from "../../api/receiptOrders";
+import type { ApiError } from "../../types/common";
 
 /** Receipt destination: receive into a warehouse under a hub, or a stand-alone warehouse */
-type ReceiptDestinationKind = 'hub' | 'warehouse' | '';
+type ReceiptDestinationKind = "hub" | "warehouse" | "";
 
 const createEmptyItem = (): ReceiptOrderLine => ({
   commodity_id: 0,
   quantity: 0,
   unit_id: 0,
-  notes: '',
-  line_reference_no: '',
+  notes: "",
+  line_reference_no: "",
   packaging_unit_id: undefined,
   packaging_size: undefined,
 });
@@ -52,48 +55,56 @@ function ReceiptOrderFormPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [destinationKind, setDestinationKind] = useState<ReceiptDestinationKind>('');
+  const [destinationKind, setDestinationKind] =
+    useState<ReceiptDestinationKind>("");
   const [destinationHubId, setDestinationHubId] = useState<string | null>(null);
   const [warehouseId, setWarehouseId] = useState<string | null>(null);
-  const [expectedDeliveryDate, setExpectedDeliveryDate] = useState<Date | null>(new Date());
+  const [expectedDeliveryDate, setExpectedDeliveryDate] = useState<Date | null>(
+    new Date(),
+  );
   const destinationHydratedKeyRef = useRef<string | null>(null);
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState("");
   const [items, setItems] = useState<ReceiptOrderLine[]>([createEmptyItem()]);
 
   const { data: warehouses } = useQuery({
-    queryKey: ['warehouses'],
+    queryKey: ["warehouses"],
     queryFn: getWarehouses,
   });
 
   const { data: hubs } = useQuery({
-    queryKey: ['hubs'],
+    queryKey: ["hubs"],
     queryFn: getHubs,
   });
 
   const { data: commodities = [] } = useQuery({
-    queryKey: ['reference-data', 'commodities'],
+    queryKey: ["reference-data", "commodities"],
     queryFn: getCommodityReferences,
   });
 
   const { data: units = [] } = useQuery({
-    queryKey: ['reference-data', 'units'],
+    queryKey: ["reference-data", "units"],
     queryFn: getUnitReferences,
   });
 
   const { data: stockBalances = [] } = useQuery({
-    queryKey: ['stock_balances'],
+    queryKey: ["stock_balances"],
     queryFn: getStockBalances,
   });
 
-  const { data: existingOrder, isLoading: orderLoading, isError: orderError, refetch: refetchOrder } =
-    useQuery({
-      queryKey: ['receipt_orders', id],
-      queryFn: () => getReceiptOrder(Number(id)),
-      enabled: isEdit,
-    });
+  const {
+    data: existingOrder,
+    isLoading: orderLoading,
+    isError: orderError,
+    refetch: refetchOrder,
+  } = useQuery({
+    queryKey: ["receipt_orders", id],
+    queryFn: () => getReceiptOrder(Number(id)),
+    enabled: isEdit,
+  });
 
   const isDraftOrder =
-    existingOrder != null && String(existingOrder.status).toLowerCase() === 'draft';
+    existingOrder != null &&
+    String(existingOrder.status).toLowerCase() === "draft";
   const fieldsEditable = !isEdit || (isDraftOrder && !orderLoading);
 
   useEffect(() => {
@@ -103,22 +114,24 @@ function ReceiptOrderFormPage() {
       existingOrder.destination_warehouse_id ?? existingOrder.warehouse_id;
     setWarehouseId(warehouseNumeric != null ? String(warehouseNumeric) : null);
 
-    const dateRaw = existingOrder.expected_delivery_date || existingOrder.received_date;
+    const dateRaw =
+      existingOrder.expected_delivery_date || existingOrder.received_date;
     setExpectedDeliveryDate(dateRaw ? new Date(dateRaw) : null);
 
-    setNotes(existingOrder.notes ?? existingOrder.description ?? '');
+    setNotes(existingOrder.notes ?? existingOrder.description ?? "");
 
-    const rawLines = existingOrder.lines ?? existingOrder.receipt_order_lines ?? [];
+    const rawLines =
+      existingOrder.lines ?? existingOrder.receipt_order_lines ?? [];
     setItems(
       rawLines.length > 0
         ? rawLines.map((line) => ({
             commodity_id: line.commodity_id,
             quantity: line.quantity,
             unit_id: line.unit_id,
-            notes: line.notes ?? '',
-            line_reference_no: line.line_reference_no ?? '',
+            notes: line.notes ?? "",
+            line_reference_no: line.line_reference_no ?? "",
           }))
-        : [createEmptyItem()]
+        : [createEmptyItem()],
     );
   }, [isEdit, existingOrder]);
 
@@ -132,16 +145,17 @@ function ReceiptOrderFormPage() {
     if (!isEdit || !id || !existingOrder) return;
     const hydrateKey = `${id}:${existingOrder.updated_at ?? existingOrder.id}`;
     if (destinationHydratedKeyRef.current === hydrateKey) return;
-    const wid = existingOrder.destination_warehouse_id ?? existingOrder.warehouse_id;
+    const wid =
+      existingOrder.destination_warehouse_id ?? existingOrder.warehouse_id;
 
     if (wid != null && warehouses?.length) {
       const w = warehouses.find((x) => x.id === wid);
       if (!w) return;
       if (w.hub_id != null) {
-        setDestinationKind('hub');
+        setDestinationKind("hub");
         setDestinationHubId(String(w.hub_id));
       } else {
-        setDestinationKind('warehouse');
+        setDestinationKind("warehouse");
         setDestinationHubId(null);
       }
       destinationHydratedKeyRef.current = hydrateKey;
@@ -149,40 +163,43 @@ function ReceiptOrderFormPage() {
     }
 
     if (wid == null && existingOrder.hub_id != null) {
-      setDestinationKind('hub');
+      setDestinationKind("hub");
       setDestinationHubId(String(existingOrder.hub_id));
       destinationHydratedKeyRef.current = hydrateKey;
     }
   }, [isEdit, id, existingOrder, warehouses]);
 
   const destinationKindOptions = [
-    { value: 'hub', label: 'Hub' },
-    { value: 'warehouse', label: 'Warehouse' },
+    { value: "hub", label: "Hub" },
+    { value: "warehouse", label: "Warehouse" },
   ];
 
   const hubSelectOptions = useMemo(
     () => (hubs ?? []).map((h) => ({ value: String(h.id), label: h.name })),
-    [hubs]
+    [hubs],
   );
 
   const standaloneWarehouses = useMemo(
     () => (warehouses ?? []).filter((w) => w.hub_id == null),
-    [warehouses]
+    [warehouses],
   );
 
   const standaloneWarehouseOptions = useMemo(
-    () => standaloneWarehouses.map((w) => ({ value: String(w.id), label: w.name })),
-    [standaloneWarehouses]
+    () =>
+      standaloneWarehouses.map((w) => ({ value: String(w.id), label: w.name })),
+    [standaloneWarehouses],
   );
 
-  const selectedWarehouse = warehouses?.find((w) => String(w.id) === warehouseId);
+  const selectedWarehouse = warehouses?.find(
+    (w) => String(w.id) === warehouseId,
+  );
   const selectedHubName =
-    destinationKind === 'hub' && destinationHubId
+    destinationKind === "hub" && destinationHubId
       ? hubs?.find((h) => String(h.id) === destinationHubId)?.name
       : undefined;
 
   const handleDestinationKindChange = useCallback((val: string | null) => {
-    const next = (val || '') as ReceiptDestinationKind;
+    const next = (val || "") as ReceiptDestinationKind;
     setDestinationKind(next);
     setDestinationHubId(null);
     setWarehouseId(null);
@@ -218,7 +235,7 @@ function ReceiptOrderFormPage() {
     })) || [];
 
   const stockWarehouseId =
-    destinationKind === 'warehouse' && warehouseId ? Number(warehouseId) : null;
+    destinationKind === "warehouse" && warehouseId ? Number(warehouseId) : null;
 
   const availableByCommodityId = useMemo(() => {
     const map = new Map<number, { quantity: number; unitLabel?: string }>();
@@ -227,8 +244,13 @@ function ReceiptOrderFormPage() {
       .filter((balance) => balance.warehouse_id === stockWarehouseId)
       .forEach((balance) => {
         const existing = map.get(balance.commodity_id);
-        const nextQuantity = (existing?.quantity || 0) + (balance.quantity || 0);
-        const unitLabel = existing?.unitLabel || balance.unit_abbreviation || balance.unit_name || undefined;
+        const nextQuantity =
+          (existing?.quantity || 0) + (balance.quantity || 0);
+        const unitLabel =
+          existing?.unitLabel ||
+          balance.unit_abbreviation ||
+          balance.unit_name ||
+          undefined;
         map.set(balance.commodity_id, { quantity: nextQuantity, unitLabel });
       });
     return map;
@@ -237,21 +259,22 @@ function ReceiptOrderFormPage() {
   const createMutation = useMutation({
     mutationFn: createReceiptOrder,
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['receipt_orders'] });
+      queryClient.invalidateQueries({ queryKey: ["receipt_orders"] });
       notifications.show({
-        title: 'Success',
-        message: 'Receipt Order created successfully',
-        color: 'green',
+        title: "Success",
+        message: "Receipt Order created successfully",
+        color: "green",
       });
       navigate(`/officer/receipt-orders/${data.id}`);
     },
     onError: (error: unknown) => {
       notifications.show({
-        title: 'Error',
+        title: "Error",
         message:
-          (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) ||
-          'Failed to create Receipt Order',
-        color: 'red',
+          (isAxiosError<ApiError>(error)
+            ? error.response?.data?.error?.message
+            : undefined) || "Failed to create Receipt Order",
+        color: "red",
       });
     },
   });
@@ -259,22 +282,23 @@ function ReceiptOrderFormPage() {
   const updateMutation = useMutation({
     mutationFn: (payload: any) => updateReceiptOrder(Number(id), payload),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['receipt_orders'] });
-      queryClient.invalidateQueries({ queryKey: ['receipt_orders', id] });
+      queryClient.invalidateQueries({ queryKey: ["receipt_orders"] });
+      queryClient.invalidateQueries({ queryKey: ["receipt_orders", id] });
       notifications.show({
-        title: 'Success',
-        message: 'Receipt Order updated successfully',
-        color: 'green',
+        title: "Success",
+        message: "Receipt Order updated successfully",
+        color: "green",
       });
       navigate(`/officer/receipt-orders/${data.id}`);
     },
     onError: (error: unknown) => {
       notifications.show({
-        title: 'Error',
+        title: "Error",
         message:
-          (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) ||
-          'Failed to update Receipt Order',
-        color: 'red',
+          (isAxiosError<ApiError>(error)
+            ? error.response?.data?.error?.message
+            : undefined) || "Failed to update Receipt Order",
+        color: "red",
       });
     },
   });
@@ -282,21 +306,22 @@ function ReceiptOrderFormPage() {
   const deleteMutation = useMutation({
     mutationFn: () => deleteReceiptOrder(Number(id)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['receipt_orders'] });
+      queryClient.invalidateQueries({ queryKey: ["receipt_orders"] });
       notifications.show({
-        title: 'Success',
-        message: 'Receipt Order deleted successfully',
-        color: 'green',
+        title: "Success",
+        message: "Receipt Order deleted successfully",
+        color: "green",
       });
-      navigate('/officer/receipt-orders');
+      navigate("/officer/receipt-orders");
     },
     onError: (error: unknown) => {
       notifications.show({
-        title: 'Error',
+        title: "Error",
         message:
-          (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) ||
-          'Failed to delete Receipt Order',
-        color: 'red',
+          (isAxiosError<ApiError>(error)
+            ? error.response?.data?.error?.message
+            : undefined) || "Failed to delete Receipt Order",
+        color: "red",
       });
     },
   });
@@ -312,21 +337,21 @@ function ReceiptOrderFormPage() {
   const handleItemChange = <K extends keyof ReceiptOrderLine>(
     index: number,
     field: K,
-    value: ReceiptOrderLine[K]
+    value: ReceiptOrderLine[K],
   ) => {
     setItems((current) => {
       const next = [...current];
-      
+
       const stringValue = String(value);
-      
+
       if (!stringValue) {
         return current;
       }
-      
+
       next[index] = { ...next[index], [field]: value };
-      
+
       // Auto-fill unit and line_ref when commodity is selected
-      if (field === 'commodity_id') {
+      if (field === "commodity_id") {
         const numericId = Number(stringValue);
         const commodity = commodities.find((c) => c.id === numericId);
         if (commodity) {
@@ -340,7 +365,7 @@ function ReceiptOrderFormPage() {
           }
         }
       }
-      
+
       return next;
     });
   };
@@ -348,46 +373,47 @@ function ReceiptOrderFormPage() {
   const handleSave = () => {
     if (!expectedDeliveryDate) {
       notifications.show({
-        title: 'Validation Error',
-        message: 'Please fill in all required fields',
-        color: 'red',
+        title: "Validation Error",
+        message: "Please fill in all required fields",
+        color: "red",
       });
       return;
     }
 
     if (!destinationKind) {
       notifications.show({
-        title: 'Validation Error',
-        message: 'Please select a destination type (Hub or Warehouse)',
-        color: 'red',
+        title: "Validation Error",
+        message: "Please select a destination type (Hub or Warehouse)",
+        color: "red",
       });
       return;
     }
 
-    if (destinationKind === 'hub') {
+    if (destinationKind === "hub") {
       if (!destinationHubId) {
         notifications.show({
-          title: 'Validation Error',
-          message: 'Please select a hub',
-          color: 'red',
+          title: "Validation Error",
+          message: "Please select a hub",
+          color: "red",
         });
         return;
       }
-    } else if (destinationKind === 'warehouse') {
+    } else if (destinationKind === "warehouse") {
       if (!warehouseId) {
         notifications.show({
-          title: 'Validation Error',
-          message: 'Please select a destination warehouse',
-          color: 'red',
+          title: "Validation Error",
+          message: "Please select a destination warehouse",
+          color: "red",
         });
         return;
       }
       const wh = warehouses?.find((w) => String(w.id) === warehouseId);
       if (wh && wh.hub_id != null) {
         notifications.show({
-          title: 'Validation Error',
-          message: 'Select a stand-alone warehouse, or choose destination type Hub',
-          color: 'red',
+          title: "Validation Error",
+          message:
+            "Select a stand-alone warehouse, or choose destination type Hub",
+          color: "red",
         });
         return;
       }
@@ -395,39 +421,46 @@ function ReceiptOrderFormPage() {
 
     if (
       items.length === 0 ||
-      items.some((item) => !item.commodity_id || !item.quantity || !item.unit_id)
+      items.some(
+        (item) => !item.commodity_id || !item.quantity || !item.unit_id,
+      )
     ) {
       notifications.show({
-        title: 'Validation Error',
-        message: 'Please add at least one line with commodity, quantity, and unit',
-        color: 'red',
+        title: "Validation Error",
+        message:
+          "Please add at least one line with commodity, quantity, and unit",
+        color: "red",
       });
       return;
     }
 
     if (stockWarehouseId) {
       const insufficient = items.find((item) => {
-        const available = availableByCommodityId.get(item.commodity_id)?.quantity ?? 0;
+        const available =
+          availableByCommodityId.get(item.commodity_id)?.quantity ?? 0;
         return item.quantity > available;
       });
 
       if (insufficient) {
-        const label = commodityLabelById.get(insufficient.commodity_id) || 'selected commodity';
+        const label =
+          commodityLabelById.get(insufficient.commodity_id) ||
+          "selected commodity";
         notifications.show({
-          title: 'Validation Error',
+          title: "Validation Error",
           message: `Destination quantity exceeds available stock for ${label}.`,
-          color: 'red',
+          color: "red",
         });
         return;
       }
     }
 
-    const dateStr = expectedDeliveryDate instanceof Date 
-      ? expectedDeliveryDate.toISOString().split('T')[0]
-      : expectedDeliveryDate;
+    const dateStr =
+      expectedDeliveryDate instanceof Date
+        ? expectedDeliveryDate.toISOString().split("T")[0]
+        : expectedDeliveryDate;
 
     const payload =
-      destinationKind === 'hub'
+      destinationKind === "hub"
         ? {
             destination_warehouse_id: null,
             hub_id: Number(destinationHubId),
@@ -450,7 +483,10 @@ function ReceiptOrderFormPage() {
     }
   };
 
-  const isLoading = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
+  const isLoading =
+    createMutation.isPending ||
+    updateMutation.isPending ||
+    deleteMutation.isPending;
 
   if (isEdit && orderError) {
     return (
@@ -463,7 +499,10 @@ function ReceiptOrderFormPage() {
           <Button variant="light" onClick={() => refetchOrder()}>
             Retry
           </Button>
-          <Button variant="subtle" onClick={() => navigate('/officer/receipt-orders')}>
+          <Button
+            variant="subtle"
+            onClick={() => navigate("/officer/receipt-orders")}
+          >
             Back to list
           </Button>
         </Group>
@@ -487,9 +526,15 @@ function ReceiptOrderFormPage() {
       <Stack gap="md">
         <Title order={2}>Edit Receipt Order</Title>
         <Text c="dimmed" size="sm">
-          Only draft receipt orders can be edited. This order is {existingOrder.status}.
+          Only draft receipt orders can be edited. This order is{" "}
+          {existingOrder.status}.
         </Text>
-        <Button variant="light" onClick={() => navigate(`/officer/receipt-orders/${existingOrder.id}`)}>
+        <Button
+          variant="light"
+          onClick={() =>
+            navigate(`/officer/receipt-orders/${existingOrder.id}`)
+          }
+        >
           Back to order
         </Button>
       </Stack>
@@ -499,9 +544,13 @@ function ReceiptOrderFormPage() {
   return (
     <Stack gap="md">
       <div>
-        <Title order={2}>{isEdit ? 'Edit Receipt Order' : 'Create Receipt Order'}</Title>
+        <Title order={2}>
+          {isEdit ? "Edit Receipt Order" : "Create Receipt Order"}
+        </Title>
         <Text c="dimmed" size="sm">
-          {isEdit ? 'Update order details' : 'Create a new inbound warehouse order'}
+          {isEdit
+            ? "Update order details"
+            : "Create a new inbound warehouse order"}
         </Text>
       </div>
 
@@ -524,7 +573,7 @@ function ReceiptOrderFormPage() {
               mt="md"
             />
 
-            {destinationKind === 'hub' && (
+            {destinationKind === "hub" && (
               <Select
                 label="Hub"
                 placeholder="Select hub"
@@ -537,13 +586,13 @@ function ReceiptOrderFormPage() {
               />
             )}
 
-            {destinationKind === 'warehouse' && (
+            {destinationKind === "warehouse" && (
               <Select
                 label="Destination Warehouse"
                 placeholder={
                   standaloneWarehouses.length
-                    ? 'Select stand-alone warehouse'
-                    : 'No stand-alone warehouses available'
+                    ? "Select stand-alone warehouse"
+                    : "No stand-alone warehouses available"
                 }
                 data={standaloneWarehouseOptions}
                 value={warehouseId}
@@ -559,21 +608,24 @@ function ReceiptOrderFormPage() {
                 label="Expected Delivery Date"
                 placeholder="Select date"
                 value={expectedDeliveryDate}
-                onChange={(val: string | null) => setExpectedDeliveryDate(val ? new Date(val) : null)}
+                onChange={(val: string | null) =>
+                  setExpectedDeliveryDate(val ? new Date(val) : null)
+                }
                 required
                 disabled={!fieldsEditable}
               />
             </SimpleGrid>
-            {destinationKind === 'hub' && selectedHubName && (
+            {destinationKind === "hub" && selectedHubName && (
               <Text size="sm" c="dimmed" mt="xs">
-                Goods will be received into hub: {selectedHubName}. A specific warehouse can be set when confirming
-                or receiving (e.g. on GRN).
+                Goods will be received into hub: {selectedHubName}. A specific
+                warehouse can be set when confirming or receiving (e.g. on GRN).
               </Text>
             )}
-            {destinationKind === 'warehouse' && selectedWarehouse && (
+            {destinationKind === "warehouse" && selectedWarehouse && (
               <Text size="sm" c="dimmed" mt="xs">
-                Receiving hub:{' '}
-                {selectedWarehouse.hub_name ?? '— (standalone warehouse, not under a hub)'}
+                Receiving hub:{" "}
+                {selectedWarehouse.hub_name ??
+                  "— (standalone warehouse, not under a hub)"}
               </Text>
             )}
             <Textarea
@@ -606,9 +658,10 @@ function ReceiptOrderFormPage() {
               )}
             </Group>
 
-            {destinationKind === 'hub' && (
+            {destinationKind === "hub" && (
               <Text size="xs" c="dimmed" mb="sm">
-                Destination is a hub; available stock validation is skipped until a warehouse is set.
+                Destination is a hub; available stock validation is skipped
+                until a warehouse is set.
               </Text>
             )}
 
@@ -624,7 +677,11 @@ function ReceiptOrderFormPage() {
                     <Table.Th>Size per Package</Table.Th>
                     <Table.Th>Total</Table.Th>
                     <Table.Th>Notes</Table.Th>
-                    {fieldsEditable && <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>}
+                    {fieldsEditable && (
+                      <Table.Th style={{ textAlign: "right" }}>
+                        Actions
+                      </Table.Th>
+                    )}
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -641,7 +698,11 @@ function ReceiptOrderFormPage() {
                             data={commodityOptions}
                             value={item.commodity_id?.toString()}
                             onChange={(val) =>
-                              handleItemChange(index, 'commodity_id', parseInt(val || '0'))
+                              handleItemChange(
+                                index,
+                                "commodity_id",
+                                parseInt(val || "0"),
+                              )
                             }
                             searchable
                             disabled={!fieldsEditable}
@@ -650,9 +711,13 @@ function ReceiptOrderFormPage() {
                         <Table.Td>
                           <TextInput
                             placeholder="Optional; auto if empty"
-                            value={item.line_reference_no ?? ''}
+                            value={item.line_reference_no ?? ""}
                             onChange={(e) =>
-                              handleItemChange(index, 'line_reference_no', e.target.value)
+                              handleItemChange(
+                                index,
+                                "line_reference_no",
+                                e.target.value,
+                              )
                             }
                             disabled={!fieldsEditable}
                           />
@@ -662,19 +727,35 @@ function ReceiptOrderFormPage() {
                             <NumberInput
                               placeholder="0"
                               value={item.quantity}
-                              onChange={(val) => handleItemChange(index, 'quantity', Number(val) || 0)}
+                              onChange={(val) =>
+                                handleItemChange(
+                                  index,
+                                  "quantity",
+                                  Number(val) || 0,
+                                )
+                              }
                               disabled={!fieldsEditable}
                             />
-                            {stockWarehouseId && item.commodity_id ? (() => {
-                              const availableEntry = availableByCommodityId.get(item.commodity_id);
-                              const available = availableEntry?.quantity ?? 0;
-                              const isOver = item.quantity > available;
-                              return (
-                                <Text size="xs" c={isOver ? 'red' : 'dimmed'}>
-                                  Available: {available.toFixed(2)} {availableEntry?.unitLabel || ''}
-                                </Text>
-                              );
-                            })() : null}
+                            {stockWarehouseId && item.commodity_id
+                              ? (() => {
+                                  const availableEntry =
+                                    availableByCommodityId.get(
+                                      item.commodity_id,
+                                    );
+                                  const available =
+                                    availableEntry?.quantity ?? 0;
+                                  const isOver = item.quantity > available;
+                                  return (
+                                    <Text
+                                      size="xs"
+                                      c={isOver ? "red" : "dimmed"}
+                                    >
+                                      Available: {available.toFixed(2)}{" "}
+                                      {availableEntry?.unitLabel || ""}
+                                    </Text>
+                                  );
+                                })()
+                              : null}
                           </Stack>
                         </Table.Td>
                         <Table.Td>
@@ -683,7 +764,11 @@ function ReceiptOrderFormPage() {
                             data={unitOptions}
                             value={item.unit_id?.toString()}
                             onChange={(val) =>
-                              handleItemChange(index, 'unit_id', parseInt(val || '0'))
+                              handleItemChange(
+                                index,
+                                "unit_id",
+                                parseInt(val || "0"),
+                              )
                             }
                             disabled={!fieldsEditable}
                           />
@@ -694,7 +779,11 @@ function ReceiptOrderFormPage() {
                             data={unitOptions}
                             value={item.packaging_unit_id?.toString() ?? null}
                             onChange={(val) =>
-                              handleItemChange(index, 'packaging_unit_id', val ? parseInt(val) : undefined)
+                              handleItemChange(
+                                index,
+                                "packaging_unit_id",
+                                val ? parseInt(val) : undefined,
+                              )
                             }
                             clearable
                             disabled={!fieldsEditable}
@@ -703,24 +792,36 @@ function ReceiptOrderFormPage() {
                         <Table.Td>
                           <NumberInput
                             placeholder="e.g. 25"
-                            value={item.packaging_size ?? ''}
+                            value={item.packaging_size ?? ""}
                             onChange={(val) =>
-                              handleItemChange(index, 'packaging_size', val !== '' ? Number(val) : undefined)
+                              handleItemChange(
+                                index,
+                                "packaging_size",
+                                val !== "" ? Number(val) : undefined,
+                              )
                             }
                             disabled={!fieldsEditable}
                             min={0}
                           />
                         </Table.Td>
                         <Table.Td>
-                          <Text size="sm" fw={600} c={total ? 'blue' : 'dimmed'}>
-                            {total ? `${total} ${unitOptions.find(u => u.value === item.unit_id?.toString())?.label ?? ''}` : '—'}
+                          <Text
+                            size="sm"
+                            fw={600}
+                            c={total ? "blue" : "dimmed"}
+                          >
+                            {total
+                              ? `${total} ${unitOptions.find((u) => u.value === item.unit_id?.toString())?.label ?? ""}`
+                              : "—"}
                           </Text>
                         </Table.Td>
                         <Table.Td>
                           <TextInput
                             placeholder="Notes"
                             value={item.notes}
-                            onChange={(e) => handleItemChange(index, 'notes', e.target.value)}
+                            onChange={(e) =>
+                              handleItemChange(index, "notes", e.target.value)
+                            }
                             disabled={!fieldsEditable}
                           />
                         </Table.Td>
@@ -744,7 +845,10 @@ function ReceiptOrderFormPage() {
           </div>
 
           <Group justify="flex-end" mt="xl">
-            <Button variant="light" onClick={() => navigate('/officer/receipt-orders')}>
+            <Button
+              variant="light"
+              onClick={() => navigate("/officer/receipt-orders")}
+            >
               Cancel
             </Button>
             {isEdit && (
@@ -759,11 +863,11 @@ function ReceiptOrderFormPage() {
             )}
             {fieldsEditable && (
               <Button onClick={handleSave} loading={isLoading}>
-                {isEdit ? 'Update draft' : 'Save as Draft'}
+                {isEdit ? "Update draft" : "Save as Draft"}
               </Button>
             )}
           </Group>
-</Stack>
+        </Stack>
       </Card>
     </Stack>
   );
