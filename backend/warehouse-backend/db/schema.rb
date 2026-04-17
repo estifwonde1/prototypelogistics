@@ -1381,13 +1381,11 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_16_204229) do
     t.bigint "unit_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.decimal "unit_price", precision: 15, scale: 4
     t.text "notes"
-    t.bigint "packaging_unit_id"
-    t.decimal "packaging_size", precision: 15, scale: 4
     t.string "line_reference_no", null: false
     t.index ["commodity_id"], name: "index_cats_warehouse_receipt_order_lines_on_commodity_id"
     t.index ["line_reference_no"], name: "index_cats_warehouse_receipt_order_lines_on_line_reference_no", unique: true
-    t.index ["packaging_unit_id"], name: "index_cats_warehouse_receipt_order_lines_on_packaging_unit_id"
     t.index ["receipt_order_id"], name: "index_receipt_order_lines_on_order_id"
     t.index ["unit_id"], name: "index_cats_warehouse_receipt_order_lines_on_unit_id"
   end
@@ -1980,7 +1978,6 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_16_204229) do
   add_foreign_key "cats_warehouse_receipt_order_assignments", "cats_warehouse_stores", column: "store_id"
   add_foreign_key "cats_warehouse_receipt_order_assignments", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_receipt_order_lines", "cats_core_commodities", column: "commodity_id"
-  add_foreign_key "cats_warehouse_receipt_order_lines", "cats_core_unit_of_measures", column: "packaging_unit_id"
   add_foreign_key "cats_warehouse_receipt_order_lines", "cats_core_unit_of_measures", column: "unit_id"
   add_foreign_key "cats_warehouse_receipt_order_lines", "cats_warehouse_receipt_orders", column: "receipt_order_id"
   add_foreign_key "cats_warehouse_receipt_orders", "cats_core_users", column: "confirmed_by_id"

@@ -60,8 +60,8 @@ export default function UserAssignmentsPage() {
     enabled: (isWoredaOfficer || isKebeleOfficer) && !!zoneId,
   });
 
-  // Kebeles query - kept for potential future use
-  const { data: _kebeles } = useQuery({
+  // Kebeles query - data fetched but not directly used in this component
+  useQuery({
     queryKey: ['assignment-kebeles', woredaId],
     queryFn: () => getKebeles(Number(woredaId)),
     enabled: isKebeleOfficer && !!woredaId,
