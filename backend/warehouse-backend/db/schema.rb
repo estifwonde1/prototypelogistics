@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_04_16_204229) do
+ActiveRecord::Schema[7.0].define(version: 2026_04_18_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1041,6 +1041,15 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_16_204229) do
     t.index ["user_id"], name: "user_on_ur_indx"
   end
 
+  create_table "cats_warehouse_commodity_definitions", force: :cascade do |t|
+    t.string "name", null: false
+    t.bigint "commodity_category_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["commodity_category_id"], name: "idx_comm_defs_on_category_id"
+    t.index ["name"], name: "index_cats_warehouse_commodity_definitions_on_name", unique: true
+  end
+
   create_table "cats_warehouse_dispatch_order_assignments", force: :cascade do |t|
     t.bigint "dispatch_order_id", null: false
     t.bigint "dispatch_order_line_id"
@@ -1381,11 +1390,13 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_16_204229) do
     t.bigint "unit_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.decimal "unit_price", precision: 15, scale: 4
     t.text "notes"
+    t.bigint "packaging_unit_id"
+    t.decimal "packaging_size", precision: 15, scale: 4
     t.string "line_reference_no", null: false
     t.index ["commodity_id"], name: "index_cats_warehouse_receipt_order_lines_on_commodity_id"
     t.index ["line_reference_no"], name: "index_cats_warehouse_receipt_order_lines_on_line_reference_no", unique: true
+    t.index ["packaging_unit_id"], name: "index_cats_warehouse_receipt_order_lines_on_packaging_unit_id"
     t.index ["receipt_order_id"], name: "index_receipt_order_lines_on_order_id"
     t.index ["unit_id"], name: "index_cats_warehouse_receipt_order_lines_on_unit_id"
   end
@@ -1978,6 +1989,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_16_204229) do
   add_foreign_key "cats_warehouse_receipt_order_assignments", "cats_warehouse_stores", column: "store_id"
   add_foreign_key "cats_warehouse_receipt_order_assignments", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_receipt_order_lines", "cats_core_commodities", column: "commodity_id"
+  add_foreign_key "cats_warehouse_receipt_order_lines", "cats_core_unit_of_measures", column: "packaging_unit_id"
   add_foreign_key "cats_warehouse_receipt_order_lines", "cats_core_unit_of_measures", column: "unit_id"
   add_foreign_key "cats_warehouse_receipt_order_lines", "cats_warehouse_receipt_orders", column: "receipt_order_id"
   add_foreign_key "cats_warehouse_receipt_orders", "cats_core_users", column: "confirmed_by_id"

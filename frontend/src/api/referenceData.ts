@@ -77,3 +77,28 @@ export const createCommodity = async (payload: CreateCommodityPayload): Promise<
   );
   return response.data.data;
 };
+
+export interface AdminCommodityPayload {
+  name: string;
+  commodity_category_id: number;
+}
+
+export const adminCreateCommodity = async (payload: AdminCommodityPayload): Promise<CommodityReference> => {
+  const response = await apiClient.post<ApiResponse<CommodityReference>>(
+    '/reference_data/commodities',
+    { commodity: { name: payload.name, commodity_category_id: payload.commodity_category_id, quantity: 0 } }
+  );
+  return response.data.data;
+};
+
+export const adminUpdateCommodity = async (id: number, payload: AdminCommodityPayload): Promise<CommodityReference> => {
+  const response = await apiClient.patch<ApiResponse<CommodityReference>>(
+    `/reference_data/commodities/${id}`,
+    { commodity: payload }
+  );
+  return response.data.data;
+};
+
+export const adminDeleteCommodity = async (id: number): Promise<void> => {
+  await apiClient.delete(`/reference_data/commodities/${id}`);
+};

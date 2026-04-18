@@ -22,29 +22,32 @@ module Cats
           :source_name
         )
 
-        # Find first project or use default
         project = Cats::Core::Project.order(:id).first
         if project.nil?
           return render_error("Cannot create commodity: No project found in the system. Please seed or create a project first.", status: :unprocessable_entity)
         end
-        
-        # Auto-generate batch_no if not provided
+
+        # Use provided unit or fall back to the first available unit
+        unit_id = payload[:unit_id].presence || Cats::Core::UnitOfMeasure.order(:id).first&.id
+        if unit_id.nil?
+          return render_error("Cannot create commodity: No unit of measure found. Please seed units first.", status: :unprocessable_entity)
+        end
+
         batch_no = payload[:batch_no].presence ||
                    "BATCH-#{Time.current.strftime('%Y%m%d')}-#{SecureRandom.hex(3).upcase}"
 
-        # Build attributes without .compact to ensure Rails validations/DB constraints are triggered properly
         attrs = {
           name: payload[:name],
           batch_no: batch_no,
           status: Cats::Core::Commodity::DRAFT,
           arrival_status: Cats::Core::Commodity::AT_SOURCE,
-          quantity: payload[:quantity].present? ? payload[:quantity].to_f : 0,
-          project_id: project&.id,
-          unit_of_measure_id: payload[:unit_id],
+          quantity: payload[:quantity].present? ? payload[:quantity].to_f : 1,
+          best_use_before: payload[:best_use_before].presence || (Date.today + 365),
+          project_id: project.id,
+          unit_of_measure_id: unit_id,
           package_unit_id: payload[:package_unit_id],
           package_size: payload[:package_size].present? ? payload[:package_size].to_f : nil,
           commodity_category_id: payload[:commodity_category_id],
-          best_use_before: payload[:best_use_before],
           source_type: payload[:source_type],
           source_name: payload[:source_name]
         }
@@ -52,6 +55,7 @@ module Cats
         commodity = Cats::Core::Commodity.create!(attrs)
 
         package_unit = Cats::Core::UnitOfMeasure.find_by(id: commodity.package_unit_id)
+        category = Cats::Core::CommodityCategory.find_by(id: commodity.commodity_category_id)
 
         render_success({
           id: commodity.id,
@@ -64,8 +68,41 @@ module Cats
           package_unit_name: package_unit&.abbreviation || package_unit&.name,
           package_size: commodity.respond_to?(:package_size) ? commodity.package_size : nil,
           source_type: commodity.source_type,
-          source_name: commodity.source_name
+          source_name: commodity.source_name,
+          category_id: commodity.commodity_category_id,
+          category_name: category&.name
         })
+      end
+
+      def update_commodity
+        authorize :reference_data, :create_commodity?, policy_class: ReferenceDataPolicy
+
+        commodity = Cats::Core::Commodity.find(params[:id])
+        payload = params.require(:commodity).permit(:name, :commodity_category_id)
+
+        commodity.update!(
+          name: payload[:name],
+          commodity_category_id: payload[:commodity_category_id]
+        )
+
+        category = Cats::Core::CommodityCategory.find_by(id: commodity.commodity_category_id)
+
+        render_success({
+          id: commodity.id,
+          name: commodity.read_attribute(:name).presence || commodity.batch_no || "Commodity ##{commodity.id}",
+          batch_no: commodity.batch_no,
+          category_id: commodity.commodity_category_id,
+          category_name: category&.name
+        })
+      end
+
+      def destroy_commodity
+        authorize :reference_data, :create_commodity?, policy_class: ReferenceDataPolicy
+
+        commodity = Cats::Core::Commodity.find(params[:id])
+        commodity.destroy!
+
+        render_success({ id: commodity.id })
       end
 
       def categories
@@ -87,12 +124,16 @@ module Cats
       def commodities
         authorize :reference_data, :commodities?, policy_class: ReferenceDataPolicy
 
+        # Pre-load all categories into a hash for efficient lookup
+        category_map = Cats::Core::CommodityCategory.all.index_by(&:id)
+
         commodities = Cats::Core::Commodity
           .includes(:unit_of_measure)
           .order(:name, :batch_no, :id)
           .map do |commodity|
             commodity_name = commodity[:name].presence || commodity[:batch_no].presence
             package_unit = Cats::Core::UnitOfMeasure.find_by(id: commodity.package_unit_id)
+            category = category_map[commodity.commodity_category_id]
 
             {
               id: commodity.id,
@@ -106,7 +147,9 @@ module Cats
               package_unit_name: package_unit&.abbreviation || package_unit&.name,
               package_size: commodity.respond_to?(:package_size) ? commodity.package_size : nil,
               source_type: commodity.source_type,
-              source_name: commodity.source_name
+              source_name: commodity.source_name,
+              category_id: commodity.commodity_category_id,
+              category_name: category&.name
             }
           end
 

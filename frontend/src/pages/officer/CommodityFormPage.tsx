@@ -8,7 +8,6 @@ import {
   Button,
   Group,
   TextInput,
-  Autocomplete,
   NumberInput,
   Select,
   Card,
@@ -39,9 +38,9 @@ import {
   getCategoryReferences,
   createCommodity,
 } from "../../api/referenceData";
+import { getCommodityDefinitions } from "../../api/commodityDefinitions";
 import type { ApiError } from "../../types/common";
 import type { CreateCommodityPayload } from "../../api/referenceData";
-import type { CommodityReference } from "../../types/referenceData";
 
 function CommodityFormPage() {
   const navigate = useNavigate();
@@ -68,10 +67,25 @@ function CommodityFormPage() {
 
   const [previewBatch, setPreviewBatch] = useState(() => generateBatchNo());
 
-  const { data: commodities = [], isLoading } = useQuery({
+  // Commodity definitions created by admin — used for the dropdown
+  const { data: commodityDefinitions = [], isLoading: definitionsLoading } = useQuery({
+    queryKey: ["commodity-definitions"],
+    queryFn: getCommodityDefinitions,
+  });
+
+  // Actual batches created by officers — used for the list below
+  const { data: commodityBatches = [], isLoading: batchesLoading } = useQuery({
     queryKey: ["reference-data", "commodities"],
     queryFn: getCommodityReferences,
   });
+
+  const isLoading = definitionsLoading || batchesLoading;
+
+  // Alias for the dropdown
+  const commodities = commodityBatches;
+
+  // Track which definition the officer selected so we can auto-fill category
+  const [selectedDefinitionId, setSelectedDefinitionId] = useState<string | null>(null);
 
   const { data: units = [] } = useQuery({
     queryKey: ["reference-data", "units"],
@@ -102,6 +116,9 @@ function CommodityFormPage() {
       queryClient.invalidateQueries({
         queryKey: ["reference-data", "commodities"],
       });
+      queryClient.invalidateQueries({
+        queryKey: ["commodity-definitions"],
+      });
       setName("");
       setBatchNo("");
       setAutoGenBatch(true);
@@ -114,6 +131,7 @@ function CommodityFormPage() {
       setExpiryDate(null);
       setSourceType("");
       setSourceName("");
+      setSelectedDefinitionId(null);
       notifications.show({
         title: "Success",
         message: `Commodity "${newCommodity.name}" created successfully`,
@@ -211,6 +229,35 @@ function CommodityFormPage() {
     { value: "Gift", label: "Gift (Donation)" },
   ];
 
+  // Build select options from admin-created commodity definitions
+  const definitionSelectOptions = useMemo(
+    () =>
+      commodityDefinitions.map((d) => ({
+        value: String(d.id),
+        label: d.name,
+      })),
+    [commodityDefinitions]
+  );
+
+  // When officer picks a commodity from the dropdown, set name and auto-fill category
+  const handleDefinitionSelect = (val: string | null) => {
+    setSelectedDefinitionId(val);
+    if (!val) {
+      setName("");
+      setCategory(null);
+      return;
+    }
+    const definition = commodityDefinitions.find((d) => String(d.id) === val);
+    if (definition) {
+      setName(definition.name);
+      if (definition.category_id) {
+        setCategory(String(definition.category_id));
+      } else {
+        setCategory(null);
+      }
+    }
+  };
+
   const commodityNameOptions = useMemo(() => {
     const names = commodities
       .map((c) => c.name?.trim())
@@ -226,30 +273,16 @@ function CommodityFormPage() {
     [commodityNameOptions, normalizedName],
   );
 
-  // Group commodities by name
+  // Group: one entry per commodity definition, batches from cats_core_commodities matched by name
   const groupedCommodities = useMemo(() => {
-    const groups = new Map<
-      string,
-      { name: string; batches: CommodityReference[] }
-    >();
-
-    commodities.forEach((commodity) => {
-      const commodityName = commodity.name || "Unnamed";
-      if (!groups.has(commodityName)) {
-        groups.set(commodityName, { name: commodityName, batches: [] });
-      }
-      groups.get(commodityName)!.batches.push(commodity);
-    });
-
-    // Sort batches within each group by ID (most recent first)
-    groups.forEach((group) => {
-      group.batches.sort((a, b) => b.id - a.id);
-    });
-
-    return Array.from(groups.values()).sort((a, b) =>
-      a.name.localeCompare(b.name),
-    );
-  }, [commodities]);
+    return commodityDefinitions.map((definition) => {
+      const batches = commodityBatches.filter(
+        (b) => (b.name || "").toLowerCase() === definition.name.toLowerCase()
+      );
+      batches.sort((a, b) => b.id - a.id);
+      return { name: definition.name, batches };
+    }).sort((a, b) => a.name.localeCompare(b.name));
+  }, [commodityDefinitions, commodityBatches]);
 
   // Filter commodities based on search query
   const filteredGroups = useMemo(() => {
@@ -298,19 +331,22 @@ function CommodityFormPage() {
         <Stack gap="md">
           <Title order={3}>Create New Commodity</Title>
 
-          <Autocomplete
+          <Select
             label="Commodity Name"
-            placeholder="e.g. Sugar, Rice, Blankets"
+            placeholder="Type to search (e.g. Rice, Wheat...)"
             required
-            value={name}
-            onChange={setName}
-            data={commodityNameOptions}
+            searchable
+            clearable
+            data={definitionSelectOptions}
+            value={selectedDefinitionId}
+            onChange={handleDefinitionSelect}
+            description="Select from the list of commodities registered by the administrator"
+            nothingFoundMessage="No commodity found with that name"
           />
 
           {existingNameMatch && (
-            <Text size="sm" c="orange">
-              This commodity name already exists. Creating it will add a new
-              batch with a different batch number.
+            <Text size="sm" c="blue">
+              A new batch will be created under <strong>{name}</strong>.
             </Text>
           )}
 
@@ -414,12 +450,12 @@ function CommodityFormPage() {
           />
 
           <Select
-            label="Category (optional)"
-            placeholder="Select category"
+            label="Category"
+            placeholder="Auto-filled when commodity is selected"
             data={categoryOptions}
             value={category}
-            onChange={setCategory}
-            clearable
+            readOnly
+            description={category ? "Fetched from the selected commodity" : undefined}
           />
 
           <DateInput
@@ -519,7 +555,7 @@ function CommodityFormPage() {
                                 {totalBatches} Batch
                                 {totalBatches === 1 ? "" : "es"}
                               </Badge>
-                              {latestBatch.source_type && (
+                              {latestBatch?.source_type && (
                                 <Badge size="sm" variant="dot" color="green">
                                   {latestBatch.source_type}
                                 </Badge>
@@ -532,7 +568,7 @@ function CommodityFormPage() {
                             Latest Batch
                           </Text>
                           <Text size="sm" fw={500} style={{ fontFamily: "monospace" }}>
-                            {latestBatch.batch_no || "—"}
+                            {latestBatch?.batch_no || "—"}
                           </Text>
                         </Box>
                       </Group>

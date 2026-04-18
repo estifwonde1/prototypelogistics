@@ -86,6 +86,11 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
           icon: <IconBuildingWarehouse size={20} />,
           path: "/admin/setup/warehouses",
         },
+        {
+          label: "Commodities",
+          icon: <IconBox size={20} />,
+          path: "/admin/setup/commodities",
+        },
       ],
     },
   ];
