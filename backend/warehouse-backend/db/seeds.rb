@@ -375,6 +375,15 @@ commodities = [
   { batch_no: "ADD-JERRYCAN-001", description: "Jerry Cans", category: commodity_groups[1], unit: units[:pcs] },
   { batch_no: "ADD-BAG-001", description: "Storage Bags", category: commodity_groups[1], unit: units[:bag] }
 ].map do |c|
+  # Create a Commodity Definition so it's available in the frontend dropdown
+  if Object.const_defined?("Cats::Warehouse::CommodityDefinition")
+    Cats::Warehouse::CommodityDefinition.find_or_create_by!(
+      name: c[:description],
+    ) do |d|
+      d.commodity_category_id = c[:category].id
+    end
+  end
+
   find_or_create_with(
     Cats::Core::Commodity,
     { batch_no: c[:batch_no] },

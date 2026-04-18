@@ -32,7 +32,6 @@ import {
   getCommodityReferences,
   getUnitReferences,
 } from "../../api/referenceData";
-import { getStockBalances } from "../../api/stockBalances";
 import type { ReceiptOrderLine } from "../../api/receiptOrders";
 import type { ApiError } from "../../types/common";
 
@@ -84,11 +83,6 @@ function ReceiptOrderFormPage() {
   const { data: units = [] } = useQuery({
     queryKey: ["reference-data", "units"],
     queryFn: getUnitReferences,
-  });
-
-  const { data: stockBalances = [] } = useQuery({
-    queryKey: ["stock_balances"],
-    queryFn: getStockBalances,
   });
 
   const {
@@ -234,28 +228,6 @@ function ReceiptOrderFormPage() {
       label: u.name,
     })) || [];
 
-  const stockWarehouseId =
-    destinationKind === "warehouse" && warehouseId ? Number(warehouseId) : null;
-
-  const availableByCommodityId = useMemo(() => {
-    const map = new Map<number, { quantity: number; unitLabel?: string }>();
-    if (!stockWarehouseId) return map;
-    stockBalances
-      .filter((balance) => balance.warehouse_id === stockWarehouseId)
-      .forEach((balance) => {
-        const existing = map.get(balance.commodity_id);
-        const nextQuantity =
-          (existing?.quantity || 0) + (balance.quantity || 0);
-        const unitLabel =
-          existing?.unitLabel ||
-          balance.unit_abbreviation ||
-          balance.unit_name ||
-          undefined;
-        map.set(balance.commodity_id, { quantity: nextQuantity, unitLabel });
-      });
-    return map;
-  }, [stockBalances, stockWarehouseId]);
-
   const createMutation = useMutation({
     mutationFn: createReceiptOrder,
     onSuccess: (data) => {
@@ -363,6 +335,14 @@ function ReceiptOrderFormPage() {
           if (commodity.batch_no && !next[index].line_reference_no) {
             next[index].line_reference_no = commodity.batch_no;
           }
+          // Auto-select packaging unit if defined
+          if (commodity.package_unit_id && !next[index].packaging_unit_id) {
+            next[index].packaging_unit_id = commodity.package_unit_id;
+          }
+          // Auto-fill size per package if defined
+          if (commodity.package_size && !next[index].packaging_size) {
+            next[index].packaging_size = commodity.package_size;
+          }
         }
       }
 
@@ -434,24 +414,23 @@ function ReceiptOrderFormPage() {
       return;
     }
 
-    if (stockWarehouseId) {
-      const insufficient = items.find((item) => {
-        const available =
-          availableByCommodityId.get(item.commodity_id)?.quantity ?? 0;
-        return item.quantity > available;
-      });
+    const exceeding = items.find((item) => {
+      if (!item.commodity_id) return false;
+      const commodity = commodities.find((c) => c.id === item.commodity_id);
+      if (!commodity || commodity.quantity == null) return false;
+      return item.quantity > commodity.quantity;
+    });
 
-      if (insufficient) {
-        const label =
-          commodityLabelById.get(insufficient.commodity_id) ||
-          "selected commodity";
-        notifications.show({
-          title: "Validation Error",
-          message: `Destination quantity exceeds available stock for ${label}.`,
-          color: "red",
-        });
-        return;
-      }
+    if (exceeding) {
+      const label =
+        commodityLabelById.get(exceeding.commodity_id) ||
+        "selected commodity";
+      notifications.show({
+        title: "Validation Error",
+        message: `Destination quantity exceeds the total quantity for ${label}.`,
+        color: "red",
+      });
+      return;
     }
 
     const dateStr =
@@ -736,22 +715,19 @@ function ReceiptOrderFormPage() {
                               }
                               disabled={!fieldsEditable}
                             />
-                            {stockWarehouseId && item.commodity_id
+                            {item.commodity_id
                               ? (() => {
-                                  const availableEntry =
-                                    availableByCommodityId.get(
-                                      item.commodity_id,
-                                    );
-                                  const available =
-                                    availableEntry?.quantity ?? 0;
-                                  const isOver = item.quantity > available;
+                                  const commodity = commodities.find((c) => c.id === item.commodity_id);
+                                  if (!commodity || commodity.quantity == null) return null;
+                                  const maxQuantity = commodity.quantity;
+                                  const isOver = item.quantity > maxQuantity;
+                                  const unitLabel = commodity.unit_name || commodity.unit_abbreviation || "";
                                   return (
                                     <Text
                                       size="xs"
                                       c={isOver ? "red" : "dimmed"}
                                     >
-                                      Available: {available.toFixed(2)}{" "}
-                                      {availableEntry?.unitLabel || ""}
+                                      Max allowed: {maxQuantity.toFixed(2)} {unitLabel}
                                     </Text>
                                   );
                                 })()

@@ -1,0 +1,29 @@
+﻿
+An error occurred while loading rails_helper.
+Failure/Error: ActiveRecord::Migration.maintain_test_schema!
+
+ActiveRecord::PendingMigrationError:
+
+
+  Migrations are pending. To resolve this issue, run:
+
+          bin/rails db:migrate RAILS_ENV=test
+
+  You have 4 pending migrations:
+
+  20260412120000_add_location_to_cats_warehouse_user_assignments.cats_warehouse.rb
+  20260416123000_add_package_size_to_cats_core_commodities.rb
+  20260416204229_add_source_fields_to_cats_core_commodities.rb
+  20260418120000_create_cats_warehouse_commodity_definitions.rb
+# ./spec/rails_helper.rb:11:in '<top (required)>'
+No examples found.
+No examples found.
+
+
+Finished in 0.00011 seconds (files took 9.94 seconds to load)
+0 examples, 0 failures, 1 error occurred outside of examples
+
+Finished in 0.00011 seconds (files took 9.94 seconds to load)
+0 examples, 0 failures, 1 error occurred outside of examples
+
+
