@@ -44,6 +44,8 @@ interface DestinationLine {
   hub_id: string | null;
   warehouse_id: string | null;
   quantity: number;
+  expected_delivery_date: string | null;
+  notes: string;
 }
 
 const createEmptyDestination = (): DestinationLine => ({
@@ -52,6 +54,8 @@ const createEmptyDestination = (): DestinationLine => ({
   hub_id: null,
   warehouse_id: null,
   quantity: 0,
+  expected_delivery_date: null,
+  notes: "",
 });
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -325,10 +329,6 @@ function ReceiptOrderFormPage() {
 
   // ── Save handler ──
   const handleSave = () => {
-    if (!expectedDeliveryDate) {
-      notifications.show({ title: "Validation Error", message: "Expected delivery date is required", color: "red" });
-      return;
-    }
     if (!selectedBatchId) {
       notifications.show({ title: "Validation Error", message: "Please select a commodity and batch", color: "red" });
       return;
@@ -368,16 +368,17 @@ function ReceiptOrderFormPage() {
         ? expectedDeliveryDate.toISOString().split("T")[0]
         : expectedDeliveryDate;
 
-    // Build one line per destination — same commodity/unit, different quantity
+    // Build one line per destination — same commodity/unit, different quantity + date + notes
     const lines: ReceiptOrderLine[] = destinations.map((d) => ({
       commodity_id: parseInt(selectedBatchId),
       quantity: d.quantity,
       unit_id: parseInt(unitId),
       packaging_unit_id: packagingUnitId ? parseInt(packagingUnitId) : undefined,
       packaging_size: packagingSize ?? undefined,
+      expected_delivery_date: d.expected_delivery_date ?? undefined,
       notes: d.kind === "hub"
-        ? `Hub: ${hubs?.find((h) => String(h.id) === d.hub_id)?.name ?? d.hub_id}`
-        : `Warehouse: ${warehouses?.find((w) => String(w.id) === d.warehouse_id)?.name ?? d.warehouse_id}`,
+        ? `Hub: ${hubs?.find((h) => String(h.id) === d.hub_id)?.name ?? d.hub_id}${d.notes ? ` | ${d.notes}` : ""}`
+        : `Warehouse: ${warehouses?.find((w) => String(w.id) === d.warehouse_id)?.name ?? d.warehouse_id}${d.notes ? ` | ${d.notes}` : ""}`,
     }));
 
     // Use the first destination as the order-level destination
@@ -385,7 +386,7 @@ function ReceiptOrderFormPage() {
     const payload = {
       hub_id: firstDest.kind === "hub" ? Number(firstDest.hub_id) : null,
       destination_warehouse_id: firstDest.kind === "warehouse" ? Number(firstDest.warehouse_id) : null,
-      expected_delivery_date: dateStr,
+      expected_delivery_date: new Date().toISOString().split("T")[0],
       notes,
       lines,
     };
@@ -518,24 +519,11 @@ function ReceiptOrderFormPage() {
           {/* ── Section 2: Order Details ── */}
           <div>
             <Text size="sm" fw={700} mb="sm">Order Details</Text>
-            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-              <DateInput
-                label="Expected Delivery Date"
-                placeholder="Select date"
-                value={expectedDeliveryDate}
-                onChange={(val: string | null) =>
-                  setExpectedDeliveryDate(val ? new Date(val) : null)
-                }
-                required
-                disabled={!fieldsEditable}
-              />
-            </SimpleGrid>
             <Textarea
               label="Notes"
-              placeholder="Add any notes..."
+              placeholder="Add any general notes about this order..."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              mt="md"
               rows={3}
               disabled={!fieldsEditable}
             />
@@ -573,13 +561,15 @@ function ReceiptOrderFormPage() {
             )}
 
             {selectedBatchId && (
-              <Table.ScrollContainer minWidth={600}>
+              <Table.ScrollContainer minWidth={900}>
                 <Table striped verticalSpacing="sm">
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Destination Type</Table.Th>
                       <Table.Th>Hub / Warehouse</Table.Th>
                       <Table.Th>Quantity</Table.Th>
+                      <Table.Th>Expected Delivery Date</Table.Th>
+                      <Table.Th>Notes</Table.Th>
                       {fieldsEditable && <Table.Th style={{ width: 50 }} />}
                     </Table.Tr>
                   </Table.Thead>
@@ -645,6 +635,36 @@ function ReceiptOrderFormPage() {
                                 </Text>
                               )}
                             </Stack>
+                          </Table.Td>
+                          <Table.Td>
+                            <DateInput
+                              placeholder="Select date"
+                              value={dest.expected_delivery_date ? new Date(dest.expected_delivery_date) : null}
+                              onChange={(val: Date | string | null) =>
+                                handleDestinationChange(
+                                  dest.id,
+                                  "expected_delivery_date",
+                                  val ? (val instanceof Date ? val.toISOString().split("T")[0] : val) : null
+                                )
+                              }
+                              disabled={!fieldsEditable}
+                              clearable
+                            />
+                          </Table.Td>
+                          <Table.Td>
+                            <input
+                              placeholder="Notes for this destination"
+                              value={dest.notes}
+                              onChange={(e) => handleDestinationChange(dest.id, "notes", e.target.value)}
+                              disabled={!fieldsEditable}
+                              style={{
+                                width: "100%",
+                                padding: "6px 10px",
+                                border: "1px solid var(--mantine-color-gray-4)",
+                                borderRadius: 4,
+                                fontSize: 14,
+                              }}
+                            />
                           </Table.Td>
                           {fieldsEditable && (
                             <Table.Td>

@@ -317,16 +317,18 @@ module Cats
             :quantity,
             :unit_id,
             :line_reference_no,
-            :notes,                   # NEW: Accept frontend param name
+            :notes,
+            :expected_delivery_date,
             :packaging_unit_id,
             :packaging_size
           ],
-          lines: [                    # NEW: Accept frontend param name
+          lines: [
             :commodity_id,
             :quantity,
             :unit_id,
             :line_reference_no,
             :notes,
+            :expected_delivery_date,
             :packaging_unit_id,
             :packaging_size
           ]

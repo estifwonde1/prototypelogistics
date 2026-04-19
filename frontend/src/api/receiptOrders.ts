@@ -9,12 +9,12 @@ export interface ReceiptOrderLine {
   id?: number;
   commodity_id: number;
   commodity_name?: string;
-  /** Unique line reference for tracking (system-wide). */
   line_reference_no?: string;
   quantity: number;
   unit_id: number;
   unit_name?: string;
   notes?: string;
+  expected_delivery_date?: string;
   packaging_unit_id?: number;
   packaging_unit_name?: string;
   packaging_size?: number;

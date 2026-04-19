@@ -4,6 +4,7 @@ module Cats
       attributes :id, :commodity_id, :commodity_name, :quantity, :unit_id, :unit_name, :line_reference_no, :source_type, :source_name
 
       attribute :notes, if: :line_has_notes?
+      attribute :expected_delivery_date, if: :line_has_delivery_date?
       attribute :packaging_unit_id, if: :line_has_packaging?
       attribute :packaging_unit_name, if: :line_has_packaging?
       attribute :packaging_size, if: :line_has_packaging?
@@ -11,6 +12,10 @@ module Cats
 
       def line_has_notes?
         object.has_attribute?(:notes)
+      end
+
+      def line_has_delivery_date?
+        object.has_attribute?(:expected_delivery_date)
       end
 
       def line_has_packaging?
