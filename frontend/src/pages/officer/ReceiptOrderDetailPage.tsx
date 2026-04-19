@@ -537,15 +537,15 @@ function ReceiptOrderDetailPage() {
                       Source
                     </Text>
                     <Text size="sm" fw={600} mt="xs">
-                      {receiptSourceLabel(order)}
-                    </Text>
-                  </div>
-                  <div>
-                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                      Destination Warehouse
-                    </Text>
-                    <Text size="sm" fw={600} mt="xs">
-                      {order.warehouse_name || order.destination_warehouse_name || '—'}
+                      {(() => {
+                        const firstLine = lines[0];
+                        const sourceType = firstLine?.source_type?.trim();
+                        const sourceName = firstLine?.source_name?.trim();
+                        if (sourceType && sourceName) return `${sourceType} — ${sourceName}`;
+                        if (sourceName) return sourceName;
+                        if (sourceType) return sourceType;
+                        return receiptSourceLabel(order);
+                      })()}
                     </Text>
                   </div>
                   <div>
@@ -580,49 +580,73 @@ function ReceiptOrderDetailPage() {
 
             <div>
               <Text size="sm" fw={600} mb="md">
-                Order Items
+                Destinations
               </Text>
-              <Table.ScrollContainer minWidth={720}>
+              <Table.ScrollContainer minWidth={600}>
                 <Table striped>
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Commodity</Table.Th>
-                      <Table.Th>Line ref</Table.Th>
+                      <Table.Th>Destination</Table.Th>
+                      <Table.Th>Warehouse</Table.Th>
                       <Table.Th>Quantity</Table.Th>
                       <Table.Th>Unit</Table.Th>
-                      <Table.Th>Packaging</Table.Th>
-                      <Table.Th>Total</Table.Th>
-                      <Table.Th>Notes</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
-                    {lines.map((line, index) => (
-                      <Table.Tr key={line.id ?? index}>
-                        <Table.Td>
-                          {line.commodity_name?.trim() ||
-                            (line.commodity_id ? `Commodity #${line.commodity_id}` : '—')}
-                        </Table.Td>
-                        <Table.Td style={{ fontWeight: 600 }}>
-                          {line.line_reference_no?.trim() || '—'}
-                        </Table.Td>
-                        <Table.Td>{line.quantity}</Table.Td>
-                        <Table.Td>
-                          {line.unit_name?.trim() ||
-                            (line.unit_id ? `Unit #${line.unit_id}` : '—')}
-                        </Table.Td>
-                        <Table.Td>
-                          {line.packaging_size && line.packaging_unit_name
-                            ? `${line.packaging_size} ${line.packaging_unit_name}/pkg`
-                            : '—'}
-                        </Table.Td>
-                        <Table.Td>
-                          {line.total_quantity != null
-                            ? `${line.total_quantity} ${line.unit_name?.trim() || ''}`
-                            : '—'}
-                        </Table.Td>
-                        <Table.Td>{line.notes?.trim() ? line.notes : '—'}</Table.Td>
-                      </Table.Tr>
-                    ))}
+                    {lines.map((line, index) => {
+                      // Parse destination from line notes: "Hub: Bole Hub" or "Warehouse: Bole Central"
+                      const noteText = line.notes?.trim() || '';
+                      const isHub = noteText.startsWith('Hub:');
+                      const isWarehouse = noteText.startsWith('Warehouse:');
+                      const destinationLabel = isHub
+                        ? noteText.replace('Hub:', '').trim()
+                        : isWarehouse
+                          ? noteText.replace('Warehouse:', '').trim()
+                          : noteText || '—';
+                      const destinationType = isHub ? 'Hub' : isWarehouse ? 'Warehouse' : '—';
+
+                      return (
+                        <Table.Tr key={line.id ?? index}>
+                          <Table.Td>
+                            <Text fw={500}>
+                              {line.commodity_name?.trim() ||
+                                (line.commodity_id ? `Commodity #${line.commodity_id}` : '—')}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td>
+                            {isHub ? (
+                              <div>
+                                <Text size="sm" fw={600}>{destinationLabel}</Text>
+                                <Text size="xs" c="dimmed">Hub</Text>
+                              </div>
+                            ) : isWarehouse ? (
+                              <div>
+                                <Text size="sm" fw={600}>{destinationLabel}</Text>
+                                <Text size="xs" c="dimmed">Warehouse</Text>
+                              </div>
+                            ) : (
+                              <Text size="sm" c="dimmed">{destinationType}</Text>
+                            )}
+                          </Table.Td>
+                          <Table.Td>
+                            {isHub ? (
+                              <Text size="sm" c="dimmed">Not yet assigned</Text>
+                            ) : isWarehouse ? (
+                              <Text size="sm" fw={500}>{destinationLabel}</Text>
+                            ) : (
+                              <Text size="sm" c="dimmed">—</Text>
+                            )}
+                          </Table.Td>
+                          <Table.Td>
+                            <Text fw={600}>{line.quantity}</Text>
+                          </Table.Td>
+                          <Table.Td>
+                            {line.unit_name?.trim() || (line.unit_id ? `Unit #${line.unit_id}` : '—')}
+                          </Table.Td>
+                        </Table.Tr>
+                      );
+                    })}
                   </Table.Tbody>
                 </Table>
               </Table.ScrollContainer>

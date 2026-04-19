@@ -1,7 +1,7 @@
 module Cats
   module Warehouse
     class ReceiptOrderLineSerializer < ApplicationSerializer
-      attributes :id, :commodity_id, :commodity_name, :quantity, :unit_id, :unit_name, :line_reference_no
+      attributes :id, :commodity_id, :commodity_name, :quantity, :unit_id, :unit_name, :line_reference_no, :source_type, :source_name
 
       attribute :notes, if: :line_has_notes?
       attribute :packaging_unit_id, if: :line_has_packaging?
@@ -42,6 +42,14 @@ module Cats
         # Reload the unit to ensure we have the right object
         unit = Cats::Core::UnitOfMeasure.find_by(id: object.unit_id)
         unit&.abbreviation
+      end
+
+      def source_type
+        Cats::Core::Commodity.find_by(id: object.commodity_id)&.source_type
+      end
+
+      def source_name
+        Cats::Core::Commodity.find_by(id: object.commodity_id)&.source_name
       end
     end
   end

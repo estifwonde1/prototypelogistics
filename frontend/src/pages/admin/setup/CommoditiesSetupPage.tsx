@@ -43,6 +43,8 @@ export default function CommoditiesSetupPage() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<CommodityDefinition | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CommodityDefinition | null>(null);
+  const [nameFilter, setNameFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const {
@@ -224,66 +226,94 @@ export default function CommoditiesSetupPage() {
 
       {/* Table */}
       <Card withBorder padding="lg">
-        {definitions.length === 0 ? (
-          <EmptyState
-            title="No commodities yet"
-            description="Create your first commodity to get started."
-            action={{ label: 'New Commodity', onClick: () => setCreateModalOpen(true) }}
-          />
-        ) : (
-          <Table.ScrollContainer minWidth={500}>
-            <Table striped highlightOnHover verticalSpacing="sm">
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Commodity Name</Table.Th>
-                  <Table.Th>Category</Table.Th>
-                  <Table.Th style={{ width: 100, textAlign: 'right' }}>Actions</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {definitions.map((definition) => (
-                  <Table.Tr key={definition.id}>
-                    <Table.Td>
-                      <Text fw={500}>{definition.name}</Text>
-                    </Table.Td>
-                    <Table.Td>
-                      {definition.category_name ? (
-                        <Badge
-                          variant="light"
-                          color={CATEGORY_COLORS[definition.category_name] ?? 'gray'}
-                        >
-                          {definition.category_name}
-                        </Badge>
-                      ) : (
-                        <Text size="sm" c="dimmed">—</Text>
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      <Group gap={6} justify="flex-end">
-                        <ActionIcon
-                          variant="subtle"
-                          color="blue"
-                          onClick={() => openEdit(definition)}
-                          aria-label="Edit commodity"
-                        >
-                          <IconEdit size={16} />
-                        </ActionIcon>
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          onClick={() => setDeleteTarget(definition)}
-                          aria-label="Delete commodity"
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
-                      </Group>
-                    </Table.Td>
+        <Stack gap="sm" mb="md">
+          <Group gap="sm">
+            <TextInput
+              placeholder="Search by name..."
+              value={nameFilter}
+              onChange={(e) => setNameFilter(e.target.value)}
+              style={{ flex: 1 }}
+            />
+            <Select
+              placeholder="All categories"
+              data={[
+                { value: 'Food', label: 'Food' },
+                { value: 'Non-Food', label: 'Non-Food' },
+              ]}
+              value={categoryFilter}
+              onChange={setCategoryFilter}
+              clearable
+              w={160}
+            />
+          </Group>
+        </Stack>
+        {(() => {
+          const filtered = definitions.filter((d) => {
+            const matchesName = !nameFilter.trim() || d.name.toLowerCase().includes(nameFilter.toLowerCase());
+            const matchesCategory = !categoryFilter || d.category_name === categoryFilter;
+            return matchesName && matchesCategory;
+          });
+          return filtered.length === 0 ? (
+            <EmptyState
+              title={definitions.length === 0 ? "No commodities yet" : "No commodities match your filters"}
+              description={definitions.length === 0 ? "Create your first commodity to get started." : "Try adjusting your search or category filter."}
+              action={definitions.length === 0 ? { label: 'New Commodity', onClick: () => setCreateModalOpen(true) } : undefined}
+            />
+          ) : (
+            <Table.ScrollContainer minWidth={500}>
+              <Table striped highlightOnHover verticalSpacing="sm">
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Commodity Name</Table.Th>
+                    <Table.Th>Category</Table.Th>
+                    <Table.Th style={{ width: 100, textAlign: 'right' }}>Actions</Table.Th>
                   </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
-        )}
+                </Table.Thead>
+                <Table.Tbody>
+                  {filtered.map((definition) => (
+                    <Table.Tr key={definition.id}>
+                      <Table.Td>
+                        <Text fw={500}>{definition.name}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        {definition.category_name ? (
+                          <Badge
+                            variant="light"
+                            color={CATEGORY_COLORS[definition.category_name] ?? 'gray'}
+                          >
+                            {definition.category_name}
+                          </Badge>
+                        ) : (
+                          <Text size="sm" c="dimmed">—</Text>
+                        )}
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap={6} justify="flex-end">
+                          <ActionIcon
+                            variant="subtle"
+                            color="blue"
+                            onClick={() => openEdit(definition)}
+                            aria-label="Edit commodity"
+                          >
+                            <IconEdit size={16} />
+                          </ActionIcon>
+                          <ActionIcon
+                            variant="subtle"
+                            color="red"
+                            onClick={() => setDeleteTarget(definition)}
+                            aria-label="Delete commodity"
+                          >
+                            <IconTrash size={16} />
+                          </ActionIcon>
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          );
+        })()}
       </Card>
 
       {/* Create Modal */}

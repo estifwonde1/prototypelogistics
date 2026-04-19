@@ -11,7 +11,7 @@ import {
   NumberInput,
   Select,
   Card,
-  Text,
+  Text,  
   Table,
   Switch,
   Badge,
@@ -58,6 +58,7 @@ function CommodityFormPage() {
   const [sourceType, setSourceType] = useState("");
   const [sourceName, setSourceName] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [expandedCommodities, setExpandedCommodities] = useState<Set<string>>(
     new Set(),
   );
@@ -284,12 +285,21 @@ function CommodityFormPage() {
     }).sort((a, b) => a.name.localeCompare(b.name));
   }, [commodityDefinitions, commodityBatches]);
 
-  // Filter commodities based on search query
+  // Filter commodities based on search query and category
   const filteredGroups = useMemo(() => {
-    if (!searchQuery.trim()) return groupedCommodities;
+    let result = groupedCommodities;
+
+    if (categoryFilter) {
+      result = result.filter((group) => {
+        const batch = group.batches[0];
+        return batch?.category_name === categoryFilter;
+      });
+    }
+
+    if (!searchQuery.trim()) return result;
 
     const query = searchQuery.toLowerCase().trim();
-    return groupedCommodities
+    return result
       .map((group) => ({
         ...group,
         batches: group.batches.filter(
@@ -301,7 +311,7 @@ function CommodityFormPage() {
         ),
       }))
       .filter((group) => group.batches.length > 0);
-  }, [groupedCommodities, searchQuery]);
+  }, [groupedCommodities, searchQuery, categoryFilter]);
 
   const toggleCommodityExpansion = (commodityName: string) => {
     setExpandedCommodities((prev) => {
@@ -488,23 +498,37 @@ function CommodityFormPage() {
             </Badge>
           </Group>
 
-          <TextInput
-            placeholder="Search by name, batch number, source type, or source name..."
-            leftSection={<IconSearch size={16} />}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            rightSection={
-              searchQuery && (
-                <ActionIcon
-                  variant="subtle"
-                  onClick={() => setSearchQuery("")}
-                  size="sm"
-                >
-                  ×
-                </ActionIcon>
-              )
-            }
-          />
+          <Group gap="sm" align="flex-end">
+            <TextInput
+              placeholder="Search by name, batch number, source type, or source name..."
+              leftSection={<IconSearch size={16} />}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              rightSection={
+                searchQuery && (
+                  <ActionIcon
+                    variant="subtle"
+                    onClick={() => setSearchQuery("")}
+                    size="sm"
+                  >
+                    ×
+                  </ActionIcon>
+                )
+              }
+              style={{ flex: 1 }}
+            />
+            <Select
+              placeholder="All categories"
+              data={[
+                { value: "Food", label: "Food" },
+                { value: "Non-Food", label: "Non-Food" },
+              ]}
+              value={categoryFilter}
+              onChange={setCategoryFilter}
+              clearable
+              w={160}
+            />
+          </Group>
 
           {isLoading ? (
             <Text>Loading...</Text>

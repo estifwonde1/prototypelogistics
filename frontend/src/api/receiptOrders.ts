@@ -19,6 +19,8 @@ export interface ReceiptOrderLine {
   packaging_unit_name?: string;
   packaging_size?: number;
   total_quantity?: number;
+  source_type?: string;
+  source_name?: string;
 }
 
 export interface AssignableManagerOption {
