@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_04_19_120000) do
+ActiveRecord::Schema[7.0].define(version: 2026_04_19_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1394,7 +1394,6 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_19_120000) do
     t.bigint "packaging_unit_id"
     t.decimal "packaging_size", precision: 15, scale: 4
     t.string "line_reference_no", null: false
-    t.date "expected_delivery_date"
     t.index ["commodity_id"], name: "index_cats_warehouse_receipt_order_lines_on_commodity_id"
     t.index ["line_reference_no"], name: "index_cats_warehouse_receipt_order_lines_on_line_reference_no", unique: true
     t.index ["packaging_unit_id"], name: "index_cats_warehouse_receipt_order_lines_on_packaging_unit_id"

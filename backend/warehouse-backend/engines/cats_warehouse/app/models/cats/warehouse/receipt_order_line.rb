@@ -29,9 +29,6 @@ module Cats
         if cols.include?("notes")
           attrs[:notes] = item[:notes].presence
         end
-        if cols.include?("expected_delivery_date")
-          attrs[:expected_delivery_date] = item[:expected_delivery_date].presence
-        end
         if cols.include?("packaging_unit_id")
           attrs[:packaging_unit_id] = item[:packaging_unit_id].presence
         end

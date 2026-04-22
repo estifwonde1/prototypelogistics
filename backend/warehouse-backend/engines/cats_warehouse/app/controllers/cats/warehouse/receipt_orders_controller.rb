@@ -318,7 +318,6 @@ module Cats
             :unit_id,
             :line_reference_no,
             :notes,
-            :expected_delivery_date,
             :packaging_unit_id,
             :packaging_size
           ],
@@ -328,7 +327,6 @@ module Cats
             :unit_id,
             :line_reference_no,
             :notes,
-            :expected_delivery_date,
             :packaging_unit_id,
             :packaging_size
           ]

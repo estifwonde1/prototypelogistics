@@ -550,10 +550,26 @@ function ReceiptOrderDetailPage() {
                   </div>
                   <div>
                     <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                      Batch Number
+                    </Text>
+                    <Text size="sm" fw={600} mt="xs" style={{ fontFamily: 'monospace' }}>
+                      {lines[0]?.commodity_batch_no?.trim() || '—'}
+                    </Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
                       Receipt Created
                     </Text>
                     <Text size="sm" fw={600} mt="xs">
                       {new Date(order.created_at).toLocaleDateString()}
+                    </Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                      Expected Delivery Date
+                    </Text>
+                    <Text size="sm" fw={600} mt="xs">
+                      {formatReceiptDate(order)}
                     </Text>
                   </div>
                   <div>
@@ -591,14 +607,12 @@ function ReceiptOrderDetailPage() {
                       <Table.Th>Warehouse</Table.Th>
                       <Table.Th>Quantity</Table.Th>
                       <Table.Th>Unit</Table.Th>
-                      <Table.Th>Expected Delivery</Table.Th>
                       <Table.Th>Notes</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
                     {lines.map((line, index) => {
                       const noteText = line.notes?.trim() || '';
-                      // Notes format: "Hub: Bole Hub | officer notes" or "Warehouse: Bole Central | notes"
                       const pipeIndex = noteText.indexOf(' | ');
                       const destinationPart = pipeIndex >= 0 ? noteText.slice(0, pipeIndex) : noteText;
                       const officerNotes = pipeIndex >= 0 ? noteText.slice(pipeIndex + 3) : '';
@@ -647,11 +661,6 @@ function ReceiptOrderDetailPage() {
                           </Table.Td>
                           <Table.Td>
                             {line.unit_name?.trim() || (line.unit_id ? `Unit #${line.unit_id}` : '—')}
-                          </Table.Td>
-                          <Table.Td>
-                            {line.expected_delivery_date
-                              ? new Date(line.expected_delivery_date).toLocaleDateString()
-                              : '—'}
                           </Table.Td>
                           <Table.Td>
                             <Text size="sm" c={officerNotes ? undefined : 'dimmed'}>

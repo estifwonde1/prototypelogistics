@@ -1,10 +1,9 @@
 module Cats
   module Warehouse
     class ReceiptOrderLineSerializer < ApplicationSerializer
-      attributes :id, :commodity_id, :commodity_name, :quantity, :unit_id, :unit_name, :line_reference_no, :source_type, :source_name
+      attributes :id, :commodity_id, :commodity_name, :commodity_batch_no, :quantity, :unit_id, :unit_name, :line_reference_no, :source_type, :source_name
 
       attribute :notes, if: :line_has_notes?
-      attribute :expected_delivery_date, if: :line_has_delivery_date?
       attribute :packaging_unit_id, if: :line_has_packaging?
       attribute :packaging_unit_name, if: :line_has_packaging?
       attribute :packaging_size, if: :line_has_packaging?
@@ -12,10 +11,6 @@ module Cats
 
       def line_has_notes?
         object.has_attribute?(:notes)
-      end
-
-      def line_has_delivery_date?
-        object.has_attribute?(:expected_delivery_date)
       end
 
       def line_has_packaging?
@@ -35,12 +30,13 @@ module Cats
       end
 
       def commodity_name
-        # Do not call Commodity#name — cats_core implements it via project.source.commodity_name,
-        # which breaks when project.source is a Donor (no commodity_name). Use DB column + fallbacks.
         commodity = Cats::Core::Commodity.find_by(id: object.commodity_id)
         return unless commodity
-
         commodity.read_attribute(:name).presence || commodity.batch_no.presence
+      end
+
+      def commodity_batch_no
+        Cats::Core::Commodity.find_by(id: object.commodity_id)&.batch_no
       end
 
       def unit_name
