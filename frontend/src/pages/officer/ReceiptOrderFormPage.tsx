@@ -166,10 +166,7 @@ function ReceiptOrderFormPage() {
     [warehouses]
   );
 
-  const unitOptions = useMemo(
-    () => units.map((u) => ({ value: String(u.id), label: u.name })),
-    [units]
-  );
+
 
   // ── Handlers: commodity selection ──
   const handleCommoditySelect = useCallback(
@@ -264,6 +261,7 @@ function ReceiptOrderFormPage() {
           hub_id: existingOrder.hub_id ? String(existingOrder.hub_id) : null,
           warehouse_id: existingOrder.warehouse_id ? String(existingOrder.warehouse_id) : null,
           quantity: line.quantity,
+          notes: line.notes || "",
         }))
       );
     }
@@ -365,10 +363,7 @@ function ReceiptOrderFormPage() {
       return;
     }
 
-    const dateStr =
-      expectedDeliveryDate instanceof Date
-        ? expectedDeliveryDate.toISOString().split("T")[0]
-        : expectedDeliveryDate;
+
 
     const lines: ReceiptOrderLine[] = destinations.map((d) => ({
       commodity_id: parseInt(selectedBatchId),
