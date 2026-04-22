@@ -1,12 +1,9 @@
 node_modules
 dist
+.git
 .env
 .env.local
-.git
-.gitignore
-README.md
-*.log
-.DS_Store
-coverage
 .vscode
-.idea
+README.md
+Dockerfile
+nginx.conf
