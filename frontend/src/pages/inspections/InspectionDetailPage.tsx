@@ -256,11 +256,12 @@ function InspectionDetailPage() {
           <Title order={4}>Inspection Items</Title>
 
           {inspection.inspection_items && inspection.inspection_items.length > 0 ? (
-            <Table.ScrollContainer minWidth={1000}>
+            <Table.ScrollContainer minWidth={1120}>
               <Table striped highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>Commodity</Table.Th>
+                    <Table.Th>Line ref / batch</Table.Th>
                     <Table.Th>Qty Received</Table.Th>
                     <Table.Th>Qty Damaged</Table.Th>
                     <Table.Th>Qty Lost</Table.Th>
@@ -273,6 +274,9 @@ function InspectionDetailPage() {
                   {inspection.inspection_items.map((item, index) => (
                     <Table.Tr key={item.id || index}>
                       <Table.Td>{item.commodity_name || item.commodity_code || item.commodity_id}</Table.Td>
+                      <Table.Td style={{ fontWeight: 600 }}>
+                        {item.line_reference_no || item.batch_no || '—'}
+                      </Table.Td>
                       <Table.Td style={{ fontWeight: 600 }}>
                         {item.quantity_received.toLocaleString()}
                       </Table.Td>

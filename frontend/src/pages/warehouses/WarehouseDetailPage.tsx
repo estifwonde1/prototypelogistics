@@ -240,6 +240,11 @@ function WarehouseDetailPage() {
   const warehouseGins = gins?.filter((g) => g.warehouse_id === Number(id))?.slice(0, 5);
   const warehouseInspections = inspections?.filter((i) => i.warehouse_id === Number(id))?.slice(0, 5);
 
+  const formatHierarchicalLevel = (value?: string) => {
+    if (!value) return '-';
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  };
+
   if (isLoading) return <LoadingState message="Loading warehouse details..." />;
   if (error || !warehouse) return <ErrorState message="Failed to load warehouse details" />;
 
@@ -311,6 +316,14 @@ function WarehouseDetailPage() {
                   <Text fw={500} tt="capitalize">{warehouse.ownership_type || '-'}</Text>
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
+                  <Text size="sm" c="dimmed">Hierarchical Level</Text>
+                  <Text fw={500}>{formatHierarchicalLevel(warehouse.managed_under)}</Text>
+                </Grid.Col>
+                <Grid.Col span={{ base: 12, md: 6 }}>
+                  <Text size="sm" c="dimmed">Region</Text>
+                  <Text fw={500}>Addis Ababa</Text>
+                </Grid.Col>
+                <Grid.Col span={{ base: 12, md: 6 }}>
                   <Text size="sm" c="dimmed">Subcity</Text>
                   <Text fw={500}>{warehouse.subcity_name || '-'}</Text>
                 </Grid.Col>
@@ -318,6 +331,12 @@ function WarehouseDetailPage() {
                   <Text size="sm" c="dimmed">Woreda</Text>
                   <Text fw={500}>{warehouse.woreda_name || warehouse.location_name || '-'}</Text>
                 </Grid.Col>
+                {warehouse.kebele && (
+                  <Grid.Col span={{ base: 12, md: 6 }}>
+                    <Text size="sm" c="dimmed">Kebele Number</Text>
+                    <Text fw={500}>{warehouse.kebele}</Text>
+                  </Grid.Col>
+                )}
                 {warehouse.description && (
                   <Grid.Col span={12}>
                     <Text size="sm" c="dimmed">Description</Text>

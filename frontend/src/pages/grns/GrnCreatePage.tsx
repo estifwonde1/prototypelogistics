@@ -30,6 +30,7 @@ import { getReceiptOrder, getReceiptOrders } from '../../api/receiptOrders';
 import type { ReceiptOrder } from '../../api/receiptOrders';
 import { useAuthStore } from '../../store/authStore';
 import { QualityStatus } from '../../utils/constants';
+import { generateSourceDetailReference } from '../../utils/sourceDetailReference';
 import type { GrnItem } from '../../types/grn';
 import type { Stack as WarehouseStack } from '../../types/stack';
 import type { ApiError } from '../../types/common';
@@ -39,7 +40,20 @@ const createEmptyItem = (): GrnItem => ({
   quantity: 0,
   unit_id: 0,
   quality_status: QualityStatus.GOOD,
+  line_reference_no: '',
 });
+
+/** Ensures each line has a unique reference (used as batch on intake). */
+function uniqueLineRefsForGrnItems(list: GrnItem[]): GrnItem[] {
+  const used = new Set<string>();
+  return list.map((item) => {
+    let ref = (item.line_reference_no || item.batch_no || '').trim();
+    if (!ref) ref = generateSourceDetailReference();
+    while (used.has(ref)) ref = generateSourceDetailReference();
+    used.add(ref);
+    return { ...item, line_reference_no: ref, batch_no: ref };
+  });
+}
 
 /** Stacks usable for GRN receiving: reserved/available/active and similar; excludes full or in-use bins. */
 function isStackEligibleForGrn(stack: WarehouseStack): boolean {
@@ -81,6 +95,7 @@ function mapReceiptOrderLinesToGrnItems(
       quality_status: QualityStatus.GOOD,
       store_id: storeId,
       stack_id: stackId,
+      line_reference_no: line.line_reference_no?.trim() || '',
     };
   });
 }
@@ -508,7 +523,7 @@ function GrnCreatePage() {
       source_type: sourceType || undefined,
       source_id: sourceId ? parseInt(sourceId, 10) : undefined,
       receipt_order_id: sourceType === 'Receipt Order' && sourceId ? parseInt(sourceId, 10) : undefined,
-      items,
+      items: uniqueLineRefsForGrnItems(items),
     });
   };
 
@@ -632,15 +647,16 @@ function GrnCreatePage() {
           </Group>
 
           <Alert color="blue" variant="light">
-            Choose the destination store first, then the commodity. Options come from the full commodity catalog (commodities with reserved space in this store are sorted first). The stack list shows receivable stacks for the selected store and commodity (reserved, available, or active slots; full or in-use stacks are hidden).
+            Choose the destination store first, then the commodity. Each line needs a unique reference number (used as the batch when creating inventory lots). Leave it blank to auto-assign on save, or enter your own. Commodities with reserved space in this store are sorted first; stacks shown are receivable for the selected store and commodity.
           </Alert>
 
-          <Table.ScrollContainer minWidth={1100}>
+          <Table.ScrollContainer minWidth={1280}>
             <Table>
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>Store</Table.Th>
                   <Table.Th>Commodity</Table.Th>
+                  <Table.Th>Line ref / batch</Table.Th>
                   <Table.Th>Stack</Table.Th>
                   <Table.Th>Quantity</Table.Th>
                   <Table.Th>Unit</Table.Th>
@@ -700,6 +716,32 @@ function GrnCreatePage() {
                           clearable
                           disabled={!item.store_id}
                         />
+                      </Table.Td>
+
+                      <Table.Td>
+                        <Group gap="xs" wrap="nowrap">
+                          <TextInput
+                            placeholder="e.g. SD… or your batch"
+                            value={item.line_reference_no || ''}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              handleItemChange(index, 'line_reference_no', v);
+                              handleItemChange(index, 'batch_no', v);
+                            }}
+                            style={{ minWidth: 140 }}
+                          />
+                          <Button
+                            size="xs"
+                            variant="light"
+                            onClick={() => {
+                              const ref = generateSourceDetailReference();
+                              handleItemChange(index, 'line_reference_no', ref);
+                              handleItemChange(index, 'batch_no', ref);
+                            }}
+                          >
+                            Gen
+                          </Button>
+                        </Group>
                       </Table.Td>
 
                       <Table.Td>
@@ -789,7 +831,7 @@ function GrnCreatePage() {
                     </Table.Tr>
                     {showLotTracking[index] && (
                       <Table.Tr key={`${index}-lot`}>
-                        <Table.Td colSpan={7}>
+                        <Table.Td colSpan={8}>
                           <Card bg="gray.0" p="md">
                             <Stack gap="md">
                               <Text size="sm" fw={600}>
@@ -797,10 +839,15 @@ function GrnCreatePage() {
                               </Text>
                               <Group grow>
                                 <TextInput
-                                  label="Batch Number"
+                                  label="Line reference / batch"
+                                  description="Same value as the Line ref / batch column above."
                                   placeholder="e.g., BATCH-2026-001"
-                                  value={item.batch_no || ''}
-                                  onChange={(e) => handleItemChange(index, 'batch_no', e.target.value)}
+                                  value={item.line_reference_no || item.batch_no || ''}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    handleItemChange(index, 'line_reference_no', v);
+                                    handleItemChange(index, 'batch_no', v);
+                                  }}
                                 />
                                 <DateInput
                                   label="Expiry Date"

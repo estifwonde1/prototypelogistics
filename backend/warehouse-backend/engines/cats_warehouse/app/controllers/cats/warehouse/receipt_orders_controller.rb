@@ -151,7 +151,7 @@ module Cats
       end
 
       def destroy
-        order = policy_scope(ReceiptOrder).find(params[:id])
+        order = policy_scope(ReceiptOrder).includes(receipt_order_lines: [:commodity]).find(params[:id])
         authorize order
 
         raise ArgumentError, "Only draft receipt orders can be deleted" unless order.status_draft?
@@ -162,10 +162,27 @@ module Cats
       end
 
       def confirm
-        order = policy_scope(ReceiptOrder).find(params[:id])
+        order = policy_scope(ReceiptOrder).includes(receipt_order_lines: [:commodity]).find(params[:id])
         authorize order
 
+        # Validate batch quantities before confirming
+        order.receipt_order_lines.each do |line|
+          next if line.commodity_id.blank? || line.quantity.to_f <= 0
+
+          commodity = Cats::Core::Commodity.find_by(id: line.commodity_id)
+          next unless commodity
+
+          if line.quantity.to_f > commodity.quantity.to_f
+            raise ArgumentError, "Insufficient batch quantity for #{commodity.name || commodity.batch_no}. Available: #{commodity.quantity}, Requested: #{line.quantity}"
+          end
+        end
+
         ReceiptOrderConfirmer.new(order: order, confirmed_by: current_user).call
+
+        # Deduct batch quantities on confirm
+        order.reload
+        deduct_batch_quantities(order)
+
         order = ReceiptOrder.includes(*order_detail_includes).find(order.id)
         render_order_payload(order)
       end
@@ -299,15 +316,19 @@ module Cats
             :commodity_id,
             :quantity,
             :unit_id,
-            :unit_price,              # NEW: Accept frontend param name
-            :notes                    # NEW: Accept frontend param name
+            :line_reference_no,
+            :notes,
+            :packaging_unit_id,
+            :packaging_size
           ],
-          lines: [                    # NEW: Accept frontend param name
+          lines: [
             :commodity_id,
             :quantity,
             :unit_id,
-            :unit_price,
-            :notes
+            :line_reference_no,
+            :notes,
+            :packaging_unit_id,
+            :packaging_size
           ]
         )
       end
@@ -455,6 +476,31 @@ module Cats
 
         Array(items).each do |raw|
           order.receipt_order_lines.create!(ReceiptOrderLine.attributes_from_line_payload(raw))
+        end
+      end
+
+      # Deduct commodity quantities when a receipt order is created
+      def deduct_batch_quantities(order)
+        order.receipt_order_lines.each do |line|
+          next if line.commodity_id.blank? || line.quantity.to_f <= 0
+
+          commodity = Cats::Core::Commodity.find_by(id: line.commodity_id)
+          next unless commodity
+
+          new_qty = commodity.quantity.to_f - line.quantity.to_f
+          commodity.update_column(:quantity, [new_qty, 0].max)
+        end
+      end
+
+      # Restore commodity quantities when a receipt order is deleted
+      def restore_batch_quantities(order)
+        order.receipt_order_lines.each do |line|
+          next if line.commodity_id.blank? || line.quantity.to_f <= 0
+
+          commodity = Cats::Core::Commodity.find_by(id: line.commodity_id)
+          next unless commodity
+
+          commodity.update_column(:quantity, commodity.quantity.to_f + line.quantity.to_f)
         end
       end
     end

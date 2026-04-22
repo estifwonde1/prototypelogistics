@@ -32,8 +32,8 @@ const HUB_MANAGER_OWNERSHIP_OPTIONS = [
 ];
 
 const LEGACY_OWNERSHIP_SELECT_OPTIONS = [
-  { value: 'Addis Ababa Government', label: 'Addis Ababa Government' },
-  { value: 'Subcity', label: 'Subcity' },
+  { value: 'Regional Government', label: 'Regional Government' },
+  { value: 'Zone/Subcity', label: 'Zone/Subcity' },
   { value: 'Woreda', label: 'Woreda' },
   { value: 'hub', label: 'Hub' },
 ];

@@ -14,6 +14,8 @@ module Cats
       has_many :warehouses, class_name: "Cats::Warehouse::Warehouse", dependent: :nullify
 
       validates :name, presence: true
+      validates :hub_type, inclusion: { in: %w[federal regional zonal woreda kebele], allow_blank: true }
+      validates :kebele, numericality: { only_integer: true, greater_than_or_equal_to: 1, less_than_or_equal_to: 40, allow_nil: true }
 
       def assigned_hub_manager
         assignment = UserAssignment.includes(:user)

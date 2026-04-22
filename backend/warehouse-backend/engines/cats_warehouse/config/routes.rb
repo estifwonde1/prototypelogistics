@@ -1,6 +1,7 @@
 Cats::Warehouse::Engine.routes.draw do
   scope :v1 do
     post "auth/login", to: "auth#login"
+    get "me/assignments", to: "me#assignments"
 
     namespace :admin do
       resources :users, only: [ :index, :create, :update, :destroy ]
@@ -12,11 +13,18 @@ Cats::Warehouse::Engine.routes.draw do
     get "locations/regions", to: "locations#regions"
     get "locations/zones", to: "locations#zones"
     get "locations/woredas", to: "locations#woredas"
+    get "locations/kebeles", to: "locations#kebeles"
     get "locations/hubs", to: "locations#hubs"
     get "locations/warehouses", to: "locations#warehouses"
     get "locations/stores", to: "locations#stores"
     get "reference_data/facility_options", to: "reference_data#facility_options"
     get "reference_data/commodities", to: "reference_data#commodities"
+    post "reference_data/commodities", to: "reference_data#create_commodity"
+    patch "reference_data/commodities/:id", to: "reference_data#update_commodity"
+    delete "reference_data/commodities/:id", to: "reference_data#destroy_commodity"
+    get "reference_data/categories", to: "reference_data#categories"
+
+    resources :commodity_definitions, only: [ :index, :create, :update, :destroy ]
     get "reference_data/units", to: "reference_data#units"
     get "reference_data/transporters", to: "reference_data#transporters"
     get "reference_data/lots", to: "reference_data#lots"

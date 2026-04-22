@@ -207,6 +207,11 @@ function HubDetailPage() {
 
   const hubWarehouses = warehouses?.filter((warehouse) => warehouse.hub_id === Number(id));
 
+  const formatHierarchicalLevel = (value?: string) => {
+    if (!value) return '-';
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  };
+
   if (isLoading) return <LoadingState message="Loading hub details..." />;
   if (error || !hub) return <ErrorState message="Failed to load hub details" />;
 
@@ -257,8 +262,8 @@ function HubDetailPage() {
             <Card withBorder>
               <Grid>
                 <Grid.Col span={{ base: 12, md: 6 }}>
-                  <Text size="sm" c="dimmed">Type</Text>
-                  <Text fw={500} tt="capitalize">{hub.hub_type}</Text>
+                  <Text size="sm" c="dimmed">Hierarchical Level</Text>
+                  <Text fw={500}>{formatHierarchicalLevel(hub.hub_type)}</Text>
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
                   <Text size="sm" c="dimmed">Status</Text>
@@ -276,6 +281,12 @@ function HubDetailPage() {
                   <Text size="sm" c="dimmed">Woreda</Text>
                   <Text fw={500}>{hub.woreda_name || hub.location_name || '-'}</Text>
                 </Grid.Col>
+                {hub.kebele && (
+                  <Grid.Col span={{ base: 12, md: 6 }}>
+                    <Text size="sm" c="dimmed">Kebele Number</Text>
+                    <Text fw={500}>{hub.kebele}</Text>
+                  </Grid.Col>
+                )}
                 {hub.description && (
                   <Grid.Col span={12}>
                     <Text size="sm" c="dimmed">Description</Text>

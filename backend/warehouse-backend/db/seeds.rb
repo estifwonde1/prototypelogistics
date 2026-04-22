@@ -1,4 +1,4 @@
-puts "Seeding CATS Warehouse (Addis Ababa only)..."
+puts "Seeding CATS Warehouse (Ethiopia regions enabled)..."
 
 def find_or_create_with(model, attrs, updates = {})
   record = model.find_or_initialize_by(attrs)
@@ -16,6 +16,12 @@ def add_role(user, role_name)
   user
 end
 
+def kebele_location_type
+  return unless Cats::Core::Location.kebele_enabled?
+
+  Cats::Core::Location::KEBELE
+end
+
 puts "Creating application module and roles..."
 application_module = find_or_create_with(
   Cats::Core::ApplicationModule,
@@ -28,6 +34,11 @@ roles = {
   warehouse_manager: find_or_create_with(Cats::Core::Role, { name: "Warehouse Manager", application_module: application_module }),
   store_keeper: find_or_create_with(Cats::Core::Role, { name: "Storekeeper", application_module: application_module }),
   officer: find_or_create_with(Cats::Core::Role, { name: "Officer", application_module: application_module }),
+  federal_officer: find_or_create_with(Cats::Core::Role, { name: "Federal Officer", application_module: application_module }),
+  regional_officer: find_or_create_with(Cats::Core::Role, { name: "Regional Officer", application_module: application_module }),
+  zonal_officer: find_or_create_with(Cats::Core::Role, { name: "Zonal Officer", application_module: application_module }),
+  woreda_officer: find_or_create_with(Cats::Core::Role, { name: "Woreda Officer", application_module: application_module }),
+  kebele_officer: find_or_create_with(Cats::Core::Role, { name: "Kebele Officer", application_module: application_module }),
   admin: find_or_create_with(Cats::Core::Role, { name: "Admin", application_module: application_module }),
   superadmin: find_or_create_with(Cats::Core::Role, { name: "Superadmin", application_module: application_module })
 }
@@ -160,12 +171,58 @@ officer_user = find_or_create_with(
 )
 add_role(officer_user, "Officer")
 
+puts "Seeding Ethiopian regions..."
+ethiopian_regions = [
+  { code: "TIG-REG", name: "Tigray" },
+  { code: "AFA-REG", name: "Afar" },
+  { code: "AMH-REG", name: "Amhara" },
+  { code: "ORO-REG", name: "Oromia" },
+  { code: "SOM-REG", name: "Somali" },
+  { code: "BEN-REG", name: "Benishangul-Gumuz" },
+  { code: "GAM-REG", name: "Gambella" },
+  { code: "SNNPR-REG", name: "Southern Nations Nationalities and People Region (SNNPR)" },
+  { code: "HAR-REG", name: "Harari" },
+  { code: "SWEPR-REG", name: "South West Ethiopia Peoples' Region (SWEPR)" },
+  { code: "ADD-REG", name: "Addis Ababa" },
+  { code: "DD-REG", name: "Dire Dawa" }
+]
+
+region_records = ethiopian_regions.to_h do |region|
+  record = find_or_create_with(
+    Cats::Core::Location,
+    { code: region[:code] },
+    { name: region[:name], location_type: Cats::Core::Location::REGION }
+  )
+  [region[:name], record]
+end
+
+puts "Seeding default zone and woreda coverage for non-Addis regions..."
+region_records.each do |region_name, region|
+  next if region_name == "Addis Ababa"
+
+  zone = find_or_create_with(
+    Cats::Core::Location,
+    { code: "#{region.code}-Z01" },
+    { name: "#{region_name} Zone 1", location_type: Cats::Core::Location::ZONE, parent: region }
+  )
+
+  woreda = find_or_create_with(
+    Cats::Core::Location,
+    { code: "#{region.code}-W01" },
+    { name: "#{region_name} Woreda 1", location_type: Cats::Core::Location::WOREDA, parent: zone }
+  )
+
+  if kebele_location_type
+    find_or_create_with(
+      Cats::Core::Location,
+      { code: "#{region.code}-K01" },
+      { name: "#{region_name} Kebele 1", location_type: kebele_location_type, parent: woreda }
+    )
+  end
+end
+
 puts "Seeding Addis Ababa locations (Region -> Subcity -> Woreda)..."
-region_addis = find_or_create_with(
-  Cats::Core::Location,
-  { code: "ADD-REG" },
-  { name: "Addis Ababa", location_type: Cats::Core::Location::REGION }
-)
+region_addis = region_records.fetch("Addis Ababa")
 
 subcity_woredas = {
   "Addis Ketema" => 14,
@@ -198,6 +255,18 @@ woredas = zones.flat_map.with_index do |zone, idx|
       { name: "Woreda #{w}", location_type: Cats::Core::Location::WOREDA, parent: zone }
     )
   end
+end
+
+kebeles = if kebele_location_type
+  woredas.map.with_index do |woreda, idx|
+    find_or_create_with(
+      Cats::Core::Location,
+      { code: format("ADD-K%02d", idx + 1) },
+      { name: "Kebele #{idx + 1}", location_type: kebele_location_type, parent: woreda }
+    )
+  end
+else
+  []
 end
 
 fdps = woredas.first(6).map.with_index do |woreda, idx|
@@ -306,6 +375,15 @@ commodities = [
   { batch_no: "ADD-JERRYCAN-001", description: "Jerry Cans", category: commodity_groups[1], unit: units[:pcs] },
   { batch_no: "ADD-BAG-001", description: "Storage Bags", category: commodity_groups[1], unit: units[:bag] }
 ].map do |c|
+  # Create a Commodity Definition so it's available in the frontend dropdown
+  if Object.const_defined?("Cats::Warehouse::CommodityDefinition")
+    Cats::Warehouse::CommodityDefinition.find_or_create_by!(
+      name: c[:description],
+    ) do |d|
+      d.commodity_category_id = c[:category].id
+    end
+  end
+
   find_or_create_with(
     Cats::Core::Commodity,
     { batch_no: c[:batch_no] },
@@ -499,7 +577,7 @@ hubs = [
       name: h[:name],
       location: h[:location],
       geo: h[:geo],
-      hub_type: "Subcity",
+      hub_type: "regional",
       status: "Active",
       description: "Addis Ababa hub"
     }
@@ -683,7 +761,8 @@ grn_items = commodities.first(3).map.with_index do |commodity, idx|
       unit: commodity.unit_of_measure,
       quality_status: "Good",
       store: stores.first,
-      stack: stacks.first
+      stack: stacks.first,
+      line_reference_no: "SEED-GRN-ADD-001-#{idx}-#{commodity.id}"
     }
   )
 end

@@ -23,7 +23,7 @@ bundle exec rails db:create || true
 # Run migrations using the verified migration-context path.
 if [ "$MIGRATE_DB" = "true" ]; then
   echo "Running migrations..."
-  bundle exec rails runner "ActiveRecord::Base.connection.migration_context.migrate"
+  bundle exec rails db:migrate
 fi
 
 # Seed database if SEED_DB is set

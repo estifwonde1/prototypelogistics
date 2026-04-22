@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { isAxiosError } from 'axios';
+import { useMemo, useState, useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { isAxiosError } from "axios";
 import {
   Stack,
   Title,
@@ -16,27 +16,31 @@ import {
   NumberInput,
   Textarea,
   SimpleGrid,
-} from '@mantine/core';
-import { DateInput } from '@mantine/dates';
-import { IconTrash, IconPlus } from '@tabler/icons-react';
-import { notifications } from '@mantine/notifications';
+} from "@mantine/core";
+import { DateInput } from "@mantine/dates";
+import { IconTrash, IconPlus } from "@tabler/icons-react";
+import { notifications } from "@mantine/notifications";
 import {
   createDispatchOrder,
   getDispatchOrder,
   updateDispatchOrder,
   deleteDispatchOrder,
-} from '../../api/dispatchOrders';
-import { getWarehouses } from '../../api/warehouses';
-import { getHubs } from '../../api/hubs';
-import { getCommodityReferences, getUnitReferences } from '../../api/referenceData';
-import type { DispatchOrderLine } from '../../api/dispatchOrders';
-import type { ApiError } from '../../types/common';
+} from "../../api/dispatchOrders";
+import { getWarehouses } from "../../api/warehouses";
+import { getHubs } from "../../api/hubs";
+import {
+  getCommodityReferences,
+  getUnitReferences,
+} from "../../api/referenceData";
+import { getStockBalances } from "../../api/stockBalances";
+import type { DispatchOrderLine } from "../../api/dispatchOrders";
+import type { ApiError } from "../../types/common";
 
 const createEmptyItem = (): DispatchOrderLine => ({
   commodity_id: 0,
   quantity: 0,
   unit_id: 0,
-  notes: '',
+  notes: "",
 });
 
 function DispatchOrderFormPage() {
@@ -46,34 +50,41 @@ function DispatchOrderFormPage() {
   const queryClient = useQueryClient();
 
   const [warehouseId, setWarehouseId] = useState<string | null>(null);
-  const [destinationType, setDestinationType] = useState('');
-  const [destinationName, setDestinationName] = useState('');
-  const [expectedPickupDate, setExpectedPickupDate] = useState<Date | null>(new Date());
-  const [notes, setNotes] = useState('');
+  const [destinationType, setDestinationType] = useState("");
+  const [destinationName, setDestinationName] = useState("");
+  const [expectedPickupDate, setExpectedPickupDate] = useState<Date | null>(
+    new Date(),
+  );
+  const [notes, setNotes] = useState("");
   const [items, setItems] = useState<DispatchOrderLine[]>([createEmptyItem()]);
 
   const { data: warehouses } = useQuery({
-    queryKey: ['warehouses'],
+    queryKey: ["warehouses"],
     queryFn: getWarehouses,
   });
 
   const { data: hubs } = useQuery({
-    queryKey: ['hubs'],
+    queryKey: ["hubs"],
     queryFn: getHubs,
   });
 
   const { data: commodities = [] } = useQuery({
-    queryKey: ['reference-data', 'commodities'],
+    queryKey: ["reference-data", "commodities"],
     queryFn: getCommodityReferences,
   });
 
   const { data: units = [] } = useQuery({
-    queryKey: ['reference-data', 'units'],
+    queryKey: ["reference-data", "units"],
     queryFn: getUnitReferences,
   });
 
+  const { data: stockBalances = [] } = useQuery({
+    queryKey: ["stock_balances"],
+    queryFn: getStockBalances,
+  });
+
   const { data: existingOrder } = useQuery({
-    queryKey: ['dispatch_orders', id],
+    queryKey: ["dispatch_orders", id],
     queryFn: () => getDispatchOrder(Number(id)),
     enabled: isEdit,
   });
@@ -84,7 +95,7 @@ function DispatchOrderFormPage() {
       setDestinationType(existingOrder.destination_type);
       setDestinationName(existingOrder.destination_name);
       setExpectedPickupDate(new Date(existingOrder.expected_pickup_date));
-      setNotes(existingOrder.notes || '');
+      setNotes(existingOrder.notes || "");
       setItems(existingOrder.lines || [createEmptyItem()]);
     }
   }, [isEdit, existingOrder]);
@@ -96,23 +107,36 @@ function DispatchOrderFormPage() {
     })) || [];
 
   const destinationOptions =
-    destinationType === 'Hub'
+    destinationType === "Hub"
       ? hubs?.map((h) => ({
           value: h.id.toString(),
           label: h.name,
         })) || []
-      : destinationType === 'Warehouse'
-      ? warehouses?.map((w) => ({
-          value: w.id.toString(),
-          label: w.name,
-        })) || []
-      : [];
+      : destinationType === "Warehouse"
+        ? warehouses?.map((w) => ({
+            value: w.id.toString(),
+            label: w.name,
+          })) || []
+        : [];
 
   const commodityOptions =
-    commodities?.map((c) => ({
-      value: c.id.toString(),
-      label: c.name,
-    })) || [];
+    commodities?.map((c) => {
+      const name = c.name ?? `Commodity #${c.id}`;
+      const label = c.batch_no ? `${name} — ${c.batch_no}` : name;
+      return {
+        value: c.id.toString(),
+        label,
+      };
+    }) || [];
+
+  const commodityLabelById = useMemo(() => {
+    const map = new Map<number, string>();
+    commodities.forEach((c) => {
+      const name = c.name ?? `Commodity #${c.id}`;
+      map.set(c.id, c.batch_no ? `${name} — ${c.batch_no}` : name);
+    });
+    return map;
+  }, [commodities]);
 
   const unitOptions =
     units?.map((u) => ({
@@ -121,29 +145,51 @@ function DispatchOrderFormPage() {
     })) || [];
 
   const destinationTypeOptions = [
-    { value: 'Hub', label: 'Hub' },
-    { value: 'Warehouse', label: 'Warehouse' },
-    { value: 'Beneficiary', label: 'Beneficiary' },
+    { value: "Hub", label: "Hub" },
+    { value: "Warehouse", label: "Warehouse" },
+    { value: "Beneficiary", label: "Beneficiary" },
   ];
+
+  const stockWarehouseId = warehouseId ? Number(warehouseId) : null;
+
+  const availableByCommodityId = useMemo(() => {
+    const map = new Map<number, { quantity: number; unitLabel?: string }>();
+    if (!stockWarehouseId) return map;
+    stockBalances
+      .filter((balance) => balance.warehouse_id === stockWarehouseId)
+      .forEach((balance) => {
+        const existing = map.get(balance.commodity_id);
+        const nextQuantity =
+          (existing?.quantity || 0) + (balance.quantity || 0);
+        const unitLabel =
+          existing?.unitLabel ||
+          balance.unit_abbreviation ||
+          balance.unit_name ||
+          undefined;
+        map.set(balance.commodity_id, { quantity: nextQuantity, unitLabel });
+      });
+    return map;
+  }, [stockBalances, stockWarehouseId]);
 
   const createMutation = useMutation({
     mutationFn: createDispatchOrder,
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['dispatch_orders'] });
+      queryClient.invalidateQueries({ queryKey: ["dispatch_orders"] });
       notifications.show({
-        title: 'Success',
-        message: 'Dispatch Order created successfully',
-        color: 'green',
+        title: "Success",
+        message: "Dispatch Order created successfully",
+        color: "green",
       });
       navigate(`/officer/dispatch-orders/${data.id}`);
     },
     onError: (error: unknown) => {
       notifications.show({
-        title: 'Error',
+        title: "Error",
         message:
-          (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) ||
-          'Failed to create Dispatch Order',
-        color: 'red',
+          (isAxiosError<ApiError>(error)
+            ? error.response?.data?.error?.message
+            : undefined) || "Failed to create Dispatch Order",
+        color: "red",
       });
     },
   });
@@ -151,21 +197,22 @@ function DispatchOrderFormPage() {
   const updateMutation = useMutation({
     mutationFn: (payload: any) => updateDispatchOrder(Number(id), payload),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['dispatch_orders'] });
+      queryClient.invalidateQueries({ queryKey: ["dispatch_orders"] });
       notifications.show({
-        title: 'Success',
-        message: 'Dispatch Order updated successfully',
-        color: 'green',
+        title: "Success",
+        message: "Dispatch Order updated successfully",
+        color: "green",
       });
       navigate(`/officer/dispatch-orders/${data.id}`);
     },
     onError: (error: unknown) => {
       notifications.show({
-        title: 'Error',
+        title: "Error",
         message:
-          (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) ||
-          'Failed to update Dispatch Order',
-        color: 'red',
+          (isAxiosError<ApiError>(error)
+            ? error.response?.data?.error?.message
+            : undefined) || "Failed to update Dispatch Order",
+        color: "red",
       });
     },
   });
@@ -173,21 +220,22 @@ function DispatchOrderFormPage() {
   const deleteMutation = useMutation({
     mutationFn: () => deleteDispatchOrder(Number(id)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['dispatch_orders'] });
+      queryClient.invalidateQueries({ queryKey: ["dispatch_orders"] });
       notifications.show({
-        title: 'Success',
-        message: 'Dispatch Order deleted successfully',
-        color: 'green',
+        title: "Success",
+        message: "Dispatch Order deleted successfully",
+        color: "green",
       });
-      navigate('/officer/dispatch-orders');
+      navigate("/officer/dispatch-orders");
     },
     onError: (error: unknown) => {
       notifications.show({
-        title: 'Error',
+        title: "Error",
         message:
-          (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) ||
-          'Failed to delete Dispatch Order',
-        color: 'red',
+          (isAxiosError<ApiError>(error)
+            ? error.response?.data?.error?.message
+            : undefined) || "Failed to delete Dispatch Order",
+        color: "red",
       });
     },
   });
@@ -203,46 +251,75 @@ function DispatchOrderFormPage() {
   const handleItemChange = <K extends keyof DispatchOrderLine>(
     index: number,
     field: K,
-    value: DispatchOrderLine[K]
+    value: DispatchOrderLine[K],
   ) => {
     setItems((current) => {
       const next = [...current];
       next[index] = { ...next[index], [field]: value };
-      
+
       // Auto-select unit when commodity is selected
-      if (field === 'commodity_id' && value) {
+      if (field === "commodity_id" && value) {
         const commodity = commodities.find((c) => c.id === value);
         if (commodity && commodity.unit_id) {
           next[index].unit_id = commodity.unit_id;
         }
       }
-      
+
       return next;
     });
   };
 
   const handleSave = () => {
-    if (!warehouseId || !destinationType || !destinationName || !expectedPickupDate) {
+    if (
+      !warehouseId ||
+      !destinationType ||
+      !destinationName ||
+      !expectedPickupDate
+    ) {
       notifications.show({
-        title: 'Validation Error',
-        message: 'Please fill in all required fields',
-        color: 'red',
+        title: "Validation Error",
+        message: "Please fill in all required fields",
+        color: "red",
       });
       return;
     }
 
-    if (items.length === 0 || items.some((item) => !item.commodity_id || !item.quantity)) {
+    if (
+      items.length === 0 ||
+      items.some((item) => !item.commodity_id || !item.quantity)
+    ) {
       notifications.show({
-        title: 'Validation Error',
-        message: 'Please add at least one valid item',
-        color: 'red',
+        title: "Validation Error",
+        message: "Please add at least one valid item",
+        color: "red",
       });
       return;
     }
 
-    const dateStr = expectedPickupDate instanceof Date 
-      ? expectedPickupDate.toISOString().split('T')[0]
-      : expectedPickupDate;
+    if (stockWarehouseId) {
+      const insufficient = items.find((item) => {
+        const available =
+          availableByCommodityId.get(item.commodity_id)?.quantity ?? 0;
+        return item.quantity > available;
+      });
+
+      if (insufficient) {
+        const label =
+          commodityLabelById.get(insufficient.commodity_id) ||
+          "selected commodity";
+        notifications.show({
+          title: "Validation Error",
+          message: `Destination quantity exceeds available stock for ${label}.`,
+          color: "red",
+        });
+        return;
+      }
+    }
+
+    const dateStr =
+      expectedPickupDate instanceof Date
+        ? expectedPickupDate.toISOString().split("T")[0]
+        : expectedPickupDate;
 
     const payload = {
       source_warehouse_id: Number(warehouseId),
@@ -260,14 +337,21 @@ function DispatchOrderFormPage() {
     }
   };
 
-  const isLoading = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
+  const isLoading =
+    createMutation.isPending ||
+    updateMutation.isPending ||
+    deleteMutation.isPending;
 
   return (
     <Stack gap="md">
       <div>
-        <Title order={2}>{isEdit ? 'Edit Dispatch Order' : 'Create Dispatch Order'}</Title>
+        <Title order={2}>
+          {isEdit ? "Edit Dispatch Order" : "Create Dispatch Order"}
+        </Title>
         <Text c="dimmed" size="sm">
-          {isEdit ? 'Update order details' : 'Create a new outbound warehouse order'}
+          {isEdit
+            ? "Update order details"
+            : "Create a new outbound warehouse order"}
         </Text>
       </div>
 
@@ -292,11 +376,11 @@ function DispatchOrderFormPage() {
                 placeholder="Select destination type"
                 data={destinationTypeOptions}
                 value={destinationType}
-                onChange={(val) => setDestinationType(val || '')}
+                onChange={(val) => setDestinationType(val || "")}
                 required
                 disabled={isEdit}
               />
-              {destinationType === 'Beneficiary' ? (
+              {destinationType === "Beneficiary" ? (
                 <TextInput
                   label="Destination Name"
                   placeholder="Enter destination name"
@@ -311,7 +395,7 @@ function DispatchOrderFormPage() {
                   placeholder="Select destination"
                   data={destinationOptions}
                   value={destinationName}
-                  onChange={(val) => setDestinationName(val || '')}
+                  onChange={(val) => setDestinationName(val || "")}
                   required
                   disabled={isEdit}
                 />
@@ -320,7 +404,9 @@ function DispatchOrderFormPage() {
                 label="Expected Pickup Date"
                 placeholder="Select date"
                 value={expectedPickupDate}
-                onChange={(val: string | null) => setExpectedPickupDate(val ? new Date(val) : null)}
+                onChange={(val: string | null) =>
+                  setExpectedPickupDate(val ? new Date(val) : null)
+                }
                 required
                 disabled={isEdit}
               />
@@ -358,10 +444,14 @@ function DispatchOrderFormPage() {
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>Commodity</Table.Th>
-                    <Table.Th>Quantity</Table.Th>
+                    <Table.Th>Destination Quantity</Table.Th>
                     <Table.Th>Unit</Table.Th>
                     <Table.Th>Notes</Table.Th>
-                    {!isEdit && <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>}
+                    {!isEdit && (
+                      <Table.Th style={{ textAlign: "right" }}>
+                        Actions
+                      </Table.Th>
+                    )}
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -373,19 +463,45 @@ function DispatchOrderFormPage() {
                           data={commodityOptions}
                           value={item.commodity_id?.toString()}
                           onChange={(val) =>
-                            handleItemChange(index, 'commodity_id', parseInt(val || '0'))
+                            handleItemChange(
+                              index,
+                              "commodity_id",
+                              parseInt(val || "0"),
+                            )
                           }
                           searchable
                           disabled={isEdit}
                         />
                       </Table.Td>
                       <Table.Td>
-                        <NumberInput
-                          placeholder="0"
-                          value={item.quantity}
-                          onChange={(val) => handleItemChange(index, 'quantity', Number(val) || 0)}
-                          disabled={isEdit}
-                        />
+                        <Stack gap={2}>
+                          <NumberInput
+                            placeholder="0"
+                            value={item.quantity}
+                            onChange={(val) =>
+                              handleItemChange(
+                                index,
+                                "quantity",
+                                Number(val) || 0,
+                              )
+                            }
+                            disabled={isEdit}
+                          />
+                          {stockWarehouseId && item.commodity_id
+                            ? (() => {
+                                const availableEntry =
+                                  availableByCommodityId.get(item.commodity_id);
+                                const available = availableEntry?.quantity ?? 0;
+                                const isOver = item.quantity > available;
+                                return (
+                                  <Text size="xs" c={isOver ? "red" : "dimmed"}>
+                                    Available: {available.toFixed(2)}{" "}
+                                    {availableEntry?.unitLabel || ""}
+                                  </Text>
+                                );
+                              })()
+                            : null}
+                        </Stack>
                       </Table.Td>
                       <Table.Td>
                         <Select
@@ -393,7 +509,11 @@ function DispatchOrderFormPage() {
                           data={unitOptions}
                           value={item.unit_id?.toString()}
                           onChange={(val) =>
-                            handleItemChange(index, 'unit_id', parseInt(val || '0'))
+                            handleItemChange(
+                              index,
+                              "unit_id",
+                              parseInt(val || "0"),
+                            )
                           }
                           disabled={isEdit}
                         />
@@ -402,7 +522,9 @@ function DispatchOrderFormPage() {
                         <TextInput
                           placeholder="Notes"
                           value={item.notes}
-                          onChange={(e) => handleItemChange(index, 'notes', e.target.value)}
+                          onChange={(e) =>
+                            handleItemChange(index, "notes", e.target.value)
+                          }
                           disabled={isEdit}
                         />
                       </Table.Td>
@@ -425,7 +547,10 @@ function DispatchOrderFormPage() {
           </div>
 
           <Group justify="flex-end" mt="xl">
-            <Button variant="light" onClick={() => navigate('/officer/dispatch-orders')}>
+            <Button
+              variant="light"
+              onClick={() => navigate("/officer/dispatch-orders")}
+            >
               Cancel
             </Button>
             {isEdit && (

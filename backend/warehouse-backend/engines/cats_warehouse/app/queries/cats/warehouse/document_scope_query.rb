@@ -9,8 +9,8 @@ module Cats
       end
 
       def call
-        # Officers should see all documents (they're coordinators)
-        return scoped_relation if access.admin? || access.officer?
+        # Officers with full access should see all documents
+        return scoped_relation if access.admin? || access.officer_full_access?
 
         case model_name
         when "Cats::Warehouse::StockBalance"
@@ -113,6 +113,10 @@ module Cats
           ids.concat(
             Warehouse.where(id: access.assigned_warehouse_ids).where.not(hub_id: nil).distinct.pluck(:hub_id)
           )
+        end
+        if access.officer?
+          raw = access.accessible_hub_ids
+          ids.concat(raw.is_a?(Array) ? raw : raw.pluck(:id))
         end
         ids.compact.uniq
       end

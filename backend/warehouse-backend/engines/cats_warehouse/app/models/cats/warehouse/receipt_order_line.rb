@@ -6,12 +6,17 @@ module Cats
       belongs_to :receipt_order, class_name: "Cats::Warehouse::ReceiptOrder"
       belongs_to :commodity, class_name: "Cats::Core::Commodity"
       belongs_to :unit, class_name: "Cats::Core::UnitOfMeasure"
+      belongs_to :packaging_unit, class_name: "Cats::Core::UnitOfMeasure", optional: true
       has_many :receipt_order_assignments, class_name: "Cats::Warehouse::ReceiptOrderAssignment", dependent: :nullify
       has_many :space_reservations, class_name: "Cats::Warehouse::SpaceReservation", dependent: :nullify
 
       validates :quantity, presence: true, numericality: { greater_than: 0 }
+      validates :line_reference_no, presence: true
+      validate :line_reference_no_unique_across_source_details
 
-      # Build attrs for create/update from API payload; omits unit_price/notes if DB not migrated yet.
+      before_validation :assign_line_reference_no_if_blank
+
+      # Build attrs for create/update from API payload; omits notes if DB not migrated yet.
       def self.attributes_from_line_payload(raw_item)
         h = raw_item.respond_to?(:to_unsafe_h) ? raw_item.to_unsafe_h : raw_item.to_h
         item = h.with_indifferent_access
@@ -21,11 +26,17 @@ module Cats
           unit_id: item[:unit_id]
         }
         cols = column_names
-        if cols.include?("unit_price")
-          attrs[:unit_price] = parse_optional_line_decimal(item[:unit_price])
-        end
         if cols.include?("notes")
           attrs[:notes] = item[:notes].presence
+        end
+        if cols.include?("packaging_unit_id")
+          attrs[:packaging_unit_id] = item[:packaging_unit_id].presence
+        end
+        if cols.include?("packaging_size")
+          attrs[:packaging_size] = parse_optional_line_decimal(item[:packaging_size])
+        end
+        if cols.include?("line_reference_no")
+          attrs[:line_reference_no] = item[:line_reference_no].presence
         end
         attrs
       end
@@ -36,6 +47,19 @@ module Cats
         BigDecimal(value.to_s)
       rescue ArgumentError
         nil
+      end
+
+      private
+
+      def assign_line_reference_no_if_blank
+        self.line_reference_no = SourceDetailReference.generate_unique if line_reference_no.blank?
+      end
+
+      def line_reference_no_unique_across_source_details
+        return if line_reference_no.blank?
+        return unless SourceDetailReference.taken?(line_reference_no, exclude_record: self)
+
+        errors.add(:line_reference_no, "is already assigned to another source detail")
       end
     end
   end

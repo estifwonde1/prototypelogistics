@@ -9,6 +9,10 @@ module Cats
         facility_options?
       end
 
+      def create_commodity?
+        officer? || admin?
+      end
+
       def units?
         facility_options?
       end
@@ -28,7 +32,7 @@ module Cats
       private
 
       def officer?
-        user&.has_role?("Officer")
+        super
       end
     end
   end

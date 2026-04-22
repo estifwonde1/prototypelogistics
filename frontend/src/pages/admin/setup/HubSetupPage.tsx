@@ -12,15 +12,18 @@ import {
   Button,
   Card,
   Text,
+  NumberInput,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { createHub } from '../../../api/hubs';
-import { getRegions, getZones, getWoredas } from '../../../api/locations';
+import { getKebeles, getRegions, getZones, getWoredas } from '../../../api/locations';
 import { LoadingState } from '../../../components/common/LoadingState';
 import { ErrorState } from '../../../components/common/ErrorState';
 import { resolveLocationContextFromQuery } from '../../../utils/locationContext';
+
+const DEFAULT_REGION_NAME = 'Addis Ababa';
 
 export default function HubSetupPage() {
   const navigate = useNavigate();
@@ -31,6 +34,7 @@ export default function HubSetupPage() {
   const [regionId, setRegionId] = useState<string | null>(null);
   const [zoneId, setZoneId] = useState<string | null>(null);
   const [woredaId, setWoredaId] = useState<string | null>(null);
+  const [kebeleId, setKebeleId] = useState<string | null>(null);
   const [createdHubId, setCreatedHubId] = useState<number | null>(null);
 
   const { data: regions, isLoading: regionsLoading, error: regionsError } = useQuery({
@@ -50,31 +54,65 @@ export default function HubSetupPage() {
     enabled: !!zoneId,
   });
 
+  const { data: kebeles } = useQuery({
+    queryKey: ['locations', 'kebeles', woredaId],
+    queryFn: () => getKebeles(Number(woredaId)),
+    enabled: !!woredaId,
+  });
+
   useEffect(() => {
     if (regions && regions.length > 0 && !regionId) {
-      setRegionId(String(regions[0].id));
+      const defaultRegion =
+        regions.find((region) => region.id === inheritedContext.regionId) ||
+        regions.find((region) => region.name === DEFAULT_REGION_NAME) ||
+        regions[0];
+      setRegionId(String(defaultRegion.id));
     }
-  }, [regions, regionId]);
+  }, [regions, regionId, inheritedContext.regionId]);
 
   useEffect(() => {
     if (isInheritedFromLocationPage) {
       if (inheritedContext.zoneId) setZoneId(String(inheritedContext.zoneId));
       return;
     }
-    if (zones && zones.length > 0) {
-      setZoneId((prev) => prev || String(zones[0].id));
+    if (!zones || zones.length === 0) {
+      setZoneId(null);
+      return;
     }
-  }, [zones, isInheritedFromLocationPage, inheritedContext.zoneId]);
+    if (!zoneId || !zones.some((zone) => String(zone.id) === zoneId)) {
+      setZoneId(String(zones[0].id));
+    }
+  }, [zones, zoneId, isInheritedFromLocationPage, inheritedContext.zoneId]);
 
   useEffect(() => {
     if (isInheritedFromLocationPage) {
       if (inheritedContext.woredaId) setWoredaId(String(inheritedContext.woredaId));
+      setKebeleId(inheritedContext.kebeleId ? String(inheritedContext.kebeleId) : null);
       return;
     }
-    if (woredas && woredas.length > 0) {
-      setWoredaId((prev) => prev || String(woredas[0].id));
+    if (!woredas || woredas.length === 0) {
+      setWoredaId(null);
+      setKebeleId(null);
+      return;
     }
-  }, [woredas, isInheritedFromLocationPage, inheritedContext.woredaId]);
+    if (!woredaId || !woredas.some((woreda) => String(woreda.id) === woredaId)) {
+      setWoredaId(String(woredas[0].id));
+    }
+  }, [woredas, woredaId, isInheritedFromLocationPage, inheritedContext.woredaId]);
+
+  useEffect(() => {
+    if (isInheritedFromLocationPage) {
+      setKebeleId(inheritedContext.kebeleId ? String(inheritedContext.kebeleId) : null);
+      return;
+    }
+    if (!kebeles || kebeles.length === 0) {
+      setKebeleId(null);
+      return;
+    }
+    if (kebeleId && !kebeles.some((kebele) => String(kebele.id) === kebeleId)) {
+      setKebeleId(null);
+    }
+  }, [kebeles, kebeleId, isInheritedFromLocationPage, inheritedContext.kebeleId]);
 
   const form = useForm({
     initialValues: {
@@ -83,10 +121,18 @@ export default function HubSetupPage() {
       hub_type: 'regional',
       status: 'active',
       description: '',
+      kebele: '' as number | '',
     },
     validate: {
       name: (value) => (!value ? 'Name is required' : null),
       code: (value) => (!value ? 'Code is required' : null),
+      kebele: (value) => {
+        if (value === '' || value === null || value === undefined) return null;
+        const num = Number(value);
+        if (isNaN(num)) return 'Kebele must be a number';
+        if (num < 1 || num > 40) return 'Kebele must be between 1 and 40';
+        return null;
+      },
     },
   });
 
@@ -119,6 +165,10 @@ export default function HubSetupPage() {
     () => woredas?.map((w) => ({ value: String(w.id), label: w.name })) || [],
     [woredas]
   );
+  const kebeleOptions = useMemo(
+    () => kebeles?.map((k) => ({ value: String(k.id), label: k.name })) || [],
+    [kebeles]
+  );
 
   const displayedZoneOptions = useMemo(() => {
     if (!isInheritedFromLocationPage || !inheritedContext.zoneId || !inheritedContext.subcityName) return zoneOptions;
@@ -137,13 +187,15 @@ export default function HubSetupPage() {
 
   const handleSubmit = (values: typeof form.values) => {
     if (!woredaId) return;
+    const targetLocationId = kebeleId || woredaId;
     createMutation.mutate({
       code: values.code,
       name: values.name,
       hub_type: values.hub_type,
       status: values.status,
       description: values.description || undefined,
-      location_id: Number(woredaId),
+      location_id: Number(targetLocationId),
+      kebele: values.kebele !== '' ? Number(values.kebele) : undefined,
     });
   };
 
@@ -152,7 +204,7 @@ export default function HubSetupPage() {
       <div>
         <Title order={2}>Create Hub</Title>
         <Text c="dimmed" size="sm">
-          Hubs are tied to a woreda location within Addis Ababa.
+          Hubs are tied to a woreda or kebele location within the selected region.
         </Text>
       </div>
 
@@ -161,7 +213,7 @@ export default function HubSetupPage() {
           <Stack gap="md">
             {isInheritedFromLocationPage && (
               <Alert color="blue" variant="light">
-                Subcity and woreda were selected on the location page and are locked for this hub.
+                Region, zone/subcity, woreda, and any selected kebele were chosen on the location page and are locked for this hub.
               </Alert>
             )}
 
@@ -172,11 +224,13 @@ export default function HubSetupPage() {
 
             <Group grow>
               <Select
-                label="Hub Type"
+                label="Hierarchical Level"
                 data={[
+                  { value: 'federal', label: 'Federal' },
                   { value: 'regional', label: 'Regional' },
                   { value: 'zonal', label: 'Zonal' },
                   { value: 'woreda', label: 'Woreda' },
+                  { value: 'kebele', label: 'Kebele' },
                 ]}
                 {...form.getInputProps('hub_type')}
               />
@@ -192,12 +246,30 @@ export default function HubSetupPage() {
             </Group>
 
             <Group grow>
-              <Select label="Region" data={regionOptions} value={regionId} onChange={setRegionId} disabled />
               <Select
-                label="Subcity"
+                label="Region"
+                data={regionOptions}
+                value={regionId}
+                onChange={(value) => {
+                  setRegionId(value);
+                  if (!isInheritedFromLocationPage) {
+                    setZoneId(null);
+                    setWoredaId(null);
+                    setKebeleId(null);
+                  }
+                }}
+                disabled={isInheritedFromLocationPage}
+                description={isInheritedFromLocationPage ? inheritedContext.regionName || 'Inherited from location page' : undefined}
+              />
+              <Select
+                label="Zone / Subcity"
                 data={displayedZoneOptions}
                 value={zoneId}
-                onChange={setZoneId}
+                onChange={(value) => {
+                  setZoneId(value);
+                  setWoredaId(null);
+                  setKebeleId(null);
+                }}
                 disabled={zonesLoading || isInheritedFromLocationPage}
                 description={isInheritedFromLocationPage ? inheritedContext.subcityName || 'Inherited from location page' : undefined}
               />
@@ -205,9 +277,19 @@ export default function HubSetupPage() {
                 label="Woreda"
                 data={displayedWoredaOptions}
                 value={woredaId}
-                onChange={setWoredaId}
+                onChange={(value) => {
+                  setWoredaId(value);
+                }}
                 disabled={woredasLoading || isInheritedFromLocationPage}
                 description={isInheritedFromLocationPage ? inheritedContext.woredaName || 'Inherited from location page' : undefined}
+              />
+              <NumberInput
+                label="Kebele (Optional)"
+                placeholder="1-40"
+                min={1}
+                max={40}
+                description="Optional"
+                {...form.getInputProps('kebele')}
               />
             </Group>
 
@@ -222,11 +304,15 @@ export default function HubSetupPage() {
                   variant="light"
                   onClick={() =>
                     navigate(
-                      `/admin/setup/warehouses?hub_id=${createdHubId}&zone_id=${zoneId ?? ''}&woreda_id=${woredaId ?? ''}&subcity_name=${encodeURIComponent(
-                        zoneOptions.find((option) => option.value === zoneId)?.label || ''
-                      )}&woreda_name=${encodeURIComponent(
-                        woredaOptions.find((option) => option.value === woredaId)?.label || ''
-                      )}`
+                      `/admin/setup/warehouses?hub_id=${createdHubId}&region_id=${regionId ?? ''}&region_name=${encodeURIComponent(
+                          regionOptions.find((option) => option.value === regionId)?.label || inheritedContext.regionName || ''
+                        )}&zone_id=${zoneId ?? ''}&woreda_id=${woredaId ?? ''}&kebele_id=${kebeleId ?? ''}&subcity_name=${encodeURIComponent(
+                          zoneOptions.find((option) => option.value === zoneId)?.label || ''
+                        )}&woreda_name=${encodeURIComponent(
+                          woredaOptions.find((option) => option.value === woredaId)?.label || ''
+                        )}&kebele_name=${encodeURIComponent(
+                          kebeleOptions.find((option) => option.value === kebeleId)?.label || ''
+                        )}`
                     )
                   }
                 >

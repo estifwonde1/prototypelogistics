@@ -2,10 +2,11 @@ module Cats
   module Warehouse
     class StockBalancePolicy < ApplicationPolicy
       class Scope < Scope
+        include ContractConstants
         def resolve
-          return scope.all if admin? || officer?
-
           ac = AccessContext.new(user: user)
+          return scope.all if admin? || ac.officer_full_access?
+
           warehouse_ids = ac.accessible_warehouse_ids
 
           # Handle empty arrays - return no results if user has no accessible warehouses
@@ -23,7 +24,7 @@ module Cats
         end
 
         def officer?
-          user&.has_role?("Officer")
+          OFFICER_ROLE_NAMES.any? { |role| user&.has_role?(role) }
         end
       end
 
@@ -38,7 +39,7 @@ module Cats
       private
 
       def officer?
-        user&.has_role?("Officer")
+        super
       end
     end
   end

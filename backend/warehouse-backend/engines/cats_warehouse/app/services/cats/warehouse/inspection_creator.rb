@@ -34,13 +34,29 @@ module Cats
             commodity_id = fetch_id(item, :commodity)
             unit_id = fetch_id(item, :unit, optional: true)
 
-            # Resolve Inventory Lot
             lot_id = fetch_id(item, :inventory_lot, optional: true)
-            if lot_id.nil? && item[:batch_no].present?
+            line_ref = item[:line_reference_no].presence || item[:batch_no].presence
+
+            if lot_id.present?
+              lot = InventoryLot.find_by(id: lot_id)
+              raise ArgumentError, "inventory lot not found" unless lot
+
+              line_ref = line_ref.presence || SourceDetailReference.generate_unique
+
+              if SourceDetailReference.taken?(line_ref)
+                raise ArgumentError, "line_reference_no #{line_ref} is already in use"
+              end
+            else
+              line_ref = SourceDetailReference.generate_unique if line_ref.blank?
+
+              if SourceDetailReference.taken?(line_ref)
+                raise ArgumentError, "line_reference_no #{line_ref} is already in use"
+              end
+
               lot_id = InventoryLotResolver.resolve(
                 warehouse: @warehouse,
                 commodity_id: commodity_id,
-                batch_no: item[:batch_no],
+                batch_no: line_ref,
                 expiry_date: item[:expiry_date],
                 source: @source,
                 lot_code: item[:lot_code],
@@ -56,6 +72,7 @@ module Cats
             inspection.inspection_items.create!(
               commodity_id: commodity_id,
               inventory_lot_id: lot_id,
+              line_reference_no: line_ref,
               entered_unit_id: entered_unit_id,
               base_unit_id: base_unit_id,
               base_quantity: base_quantity,

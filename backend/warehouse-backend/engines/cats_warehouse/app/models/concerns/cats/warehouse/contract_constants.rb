@@ -21,6 +21,15 @@ module Cats
         cancelled: []
       }.freeze
 
+      OFFICER_ROLE_NAMES = [
+        "Officer",
+        "Federal Officer",
+        "Regional Officer",
+        "Zonal Officer",
+        "Woreda Officer",
+        "Kebele Officer"
+      ].freeze
+
       ROLE_NAMES = [
         "Admin",
         "Superadmin",
@@ -29,7 +38,7 @@ module Cats
         "Storekeeper",
         "Inspector",
         "Dispatcher",
-        "Officer"
+        *OFFICER_ROLE_NAMES
       ].freeze
     end
   end

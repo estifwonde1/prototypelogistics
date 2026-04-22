@@ -40,10 +40,10 @@ module Cats
           {
             commodity_id: item.commodity_id,
             quantity: accepted_quantity,
-            unit_id: item.unit_id,
+            unit_id: item.try(:unit_id).presence ||
+              Cats::Core::Commodity.where(id: item.commodity_id).pick(:unit_id) ||
+              item.entered_unit_id,
             inventory_lot_id: item.inventory_lot_id,
-            batch_no: item.try(:batch_no),
-            expiry_date: item.try(:expiry_date),
             entered_unit_id: item.entered_unit_id,
             base_unit_id: item.base_unit_id,
             base_quantity: item.base_quantity,

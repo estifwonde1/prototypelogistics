@@ -42,7 +42,8 @@ module Cats
           :name,
           :hub_type,
           :status,
-          :description
+          :description,
+          :kebele
         )
       end
     end

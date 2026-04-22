@@ -1,24 +1,42 @@
-import { SimpleGrid, Card, Text, Group, Button, Stack, Title } from '@mantine/core';
+import {
+  SimpleGrid,
+  Card,
+  Text,
+  Group,
+  Button,
+  Stack,
+  Title,
+  Badge,
+  Alert,
+  Divider,
+} from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   IconBuilding,
+  IconBuildingWarehouse,
   IconFileImport,
   IconFileExport,
   IconPlus,
+  IconMapPin,
+  IconAlertCircle,
 } from '@tabler/icons-react';
 import { getReceiptOrders } from '../../api/receiptOrders';
 import { getDispatchOrders } from '../../api/dispatchOrders';
 import { getHubs } from '../../api/hubs';
+import { getWarehouses } from '../../api/warehouses';
+import { getRoleLabel } from '../../contracts/warehouse';
+import { useOfficerScope } from '../../hooks/useOfficerScope';
 
 interface StatCardProps {
   title: string;
   value: number | string;
   icon: React.ReactNode;
   loading?: boolean;
+  color?: string;
 }
 
-function StatCard({ title, value, icon, loading }: StatCardProps) {
+function StatCard({ title, value, icon, loading, color = 'blue' }: StatCardProps) {
   return (
     <Card shadow="sm" padding="lg" radius="md" withBorder>
       <Group justify="space-between">
@@ -30,18 +48,36 @@ function StatCard({ title, value, icon, loading }: StatCardProps) {
             {loading ? '...' : value}
           </Text>
         </div>
-        <div style={{ color: 'var(--mantine-color-blue-6)' }}>{icon}</div>
+        <div style={{ color: `var(--mantine-color-${color}-6)` }}>{icon}</div>
       </Group>
     </Card>
   );
 }
 
+function ScopeAlert({ scopeLabel, isFullAccess }: { scopeLabel: string; isFullAccess: boolean }) {
+  if (isFullAccess) return null;
+  return (
+    <Alert icon={<IconMapPin size={16} />} color="blue" variant="light">
+      <Text size="sm">
+        Your data is scoped to: <strong>{scopeLabel}</strong>
+      </Text>
+    </Alert>
+  );
+}
+
 function OfficerDashboardPage() {
   const navigate = useNavigate();
+  const { roleSlug, scopeLabel, scopeDescription, isFullAccess } = useOfficerScope();
+  const roleLabel = getRoleLabel(roleSlug ?? 'officer');
 
   const { data: hubs, isLoading: hubsLoading } = useQuery({
     queryKey: ['hubs'],
     queryFn: getHubs,
+  });
+
+  const { data: warehouses, isLoading: warehousesLoading } = useQuery({
+    queryKey: ['warehouses'],
+    queryFn: getWarehouses,
   });
 
   const { data: receiptOrders, isLoading: receiptOrdersLoading } = useQuery({
@@ -54,98 +90,184 @@ function OfficerDashboardPage() {
     queryFn: getDispatchOrders,
   });
 
-  const receiptOrderStats = {
+  const receiptStats = {
     draft: Array.isArray(receiptOrders) ? receiptOrders.filter((o) => o.status === 'Draft').length : 0,
     confirmed: Array.isArray(receiptOrders) ? receiptOrders.filter((o) => o.status === 'Confirmed').length : 0,
+    inProgress: Array.isArray(receiptOrders) ? receiptOrders.filter((o) => o.status === 'In Progress').length : 0,
+    completed: Array.isArray(receiptOrders) ? receiptOrders.filter((o) => o.status === 'Completed').length : 0,
   };
 
-  const dispatchOrderStats = {
+  const dispatchStats = {
     draft: Array.isArray(dispatchOrders) ? dispatchOrders.filter((o) => o.status === 'Draft').length : 0,
     confirmed: Array.isArray(dispatchOrders) ? dispatchOrders.filter((o) => o.status === 'Confirmed').length : 0,
+    inProgress: Array.isArray(dispatchOrders) ? dispatchOrders.filter((o) => o.status === 'In Progress').length : 0,
+    completed: Array.isArray(dispatchOrders) ? dispatchOrders.filter((o) => o.status === 'Completed').length : 0,
   };
+
+  // Federal officers see all hubs; sub-federal officers see only their scoped hubs (backend-filtered)
+  const showWarehouseBreakdown = roleSlug === 'federal_officer' || roleSlug === 'officer' || roleSlug === 'regional_officer';
 
   return (
     <Stack gap="xl">
+      {/* Header */}
       <div>
-        <Title order={2}>Officer Dashboard</Title>
+        <Group align="center" gap="sm" mb={4}>
+          <Title order={2}>{roleLabel} Dashboard</Title>
+          {!isFullAccess && (
+            <Badge color="blue" variant="light" size="lg">
+              {scopeLabel}
+            </Badge>
+          )}
+          {isFullAccess && (
+            <Badge color="green" variant="light" size="lg">
+              System-wide
+            </Badge>
+          )}
+        </Group>
         <Text c="dimmed" size="sm">
-          Orchestrate warehouse receipt and dispatch operations
+          {scopeDescription}
         </Text>
       </div>
 
+      <ScopeAlert scopeLabel={scopeLabel} isFullAccess={isFullAccess} />
+
+      {/* Facilities Overview — scoped by backend Pundit policy */}
       <div>
         <Text size="sm" fw={600} mb="md">
-          Hubs Overview
+          Facilities Overview
         </Text>
-        <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
+        <SimpleGrid cols={{ base: 1, sm: 2, md: showWarehouseBreakdown ? 4 : 2 }}>
           <StatCard
-            title="Total Hubs"
-            value={hubs?.length || 0}
+            title="Hubs"
+            value={hubs?.length ?? 0}
             icon={<IconBuilding size={32} />}
             loading={hubsLoading}
+            color="blue"
           />
+          {showWarehouseBreakdown && (
+            <StatCard
+              title="Warehouses"
+              value={warehouses?.length ?? 0}
+              icon={<IconBuildingWarehouse size={32} />}
+              loading={warehousesLoading}
+              color="violet"
+            />
+          )}
         </SimpleGrid>
       </div>
 
+      <Divider />
+
+      {/* Inbound Summary */}
       <div>
         <Text size="sm" fw={600} mb="md">
           Inbound Summary (Receipt Orders)
         </Text>
-        <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }}>
+        <SimpleGrid cols={{ base: 2, sm: 4 }}>
           <StatCard
             title="Draft"
-            value={receiptOrderStats.draft}
-            icon={<IconFileImport size={32} />}
+            value={receiptStats.draft}
+            icon={<IconFileImport size={28} />}
             loading={receiptOrdersLoading}
+            color="gray"
           />
           <StatCard
             title="Confirmed"
-            value={receiptOrderStats.confirmed}
-            icon={<IconFileImport size={32} />}
+            value={receiptStats.confirmed}
+            icon={<IconFileImport size={28} />}
             loading={receiptOrdersLoading}
+            color="blue"
+          />
+          <StatCard
+            title="In Progress"
+            value={receiptStats.inProgress}
+            icon={<IconFileImport size={28} />}
+            loading={receiptOrdersLoading}
+            color="orange"
+          />
+          <StatCard
+            title="Completed"
+            value={receiptStats.completed}
+            icon={<IconFileImport size={28} />}
+            loading={receiptOrdersLoading}
+            color="green"
           />
         </SimpleGrid>
       </div>
 
+      {/* Outbound Summary */}
       <div>
         <Text size="sm" fw={600} mb="md">
           Outbound Summary (Dispatch Orders)
         </Text>
-        <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }}>
+        <SimpleGrid cols={{ base: 2, sm: 4 }}>
           <StatCard
             title="Draft"
-            value={dispatchOrderStats.draft}
-            icon={<IconFileExport size={32} />}
+            value={dispatchStats.draft}
+            icon={<IconFileExport size={28} />}
             loading={dispatchOrdersLoading}
+            color="gray"
           />
           <StatCard
             title="Confirmed"
-            value={dispatchOrderStats.confirmed}
-            icon={<IconFileExport size={32} />}
+            value={dispatchStats.confirmed}
+            icon={<IconFileExport size={28} />}
             loading={dispatchOrdersLoading}
+            color="blue"
+          />
+          <StatCard
+            title="In Progress"
+            value={dispatchStats.inProgress}
+            icon={<IconFileExport size={28} />}
+            loading={dispatchOrdersLoading}
+            color="orange"
+          />
+          <StatCard
+            title="Completed"
+            value={dispatchStats.completed}
+            icon={<IconFileExport size={28} />}
+            loading={dispatchOrdersLoading}
+            color="green"
           />
         </SimpleGrid>
       </div>
 
+      <Divider />
+
+      {/* Quick Actions — federal officers get full create access; sub-federal are read-only monitors */}
       <div>
         <Text size="sm" fw={600} mb="md">
           Quick Actions
         </Text>
-        <Group>
-          <Button
-            leftSection={<IconPlus size={16} />}
-            onClick={() => navigate('/officer/receipt-orders/new')}
-          >
-            Create Receipt Order
-          </Button>
-          <Button
-            leftSection={<IconPlus size={16} />}
-            variant="light"
-            onClick={() => navigate('/officer/dispatch-orders/new')}
-          >
-            Create Dispatch Order
-          </Button>
-        </Group>
+        {isFullAccess ? (
+          <Group>
+            <Button
+              leftSection={<IconPlus size={16} />}
+              onClick={() => navigate('/officer/receipt-orders/new')}
+            >
+              Create Receipt Order
+            </Button>
+            <Button
+              leftSection={<IconPlus size={16} />}
+              variant="light"
+              onClick={() => navigate('/officer/dispatch-orders/new')}
+            >
+              Create Dispatch Order
+            </Button>
+          </Group>
+        ) : (
+          <Group>
+            <Button variant="light" onClick={() => navigate('/officer/receipt-orders')}>
+              View Receipt Orders
+            </Button>
+            <Button variant="light" onClick={() => navigate('/officer/dispatch-orders')}>
+              View Dispatch Orders
+            </Button>
+            <Button variant="subtle" leftSection={<IconAlertCircle size={16} />} onClick={() => navigate('/officer/facilities')}>
+              View Facilities
+            </Button>
+          </Group>
+        )}
       </div>
     </Stack>
   );

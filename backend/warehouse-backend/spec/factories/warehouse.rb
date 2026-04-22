@@ -103,6 +103,7 @@ FactoryBot.define do
     store { association :cats_warehouse_store }
     stack { association :cats_warehouse_stack }
     quantity { 100 }
+    line_reference_no { "FACT-GRI-#{SecureRandom.hex(5).upcase}" }
   end
 
   factory :cats_warehouse_gin_item, class: "Cats::Warehouse::GinItem" do
@@ -121,6 +122,7 @@ FactoryBot.define do
     quantity_damaged { 0 }
     quantity_lost { 0 }
     quality_status { "Good" }
+    line_reference_no { "FACT-IIT-#{SecureRandom.hex(5).upcase}" }
   end
 
   factory :cats_warehouse_waybill_item, class: "Cats::Warehouse::WaybillItem" do

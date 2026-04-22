@@ -60,6 +60,8 @@ apiClient.interceptors.response.use(
           color: 'orange',
         });
         useAuthStore.getState().clearAuth();
+        // Note: can't call queryClient.clear() here (no React context), but
+        // window.location.href causes a full page reload which resets the cache.
         window.location.href = '/login';
         break;
 

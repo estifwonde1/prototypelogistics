@@ -16,6 +16,8 @@ const FacilitiesOverviewPage = lazy(() => import('./pages/officer/FacilitiesOver
 const ReceiptOrdersListPage = lazy(() => import('./pages/officer/ReceiptOrdersListPage'));
 const ReceiptOrderFormPage = lazy(() => import('./pages/officer/ReceiptOrderFormPage'));
 const ReceiptOrderDetailPage = lazy(() => import('./pages/officer/ReceiptOrderDetailPage'));
+const CommodityFormPage = lazy(() => import('./pages/officer/CommodityFormPage'));
+const CommoditiesSetupPage = lazy(() => import('./pages/admin/setup/CommoditiesSetupPage'));
 const DispatchOrdersListPage = lazy(() => import('./pages/officer/DispatchOrdersListPage'));
 const DispatchOrderFormPage = lazy(() => import('./pages/officer/DispatchOrderFormPage'));
 const DispatchOrderDetailPage = lazy(() => import('./pages/officer/DispatchOrderDetailPage'));
@@ -195,6 +197,14 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission resource="receipt_orders" action="update">
             <ReceiptOrderFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/commodities/new',
+        element: (
+          <RequirePermission resource="receipt_orders" action="create">
+            <CommodityFormPage />
           </RequirePermission>
         ),
       },
@@ -523,6 +533,14 @@ export const router = createBrowserRouter([
         element: (
           <RequireAdmin>
             <WarehouseSetupPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: 'admin/setup/commodities',
+        element: (
+          <RequireAdmin>
+            <CommoditiesSetupPage />
           </RequireAdmin>
         ),
       },

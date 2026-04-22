@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_04_01_180000) do
+ActiveRecord::Schema[7.0].define(version: 2026_04_19_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -136,6 +136,9 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_01_180000) do
     t.string "status", default: "Draft", null: false
     t.string "name"
     t.bigint "commodity_category_id"
+    t.decimal "package_size", precision: 15, scale: 4
+    t.string "source_type"
+    t.string "source_name"
     t.index ["commodity_category_id"], name: "index_cats_core_commodities_on_commodity_category_id"
     t.index ["package_unit_id"], name: "pu_on_commodity_indx"
     t.index ["project_id"], name: "project_on_commodity_indx"
@@ -1038,6 +1041,15 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_01_180000) do
     t.index ["user_id"], name: "user_on_ur_indx"
   end
 
+  create_table "cats_warehouse_commodity_definitions", force: :cascade do |t|
+    t.string "name", null: false
+    t.bigint "commodity_category_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["commodity_category_id"], name: "idx_comm_defs_on_category_id"
+    t.index ["name"], name: "index_cats_warehouse_commodity_definitions_on_name", unique: true
+  end
+
   create_table "cats_warehouse_dispatch_order_assignments", force: :cascade do |t|
     t.bigint "dispatch_order_id", null: false
     t.bigint "dispatch_order_line_id"
@@ -1166,11 +1178,13 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_01_180000) do
     t.bigint "entered_unit_id"
     t.bigint "base_unit_id"
     t.decimal "base_quantity", precision: 15, scale: 3
+    t.string "line_reference_no", null: false
     t.index ["base_unit_id"], name: "index_cats_warehouse_grn_items_on_base_unit_id"
     t.index ["commodity_id"], name: "index_cats_warehouse_grn_items_on_commodity_id"
     t.index ["entered_unit_id"], name: "index_cats_warehouse_grn_items_on_entered_unit_id"
     t.index ["grn_id"], name: "index_cats_warehouse_grn_items_on_grn_id"
     t.index ["inventory_lot_id"], name: "index_cats_warehouse_grn_items_on_inventory_lot_id"
+    t.index ["line_reference_no"], name: "index_cats_warehouse_grn_items_on_line_reference_no", unique: true
     t.index ["stack_id"], name: "index_cats_warehouse_grn_items_on_stack_id"
     t.index ["store_id"], name: "index_cats_warehouse_grn_items_on_store_id"
     t.index ["unit_id"], name: "index_cats_warehouse_grn_items_on_unit_id"
@@ -1259,6 +1273,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_01_180000) do
     t.text "description"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "kebele"
     t.index ["geo_id"], name: "index_cats_warehouse_hubs_on_geo_id"
     t.index ["location_id"], name: "index_cats_warehouse_hubs_on_location_id"
   end
@@ -1278,11 +1293,13 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_01_180000) do
     t.bigint "entered_unit_id"
     t.bigint "base_unit_id"
     t.decimal "base_quantity", precision: 15, scale: 3
+    t.string "line_reference_no", null: false
     t.index ["base_unit_id"], name: "index_cats_warehouse_inspection_items_on_base_unit_id"
     t.index ["commodity_id"], name: "index_cats_warehouse_inspection_items_on_commodity_id"
     t.index ["entered_unit_id"], name: "index_cats_warehouse_inspection_items_on_entered_unit_id"
     t.index ["inspection_id"], name: "index_cats_warehouse_inspection_items_on_inspection_id"
     t.index ["inventory_lot_id"], name: "index_cats_warehouse_inspection_items_on_inventory_lot_id"
+    t.index ["line_reference_no"], name: "index_cats_warehouse_inspection_items_on_line_reference_no", unique: true
   end
 
   create_table "cats_warehouse_inspections", force: :cascade do |t|
@@ -1324,20 +1341,21 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_01_180000) do
   end
 
   create_table "cats_warehouse_inventory_lots", force: :cascade do |t|
-    t.bigint "commodity_id", null: false
-    t.string "batch_no", null: false
-    t.date "expiry_date"
-    t.string "description"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
     t.bigint "warehouse_id"
+    t.bigint "commodity_id", null: false
     t.string "source_type"
     t.bigint "source_id"
     t.string "lot_code"
+    t.string "batch_no", null: false
+    t.date "expiry_date"
     t.date "manufactured_on"
     t.date "received_on"
-    t.string "status", default: "Active"
+    t.string "status", default: "Active", null: false
+    t.string "description"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
     t.index ["commodity_id"], name: "index_cats_warehouse_inventory_lots_on_commodity_id"
+    t.index ["source_type", "source_id"], name: "idx_cw_inventory_lots_source"
     t.index ["source_type", "source_id"], name: "index_cats_warehouse_inventory_lots_on_source"
     t.index ["warehouse_id", "commodity_id", "batch_no", "expiry_date"], name: "idx_lot_warehouse_commodity_batch_expiry", unique: true
     t.index ["warehouse_id"], name: "index_cats_warehouse_inventory_lots_on_warehouse_id"
@@ -1372,9 +1390,13 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_01_180000) do
     t.bigint "unit_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.decimal "unit_price", precision: 15, scale: 4
     t.text "notes"
+    t.bigint "packaging_unit_id"
+    t.decimal "packaging_size", precision: 15, scale: 4
+    t.string "line_reference_no", null: false
     t.index ["commodity_id"], name: "index_cats_warehouse_receipt_order_lines_on_commodity_id"
+    t.index ["line_reference_no"], name: "index_cats_warehouse_receipt_order_lines_on_line_reference_no", unique: true
+    t.index ["packaging_unit_id"], name: "index_cats_warehouse_receipt_order_lines_on_packaging_unit_id"
     t.index ["receipt_order_id"], name: "index_receipt_order_lines_on_order_id"
     t.index ["unit_id"], name: "index_cats_warehouse_receipt_order_lines_on_unit_id"
   end
@@ -1565,11 +1587,11 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_01_180000) do
     t.bigint "from_unit_id", null: false
     t.bigint "to_unit_id", null: false
     t.decimal "multiplier", precision: 15, scale: 6, null: false
+    t.string "conversion_type"
+    t.boolean "active", default: true, null: false
     t.boolean "is_inter_unit", default: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.string "conversion_type"
-    t.boolean "active", default: true, null: false
     t.index ["commodity_id"], name: "index_cats_warehouse_uom_conversions_on_commodity_id"
     t.index ["from_unit_id"], name: "index_cats_warehouse_uom_conversions_on_from_unit_id"
     t.index ["to_unit_id"], name: "index_cats_warehouse_uom_conversions_on_to_unit_id"
@@ -1583,7 +1605,9 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_01_180000) do
     t.string "role_name"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "location_id"
     t.index ["hub_id"], name: "index_cats_warehouse_user_assignments_on_hub_id"
+    t.index ["location_id"], name: "index_cats_warehouse_user_assignments_on_location_id"
     t.index ["store_id"], name: "index_cats_warehouse_user_assignments_on_store_id"
     t.index ["user_id", "hub_id"], name: "idx_cwua_user_hub", unique: true, where: "(hub_id IS NOT NULL)"
     t.index ["user_id", "store_id"], name: "idx_cwua_user_store", unique: true, where: "(store_id IS NOT NULL)"
@@ -1615,9 +1639,6 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_01_180000) do
     t.string "ownership_type"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.float "length_m"
-    t.float "width_m"
-    t.float "height_m"
     t.index ["warehouse_id"], name: "index_cats_warehouse_warehouse_capacity_on_warehouse_id"
   end
 
@@ -1656,6 +1677,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_01_180000) do
     t.datetime "updated_at", null: false
     t.string "managed_under"
     t.string "ownership_type", default: "self_owned", null: false
+    t.integer "kebele"
     t.index ["geo_id"], name: "index_cats_warehouse_warehouses_on_geo_id"
     t.index ["hub_id"], name: "index_cats_warehouse_warehouses_on_hub_id"
     t.index ["location_id"], name: "index_cats_warehouse_warehouses_on_location_id"
@@ -1967,6 +1989,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_01_180000) do
   add_foreign_key "cats_warehouse_receipt_order_assignments", "cats_warehouse_stores", column: "store_id"
   add_foreign_key "cats_warehouse_receipt_order_assignments", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_receipt_order_lines", "cats_core_commodities", column: "commodity_id"
+  add_foreign_key "cats_warehouse_receipt_order_lines", "cats_core_unit_of_measures", column: "packaging_unit_id"
   add_foreign_key "cats_warehouse_receipt_order_lines", "cats_core_unit_of_measures", column: "unit_id"
   add_foreign_key "cats_warehouse_receipt_order_lines", "cats_warehouse_receipt_orders", column: "receipt_order_id"
   add_foreign_key "cats_warehouse_receipt_orders", "cats_core_users", column: "confirmed_by_id"
@@ -2011,6 +2034,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_01_180000) do
   add_foreign_key "cats_warehouse_uom_conversions", "cats_core_commodities", column: "commodity_id"
   add_foreign_key "cats_warehouse_uom_conversions", "cats_core_unit_of_measures", column: "from_unit_id"
   add_foreign_key "cats_warehouse_uom_conversions", "cats_core_unit_of_measures", column: "to_unit_id"
+  add_foreign_key "cats_warehouse_user_assignments", "cats_core_locations", column: "location_id"
   add_foreign_key "cats_warehouse_user_assignments", "cats_core_users", column: "user_id"
   add_foreign_key "cats_warehouse_user_assignments", "cats_warehouse_hubs", column: "hub_id"
   add_foreign_key "cats_warehouse_user_assignments", "cats_warehouse_stores", column: "store_id"

@@ -27,7 +27,16 @@ import { ErrorState } from '../../../components/common/ErrorState';
 import { EmptyState } from '../../../components/common/EmptyState';
 import type { AdminUser } from '../../../types/admin';
 
-const ROLE_OPTIONS = ['Hub Manager', 'Warehouse Manager', 'Storekeeper'];
+const ROLE_OPTIONS = [
+  'Hub Manager',
+  'Warehouse Manager',
+  'Storekeeper',
+  'Federal Officer',
+  'Regional Officer',
+  'Zonal Officer',
+  'Woreda Officer',
+  'Kebele Officer',
+];
 
 export default function AdminUsersPage() {
   const queryClient = useQueryClient();

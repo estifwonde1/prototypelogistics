@@ -1,13 +1,12 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { isAxiosError } from 'axios';
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { isAxiosError } from "axios";
 import {
   Stack,
   Title,
   Button,
   Group,
-  TextInput,
   Select,
   Card,
   Table,
@@ -16,32 +15,48 @@ import {
   NumberInput,
   Textarea,
   SimpleGrid,
-} from '@mantine/core';
-import { DateInput } from '@mantine/dates';
-import { IconTrash, IconPlus } from '@tabler/icons-react';
-import { notifications } from '@mantine/notifications';
+  Badge,
+  Divider,
+  Alert,
+} from "@mantine/core";
+import { DateInput } from "@mantine/dates";
+import { IconTrash, IconPlus, IconInfoCircle } from "@tabler/icons-react";
+import { notifications } from "@mantine/notifications";
 import {
   createReceiptOrder,
   getReceiptOrder,
   updateReceiptOrder,
   deleteReceiptOrder,
-} from '../../api/receiptOrders';
-import { getWarehouses } from '../../api/warehouses';
-import { getHubs } from '../../api/hubs';
-import { getCommodityReferences, getUnitReferences } from '../../api/referenceData';
-import type { ReceiptOrderLine } from '../../api/receiptOrders';
-import type { ApiError } from '../../types/common';
+} from "../../api/receiptOrders";
+import { getWarehouses } from "../../api/warehouses";
+import { getHubs } from "../../api/hubs";
+import { getCommodityReferences, getUnitReferences } from "../../api/referenceData";
+import type { ReceiptOrderLine } from "../../api/receiptOrders";
+import type { ApiError } from "../../types/common";
 
-/** Receipt destination: receive into a warehouse under a hub, or a stand-alone warehouse */
-type ReceiptDestinationKind = 'hub' | 'warehouse' | '';
+// ── Types ──────────────────────────────────────────────────────────────────
 
-const createEmptyItem = (): ReceiptOrderLine => ({
-  commodity_id: 0,
+type DestinationKind = "hub" | "warehouse";
+
+interface DestinationLine {
+  id: string;
+  kind: DestinationKind | "";
+  hub_id: string | null;
+  warehouse_id: string | null;
+  quantity: number;
+  notes: string;
+}
+
+const createEmptyDestination = (): DestinationLine => ({
+  id: Math.random().toString(36).slice(2),
+  kind: "",
+  hub_id: null,
+  warehouse_id: null,
   quantity: 0,
-  unit_id: 0,
-  unit_price: 0,
-  notes: '',
+  notes: "",
 });
+
+// ── Component ──────────────────────────────────────────────────────────────
 
 function ReceiptOrderFormPage() {
   const { id } = useParams<{ id?: string }>();
@@ -49,186 +64,224 @@ function ReceiptOrderFormPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [sourceType, setSourceType] = useState('');
-  const [sourceName, setSourceName] = useState('');
-  const [destinationKind, setDestinationKind] = useState<ReceiptDestinationKind>('');
-  const [destinationHubId, setDestinationHubId] = useState<string | null>(null);
-  const [warehouseId, setWarehouseId] = useState<string | null>(null);
+  // ── Commodity & batch selection ──
+  const [selectedCommodityId, setSelectedCommodityId] = useState<string | null>(null);
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+
+  // ── Auto-filled from batch ──
+  const [unitId, setUnitId] = useState<string | null>(null);
+  const [packagingUnitId, setPackagingUnitId] = useState<string | null>(null);
+  const [packagingSize, setPackagingSize] = useState<number | null>(null);
+  const [batchQuantity, setBatchQuantity] = useState<number>(0);
+
+  // ── Order header ──
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState<Date | null>(new Date());
-  const destinationHydratedKeyRef = useRef<string | null>(null);
-  const [notes, setNotes] = useState('');
-  const [items, setItems] = useState<ReceiptOrderLine[]>([createEmptyItem()]);
+  const [notes, setNotes] = useState("");
 
-  const { data: warehouses } = useQuery({
-    queryKey: ['warehouses'],
-    queryFn: getWarehouses,
-  });
+  // ── Destination lines ──
+  const [destinations, setDestinations] = useState<DestinationLine[]>([createEmptyDestination()]);
 
-  const { data: hubs } = useQuery({
-    queryKey: ['hubs'],
-    queryFn: getHubs,
-  });
+  // ── Edit hydration guard ──
+  const hydratedRef = useRef<string | null>(null);
 
+  // ── Data queries ──
   const { data: commodities = [] } = useQuery({
-    queryKey: ['reference-data', 'commodities'],
+    queryKey: ["reference-data", "commodities"],
     queryFn: getCommodityReferences,
   });
 
   const { data: units = [] } = useQuery({
-    queryKey: ['reference-data', 'units'],
+    queryKey: ["reference-data", "units"],
     queryFn: getUnitReferences,
   });
 
-  const { data: existingOrder, isLoading: orderLoading, isError: orderError, refetch: refetchOrder } =
-    useQuery({
-      queryKey: ['receipt_orders', id],
-      queryFn: () => getReceiptOrder(Number(id)),
-      enabled: isEdit,
-    });
+  const { data: warehouses } = useQuery({
+    queryKey: ["warehouses"],
+    queryFn: getWarehouses,
+  });
+
+  const { data: hubs } = useQuery({
+    queryKey: ["hubs"],
+    queryFn: getHubs,
+  });
+
+  const {
+    data: existingOrder,
+    isLoading: orderLoading,
+    isError: orderError,
+    refetch: refetchOrder,
+  } = useQuery({
+    queryKey: ["receipt_orders", id],
+    queryFn: () => getReceiptOrder(Number(id)),
+    enabled: isEdit,
+  });
 
   const isDraftOrder =
-    existingOrder != null && String(existingOrder.status).toLowerCase() === 'draft';
+    existingOrder != null &&
+    String(existingOrder.status).toLowerCase() === "draft";
   const fieldsEditable = !isEdit || (isDraftOrder && !orderLoading);
 
-  useEffect(() => {
-    if (!isEdit || !existingOrder) return;
+  // ── Derived: unique commodity names ──
+  const commodityNameOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return commodities
+      .filter((c) => {
+        const key = c.name || `Commodity #${c.id}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map((c) => ({ value: String(c.id), label: c.name || `Commodity #${c.id}` }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [commodities]);
 
-    const warehouseNumeric =
-      existingOrder.destination_warehouse_id ?? existingOrder.warehouse_id;
-    setWarehouseId(warehouseNumeric != null ? String(warehouseNumeric) : null);
+  // ── Derived: batches for selected commodity ──
+  const batchOptions = useMemo(() => {
+    if (!selectedCommodityId) return [];
+    const selectedName = commodities.find((c) => String(c.id) === selectedCommodityId)?.name;
+    if (!selectedName) return [];
+    return commodities
+      .filter((c) => c.name === selectedName && c.batch_no)
+      .map((c) => ({
+        value: String(c.id),
+        label: c.batch_no || `Batch #${c.id}`,
+      }));
+  }, [commodities, selectedCommodityId]);
 
-    setSourceType(existingOrder.source_type || '');
-    setSourceName(
-      existingOrder.source_name ||
-        (existingOrder.name != null ? String(existingOrder.name) : '') ||
-        (existingOrder.source_reference != null ? String(existingOrder.source_reference) : '')
-    );
+  // ── Derived: remaining quantity ──
+  const totalAssigned = destinations.reduce((sum, d) => sum + (d.quantity || 0), 0);
+  const remaining = batchQuantity - totalAssigned;
 
-    const dateRaw = existingOrder.expected_delivery_date || existingOrder.received_date;
-    setExpectedDeliveryDate(dateRaw ? new Date(dateRaw) : null);
-
-    setNotes(existingOrder.notes ?? existingOrder.description ?? '');
-
-    const rawLines = existingOrder.lines ?? existingOrder.receipt_order_lines ?? [];
-    setItems(
-      rawLines.length > 0
-        ? rawLines.map((line) => ({
-            commodity_id: line.commodity_id,
-            quantity: line.quantity,
-            unit_id: line.unit_id,
-            unit_price: line.unit_price ?? 0,
-            notes: line.notes ?? '',
-          }))
-        : [createEmptyItem()]
-    );
-  }, [isEdit, existingOrder]);
-
-  useEffect(() => {
-    if (!isEdit) {
-      destinationHydratedKeyRef.current = null;
-    }
-  }, [isEdit]);
-
-  useEffect(() => {
-    if (!isEdit || !id || !existingOrder) return;
-    const hydrateKey = `${id}:${existingOrder.updated_at ?? existingOrder.id}`;
-    if (destinationHydratedKeyRef.current === hydrateKey) return;
-    const wid = existingOrder.destination_warehouse_id ?? existingOrder.warehouse_id;
-
-    if (wid != null && warehouses?.length) {
-      const w = warehouses.find((x) => x.id === wid);
-      if (!w) return;
-      if (w.hub_id != null) {
-        setDestinationKind('hub');
-        setDestinationHubId(String(w.hub_id));
-      } else {
-        setDestinationKind('warehouse');
-        setDestinationHubId(null);
-      }
-      destinationHydratedKeyRef.current = hydrateKey;
-      return;
-    }
-
-    if (wid == null && existingOrder.hub_id != null) {
-      setDestinationKind('hub');
-      setDestinationHubId(String(existingOrder.hub_id));
-      destinationHydratedKeyRef.current = hydrateKey;
-    }
-  }, [isEdit, id, existingOrder, warehouses]);
-
-  const destinationKindOptions = [
-    { value: 'hub', label: 'Hub' },
-    { value: 'warehouse', label: 'Warehouse' },
-  ];
-
-  const hubSelectOptions = useMemo(
+  // ── Hub / warehouse options ──
+  const hubOptions = useMemo(
     () => (hubs ?? []).map((h) => ({ value: String(h.id), label: h.name })),
     [hubs]
   );
 
-  const standaloneWarehouses = useMemo(
-    () => (warehouses ?? []).filter((w) => w.hub_id == null),
+  const standaloneWarehouseOptions = useMemo(
+    () =>
+      (warehouses ?? [])
+        .filter((w) => w.hub_id == null)
+        .map((w) => ({ value: String(w.id), label: w.name })),
     [warehouses]
   );
 
-  const standaloneWarehouseOptions = useMemo(
-    () => standaloneWarehouses.map((w) => ({ value: String(w.id), label: w.name })),
-    [standaloneWarehouses]
+
+
+  // ── Handlers: commodity selection ──
+  const handleCommoditySelect = useCallback(
+    (val: string | null) => {
+      setSelectedCommodityId(val);
+      setSelectedBatchId(null);
+      setUnitId(null);
+      setPackagingUnitId(null);
+      setPackagingSize(null);
+      setBatchQuantity(0);
+    },
+    []
   );
 
-  const selectedWarehouse = warehouses?.find((w) => String(w.id) === warehouseId);
-  const selectedHubName =
-    destinationKind === 'hub' && destinationHubId
-      ? hubs?.find((h) => String(h.id) === destinationHubId)?.name
-      : undefined;
+  // ── Handlers: batch selection — auto-fill unit/packaging ──
+  const handleBatchSelect = useCallback(
+    (val: string | null) => {
+      setSelectedBatchId(val);
+      if (!val) {
+        setUnitId(null);
+        setPackagingUnitId(null);
+        setPackagingSize(null);
+        setBatchQuantity(0);
+        return;
+      }
+      const batch = commodities.find((c) => String(c.id) === val);
+      if (batch) {
+        setUnitId(batch.unit_id ? String(batch.unit_id) : null);
+        setPackagingUnitId(batch.package_unit_id ? String(batch.package_unit_id) : null);
+        setPackagingSize(batch.package_size ?? null);
+        setBatchQuantity(batch.quantity ?? 0);
+      }
+    },
+    [commodities]
+  );
 
-  const handleDestinationKindChange = useCallback((val: string | null) => {
-    const next = (val || '') as ReceiptDestinationKind;
-    setDestinationKind(next);
-    setDestinationHubId(null);
-    setWarehouseId(null);
-  }, []);
+  // ── Handlers: destination lines ──
+  const handleAddDestination = () => {
+    setDestinations((prev) => [...prev, createEmptyDestination()]);
+  };
 
-  const handleDestinationHubChange = useCallback((val: string | null) => {
-    setDestinationHubId(val);
-  }, []);
+  const handleRemoveDestination = (lineId: string) => {
+    setDestinations((prev) => prev.filter((d) => d.id !== lineId));
+  };
 
-  const commodityOptions =
-    commodities?.map((c) => ({
-      value: String(c.id),
-      label: c.name ?? `Commodity #${c.id}`,
-    })) || [];
+  const handleDestinationChange = <K extends keyof DestinationLine>(
+    lineId: string,
+    field: K,
+    value: DestinationLine[K]
+  ) => {
+    setDestinations((prev) =>
+      prev.map((d) => {
+        if (d.id !== lineId) return d;
+        const updated = { ...d, [field]: value };
+        // Reset destination selection when kind changes
+        if (field === "kind") {
+          updated.hub_id = null;
+          updated.warehouse_id = null;
+        }
+        return updated;
+      })
+    );
+  };
 
-  const unitOptions =
-    units?.map((u) => ({
-      value: String(u.id),
-      label: u.name,
-    })) || [];
+  // ── Hydrate edit form ──
+  useEffect(() => {
+    if (!isEdit || !existingOrder) return;
+    const key = `${id}:${existingOrder.updated_at ?? existingOrder.id}`;
+    if (hydratedRef.current === key) return;
+    hydratedRef.current = key;
 
-  const sourceTypeOptions = [
-    { value: 'Supplier', label: 'Supplier' },
-    { value: 'Hub', label: 'Hub' },
-    { value: 'Warehouse', label: 'Warehouse' },
-  ];
+    const dateRaw = existingOrder.expected_delivery_date || existingOrder.received_date;
+    setExpectedDeliveryDate(dateRaw ? new Date(dateRaw) : null);
+    setNotes(existingOrder.notes ?? existingOrder.description ?? "");
 
+    const rawLines = existingOrder.lines ?? existingOrder.receipt_order_lines ?? [];
+    if (rawLines.length > 0) {
+      const first = rawLines[0];
+      setSelectedCommodityId(first.commodity_id ? String(first.commodity_id) : null);
+      setSelectedBatchId(first.commodity_id ? String(first.commodity_id) : null);
+      setUnitId(first.unit_id ? String(first.unit_id) : null);
+      setPackagingUnitId(first.packaging_unit_id ? String(first.packaging_unit_id) : null);
+      setPackagingSize(first.packaging_size ?? null);
+
+      const batch = commodities.find((c) => c.id === first.commodity_id);
+      setBatchQuantity(batch?.quantity ?? 0);
+
+      setDestinations(
+        rawLines.map((line) => ({
+          id: Math.random().toString(36).slice(2),
+          kind: existingOrder.hub_id ? "hub" : "warehouse",
+          hub_id: existingOrder.hub_id ? String(existingOrder.hub_id) : null,
+          warehouse_id: existingOrder.warehouse_id ? String(existingOrder.warehouse_id) : null,
+          quantity: line.quantity,
+          notes: line.notes || "",
+        }))
+      );
+    }
+  }, [isEdit, existingOrder, id, commodities]);
+
+  // ── Mutations ──
   const createMutation = useMutation({
     mutationFn: createReceiptOrder,
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['receipt_orders'] });
-      notifications.show({
-        title: 'Success',
-        message: 'Receipt Order created successfully',
-        color: 'green',
-      });
+      queryClient.invalidateQueries({ queryKey: ["receipt_orders"] });
+      notifications.show({ title: "Success", message: "Receipt Order created", color: "green" });
       navigate(`/officer/receipt-orders/${data.id}`);
     },
     onError: (error: unknown) => {
       notifications.show({
-        title: 'Error',
+        title: "Error",
         message:
           (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) ||
-          'Failed to create Receipt Order',
-        color: 'red',
+          "Failed to create Receipt Order",
+        color: "red",
       });
     },
   });
@@ -236,22 +289,18 @@ function ReceiptOrderFormPage() {
   const updateMutation = useMutation({
     mutationFn: (payload: any) => updateReceiptOrder(Number(id), payload),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['receipt_orders'] });
-      queryClient.invalidateQueries({ queryKey: ['receipt_orders', id] });
-      notifications.show({
-        title: 'Success',
-        message: 'Receipt Order updated successfully',
-        color: 'green',
-      });
+      queryClient.invalidateQueries({ queryKey: ["receipt_orders"] });
+      queryClient.invalidateQueries({ queryKey: ["receipt_orders", id] });
+      notifications.show({ title: "Success", message: "Receipt Order updated", color: "green" });
       navigate(`/officer/receipt-orders/${data.id}`);
     },
     onError: (error: unknown) => {
       notifications.show({
-        title: 'Error',
+        title: "Error",
         message:
           (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) ||
-          'Failed to update Receipt Order',
-        color: 'red',
+          "Failed to update Receipt Order",
+        color: "red",
       });
     },
   });
@@ -259,138 +308,85 @@ function ReceiptOrderFormPage() {
   const deleteMutation = useMutation({
     mutationFn: () => deleteReceiptOrder(Number(id)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['receipt_orders'] });
-      notifications.show({
-        title: 'Success',
-        message: 'Receipt Order deleted successfully',
-        color: 'green',
-      });
-      navigate('/officer/receipt-orders');
+      queryClient.invalidateQueries({ queryKey: ["receipt_orders"] });
+      notifications.show({ title: "Success", message: "Receipt Order deleted", color: "green" });
+      navigate("/officer/receipt-orders");
     },
     onError: (error: unknown) => {
       notifications.show({
-        title: 'Error',
+        title: "Error",
         message:
           (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) ||
-          'Failed to delete Receipt Order',
-        color: 'red',
+          "Failed to delete Receipt Order",
+        color: "red",
       });
     },
   });
 
-  const handleAddItem = () => {
-    setItems((current) => [...current, createEmptyItem()]);
-  };
-
-  const handleRemoveItem = (index: number) => {
-    setItems((current) => current.filter((_, i) => i !== index));
-  };
-
-  const handleItemChange = <K extends keyof ReceiptOrderLine>(
-    index: number,
-    field: K,
-    value: ReceiptOrderLine[K]
-  ) => {
-    setItems((current) => {
-      const next = [...current];
-      next[index] = { ...next[index], [field]: value };
-      
-      // Auto-select unit when commodity is selected
-      if (field === 'commodity_id' && value) {
-        const commodity = commodities.find((c) => c.id === value);
-        if (commodity && commodity.unit_id) {
-          next[index].unit_id = commodity.unit_id;
-        }
-      }
-      
-      return next;
-    });
-  };
-
+  // ── Save handler ──
   const handleSave = () => {
-    if (!sourceType || !sourceName || !expectedDeliveryDate) {
+    if (!expectedDeliveryDate) {
+      notifications.show({ title: "Validation Error", message: "Expected delivery date is required", color: "red" });
+      return;
+    }
+    if (!selectedBatchId) {
+      notifications.show({ title: "Validation Error", message: "Please select a commodity and batch", color: "red" });
+      return;
+    }
+    if (!unitId) {
+      notifications.show({ title: "Validation Error", message: "Unit is required", color: "red" });
+      return;
+    }
+    if (destinations.length === 0) {
+      notifications.show({ title: "Validation Error", message: "Add at least one destination", color: "red" });
+      return;
+    }
+
+    const invalidDest = destinations.find(
+      (d) => !d.kind || (!d.hub_id && !d.warehouse_id) || !d.quantity || d.quantity <= 0
+    );
+    if (invalidDest) {
       notifications.show({
-        title: 'Validation Error',
-        message: 'Please fill in all required fields',
-        color: 'red',
+        title: "Validation Error",
+        message: "Each destination must have a type, a hub or warehouse, and a quantity greater than 0",
+        color: "red",
       });
       return;
     }
 
-    if (!destinationKind) {
+    if (totalAssigned > batchQuantity) {
       notifications.show({
-        title: 'Validation Error',
-        message: 'Please select a destination type (Hub or Warehouse)',
-        color: 'red',
+        title: "Validation Error",
+        message: `Total assigned (${totalAssigned}) exceeds batch quantity (${batchQuantity})`,
+        color: "red",
       });
       return;
     }
 
-    if (destinationKind === 'hub') {
-      if (!destinationHubId) {
-        notifications.show({
-          title: 'Validation Error',
-          message: 'Please select a hub',
-          color: 'red',
-        });
-        return;
-      }
-    } else if (destinationKind === 'warehouse') {
-      if (!warehouseId) {
-        notifications.show({
-          title: 'Validation Error',
-          message: 'Please select a destination warehouse',
-          color: 'red',
-        });
-        return;
-      }
-      const wh = warehouses?.find((w) => String(w.id) === warehouseId);
-      if (wh && wh.hub_id != null) {
-        notifications.show({
-          title: 'Validation Error',
-          message: 'Select a stand-alone warehouse, or choose destination type Hub',
-          color: 'red',
-        });
-        return;
-      }
-    }
 
-    if (
-      items.length === 0 ||
-      items.some((item) => !item.commodity_id || !item.quantity || !item.unit_id)
-    ) {
-      notifications.show({
-        title: 'Validation Error',
-        message: 'Please add at least one line with commodity, quantity, and unit',
-        color: 'red',
-      });
-      return;
-    }
 
-    const dateStr = expectedDeliveryDate instanceof Date 
-      ? expectedDeliveryDate.toISOString().split('T')[0]
-      : expectedDeliveryDate;
+    const lines: ReceiptOrderLine[] = destinations.map((d) => ({
+      commodity_id: parseInt(selectedBatchId),
+      quantity: d.quantity,
+      unit_id: parseInt(unitId),
+      packaging_unit_id: packagingUnitId ? parseInt(packagingUnitId) : undefined,
+      packaging_size: packagingSize ?? undefined,
+      notes: d.kind === "hub"
+        ? `Hub: ${hubs?.find((h) => String(h.id) === d.hub_id)?.name ?? d.hub_id}${d.notes ? ` | ${d.notes}` : ""}`
+        : `Warehouse: ${warehouses?.find((w) => String(w.id) === d.warehouse_id)?.name ?? d.warehouse_id}${d.notes ? ` | ${d.notes}` : ""}`,
+    }));
 
-    const payload =
-      destinationKind === 'hub'
-        ? {
-            source_type: sourceType,
-            source_name: sourceName,
-            destination_warehouse_id: null,
-            hub_id: Number(destinationHubId),
-            expected_delivery_date: dateStr,
-            notes,
-            lines: items,
-          }
-        : {
-            source_type: sourceType,
-            source_name: sourceName,
-            destination_warehouse_id: Number(warehouseId),
-            hub_id: selectedWarehouse?.hub_id ?? null,
-            expected_delivery_date: dateStr,
-            notes,
-            lines: items,
-          };
+    // Use the first destination as the order-level destination
+    const firstDest = destinations[0];
+    const payload = {
+      hub_id: firstDest.kind === "hub" ? Number(firstDest.hub_id) : null,
+      destination_warehouse_id: firstDest.kind === "warehouse" ? Number(firstDest.warehouse_id) : null,
+      expected_delivery_date: expectedDeliveryDate instanceof Date
+        ? expectedDeliveryDate.toISOString().split("T")[0]
+        : new Date().toISOString().split("T")[0],
+      notes,
+      lines,
+    };
 
     if (isEdit) {
       updateMutation.mutate(payload);
@@ -399,22 +395,22 @@ function ReceiptOrderFormPage() {
     }
   };
 
-  const isLoading = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
+  const isSaving = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
 
+  // ── Selected batch info ──
+  const selectedBatch = commodities.find((c) => String(c.id) === selectedBatchId);
+  const unitLabel = units.find((u) => String(u.id) === unitId)?.name ?? "";
+  const packagingUnitLabel = units.find((u) => String(u.id) === packagingUnitId)?.name ?? "";
+
+  // ── Error / loading states for edit ──
   if (isEdit && orderError) {
     return (
       <Stack gap="md">
         <Title order={2}>Edit Receipt Order</Title>
-        <Text c="red" size="sm">
-          Could not load this order.
-        </Text>
+        <Text c="red" size="sm">Could not load this order.</Text>
         <Group>
-          <Button variant="light" onClick={() => refetchOrder()}>
-            Retry
-          </Button>
-          <Button variant="subtle" onClick={() => navigate('/officer/receipt-orders')}>
-            Back to list
-          </Button>
+          <Button variant="light" onClick={() => refetchOrder()}>Retry</Button>
+          <Button variant="subtle" onClick={() => navigate("/officer/receipt-orders")}>Back to list</Button>
         </Group>
       </Stack>
     );
@@ -424,9 +420,7 @@ function ReceiptOrderFormPage() {
     return (
       <Stack gap="md">
         <Title order={2}>Edit Receipt Order</Title>
-        <Text c="dimmed" size="sm">
-          Loading order…
-        </Text>
+        <Text c="dimmed" size="sm">Loading order…</Text>
       </Stack>
     );
   }
@@ -445,108 +439,98 @@ function ReceiptOrderFormPage() {
     );
   }
 
+  // ── Render ──
   return (
     <Stack gap="md">
       <div>
-        <Title order={2}>{isEdit ? 'Edit Receipt Order' : 'Create Receipt Order'}</Title>
+        <Title order={2}>{isEdit ? "Edit Receipt Order" : "Create Receipt Order"}</Title>
         <Text c="dimmed" size="sm">
-          {isEdit ? 'Update order details' : 'Create a new inbound warehouse order'}
+          {isEdit ? "Update order details" : "Create a new inbound warehouse order"}
         </Text>
       </div>
 
       <Card shadow="sm" padding="lg" radius="md" withBorder>
-        <Stack gap="md">
+        <Stack gap="lg">
+
+          {/* ── Section 1: Commodity & Batch ── */}
           <div>
-            <Text size="sm" fw={600} mb="md">
-              Order Details
-            </Text>
-            <SimpleGrid cols={{ base: 1, sm: 2 }}>
+            <Text size="sm" fw={700} mb="sm">Commodity & Batch</Text>
+
+            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
               <Select
-                label="Source Type"
-                placeholder="Select source type"
-                data={sourceTypeOptions}
-                value={sourceType}
-                onChange={(val) => setSourceType(val || '')}
+                label="Commodity"
+                placeholder="Search and select a commodity"
+                data={commodityNameOptions}
+                value={selectedCommodityId}
+                onChange={handleCommoditySelect}
+                searchable
+                clearable
                 required
                 disabled={!fieldsEditable}
               />
-              <TextInput
-                label="Source Name"
-                placeholder="Enter source name"
-                value={sourceName}
-                onChange={(e) => setSourceName(e.target.value)}
+              <Select
+                label="Batch Number"
+                placeholder={selectedCommodityId ? "Select a batch" : "Select commodity first"}
+                data={batchOptions}
+                value={selectedBatchId}
+                onChange={handleBatchSelect}
+                searchable
+                clearable
                 required
-                disabled={!fieldsEditable}
+                disabled={!fieldsEditable || !selectedCommodityId}
               />
             </SimpleGrid>
 
-            <Select
-              label="Destination Type"
-              placeholder="Select destination type"
-              description="Hub: receiving is directed to a hub (no warehouse yet). Warehouse: a stand-alone site only."
-              data={destinationKindOptions}
-              value={destinationKind || null}
-              onChange={handleDestinationKindChange}
-              required
-              disabled={!fieldsEditable}
-              mt="md"
-            />
-
-            {destinationKind === 'hub' && (
-              <Select
-                label="Hub"
-                placeholder="Select hub"
-                data={hubSelectOptions}
-                value={destinationHubId}
-                onChange={handleDestinationHubChange}
-                required
-                disabled={!fieldsEditable}
-                mt="sm"
-              />
+            {selectedBatch && (
+              <Card withBorder mt="sm" padding="sm" bg="blue.0" radius="md">
+                <Group gap="xl" wrap="wrap">
+                  <div>
+                    <Text size="xs" c="dimmed" fw={600} tt="uppercase">Batch Quantity</Text>
+                    <Text fw={700}>{batchQuantity.toLocaleString()} {unitLabel}</Text>
+                  </div>
+                  {packagingUnitLabel && (
+                    <div>
+                      <Text size="xs" c="dimmed" fw={600} tt="uppercase">Packaging Unit</Text>
+                      <Text fw={700}>{packagingUnitLabel}</Text>
+                    </div>
+                  )}
+                  {packagingSize && (
+                    <div>
+                      <Text size="xs" c="dimmed" fw={600} tt="uppercase">Size per Package</Text>
+                      <Text fw={700}>{packagingSize}</Text>
+                    </div>
+                  )}
+                  <div>
+                    <Text size="xs" c="dimmed" fw={600} tt="uppercase">Remaining</Text>
+                    <Text fw={700} c={remaining < 0 ? "red" : remaining === 0 ? "dimmed" : "green"}>
+                      {remaining.toLocaleString()} {unitLabel}
+                    </Text>
+                  </div>
+                </Group>
+              </Card>
             )}
+          </div>
 
-            {destinationKind === 'warehouse' && (
-              <Select
-                label="Destination Warehouse"
-                placeholder={
-                  standaloneWarehouses.length
-                    ? 'Select stand-alone warehouse'
-                    : 'No stand-alone warehouses available'
-                }
-                data={standaloneWarehouseOptions}
-                value={warehouseId}
-                onChange={setWarehouseId}
-                required
-                disabled={!fieldsEditable || standaloneWarehouses.length === 0}
-                mt="sm"
-              />
-            )}
+          <Divider />
 
-            <SimpleGrid cols={{ base: 1, sm: 2 }} mt="md">
+          {/* ── Section 2: Order Details ── */}
+          <div>
+            <Text size="sm" fw={700} mb="sm">Order Details</Text>
+            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
               <DateInput
                 label="Expected Delivery Date"
                 placeholder="Select date"
                 value={expectedDeliveryDate}
-                onChange={(val: string | null) => setExpectedDeliveryDate(val ? new Date(val) : null)}
+                onChange={(val: string | null) =>
+                  setExpectedDeliveryDate(val ? new Date(val) : null)
+                }
                 required
                 disabled={!fieldsEditable}
               />
             </SimpleGrid>
-            {destinationKind === 'hub' && selectedHubName && (
-              <Text size="sm" c="dimmed" mt="xs">
-                Goods will be received into hub: {selectedHubName}. A specific warehouse can be set when confirming
-                or receiving (e.g. on GRN).
-              </Text>
-            )}
-            {destinationKind === 'warehouse' && selectedWarehouse && (
-              <Text size="sm" c="dimmed" mt="xs">
-                Receiving hub:{' '}
-                {selectedWarehouse.hub_name ?? '— (standalone warehouse, not under a hub)'}
-              </Text>
-            )}
             <Textarea
               label="Notes"
-              placeholder="Add any notes..."
+              placeholder="Add any general notes about this order..."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               mt="md"
@@ -555,105 +539,159 @@ function ReceiptOrderFormPage() {
             />
           </div>
 
+          <Divider />
+
+          {/* ── Section 3: Destinations ── */}
           <div>
-            <Group justify="space-between" mb="md">
-              <Text size="sm" fw={600}>
-                Order Items
-              </Text>
+            <Group justify="space-between" mb="sm">
+              <Text size="sm" fw={700}>Destinations</Text>
               {fieldsEditable && (
                 <Button
                   size="xs"
                   variant="light"
                   leftSection={<IconPlus size={14} />}
-                  onClick={handleAddItem}
+                  onClick={handleAddDestination}
+                  disabled={!selectedBatchId}
                 >
-                  Add Item
+                  Add Destination
                 </Button>
               )}
             </Group>
 
-            <Table.ScrollContainer minWidth={600}>
-              <Table striped>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Commodity</Table.Th>
-                    <Table.Th>Quantity</Table.Th>
-                    <Table.Th>Unit</Table.Th>
-                    <Table.Th>Unit Price</Table.Th>
-                    <Table.Th>Notes</Table.Th>
-                    {fieldsEditable && <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>}
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {items.map((item, index) => (
-                    <Table.Tr key={index}>
-                      <Table.Td>
-                        <Select
-                          placeholder="Select commodity"
-                          data={commodityOptions}
-                          value={item.commodity_id?.toString()}
-                          onChange={(val) =>
-                            handleItemChange(index, 'commodity_id', parseInt(val || '0'))
-                          }
-                          searchable
-                          disabled={!fieldsEditable}
-                        />
-                      </Table.Td>
-                      <Table.Td>
-                        <NumberInput
-                          placeholder="0"
-                          value={item.quantity}
-                          onChange={(val) => handleItemChange(index, 'quantity', Number(val) || 0)}
-                          disabled={!fieldsEditable}
-                        />
-                      </Table.Td>
-                      <Table.Td>
-                        <Select
-                          placeholder="Select unit"
-                          data={unitOptions}
-                          value={item.unit_id?.toString()}
-                          onChange={(val) =>
-                            handleItemChange(index, 'unit_id', parseInt(val || '0'))
-                          }
-                          disabled={!fieldsEditable}
-                        />
-                      </Table.Td>
-                      <Table.Td>
-                        <NumberInput
-                          placeholder="0"
-                          value={item.unit_price}
-                          onChange={(val) => handleItemChange(index, 'unit_price', Number(val) || 0)}
-                          disabled={!fieldsEditable}
-                        />
-                      </Table.Td>
-                      <Table.Td>
-                        <TextInput
-                          placeholder="Notes"
-                          value={item.notes}
-                          onChange={(e) => handleItemChange(index, 'notes', e.target.value)}
-                          disabled={!fieldsEditable}
-                        />
-                      </Table.Td>
-                      {fieldsEditable && (
-                        <Table.Td>
-                          <ActionIcon
-                            color="red"
-                            variant="subtle"
-                            onClick={() => handleRemoveItem(index)}
-                          >
-                            <IconTrash size={16} />
-                          </ActionIcon>
-                        </Table.Td>
-                      )}
+            {!selectedBatchId && (
+              <Alert icon={<IconInfoCircle size={16} />} color="blue" variant="light">
+                Select a commodity and batch first, then assign destinations.
+              </Alert>
+            )}
+
+            {selectedBatchId && remaining < 0 && (
+              <Alert icon={<IconInfoCircle size={16} />} color="red" variant="light" mb="sm">
+                Total assigned ({totalAssigned}) exceeds batch quantity ({batchQuantity}). Please reduce quantities.
+              </Alert>
+            )}
+
+            {selectedBatchId && (
+              <Table.ScrollContainer minWidth={900}>
+                <Table striped verticalSpacing="sm">
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Destination Type</Table.Th>
+                      <Table.Th>Hub / Warehouse</Table.Th>
+                      <Table.Th>Quantity</Table.Th>
+                      <Table.Th>Notes</Table.Th>
+                      {fieldsEditable && <Table.Th style={{ width: 50 }} />}
                     </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            </Table.ScrollContainer>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {destinations.map((dest) => {
+                      const maxForThis = batchQuantity - (totalAssigned - dest.quantity);
+                      return (
+                        <Table.Tr key={dest.id}>
+                          <Table.Td>
+                            <Select
+                              placeholder="Hub or Warehouse"
+                              data={[
+                                { value: "hub", label: "Hub" },
+                                { value: "warehouse", label: "Warehouse" },
+                              ]}
+                              value={dest.kind || null}
+                              onChange={(val) =>
+                                handleDestinationChange(dest.id, "kind", (val || "") as DestinationKind)
+                              }
+                              disabled={!fieldsEditable}
+                            />
+                          </Table.Td>
+                          <Table.Td>
+                            {dest.kind === "hub" && (
+                              <Select
+                                placeholder="Select hub"
+                                data={hubOptions}
+                                value={dest.hub_id}
+                                onChange={(val) => handleDestinationChange(dest.id, "hub_id", val)}
+                                searchable
+                                disabled={!fieldsEditable}
+                              />
+                            )}
+                            {dest.kind === "warehouse" && (
+                              <Select
+                                placeholder="Select warehouse"
+                                data={standaloneWarehouseOptions}
+                                value={dest.warehouse_id}
+                                onChange={(val) => handleDestinationChange(dest.id, "warehouse_id", val)}
+                                searchable
+                                disabled={!fieldsEditable}
+                              />
+                            )}
+                            {!dest.kind && (
+                              <Text size="sm" c="dimmed">Select type first</Text>
+                            )}
+                          </Table.Td>
+                          <Table.Td>
+                            <Stack gap={2}>
+                              <NumberInput
+                                placeholder="0"
+                                value={dest.quantity}
+                                onChange={(val) =>
+                                  handleDestinationChange(dest.id, "quantity", Number(val) || 0)
+                                }
+                                min={0}
+                                max={maxForThis > 0 ? maxForThis : undefined}
+                                disabled={!fieldsEditable}
+                              />
+                              {batchQuantity > 0 && (
+                                <Text size="xs" c={dest.quantity > maxForThis ? "red" : "dimmed"}>
+                                  Max: {maxForThis.toLocaleString()} {unitLabel}
+                                </Text>
+                              )}
+                            </Stack>
+                          </Table.Td>
+                          <Table.Td>
+                            <input
+                              placeholder="Notes for this destination"
+                              value={dest.notes}
+                              onChange={(e) => handleDestinationChange(dest.id, "notes", e.target.value)}
+                              disabled={!fieldsEditable}
+                              style={{
+                                width: "100%",
+                                padding: "6px 10px",
+                                border: "1px solid var(--mantine-color-gray-4)",
+                                borderRadius: 4,
+                                fontSize: 14,
+                              }}
+                            />
+                          </Table.Td>
+                          {fieldsEditable && (
+                            <Table.Td>
+                              <ActionIcon
+                                color="red"
+                                variant="subtle"
+                                onClick={() => handleRemoveDestination(dest.id)}
+                                disabled={destinations.length === 1}
+                              >
+                                <IconTrash size={16} />
+                              </ActionIcon>
+                            </Table.Td>
+                          )}
+                        </Table.Tr>
+                      );
+                    })}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+            )}
+
+            {selectedBatchId && destinations.length > 0 && (
+              <Group justify="flex-end" mt="xs">
+                <Badge variant="light" color={remaining < 0 ? "red" : remaining === 0 ? "green" : "blue"} size="lg">
+                  {totalAssigned.toLocaleString()} / {batchQuantity.toLocaleString()} {unitLabel} assigned
+                </Badge>
+              </Group>
+            )}
           </div>
 
-          <Group justify="flex-end" mt="xl">
-            <Button variant="light" onClick={() => navigate('/officer/receipt-orders')}>
+          {/* ── Actions ── */}
+          <Group justify="flex-end" mt="md">
+            <Button variant="light" onClick={() => navigate("/officer/receipt-orders")}>
               Cancel
             </Button>
             {isEdit && (
@@ -661,17 +699,18 @@ function ReceiptOrderFormPage() {
                 color="red"
                 variant="light"
                 onClick={() => deleteMutation.mutate()}
-                loading={isLoading}
+                loading={isSaving}
               >
                 Delete
               </Button>
             )}
             {fieldsEditable && (
-              <Button onClick={handleSave} loading={isLoading}>
-                {isEdit ? 'Update draft' : 'Save as Draft'}
+              <Button onClick={handleSave} loading={isSaving}>
+                {isEdit ? "Update draft" : "Save as Draft"}
               </Button>
             )}
           </Group>
+
         </Stack>
       </Card>
     </Stack>

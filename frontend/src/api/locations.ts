@@ -21,6 +21,13 @@ export const getWoredas = async (zoneId: number): Promise<LocationOption[]> => {
   return response.data.data.locations;
 };
 
+export const getKebeles = async (woredaId: number): Promise<LocationOption[]> => {
+  const response = await apiClient.get<ApiResponse<{ locations: LocationOption[] }>>('/locations/kebeles', {
+    params: { woreda_id: woredaId },
+  });
+  return response.data.data.locations;
+};
+
 export const getHubsForAssignment = async (): Promise<LocationOption[]> => {
   const response = await apiClient.get<ApiResponse<{ locations: LocationOption[] }>>('/locations/hubs');
   return response.data.data.locations;

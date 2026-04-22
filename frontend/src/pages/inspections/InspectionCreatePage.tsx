@@ -25,9 +25,21 @@ import { getWaybills } from '../../api/waybills';
 import { getGrns } from '../../api/grns';
 import { notifications } from '@mantine/notifications';
 import { QualityStatus, PackagingCondition } from '../../utils/constants';
+import { generateSourceDetailReference } from '../../utils/sourceDetailReference';
 import type { InspectionItem } from '../../types/inspection';
 import type { ApiError } from '../../types/common';
 import { useAuthStore } from '../../store/authStore';
+
+function uniqueLineRefsForInspectionItems(list: InspectionItem[]): InspectionItem[] {
+  const used = new Set<string>();
+  return list.map((item) => {
+    let ref = (item.line_reference_no || '').trim();
+    if (!ref) ref = generateSourceDetailReference();
+    while (used.has(ref)) ref = generateSourceDetailReference();
+    used.add(ref);
+    return { ...item, line_reference_no: ref, batch_no: ref };
+  });
+}
 
 function InspectionCreatePage() {
   const sourceTypeOptions = [
@@ -64,6 +76,7 @@ function InspectionCreatePage() {
       quality_status: QualityStatus.GOOD,
       packaging_condition: PackagingCondition.INTACT,
       remarks: '',
+      line_reference_no: '',
     },
   ]);
 
@@ -120,6 +133,7 @@ function InspectionCreatePage() {
         quality_status: QualityStatus.GOOD,
         packaging_condition: PackagingCondition.INTACT,
         remarks: '',
+        line_reference_no: '',
       },
     ]);
   };
@@ -173,7 +187,7 @@ function InspectionCreatePage() {
       inspector_id: inspectorId ? parseInt(inspectorId) : undefined,
       source_type: sourceType || undefined,
       source_id: sourceId ? parseInt(sourceId) : undefined,
-      items,
+      items: uniqueLineRefsForInspectionItems(items),
     });
   };
 
@@ -297,6 +311,7 @@ function InspectionCreatePage() {
                     quality_status: item.quality_status || QualityStatus.GOOD,
                     packaging_condition: PackagingCondition.INTACT,
                     remarks: '',
+                    line_reference_no: item.line_reference_no || item.batch_no || '',
                   }))
                 );
               }}
@@ -321,11 +336,12 @@ function InspectionCreatePage() {
             </Button>
           </Group>
 
-          <Table.ScrollContainer minWidth={1200}>
+          <Table.ScrollContainer minWidth={1320}>
             <Table>
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>Commodity ID</Table.Th>
+                  <Table.Th>Line ref / batch</Table.Th>
                   <Table.Th>Qty Received</Table.Th>
                   <Table.Th>Qty Damaged</Table.Th>
                   <Table.Th>Qty Lost</Table.Th>
@@ -348,6 +364,31 @@ function InspectionCreatePage() {
                         min={1}
                         hideControls
                       />
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap="xs" wrap="nowrap">
+                        <TextInput
+                          placeholder="Unique ref"
+                          value={item.line_reference_no || ''}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            handleItemChange(index, 'line_reference_no', v);
+                            handleItemChange(index, 'batch_no', v);
+                          }}
+                          style={{ minWidth: 130 }}
+                        />
+                        <Button
+                          size="xs"
+                          variant="light"
+                          onClick={() => {
+                            const ref = generateSourceDetailReference();
+                            handleItemChange(index, 'line_reference_no', ref);
+                            handleItemChange(index, 'batch_no', ref);
+                          }}
+                        >
+                          Gen
+                        </Button>
+                      </Group>
                     </Table.Td>
                     <Table.Td>
                       <NumberInput

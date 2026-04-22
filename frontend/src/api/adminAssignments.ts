@@ -8,6 +8,7 @@ export interface AssignmentFilters {
   hub_id?: number;
   warehouse_id?: number;
   store_id?: number;
+  location_id?: number;
 }
 
 export interface AssignmentPayload {
@@ -16,6 +17,7 @@ export interface AssignmentPayload {
   hub_ids?: number[];
   warehouse_ids?: number[];
   store_ids?: number[];
+  location_ids?: number[];
 }
 
 export const getAssignments = async (filters: AssignmentFilters = {}): Promise<AdminUserAssignment[]> => {

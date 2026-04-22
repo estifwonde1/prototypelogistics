@@ -42,7 +42,7 @@ import { useMemo, useState } from 'react';
 import type { ReceiptOrder } from '../../api/receiptOrders';
 import { usePermission } from '../../hooks/usePermission';
 import { useAuthStore } from '../../store/authStore';
-import { normalizeRoleSlug } from '../../contracts/warehouse';
+import { OFFICER_ROLE_SLUGS, normalizeRoleSlug } from '../../contracts/warehouse';
 
 function formatReceiptDate(order: ReceiptOrder): string {
   const raw = order.received_date || order.expected_delivery_date;
@@ -97,13 +97,6 @@ function lineQuantityForReservation(order: ReceiptOrder, reservation: { receipt_
   return totalReceiptOrderLineQuantity(order);
 }
 
-function formatUnitPrice(value: number | string | undefined | null): string {
-  if (value === null || value === undefined || value === '') return '—';
-  const n = typeof value === 'number' ? value : Number(value);
-  if (Number.isNaN(n)) return '—';
-  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
-}
-
 function ReceiptOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -111,6 +104,7 @@ function ReceiptOrderDetailPage() {
   const queryClient = useQueryClient();
   const { can } = usePermission();
   const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
+  const isOfficerRole = roleSlug ? OFFICER_ROLE_SLUGS.includes(roleSlug) : false;
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('details');
   
@@ -150,7 +144,7 @@ function ReceiptOrderDetailPage() {
 
   const canReserveSpace = useMemo(() => {
     if (!order) return false;
-    if (roleSlug === 'officer') return false;
+    if (isOfficerRole) return false;
     if (
       !['admin', 'superadmin', 'warehouse_manager', 'storekeeper'].includes(roleSlug || '')
     ) {
@@ -163,15 +157,15 @@ function ReceiptOrderDetailPage() {
     const { totalOrdered, remaining } = reservationTotals;
     if (totalOrdered <= 0) return false;
     return remaining > 1e-6;
-  }, [order, roleSlug, reservationTotals]);
+  }, [order, isOfficerRole, roleSlug, reservationTotals]);
 
   const showOfficerSpaceReservationHint = useMemo(() => {
     if (!order) return false;
     const status = normalizeOrderStatus(order.status);
-    if (roleSlug !== 'officer') return false;
+    if (!isOfficerRole) return false;
     if (status === 'draft' || status === 'completed') return false;
     return ['confirmed', 'assigned', 'reserved', 'in_progress'].includes(status);
-  }, [order, roleSlug]);
+  }, [order, isOfficerRole]);
 
   const {
     data: stores = [],
@@ -226,7 +220,7 @@ function ReceiptOrderDetailPage() {
     isError: assignableManagersError,
   } = useQuery({
     queryKey: ['receipt_orders', id, 'assignable_managers', roleSlug],
-    queryFn: () => getReceiptOrderAssignableManagers(Number(id), roleSlug === 'officer'),
+    queryFn: () => getReceiptOrderAssignableManagers(Number(id), isOfficerRole),
     enabled:
       !!order &&
       showAssignmentForm &&
@@ -360,7 +354,7 @@ function ReceiptOrderDetailPage() {
   });
 
   const handleCreateAssignment = () => {
-    if (roleSlug === 'officer') {
+    if (isOfficerRole) {
       if (!selectedUserId) {
         notifications.show({
           title: 'Error',
@@ -543,20 +537,36 @@ function ReceiptOrderDetailPage() {
                       Source
                     </Text>
                     <Text size="sm" fw={600} mt="xs">
-                      {receiptSourceLabel(order)}
+                      {(() => {
+                        const firstLine = lines[0];
+                        const sourceType = firstLine?.source_type?.trim();
+                        const sourceName = firstLine?.source_name?.trim();
+                        if (sourceType && sourceName) return `${sourceType} — ${sourceName}`;
+                        if (sourceName) return sourceName;
+                        if (sourceType) return sourceType;
+                        return receiptSourceLabel(order);
+                      })()}
                     </Text>
                   </div>
                   <div>
                     <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                      Destination Warehouse
+                      Batch Number
+                    </Text>
+                    <Text size="sm" fw={600} mt="xs" style={{ fontFamily: 'monospace' }}>
+                      {lines[0]?.commodity_batch_no?.trim() || '—'}
+                    </Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                      Receipt Created
                     </Text>
                     <Text size="sm" fw={600} mt="xs">
-                      {order.warehouse_name || order.destination_warehouse_name || '—'}
+                      {new Date(order.created_at).toLocaleDateString()}
                     </Text>
                   </div>
                   <div>
                     <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                      Received date
+                      Expected Delivery Date
                     </Text>
                     <Text size="sm" fw={600} mt="xs">
                       {formatReceiptDate(order)}
@@ -586,35 +596,80 @@ function ReceiptOrderDetailPage() {
 
             <div>
               <Text size="sm" fw={600} mb="md">
-                Order Items
+                Destinations
               </Text>
               <Table.ScrollContainer minWidth={600}>
                 <Table striped>
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Commodity</Table.Th>
+                      <Table.Th>Destination</Table.Th>
+                      <Table.Th>Warehouse</Table.Th>
                       <Table.Th>Quantity</Table.Th>
                       <Table.Th>Unit</Table.Th>
-                      <Table.Th>Unit Price</Table.Th>
                       <Table.Th>Notes</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
-                    {lines.map((line, index) => (
-                      <Table.Tr key={line.id ?? index}>
-                        <Table.Td>
-                          {line.commodity_name?.trim() ||
-                            (line.commodity_id ? `Commodity #${line.commodity_id}` : '—')}
-                        </Table.Td>
-                        <Table.Td>{line.quantity}</Table.Td>
-                        <Table.Td>
-                          {line.unit_name?.trim() ||
-                            (line.unit_id ? `Unit #${line.unit_id}` : '—')}
-                        </Table.Td>
-                        <Table.Td>{formatUnitPrice(line.unit_price)}</Table.Td>
-                        <Table.Td>{line.notes?.trim() ? line.notes : '—'}</Table.Td>
-                      </Table.Tr>
-                    ))}
+                    {lines.map((line, index) => {
+                      const noteText = line.notes?.trim() || '';
+                      const pipeIndex = noteText.indexOf(' | ');
+                      const destinationPart = pipeIndex >= 0 ? noteText.slice(0, pipeIndex) : noteText;
+                      const officerNotes = pipeIndex >= 0 ? noteText.slice(pipeIndex + 3) : '';
+                      const isHub = destinationPart.startsWith('Hub:');
+                      const isWarehouse = destinationPart.startsWith('Warehouse:');
+                      const destinationLabel = isHub
+                        ? destinationPart.replace('Hub:', '').trim()
+                        : isWarehouse
+                          ? destinationPart.replace('Warehouse:', '').trim()
+                          : destinationPart || '—';
+
+                      return (
+                        <Table.Tr key={line.id ?? index}>
+                          <Table.Td>
+                            <Text fw={500}>
+                              {line.commodity_name?.trim() ||
+                                (line.commodity_id ? `Commodity #${line.commodity_id}` : '—')}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td>
+                            {isHub ? (
+                              <div>
+                                <Text size="sm" fw={600}>{destinationLabel}</Text>
+                                <Text size="xs" c="dimmed">Hub</Text>
+                              </div>
+                            ) : isWarehouse ? (
+                              <div>
+                                <Text size="sm" fw={600}>{destinationLabel}</Text>
+                                <Text size="xs" c="dimmed">Warehouse</Text>
+                              </div>
+                            ) : (
+                              <Text size="sm" c="dimmed">—</Text>
+                            )}
+                          </Table.Td>
+                          <Table.Td>
+                            {isHub ? (
+                              <Text size="sm" c="dimmed">Not yet assigned</Text>
+                            ) : isWarehouse ? (
+                              <Text size="sm" fw={500}>{destinationLabel}</Text>
+                            ) : (
+                              <Text size="sm" c="dimmed">—</Text>
+                            )}
+                          </Table.Td>
+                          <Table.Td>
+                            <Text fw={600}>{line.quantity}</Text>
+                          </Table.Td>
+                          <Table.Td>
+                            {line.unit_name?.trim() || (line.unit_id ? `Unit #${line.unit_id}` : '—')}
+                          </Table.Td>
+                          <Table.Td>
+                            <Text size="sm" c={officerNotes ? undefined : 'dimmed'}>
+                              {officerNotes || '—'}
+                            </Text>
+                          </Table.Td>
+                        </Table.Tr>
+                      );
+                    })}
                   </Table.Tbody>
                 </Table>
               </Table.ScrollContainer>
@@ -680,7 +735,7 @@ function ReceiptOrderDetailPage() {
                   + Assign Store
                 </Button>
               )}
-              {roleSlug === 'officer' && String(order.status).toLowerCase() === 'confirmed' && (
+              {isOfficerRole && String(order.status).toLowerCase() === 'confirmed' && (
                 <Button
                   size="sm"
                   onClick={() => setShowAssignmentForm(true)}
@@ -704,7 +759,7 @@ function ReceiptOrderDetailPage() {
             {showAssignmentForm && (
               <Card shadow="sm" padding="lg" radius="md" withBorder>
                 <Stack gap="md">
-                  {roleSlug === 'officer' ? (
+                  {isOfficerRole ? (
                     <>
                       <Text fw={600}>Assign Manager</Text>
                       <Text size="sm" c="dimmed">

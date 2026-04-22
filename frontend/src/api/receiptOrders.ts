@@ -9,11 +9,18 @@ export interface ReceiptOrderLine {
   id?: number;
   commodity_id: number;
   commodity_name?: string;
+  commodity_batch_no?: string;
+  line_reference_no?: string;
   quantity: number;
   unit_id: number;
   unit_name?: string;
-  unit_price?: number;
   notes?: string;
+  packaging_unit_id?: number;
+  packaging_unit_name?: string;
+  packaging_size?: number;
+  total_quantity?: number;
+  source_type?: string;
+  source_name?: string;
 }
 
 export interface AssignableManagerOption {
@@ -38,7 +45,7 @@ export interface StoreOption {
 export interface ReceiptOrder {
   id: number;
   reference_no?: string;
-  source_type: string;
+  source_type?: string;
   /** Free-text or resolved label from API */
   source_name?: string;
   source_reference?: string | number;
@@ -132,12 +139,13 @@ export function normalizeReceiptOrder(raw: Record<string, unknown>): ReceiptOrde
 }
 
 export interface CreateReceiptOrderPayload {
-  source_type: string;
-  source_name: string;
   /** Set when destination is a specific warehouse; null/omit when destination is hub-only. */
   destination_warehouse_id?: number | null;
   /** Set when destination type is Hub (receiving into a hub, warehouse TBD) or to match a chosen warehouse. */
   hub_id?: number | null;
+  /** Optional source details for traceability. */
+  source_type?: string;
+  source_name?: string;
   expected_delivery_date: string;
   notes?: string;
   lines: ReceiptOrderLine[];

@@ -2,6 +2,11 @@ export const ROLES = {
   ADMIN: 'admin',
   SUPERADMIN: 'superadmin',
   OFFICER: 'officer',
+  FEDERAL_OFFICER: 'federal_officer',
+  REGIONAL_OFFICER: 'regional_officer',
+  ZONAL_OFFICER: 'zonal_officer',
+  WOREDA_OFFICER: 'woreda_officer',
+  KEBELE_OFFICER: 'kebele_officer',
   HUB_MANAGER: 'hub_manager',
   WAREHOUSE_MANAGER: 'warehouse_manager',
   STOREKEEPER: 'storekeeper',
@@ -11,10 +16,24 @@ export const ROLES = {
 
 export type RoleSlug = (typeof ROLES)[keyof typeof ROLES];
 
+export const OFFICER_ROLE_SLUGS: RoleSlug[] = [
+  ROLES.OFFICER,
+  ROLES.FEDERAL_OFFICER,
+  ROLES.REGIONAL_OFFICER,
+  ROLES.ZONAL_OFFICER,
+  ROLES.WOREDA_OFFICER,
+  ROLES.KEBELE_OFFICER,
+];
+
 export const ROLE_LABELS: Record<RoleSlug, string> = {
   [ROLES.ADMIN]: 'Admin',
   [ROLES.SUPERADMIN]: 'Superadmin',
   [ROLES.OFFICER]: 'Officer',
+  [ROLES.FEDERAL_OFFICER]: 'Federal Officer',
+  [ROLES.REGIONAL_OFFICER]: 'Regional Officer',
+  [ROLES.ZONAL_OFFICER]: 'Zonal Officer',
+  [ROLES.WOREDA_OFFICER]: 'Woreda Officer',
+  [ROLES.KEBELE_OFFICER]: 'Kebele Officer',
   [ROLES.HUB_MANAGER]: 'Hub Manager',
   [ROLES.WAREHOUSE_MANAGER]: 'Warehouse Manager',
   [ROLES.STOREKEEPER]: 'Storekeeper',
@@ -93,15 +112,22 @@ const FULL_ACCESS: PermissionMatrix = {
   reports: ['read'],
 };
 
+const OFFICER_ACCESS: PermissionMatrix = {
+  receipt_orders: ['read', 'create', 'update', 'delete', 'confirm'],
+  dispatch_orders: ['read', 'create', 'update', 'delete', 'confirm'],
+  receipts: ['read'],
+  dispatches: ['read'],
+};
+
 export const ROLE_CAPABILITIES: Record<RoleSlug, PermissionMatrix> = {
   [ROLES.ADMIN]: FULL_ACCESS,
   [ROLES.SUPERADMIN]: FULL_ACCESS,
-  [ROLES.OFFICER]: {
-    receipt_orders: ['read', 'create', 'update', 'delete', 'confirm'],
-    dispatch_orders: ['read', 'create', 'update', 'delete', 'confirm'],
-    receipts: ['read'],
-    dispatches: ['read'],
-  },
+  [ROLES.OFFICER]: OFFICER_ACCESS,
+  [ROLES.FEDERAL_OFFICER]: OFFICER_ACCESS,
+  [ROLES.REGIONAL_OFFICER]: OFFICER_ACCESS,
+  [ROLES.ZONAL_OFFICER]: OFFICER_ACCESS,
+  [ROLES.WOREDA_OFFICER]: OFFICER_ACCESS,
+  [ROLES.KEBELE_OFFICER]: OFFICER_ACCESS,
   [ROLES.HUB_MANAGER]: {
     hubs: ['read'],
     warehouses: ['read', 'create', 'update'],
@@ -156,6 +182,11 @@ const DEFAULT_ROUTE_BY_ROLE: Record<RoleSlug, string> = {
   [ROLES.ADMIN]: '/admin/users',
   [ROLES.SUPERADMIN]: '/admin/users',
   [ROLES.OFFICER]: '/officer/dashboard',
+  [ROLES.FEDERAL_OFFICER]: '/officer/dashboard',
+  [ROLES.REGIONAL_OFFICER]: '/officer/dashboard',
+  [ROLES.ZONAL_OFFICER]: '/officer/dashboard',
+  [ROLES.WOREDA_OFFICER]: '/officer/dashboard',
+  [ROLES.KEBELE_OFFICER]: '/officer/dashboard',
   [ROLES.HUB_MANAGER]: '/hubs',
   [ROLES.WAREHOUSE_MANAGER]: '/warehouses',
   [ROLES.STOREKEEPER]: '/stock-balances',

@@ -38,13 +38,14 @@ module Cats
 
       validates :name, presence: true
       validates :ownership_type, presence: true, inclusion: { in: ownership_types.keys }
+      validates :kebele, numericality: { only_integer: true, greater_than_or_equal_to: 1, less_than_or_equal_to: 40, allow_nil: true }
       validate :ownership_type_rules
       validate :rental_document_required_for_rental
       validate :hub_location_consistency, if: -> { hub.present? && location_id.present? }
 
       after_commit :recalculate_related_hub_capacities
 
-      MANAGED_UNDER_VALUES = ["Hub", "Addis Ababa Government", "Subcity", "Woreda"].freeze
+      MANAGED_UNDER_VALUES = ["Hub", "federal", "regional", "zonal", "woreda", "kebele"].freeze
       private
 
       def inherit_location_and_management_from_hub
@@ -64,7 +65,7 @@ module Cats
           end
 
           unless MANAGED_UNDER_VALUES.include?(managed_under) && managed_under != "Hub"
-            errors.add(:managed_under, "must be one of: Addis Ababa Government, Subcity, Woreda")
+            errors.add(:managed_under, "must be one of: federal, regional, zonal, woreda, kebele")
           end
         end
       end

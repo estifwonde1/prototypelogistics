@@ -58,6 +58,7 @@ module Cats
             :commodity_id,
             :unit_id,
             :inventory_lot_id,
+            :line_reference_no,
             :lot_code,
             :batch_no,
             :expiry_date,

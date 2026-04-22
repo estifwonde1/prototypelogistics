@@ -12,31 +12,36 @@ import {
   TextInput,
   Textarea,
   Title,
+  NumberInput,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createWarehouse } from '../../../api/warehouses';
 import { getHub } from '../../../api/hubs';
-import { getRegions, getWoredas, getZones } from '../../../api/locations';
+import { getKebeles, getRegions, getWoredas, getZones } from '../../../api/locations';
 import { ErrorState } from '../../../components/common/ErrorState';
 import { LoadingState } from '../../../components/common/LoadingState';
 import { RentalAgreementUpload } from '../../../components/common/RentalAgreementUpload';
 import {
-  resolveLocationContextByWoredaId,
+  resolveLocationContextByLocationId,
   resolveLocationContextFromQuery,
 } from '../../../utils/locationContext';
 
 const MANAGED_UNDER_OPTIONS = [
-  { value: 'Addis Ababa Government', label: 'Addis Ababa Government' },
-  { value: 'Subcity', label: 'Subcity' },
-  { value: 'Woreda', label: 'Woreda' },
+  { value: 'federal', label: 'Federal' },
+  { value: 'regional', label: 'Regional' },
+  { value: 'zonal', label: 'Zonal' },
+  { value: 'woreda', label: 'Woreda' },
+  { value: 'kebele', label: 'Kebele' },
 ];
 
 const OWNERSHIP_TYPE_OPTIONS = [
   { value: 'self_owned', label: 'Self Owned' },
   { value: 'rental', label: 'Rental' },
 ];
+
+const DEFAULT_REGION_NAME = 'Addis Ababa';
 
 export default function WarehouseSetupPage() {
   const navigate = useNavigate();
@@ -50,6 +55,7 @@ export default function WarehouseSetupPage() {
   const [regionId, setRegionId] = useState<string | null>(null);
   const [zoneId, setZoneId] = useState<string | null>(null);
   const [woredaId, setWoredaId] = useState<string | null>(null);
+  const [kebeleId, setKebeleId] = useState<string | null>(null);
   const [rentalAgreementFile, setRentalAgreementFile] = useState<File | null>(null);
 
   const { data: hub } = useQuery({
@@ -59,10 +65,10 @@ export default function WarehouseSetupPage() {
   });
 
   const { data: inheritedContext } = useQuery({
-    queryKey: ['warehouse-setup-location-context', hubId, inheritedContextFromQuery.woredaId],
+    queryKey: ['warehouse-setup-location-context', hubId, inheritedContextFromQuery.woredaId, inheritedContextFromQuery.kebeleId],
     queryFn: async () => {
-      if (inheritedContextFromQuery.woredaId) return inheritedContextFromQuery;
-      return resolveLocationContextByWoredaId(hub?.location_id);
+      if (inheritedContextFromQuery.woredaId || inheritedContextFromQuery.kebeleId) return inheritedContextFromQuery;
+      return resolveLocationContextByLocationId(hub?.location_id);
     },
     enabled: !!hubId,
   });
@@ -84,6 +90,13 @@ export default function WarehouseSetupPage() {
     enabled: !!zoneId,
   });
 
+  const activeWoredaId = hubId ? inheritedContext?.woredaId : woredaId ? Number(woredaId) : undefined;
+  const { data: kebeles } = useQuery({
+    queryKey: ['locations', 'kebeles', activeWoredaId],
+    queryFn: () => getKebeles(Number(activeWoredaId)),
+    enabled: !!activeWoredaId,
+  });
+
   const form = useForm({
     initialValues: {
       code: '',
@@ -93,25 +106,39 @@ export default function WarehouseSetupPage() {
       managed_under: hubId ? 'Hub' : MANAGED_UNDER_OPTIONS[0].value,
       ownership_type: 'self_owned',
       description: '',
+      kebele: '' as number | '',
     },
     validate: {
       code: (value) => (!value ? 'Code is required' : null),
       name: (value) => (!value ? 'Name is required' : null),
-      managed_under: (value) => (!value ? 'Managed under is required' : null),
+      managed_under: (value) => (!value ? 'Hierarchical level is required' : null),
       ownership_type: (value) => (!value ? 'Ownership type is required' : null),
+      kebele: (value) => {
+        if (value === '' || value === null || value === undefined) return null;
+        const num = Number(value);
+        if (isNaN(num)) return 'Kebele must be a number';
+        if (num < 1 || num > 40) return 'Kebele must be between 1 and 40';
+        return null;
+      },
     },
   });
 
   useEffect(() => {
     if (regions && regions.length > 0 && !regionId) {
-      setRegionId(String(regions[0].id));
+      const inheritedRegionId = hubId ? inheritedContext?.regionId : inheritedContextFromQuery.regionId;
+      const defaultRegion =
+        regions.find((region) => region.id === inheritedRegionId) ||
+        regions.find((region) => region.name === DEFAULT_REGION_NAME) ||
+        regions[0];
+      setRegionId(String(defaultRegion.id));
     }
-  }, [regions, regionId]);
+  }, [regions, regionId, hubId, inheritedContext?.regionId, inheritedContextFromQuery.regionId]);
 
   useEffect(() => {
     if (hubId && inheritedContext) {
       if (inheritedContext.zoneId) setZoneId(String(inheritedContext.zoneId));
       if (inheritedContext.woredaId) setWoredaId(String(inheritedContext.woredaId));
+      setKebeleId(inheritedContext.kebeleId ? String(inheritedContext.kebeleId) : null);
       return;
     }
 
@@ -120,21 +147,51 @@ export default function WarehouseSetupPage() {
       return;
     }
 
-    if (zones && zones.length > 0) {
-      setZoneId((current) => current || String(zones[0].id));
+    if (!zones || zones.length === 0) {
+      setZoneId(null);
+      setKebeleId(null);
+      return;
     }
-  }, [hubId, inheritedContext, isInheritedFromLocationPage, inheritedContextFromQuery.zoneId, zones]);
+
+    if (!zoneId || !zones.some((zone) => String(zone.id) === zoneId)) {
+      setZoneId(String(zones[0].id));
+    }
+  }, [hubId, inheritedContext, isInheritedFromLocationPage, inheritedContextFromQuery.zoneId, zoneId, zones]);
 
   useEffect(() => {
     if (hubId) return;
     if (isInheritedFromLocationPage) {
       if (inheritedContextFromQuery.woredaId) setWoredaId(String(inheritedContextFromQuery.woredaId));
+      setKebeleId(inheritedContextFromQuery.kebeleId ? String(inheritedContextFromQuery.kebeleId) : null);
       return;
     }
-    if (woredas && woredas.length > 0) {
-      setWoredaId((current) => current || String(woredas[0].id));
+    if (!woredas || woredas.length === 0) {
+      setWoredaId(null);
+      setKebeleId(null);
+      return;
     }
-  }, [hubId, isInheritedFromLocationPage, inheritedContextFromQuery.woredaId, woredas]);
+    if (!woredaId || !woredas.some((woreda) => String(woreda.id) === woredaId)) {
+      setWoredaId(String(woredas[0].id));
+    }
+  }, [hubId, isInheritedFromLocationPage, inheritedContextFromQuery.woredaId, woredaId, woredas]);
+
+  useEffect(() => {
+    if (hubId) {
+      setKebeleId(inheritedContext?.kebeleId ? String(inheritedContext.kebeleId) : null);
+      return;
+    }
+    if (isInheritedFromLocationPage) {
+      setKebeleId(inheritedContextFromQuery.kebeleId ? String(inheritedContextFromQuery.kebeleId) : null);
+      return;
+    }
+    if (!kebeles || kebeles.length === 0) {
+      setKebeleId(null);
+      return;
+    }
+    if (kebeleId && !kebeles.some((kebele) => String(kebele.id) === kebeleId)) {
+      setKebeleId(null);
+    }
+  }, [hubId, inheritedContext?.kebeleId, isInheritedFromLocationPage, inheritedContextFromQuery.kebeleId, kebeles, kebeleId]);
 
   const createMutation = useMutation({
     mutationFn: createWarehouse,
@@ -201,9 +258,15 @@ export default function WarehouseSetupPage() {
     : isInheritedFromLocationPage
       ? inheritedContextFromQuery.woredaId
       : woredaId ? Number(woredaId) : undefined;
+  const effectiveKebeleId = hubId
+    ? inheritedContext?.kebeleId
+    : isInheritedFromLocationPage
+      ? inheritedContextFromQuery.kebeleId
+      : kebeleId ? Number(kebeleId) : undefined;
 
   const handleSubmit = (values: typeof form.values) => {
-    if (!effectiveWoredaId) return;
+    const targetLocationId = effectiveKebeleId || effectiveWoredaId;
+    if (!targetLocationId) return;
 
     if (values.ownership_type === 'rental' && !rentalAgreementFile) {
       notifications.show({
@@ -221,10 +284,11 @@ export default function WarehouseSetupPage() {
       status: values.status,
       description: values.description || undefined,
       hub_id: hubId || undefined,
-      location_id: effectiveWoredaId,
+      location_id: targetLocationId,
       managed_under: hubId ? 'Hub' : values.managed_under,
       ownership_type: values.ownership_type,
       rental_agreement_document: values.ownership_type === 'rental' ? rentalAgreementFile : null,
+      kebele: values.kebele !== '' ? Number(values.kebele) : undefined,
     });
   };
 
@@ -245,8 +309,8 @@ export default function WarehouseSetupPage() {
             {(hubId || isInheritedFromLocationPage) && (
               <Alert color="blue" variant="light">
                 {hubId
-                  ? 'This warehouse inherits subcity and woreda from its parent hub. Those fields are locked here.'
-                  : 'Subcity and woreda were selected on the location page and are locked for this warehouse.'}
+                  ? 'This warehouse inherits region, zone/subcity, woreda, and any selected kebele from its parent hub. Those fields are locked here.'
+                  : 'Region, zone/subcity, woreda, and any selected kebele were chosen on the location page and are locked for this warehouse.'}
               </Alert>
             )}
 
@@ -277,12 +341,36 @@ export default function WarehouseSetupPage() {
             </Group>
 
             <Group grow align="flex-start">
-              <Select label="Region" data={regionOptions} value={regionId} onChange={setRegionId} disabled />
               <Select
-                label="Subcity"
+                label="Region"
+                data={regionOptions}
+                value={regionId}
+                onChange={(value) => {
+                  setRegionId(value);
+                  if (!hubId && !isInheritedFromLocationPage) {
+                    setZoneId(null);
+                    setWoredaId(null);
+                    setKebeleId(null);
+                  }
+                }}
+                disabled={!!hubId || isInheritedFromLocationPage}
+                description={
+                  hubId
+                    ? inheritedContext?.regionName || 'Inherited from selected hub'
+                    : isInheritedFromLocationPage
+                      ? inheritedContextFromQuery.regionName || 'Inherited from location page'
+                      : undefined
+                }
+              />
+              <Select
+                label="Zone / Subcity"
                 data={displayedZoneOptions}
                 value={effectiveZoneId ? String(effectiveZoneId) : null}
-                onChange={setZoneId}
+                onChange={(value) => {
+                  setZoneId(value);
+                  setWoredaId(null);
+                  setKebeleId(null);
+                }}
                 disabled={zonesLoading || !!hubId || isInheritedFromLocationPage}
                 description={
                   hubId
@@ -296,7 +384,9 @@ export default function WarehouseSetupPage() {
                 label="Woreda"
                 data={displayedWoredaOptions}
                 value={effectiveWoredaId ? String(effectiveWoredaId) : null}
-                onChange={setWoredaId}
+                onChange={(value) => {
+                  setWoredaId(value);
+                }}
                 disabled={woredasLoading || !!hubId || isInheritedFromLocationPage}
                 description={
                   hubId
@@ -306,11 +396,19 @@ export default function WarehouseSetupPage() {
                       : undefined
                 }
               />
+              <NumberInput
+                label="Kebele (Optional)"
+                placeholder="1-40"
+                min={1}
+                max={40}
+                description="Optional"
+                {...form.getInputProps('kebele')}
+              />
             </Group>
 
             <Group grow align="flex-start">
               <Select
-                label="Managed Under"
+                label="Hierarchical Level"
                 data={hubId ? [{ value: 'Hub', label: 'Hub' }] : MANAGED_UNDER_OPTIONS}
                 value={form.values.managed_under}
                 onChange={(value) => form.setFieldValue('managed_under', value || '')}

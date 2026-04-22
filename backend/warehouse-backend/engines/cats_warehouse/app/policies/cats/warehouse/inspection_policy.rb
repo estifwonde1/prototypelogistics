@@ -26,7 +26,7 @@ module Cats
       private
 
       def officer?
-        user&.has_role?("Officer")
+        super
       end
     end
   end
