@@ -15,19 +15,19 @@ export default function BinCardReportPage() {
   const [stackId, setStackId] = useState<string | null>(null);
   const [lotFilter, setLotFilter] = useState<string | null>(null);
 
-  const { data: stores } = useQuery({
+  const { data: stores = [] } = useQuery({
     queryKey: ['stores'],
-    queryFn: getStores,
+    queryFn: () => getStores(),
   });
 
   const { data: stacks } = useQuery({
     queryKey: ['stacks'],
-    queryFn: getStacks,
+    queryFn: () => getStacks(),
   });
 
   const { data: inventoryLots = [] } = useQuery({
     queryKey: ['reference-data', 'inventory_lots'],
-    queryFn: getInventoryLots,
+    queryFn: () => getInventoryLots(),
   });
 
   const { data: entries, isLoading, error, refetch } = useQuery({

@@ -45,8 +45,13 @@ module Cats
         return true if admin?
         return false unless record.is_a?(ReceiptOrder)
 
+        access = AccessContext.new(user: user)
+        wh_ids = accessible_warehouse_id_values
+        hub_ids = access.accessible_hub_ids
+        hub_ids = hub_ids.is_a?(Array) ? hub_ids : hub_ids.pluck(:id)
+
         if warehouse_manager?
-          return accessible_warehouse_id_values.include?(record.warehouse_id.to_i)
+          return wh_ids.include?(record.warehouse_id.to_i) || hub_ids.include?(record.hub_id.to_i)
         end
 
         return true if storekeeper?

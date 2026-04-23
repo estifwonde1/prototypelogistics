@@ -41,8 +41,8 @@ const toWarehouseRequestBody = (data: WarehouseUpsertPayload) => {
   return formData;
 };
 
-export const getWarehouses = async (): Promise<Warehouse[]> => {
-  const response = await apiClient.get<ApiResponse<Warehouse[]>>('/warehouses');
+export const getWarehouses = async (params?: { hub_id?: number }): Promise<Warehouse[]> => {
+  const response = await apiClient.get<ApiResponse<Warehouse[]>>('/warehouses', { params });
   return response.data.data.map((warehouse) => normalizeWarehouse(warehouse as WarehouseApiRecord));
 };
 

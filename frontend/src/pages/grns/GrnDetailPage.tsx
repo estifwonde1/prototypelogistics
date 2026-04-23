@@ -42,7 +42,7 @@ function GrnDetailPage() {
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses({}),
   });
 
   const confirmMutation = useMutation({
@@ -344,3 +344,4 @@ function GrnDetailPage() {
 }
 
 export default GrnDetailPage;
+

@@ -28,12 +28,12 @@ function DispatchOrdersListPage() {
 
   const { data: orders, isLoading, error, refetch } = useQuery({
     queryKey: ['dispatch_orders'],
-    queryFn: getDispatchOrders,
+    queryFn: () => getDispatchOrders({}),
   });
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses({}),
   });
 
   const filteredOrders = orders?.filter((order) => {
@@ -183,3 +183,4 @@ function DispatchOrdersListPage() {
 }
 
 export default DispatchOrdersListPage;
+

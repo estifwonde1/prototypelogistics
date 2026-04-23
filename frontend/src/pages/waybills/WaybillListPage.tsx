@@ -27,7 +27,7 @@ function WaybillListPage() {
 
   const { data: waybills, isLoading, error, refetch } = useQuery({
     queryKey: ['waybills'],
-    queryFn: getWaybills,
+    queryFn: () => getWaybills(),
   });
 
   const filteredWaybills = waybills?.filter((waybill) => {

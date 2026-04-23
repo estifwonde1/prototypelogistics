@@ -28,12 +28,12 @@ function GrnListPage() {
 
   const { data: grns, isLoading, error, refetch } = useQuery({
     queryKey: ['grns'],
-    queryFn: getGrns,
+    queryFn: () => getGrns(),
   });
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses({}),
   });
 
   const filteredGrns = grns?.filter((grn) => {
@@ -183,3 +183,5 @@ function GrnListPage() {
 }
 
 export default GrnListPage;
+
+

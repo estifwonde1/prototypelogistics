@@ -52,38 +52,38 @@ function DashboardPage() {
 
   const { data: hubs, isLoading: hubsLoading } = useQuery({
     queryKey: ['hubs'],
-    queryFn: getHubs,
+    queryFn: () => getHubs(),
     enabled: canReadHubs,
   });
 
   const { data: warehouses, isLoading: warehousesLoading } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses({}),
   });
 
   const { data: stores, isLoading: storesLoading } = useQuery({
     queryKey: ['stores'],
-    queryFn: getStores,
+    queryFn: () => getStores({}),
   });
 
   const { data: stacks, isLoading: stacksLoading } = useQuery({
     queryKey: ['stacks'],
-    queryFn: getStacks,
+    queryFn: () => getStacks(),
   });
 
   const { data: grns, isLoading: grnsLoading } = useQuery({
     queryKey: ['grns'],
-    queryFn: getGrns,
+    queryFn: () => getGrns(),
   });
 
   const { data: gins, isLoading: ginsLoading } = useQuery({
     queryKey: ['gins'],
-    queryFn: getGins,
+    queryFn: () => getGins(),
   });
 
   const { data: inspections, isLoading: inspectionsLoading } = useQuery({
     queryKey: ['inspections'],
-    queryFn: getInspections,
+    queryFn: () => getInspections(),
   });
 
   const pendingGrns = grns?.filter((grn) => grn.status === 'draft').length || 0;
@@ -196,3 +196,5 @@ function DashboardPage() {
 }
 
 export default DashboardPage;
+
+

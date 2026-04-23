@@ -57,7 +57,7 @@ function WarehouseFormPage() {
 
   const { data: hubs } = useQuery({
     queryKey: ['hubs'],
-    queryFn: getHubs,
+    queryFn: () => getHubs(),
     enabled: canReadHubs,
   });
 

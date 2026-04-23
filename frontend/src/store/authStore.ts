@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { normalizeRoleSlug } from '../contracts/warehouse';
 
 export interface OfficerAssignment {
   id: number;
@@ -15,8 +16,10 @@ interface AuthState {
   userId: number | null;
   role: string | null;
   assignments: OfficerAssignment[];
-  setAuth: (token: string, userId: number, role: string) => void;
+  activeAssignment: OfficerAssignment | null;
+  setAuth: (token: string, userId: number, role: string | null) => void;
   setAssignments: (assignments: OfficerAssignment[]) => void;
+  setActiveAssignment: (assignment: OfficerAssignment | null) => void;
   clearAuth: () => void;
   isAuthenticated: () => boolean;
 }
@@ -28,9 +31,11 @@ export const useAuthStore = create<AuthState>()(
       userId: null,
       role: null,
       assignments: [],
+      activeAssignment: null,
       setAuth: (token, userId, role) => set({ token, userId, role }),
       setAssignments: (assignments) => set({ assignments }),
-      clearAuth: () => set({ token: null, userId: null, role: null, assignments: [] }),
+      setActiveAssignment: (activeAssignment) => set({ activeAssignment, role: activeAssignment?.role_name ? normalizeRoleSlug(activeAssignment.role_name) : null }),
+      clearAuth: () => set({ token: null, userId: null, role: null, assignments: [], activeAssignment: null }),
       isAuthenticated: () => !!get().token,
     }),
     {

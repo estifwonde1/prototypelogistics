@@ -1,4 +1,4 @@
-﻿# Prototypelogistics — Remaining Requirements
+# Prototypelogistics — Remaining Requirements
 
 ## Introduction
 
@@ -105,7 +105,7 @@ As a warehouse manager, I want commodities to be registered under projects with 
 
 ## Requirement 4: Role-Based Login and Dashboard Routing
 
-**Status: Missing**
+**Status: Done**
 
 **What this means:**
 Right now every user who logs in sees the same navigation and the same pages regardless of their role. A Storekeeper should only see their store's work. A Hub Manager should only see their hub. A Warehouse Manager should only see their warehouse. The system needs to detect each user's role when they log in and send them to the right place automatically.
@@ -127,7 +127,7 @@ As any operational user, I want to be taken to my own dashboard when I log in, s
 
 ## Requirement 5: Warehouse Manager Dashboard
 
-**Status: Missing**
+**Status: Partial**
 
 **What this means:**
 The Warehouse Manager is responsible for approving incoming shipments, assigning Storekeepers to receive goods, authorizing outgoing dispatches, and overseeing the warehouse's stock. Right now there is no dedicated screen for the Warehouse Manager. They have no central place to see what needs their attention.
@@ -149,7 +149,7 @@ As a warehouse manager, I want a dedicated dashboard that shows me everything re
 
 ## Requirement 6: Storekeeper Dashboard
 
-**Status: Missing**
+**Status: Partial**
 
 **What this means:**
 The Storekeeper is the person physically handling the goods — receiving trucks, stacking bags, picking goods for dispatch. Right now the Storekeeper only has an assignments page where they accept or reject assignments. They have no dashboard showing their daily work queue.

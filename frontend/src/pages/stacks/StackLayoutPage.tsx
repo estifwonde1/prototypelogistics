@@ -197,14 +197,14 @@ export default function StackLayoutPage() {
 
   const autoPrepare = searchParams.get('auto_prepare') === 'true';
 
-  const { data: stores, isLoading: storesLoading } = useQuery({
+  const { data: stores = [], isLoading: storesLoading } = useQuery({
     queryKey: ['stores'],
-    queryFn: getStores,
+    queryFn: () => getStores(),
   });
 
   const { data: stacks, isLoading, error, refetch } = useQuery({
     queryKey: ['stacks'],
-    queryFn: getStacks,
+    queryFn: () => getStacks(),
   });
 
   const resolvedStoreId = storeId || (stores && stores.length > 0 ? String(stores[0].id) : null);

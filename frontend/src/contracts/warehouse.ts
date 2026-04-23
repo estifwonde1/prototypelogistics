@@ -187,11 +187,11 @@ const DEFAULT_ROUTE_BY_ROLE: Record<RoleSlug, string> = {
   [ROLES.ZONAL_OFFICER]: '/officer/dashboard',
   [ROLES.WOREDA_OFFICER]: '/officer/dashboard',
   [ROLES.KEBELE_OFFICER]: '/officer/dashboard',
-  [ROLES.HUB_MANAGER]: '/hubs',
-  [ROLES.WAREHOUSE_MANAGER]: '/warehouses',
-  [ROLES.STOREKEEPER]: '/stock-balances',
+  [ROLES.HUB_MANAGER]: '/hub/dashboard',
+  [ROLES.WAREHOUSE_MANAGER]: '/warehouse/dashboard',
+  [ROLES.STOREKEEPER]: '/storekeeper/dashboard',
   [ROLES.INSPECTOR]: '/',
-  [ROLES.DISPATCHER]: '/',
+  [ROLES.DISPATCHER]: '/dispatcher/dashboard',
 };
 
 export function normalizeRoleSlug(roleName: string | null | undefined): RoleSlug | null {

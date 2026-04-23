@@ -39,7 +39,7 @@ function InspectionDetailPage() {
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses({}),
   });
 
   const confirmMutation = useMutation({
@@ -366,3 +366,4 @@ function InspectionDetailPage() {
 }
 
 export default InspectionDetailPage;
+

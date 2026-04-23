@@ -38,7 +38,7 @@ function HubListPage() {
 
   const { data: hubs, isLoading, error, refetch } = useQuery({
     queryKey: ['hubs'],
-    queryFn: getHubs,
+    queryFn: () => getHubs(),
   });
 
   const deleteMutation = useMutation({
@@ -204,3 +204,4 @@ function HubListPage() {
 }
 
 export default HubListPage;
+

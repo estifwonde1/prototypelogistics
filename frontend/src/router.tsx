@@ -10,8 +10,12 @@ import { getDefaultRouteForRole, type RoleSlug } from './contracts/warehouse';
 
 // Lazy load pages
 const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
+const RoleSelectionPage = lazy(() => import('./pages/auth/RoleSelectionPage'));
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage'));
 const OfficerDashboardPage = lazy(() => import('./pages/officer/OfficerDashboardPage'));
+const HubManagerDashboardPage = lazy(() => import('./pages/hubs/HubManagerDashboardPage'));
+const WarehouseManagerDashboardPage = lazy(() => import('./pages/warehouses/WarehouseManagerDashboardPage'));
+const StorekeeperDashboardPage = lazy(() => import('./pages/storekeeper/StorekeeperDashboardPage'));
 const FacilitiesOverviewPage = lazy(() => import('./pages/officer/FacilitiesOverviewPage'));
 const ReceiptOrdersListPage = lazy(() => import('./pages/officer/ReceiptOrdersListPage'));
 const ReceiptOrderFormPage = lazy(() => import('./pages/officer/ReceiptOrderFormPage'));
@@ -121,6 +125,16 @@ export const router = createBrowserRouter([
     ),
   },
   {
+    path: '/select-role',
+    element: (
+      <ProtectedRoute>
+        <Suspense fallback={<LoadingFallback />}>
+          <RoleSelectionPage />
+        </Suspense>
+      </ProtectedRoute>
+    ),
+  },
+  {
     path: '/',
     element: (
       <ProtectedRoute>
@@ -141,6 +155,30 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission resource="receipt_orders" action="read">
             <OfficerDashboardPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'hub/dashboard',
+        element: (
+          <RequirePermission resource="hubs" action="read">
+            <HubManagerDashboardPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/dashboard',
+        element: (
+          <RequirePermission resource="warehouses" action="read">
+            <WarehouseManagerDashboardPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'storekeeper/dashboard',
+        element: (
+          <RequirePermission resource="stores" action="read">
+            <StorekeeperDashboardPage />
           </RequirePermission>
         ),
       },
@@ -226,6 +264,14 @@ export const router = createBrowserRouter([
       },
       {
         path: 'officer/dispatch-orders/:id',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <DispatchOrderDetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'dispatch-orders/:id',
         element: (
           <RequirePermission resource="dispatch_orders" action="read">
             <DispatchOrderDetailPage />

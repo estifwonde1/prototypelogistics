@@ -2,9 +2,19 @@ name: Backend CI
 
 on:
   push:
-    branches: [ "main", "phases", "setup", "comodities" ]
+    branches:
+      - main
+      - phases
+      - setup
+      - comodities
+      - sprint2
   pull_request:
-    branches: [ "main", "phases", "setup", "comodities" ]
+    branches:
+      - main
+      - phases
+      - setup
+      - comodities
+      - sprint2
 
 jobs:
   test:

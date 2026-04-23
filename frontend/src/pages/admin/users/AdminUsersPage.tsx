@@ -6,6 +6,7 @@ import {
   Title,
   Button,
   Select,
+  MultiSelect,
   Table,
   ActionIcon,
   Modal,
@@ -47,7 +48,7 @@ export default function AdminUsersPage() {
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses({}),
   });
 
   const { data: roles } = useQuery({
@@ -73,7 +74,7 @@ export default function AdminUsersPage() {
       phone_number: '',
       password: '',
       password_confirmation: '',
-      role_name: '',
+      role_names: [] as string[],
     },
     validate: {
       first_name: (v) => (!v ? 'First name is required' : null),
@@ -87,7 +88,14 @@ export default function AdminUsersPage() {
         }
         return null;
       },
-      role_name: (v) => (!v ? 'Role is required' : null),
+      role_names: (v) => {
+        if (v.length === 0) return 'At least one role is required';
+        const hasOfficer = v.some((r) => r.toLowerCase().includes('officer'));
+        if (hasOfficer && v.length > 1) {
+          return 'Officer roles cannot be combined with other roles.';
+        }
+        return null;
+      },
       password_confirmation: (v, values) =>
         values.password && v !== values.password ? 'Passwords do not match' : null,
     },
@@ -158,7 +166,7 @@ export default function AdminUsersPage() {
       phone_number: user.phone_number || '',
       password: '',
       password_confirmation: '',
-      role_name: user.roles?.[0] || '',
+      role_names: user.roles || [],
     });
     setModalOpen(true);
   };
@@ -169,7 +177,7 @@ export default function AdminUsersPage() {
       last_name: values.last_name,
       email: values.email,
       phone_number: values.phone_number,
-      role_name: values.role_name,
+      role_names: values.role_names,
       ...(values.password ? { password: values.password, password_confirmation: values.password_confirmation } : {}),
     };
 
@@ -288,10 +296,11 @@ export default function AdminUsersPage() {
               error={form.errors.phone_number}
               required
             />
-            <Select
-              label="Role"
+            <MultiSelect
+              label="Roles"
+              placeholder="Select one or more roles"
               data={(roles?.map((r) => r.name) || ROLE_OPTIONS).map((name) => ({ value: name, label: name }))}
-              {...form.getInputProps('role_name')}
+              {...form.getInputProps('role_names')}
               required
             />
             <Divider my="sm" />
@@ -311,3 +320,4 @@ export default function AdminUsersPage() {
     </Stack>
   );
 }
+

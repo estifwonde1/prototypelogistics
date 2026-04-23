@@ -1,5 +1,5 @@
-import { Group, Text, Button, Menu, Avatar, Burger } from '@mantine/core';
-import { IconLogout, IconUser } from '@tabler/icons-react';
+import { Group, Text, Button, Menu, Avatar, Burger, Stack } from '@mantine/core';
+import { IconLogout, IconUser, IconSwitchVertical } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
@@ -15,12 +15,23 @@ interface HeaderProps {
 export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDesktop }: HeaderProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { userId, role, clearAuth } = useAuthStore();
+  const { role, assignments, activeAssignment, clearAuth } = useAuthStore();
+  const roleLabel = getRoleLabel(role);
+  
+  const facilityName = activeAssignment?.hub?.name || 
+                       activeAssignment?.warehouse?.name || 
+                       activeAssignment?.store?.name || 
+                       activeAssignment?.location?.name ||
+                       'Federal';
 
   const handleLogout = () => {
     clearAuth();
     queryClient.clear(); // wipe cached data so next user gets fresh scoped results
     navigate('/login');
+  };
+
+  const handleSwitchWorkspace = () => {
+    navigate('/select-role');
   };
 
   return (
@@ -46,7 +57,10 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
       <Menu shadow="md" width={200}>
         <Menu.Target>
           <Button variant="subtle" leftSection={<Avatar size="sm" radius="xl" />}>
-            {getRoleLabel(role)} {userId != null && `#${userId}`}
+            <Stack gap={0} align="flex-start">
+              <Text size="sm" fw={600}>{roleLabel}</Text>
+              <Text size="xs" c="dimmed">{facilityName}</Text>
+            </Stack>
           </Button>
         </Menu.Target>
 
@@ -55,6 +69,11 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
           <Menu.Item leftSection={<IconUser size={14} />}>
             Profile
           </Menu.Item>
+          {assignments.length > 1 && (
+            <Menu.Item leftSection={<IconSwitchVertical size={14} />} onClick={handleSwitchWorkspace}>
+              Switch Workspace
+            </Menu.Item>
+          )}
           <Menu.Divider />
           <Menu.Item
             color="red"

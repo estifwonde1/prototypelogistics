@@ -59,9 +59,9 @@ function HubDetailPage() {
     enabled: !!id,
   });
 
-  const { data: warehouses } = useQuery({
+  const { data: warehouses = [] } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses({}),
     enabled: isHubManager || isAdmin,
   });
 
@@ -586,3 +586,4 @@ function HubDetailPage() {
 }
 
 export default HubDetailPage;
+

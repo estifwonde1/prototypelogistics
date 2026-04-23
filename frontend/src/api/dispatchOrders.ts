@@ -40,8 +40,8 @@ export interface CreateDispatchOrderPayload {
   lines: DispatchOrderLine[];
 }
 
-export async function getDispatchOrders(): Promise<DispatchOrder[]> {
-  const response = await apiClient.get('/dispatch_orders');
+export async function getDispatchOrders(params?: { warehouse_id?: number }): Promise<DispatchOrder[]> {
+  const response = await apiClient.get('/dispatch_orders', { params });
   return Array.isArray(response.data) ? response.data : response.data.data || [];
 }
 

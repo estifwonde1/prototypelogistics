@@ -71,7 +71,7 @@ function CommodityFormPage() {
   // Commodity definitions created by admin — used for the dropdown
   const { data: commodityDefinitions = [], isLoading: definitionsLoading } = useQuery({
     queryKey: ["commodity-definitions"],
-    queryFn: getCommodityDefinitions,
+    queryFn: () => getCommodityDefinitions(),
   });
 
   // Actual batches created by officers — used for the list below
@@ -90,7 +90,7 @@ function CommodityFormPage() {
 
   const { data: units = [] } = useQuery({
     queryKey: ["reference-data", "units"],
-    queryFn: getUnitReferences,
+    queryFn: () => getUnitReferences(),
   });
 
   const { data: categories = [] } = useQuery({
@@ -675,3 +675,5 @@ function CommodityFormPage() {
 }
 
 export default CommodityFormPage;
+
+

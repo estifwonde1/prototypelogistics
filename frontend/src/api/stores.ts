@@ -2,8 +2,8 @@ import apiClient from './client';
 import type { Store } from '../types/store';
 import type { ApiResponse } from '../types/common';
 
-export const getStores = async (): Promise<Store[]> => {
-  const response = await apiClient.get<ApiResponse<Store[]>>('/stores');
+export const getStores = async (params?: { warehouse_id?: number }): Promise<Store[]> => {
+  const response = await apiClient.get<ApiResponse<Store[]>>('/stores', { params });
   return response.data.data;
 };
 

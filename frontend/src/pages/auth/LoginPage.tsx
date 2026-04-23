@@ -9,7 +9,6 @@ import { login } from '../../api/auth';
 import { getMyAssignments } from '../../api/me';
 import { useAuthStore } from '../../store/authStore';
 import { normalizeRoleSlug, getDefaultRouteForRole, type RoleSlug } from '../../utils/constants';
-import { OFFICER_ROLE_SLUGS } from '../../contracts/warehouse';
 import type { ApiError } from '../../types/common';
 
 function LoginPage() {
@@ -17,6 +16,7 @@ function LoginPage() {
   const queryClient = useQueryClient();
   const setAuth = useAuthStore((state) => state.setAuth);
   const setAssignments = useAuthStore((state) => state.setAssignments);
+  const setActiveAssignment = useAuthStore((state) => state.setActiveAssignment);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,28 +48,41 @@ function LoginPage() {
 
     try {
       const response = await login(values);
-      const roleSlug = normalizeRoleSlug(response.role ?? undefined);
-      if (!roleSlug) {
-        throw new Error('Your account does not have a supported warehouse role. Contact an administrator.');
-      }
+      const primaryRole = normalizeRoleSlug(response.role);
+      const isAdmin = primaryRole === 'admin' || primaryRole === 'superadmin';
+      
+      setAuth(response.token, response.user_id, primaryRole);
 
-      setAuth(response.token, response.user_id, roleSlug);
-
-      // Clear ALL cached query data so the new user gets fresh, role-scoped data
-      // (prevents a previous admin session's unscoped hub/warehouse data from leaking)
       queryClient.clear();
 
-      // Fetch assignments for officer roles so the dashboard can show scoped data
-      if (OFFICER_ROLE_SLUGS.includes(roleSlug)) {
-        try {
-          const assignments = await getMyAssignments();
-          setAssignments(assignments);
-        } catch {
-          // non-fatal — dashboard will still render with empty scope
-        }
+      // Fetch ALL assignments to determine role/facility scope
+      const assignments = await getMyAssignments();
+      setAssignments(assignments);
+
+      if (isAdmin) {
+        // Admins go to the default dashboard (usually /admin/users or global dashboard)
+        navigate(getDefaultRouteForRole(primaryRole));
+        return;
       }
 
-      navigate(getDefaultRouteForRole(roleSlug));
+      if (assignments.length === 0) {
+        throw new Error('Your account has not been assigned to a facility yet. Please contact your administrator.');
+      }
+
+      if (assignments.length === 1) {
+        // Auto-select single assignment
+        const assignment = assignments[0];
+        const roleSlug = normalizeRoleSlug(assignment.role_name);
+        if (!roleSlug) {
+          throw new Error('Your account does not have a supported warehouse role. Contact an administrator.');
+        }
+        setAuth(response.token, response.user_id, roleSlug);
+        setActiveAssignment(assignment);
+        navigate(getDefaultRouteForRole(roleSlug));
+      } else {
+        // Multiple assignments: let user choose
+        navigate('/select-role');
+      }
     } catch (err: unknown) {
       const errorMessage =
         (isAxiosError<ApiError>(err) ? err.response?.data?.error?.message : undefined) ||

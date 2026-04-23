@@ -151,10 +151,10 @@ export interface CreateReceiptOrderPayload {
   lines: ReceiptOrderLine[];
 }
 
-export async function getReceiptOrders(): Promise<ReceiptOrder[]> {
-  const response = await apiClient.get('/receipt_orders');
+export async function getReceiptOrders(params?: { warehouse_id?: number; hub_id?: number }): Promise<ReceiptOrder[]> {
+  const response = await apiClient.get('/receipt_orders', { params });
   const rows = Array.isArray(response.data) ? response.data : response.data.data || [];
-  return rows.map((row: any) =>
+  return rows.map((row: unknown) =>
     normalizeReceiptOrder(typeof row === 'object' && row !== null ? (row as Record<string, unknown>) : {})
   );
 }

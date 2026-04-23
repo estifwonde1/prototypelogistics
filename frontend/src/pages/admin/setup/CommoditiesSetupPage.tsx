@@ -54,7 +54,7 @@ export default function CommoditiesSetupPage() {
     refetch,
   } = useQuery({
     queryKey: ['commodity-definitions'],
-    queryFn: getCommodityDefinitions,
+    queryFn: () => getCommodityDefinitions(),
   });
 
   const { data: categories = [] } = useQuery({
@@ -417,3 +417,5 @@ export default function CommoditiesSetupPage() {
     </Stack>
   );
 }
+
+

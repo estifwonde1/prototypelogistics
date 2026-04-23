@@ -21,12 +21,14 @@ import {
   IconMapPin,
   IconAlertCircle,
 } from '@tabler/icons-react';
-import { getReceiptOrders } from '../../api/receiptOrders';
-import { getDispatchOrders } from '../../api/dispatchOrders';
+import { getReceiptOrders, type ReceiptOrder } from '../../api/receiptOrders';
+import { getDispatchOrders, type DispatchOrder } from '../../api/dispatchOrders';
 import { getHubs } from '../../api/hubs';
 import { getWarehouses } from '../../api/warehouses';
 import { getRoleLabel } from '../../contracts/warehouse';
 import { useOfficerScope } from '../../hooks/useOfficerScope';
+import type { Hub } from '../../types/hub';
+import type { Warehouse } from '../../types/warehouse';
 
 interface StatCardProps {
   title: string;
@@ -70,25 +72,33 @@ function OfficerDashboardPage() {
   const { roleSlug, scopeLabel, scopeDescription, isFullAccess } = useOfficerScope();
   const roleLabel = getRoleLabel(roleSlug ?? 'officer');
 
-  const { data: hubs, isLoading: hubsLoading } = useQuery({
+  const hubsQuery = useQuery({
     queryKey: ['hubs'],
-    queryFn: getHubs,
+    queryFn: () => getHubs(),
   });
+  const hubs = hubsQuery.data as Hub[] | undefined;
+  const hubsLoading = hubsQuery.isLoading;
 
-  const { data: warehouses, isLoading: warehousesLoading } = useQuery({
+  const warehousesQuery = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses({}),
   });
+  const warehouses = warehousesQuery.data as Warehouse[] | undefined;
+  const warehousesLoading = warehousesQuery.isLoading;
 
-  const { data: receiptOrders, isLoading: receiptOrdersLoading } = useQuery({
+  const receiptOrdersQuery = useQuery({
     queryKey: ['receipt_orders'],
-    queryFn: getReceiptOrders,
+    queryFn: () => getReceiptOrders({}),
   });
+  const receiptOrders = receiptOrdersQuery.data as ReceiptOrder[] | undefined;
+  const receiptOrdersLoading = receiptOrdersQuery.isLoading;
 
-  const { data: dispatchOrders, isLoading: dispatchOrdersLoading } = useQuery({
+  const dispatchOrdersQuery = useQuery({
     queryKey: ['dispatch_orders'],
-    queryFn: getDispatchOrders,
+    queryFn: () => getDispatchOrders({}),
   });
+  const dispatchOrders = dispatchOrdersQuery.data as DispatchOrder[] | undefined;
+  const dispatchOrdersLoading = dispatchOrdersQuery.isLoading;
 
   const receiptStats = {
     draft: Array.isArray(receiptOrders) ? receiptOrders.filter((o) => o.status === 'Draft').length : 0,
@@ -139,7 +149,7 @@ function OfficerDashboardPage() {
         <SimpleGrid cols={{ base: 1, sm: 2, md: showWarehouseBreakdown ? 4 : 2 }}>
           <StatCard
             title="Hubs"
-            value={hubs?.length ?? 0}
+            value={hubs ? hubs.length : 0}
             icon={<IconBuilding size={32} />}
             loading={hubsLoading}
             color="blue"
@@ -147,7 +157,7 @@ function OfficerDashboardPage() {
           {showWarehouseBreakdown && (
             <StatCard
               title="Warehouses"
-              value={warehouses?.length ?? 0}
+              value={warehouses ? warehouses.length : 0}
               icon={<IconBuildingWarehouse size={32} />}
               loading={warehousesLoading}
               color="violet"

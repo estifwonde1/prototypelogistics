@@ -53,15 +53,15 @@ function WarehouseDetailPage() {
     enabled: !!id,
   });
 
-  const { data: hubs } = useQuery({ queryKey: ['hubs'], queryFn: getHubs, enabled: canReadHubs });
-  const { data: stores } = useQuery({ queryKey: ['stores'], queryFn: getStores });
-  const { data: stockBalances } = useQuery({ queryKey: ['stockBalances'], queryFn: getStockBalances });
-  const { data: grns } = useQuery({ queryKey: ['grns'], queryFn: getGrns });
-  const { data: gins } = useQuery({ queryKey: ['gins'], queryFn: getGins });
-  const { data: inspections } = useQuery({ queryKey: ['inspections'], queryFn: getInspections });
+  const { data: hubs } = useQuery({ queryKey: ['hubs'], queryFn: () => getHubs(), enabled: canReadHubs });
+  const { data: stores = [] } = useQuery({ queryKey: ['stores'], queryFn: () => getStores() });
+  const { data: stockBalances = [] } = useQuery({ queryKey: ['stockBalances'], queryFn: () => getStockBalances() });
+  const { data: grns } = useQuery({ queryKey: ['grns'], queryFn: () => getGrns() });
+  const { data: gins } = useQuery({ queryKey: ['gins'], queryFn: () => getGins() });
+  const { data: inspections } = useQuery({ queryKey: ['inspections'], queryFn: () => getInspections() });
   const { data: facilityOptions } = useQuery({
     queryKey: ['reference-data', 'facility-options'],
-    queryFn: getFacilityOptions,
+    queryFn: () => getFacilityOptions(),
   });
 
   const deleteMutation = useMutation({

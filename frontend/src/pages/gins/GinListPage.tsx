@@ -28,12 +28,12 @@ function GinListPage() {
 
   const { data: gins, isLoading, error, refetch } = useQuery({
     queryKey: ['gins'],
-    queryFn: getGins,
+    queryFn: () => getGins(),
   });
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses({}),
   });
 
   const filteredGins = gins?.filter((gin) => {
@@ -174,3 +174,5 @@ function GinListPage() {
 }
 
 export default GinListPage;
+
+

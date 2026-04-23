@@ -68,17 +68,17 @@ function GinCreatePage() {
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses({}),
   });
 
   const { data: stores } = useQuery({
     queryKey: ['stores'],
-    queryFn: getStores,
+    queryFn: () => getStores({}),
   });
 
   const { data: stacks = [] } = useQuery({
     queryKey: ['stacks'],
-    queryFn: getStacks,
+    queryFn: () => getStacks(),
   });
 
   const { data: dispatches = [] } = useQuery({
@@ -93,7 +93,7 @@ function GinCreatePage() {
 
   const { data: stockBalances = [] } = useQuery({
     queryKey: ['stockBalances'],
-    queryFn: getStockBalances,
+    queryFn: () => getStockBalances({}),
     refetchOnMount: 'always',
   });
 
@@ -662,3 +662,6 @@ function GinCreatePage() {
 }
 
 export default GinCreatePage;
+
+
+

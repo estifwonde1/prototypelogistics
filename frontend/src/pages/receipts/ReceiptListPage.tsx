@@ -7,7 +7,7 @@ import { ErrorState } from '../../components/common/ErrorState';
 export default function ReceiptListPage() {
   const { data: receipts, isLoading, error, refetch } = useQuery({
     queryKey: ['receipts'],
-    queryFn: getReceipts,
+    queryFn: () => getReceipts(),
   });
 
   if (isLoading) return <LoadingState message="Loading receipts..." />;

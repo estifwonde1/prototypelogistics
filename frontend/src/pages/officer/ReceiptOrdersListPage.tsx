@@ -78,14 +78,14 @@ function ReceiptOrdersListPage() {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [warehouseFilter, setWarehouseFilter] = useState<string | null>(null);
 
-  const { data: orders, isLoading, error, refetch } = useQuery({
+  const { data: orders = [], isLoading, error, refetch } = useQuery({
     queryKey: ['receipt_orders'],
-    queryFn: getReceiptOrders,
+    queryFn: () => getReceiptOrders(),
   });
 
-  const { data: warehouses } = useQuery({
+  const { data: warehouses = [] } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses(),
   });
 
   const filteredOrders = useMemo(() => {

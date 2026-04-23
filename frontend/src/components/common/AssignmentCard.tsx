@@ -2,7 +2,20 @@ import { Card, Group, Stack, Text, Badge, Button, Avatar } from '@mantine/core';
 import { IconCheck, IconClock, IconX } from '@tabler/icons-react';
 
 interface AssignmentCardProps {
-  assignment: any;
+  assignment: {
+    id: number;
+    status: string;
+    warehouse_name?: string;
+    hub_name?: string;
+    role?: string;
+    assigned_at?: string;
+    created_at?: string;
+    assigned_to_name?: string;
+    assigned_by_name?: string;
+    notes?: string;
+    quantity?: number | string;
+    hub_warehouses_count?: number;
+  };
   onAccept?: () => void;
   onReject?: () => void;
   isLoading?: boolean;

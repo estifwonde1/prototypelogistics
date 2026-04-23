@@ -123,17 +123,17 @@ function GrnCreatePage() {
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses({}),
   });
 
   const { data: stores = [] } = useQuery({
     queryKey: ['stores'],
-    queryFn: getStores,
+    queryFn: () => getStores({}),
   });
 
   const { data: stacks = [] } = useQuery({
     queryKey: ['stacks'],
-    queryFn: getStacks,
+    queryFn: () => getStacks(),
   });
 
   const { data: receipts = [] } = useQuery({
@@ -148,12 +148,12 @@ function GrnCreatePage() {
 
   const { data: grns = [] } = useQuery({
     queryKey: ['grns'],
-    queryFn: getGrns,
+    queryFn: () => getGrns(),
   });
 
   const { data: receiptOrders = [] } = useQuery({
     queryKey: ['receipt_orders'],
-    queryFn: getReceiptOrders,
+    queryFn: () => getReceiptOrders({}),
   });
 
   const receiptOrderIdParam = useMemo(() => {
@@ -194,12 +194,12 @@ function GrnCreatePage() {
 
   const { data: units = [] } = useQuery({
     queryKey: ['reference-data', 'units'],
-    queryFn: getUnitReferences,
+    queryFn: () => getUnitReferences(),
   });
 
   useQuery({
     queryKey: ['reference-data', 'uom_conversions'],
-    queryFn: getUomConversions,
+    queryFn: () => getUomConversions(),
   });
 
   const warehouseOptions =
@@ -923,3 +923,7 @@ function GrnCreatePage() {
 }
 
 export default GrnCreatePage;
+
+
+
+

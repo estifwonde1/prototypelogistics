@@ -43,6 +43,10 @@ import type { ReceiptOrder } from '../../api/receiptOrders';
 import { usePermission } from '../../hooks/usePermission';
 import { useAuthStore } from '../../store/authStore';
 import { OFFICER_ROLE_SLUGS, normalizeRoleSlug } from '../../contracts/warehouse';
+import type { Warehouse } from '../../types/warehouse';
+import type { Store } from '../../types/store';
+import type { UnitReference, UomConversion } from '../../types/referenceData';
+import type { WorkflowEvent } from '../../types/assignment';
 
 function formatReceiptDate(order: ReceiptOrder): string {
   const raw = order.received_date || order.expected_delivery_date;
@@ -121,15 +125,22 @@ function ReceiptOrderDetailPage() {
   const [reservedQuantity, setReservedQuantity] = useState<number>(0);
   const [spaceReservationNotes, setSpaceReservationNotes] = useState('');
 
-  const { data: order, isLoading, error, refetch } = useQuery({
+  const orderQuery = useQuery({
     queryKey: ['receipt_orders', id],
     queryFn: () => getReceiptOrder(Number(id)),
   });
+  const order = orderQuery.data as ReceiptOrder | undefined;
+  const isLoading = orderQuery.isLoading;
+  const error = orderQuery.error;
+  const refetch = orderQuery.refetch;
+
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const userWarehouseId = activeAssignment?.warehouse?.id;
 
   const warehouseIdForStores = useMemo(() => {
-    const wid = order?.warehouse_id ?? order?.destination_warehouse_id;
+    const wid = order?.warehouse_id ?? order?.destination_warehouse_id ?? userWarehouseId;
     return wid != null ? Number(wid) : null;
-  }, [order]);
+  }, [order, userWarehouseId]);
 
   const reservationTotals = useMemo(() => {
     if (!order) return { totalOrdered: 0, totalReserved: 0, remaining: 0 };
@@ -167,58 +178,58 @@ function ReceiptOrderDetailPage() {
     return ['confirmed', 'assigned', 'reserved', 'in_progress'].includes(status);
   }, [order, isOfficerRole]);
 
-  const {
-    data: stores = [],
-    isLoading: storesLoading,
-    isError: storesError,
-  } = useQuery({
-    queryKey: ['stores'],
-    queryFn: () => getStores(),
+  const storesQuery = useQuery({
+    queryKey: ['stores', { warehouse_id: warehouseIdForStores }],
+    queryFn: () => getStores({ warehouse_id: warehouseIdForStores ?? undefined }),
     enabled: showSpaceReservationForm && warehouseIdForStores != null && canReserveSpace,
   });
+  const stores = (storesQuery.data as Store[]) || [];
+  const storesLoading = storesQuery.isLoading;
+  const storesError = storesQuery.isError;
 
-  const { data: allWarehouses = [] } = useQuery({
+  const allWarehousesQuery = useQuery({
     queryKey: ['warehouses'],
-    queryFn: () => getWarehouses(),
+    queryFn: () => getWarehouses({}),
     enabled: showWarehouseAssignmentModal,
   });
+  const allWarehouses = (allWarehousesQuery.data as Warehouse[]) || [];
 
-  const { data: allStores = [] } = useQuery({
+  const allStoresQuery = useQuery({
     queryKey: ['stores'],
-    queryFn: () => getStores(),
+    queryFn: () => getStores({}),
     enabled: showWarehouseAssignmentModal,
   });
+  const allStores = (allStoresQuery.data as Store[]) || [];
 
-  const { data: units = [] } = useQuery({
+  const unitsQuery = useQuery({
     queryKey: ['reference-data', 'units'],
     queryFn: () => getUnitReferences(),
     enabled: showWarehouseAssignmentModal,
   });
+  const units = (unitsQuery.data as UnitReference[]) || [];
 
-  const { data: uomConversions = [] } = useQuery({
+  const uomConversionsQuery = useQuery({
     queryKey: ['reference-data', 'uom_conversions'],
     queryFn: () => getUomConversions(),
     enabled: showWarehouseAssignmentModal,
   });
+  const uomConversions = (uomConversionsQuery.data as UomConversion[]) || [];
 
   const storeSelectData = useMemo(() => {
     if (!warehouseIdForStores) return [];
     return stores
-      .filter((s) => Number(s.warehouse_id) === warehouseIdForStores)
+      .filter((s) => s.warehouse_id != null && Number(s.warehouse_id) === warehouseIdForStores)
       .map((s) => ({ value: String(s.id), label: s.name }));
   }, [stores, warehouseIdForStores]);
 
-  const { data: workflowEvents = [] } = useQuery({
+  const workflowEventsQuery = useQuery({
     queryKey: ['receipt_orders', id, 'workflow'],
     queryFn: () => getReceiptOrderWorkflow(Number(id)),
     enabled: !!order && String(order.status).toLowerCase() !== 'draft',
   });
+  const workflowEvents = (workflowEventsQuery.data as WorkflowEvent[]) || [];
 
-  const {
-    data: assignableManagersPayload,
-    isLoading: assignableManagersLoading,
-    isError: assignableManagersError,
-  } = useQuery({
+  const assignableManagersQuery = useQuery({
     queryKey: ['receipt_orders', id, 'assignable_managers', roleSlug],
     queryFn: () => getReceiptOrderAssignableManagers(Number(id), isOfficerRole),
     enabled:
@@ -226,31 +237,34 @@ function ReceiptOrderDetailPage() {
       showAssignmentForm &&
       ['confirmed', 'assigned', 'reserved', 'in_progress'].includes(String(order.status).toLowerCase()),
   });
+  const assignableManagersPayload = assignableManagersQuery.data as any;
+  const assignableManagersLoading = assignableManagersQuery.isLoading;
+  const assignableManagersError = assignableManagersQuery.isError;
 
   const managerSelectData = useMemo(() => {
     const rows = assignableManagersPayload?.assignable_managers ?? [];
     const seen = new Set<string>();
     return rows
-      .filter((m) => {
+      .filter((m: any) => {
         const key = String(m.id);
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
       })
-      .map((m) => ({
+      .map((m: any) => ({
         value: String(m.id),
         label: `${m.name}${m.role === 'Storekeeper' && m.store_name ? ` (${m.store_name})` : ''}`,
       }));
   }, [assignableManagersPayload]);
 
   const assignmentStoreSelectData = useMemo(() => {
-    const rows = assignableManagersPayload?.stores ?? [];
-    return rows.map((s) => ({ value: String(s.id), label: `${s.name} (${s.code})` }));
+    const rows = (assignableManagersPayload?.stores as any[]) ?? [];
+    return rows.map((s: any) => ({ value: String(s.id), label: `${s.name} (${s.code})` }));
   }, [assignableManagersPayload]);
 
   const selectedManager = useMemo(() => {
-    const rows = assignableManagersPayload?.assignable_managers ?? [];
-    return rows.find((m) => m.id === Number(selectedUserId));
+    const rows = (assignableManagersPayload?.assignable_managers as any[]) ?? [];
+    return rows.find((m: any) => m.id === Number(selectedUserId));
   }, [assignableManagersPayload, selectedUserId]);
 
   const confirmMutation = useMutation({
@@ -823,12 +837,12 @@ function ReceiptOrderDetailPage() {
                         value={selectedAssignmentStoreId}
                         onChange={(val) => {
                           setSelectedAssignmentStoreId(val);
-                          const store = assignableManagersPayload?.stores?.find(
-                            (s) => s.id === Number(val)
+                          const store = (assignableManagersPayload?.stores as any[])?.find(
+                            (s: any) => s.id === Number(val)
                           );
                           if (store) {
-                            const storekeeper = assignableManagersPayload?.assignable_managers?.find(
-                              (m) => m.role === 'Storekeeper' && m.store_id === store.id
+                            const storekeeper = (assignableManagersPayload?.assignable_managers as any[])?.find(
+                              (m: any) => m.role === 'Storekeeper' && m.store_id === store.id
                             );
                             if (storekeeper) {
                               setSelectedUserId(String(storekeeper.id));

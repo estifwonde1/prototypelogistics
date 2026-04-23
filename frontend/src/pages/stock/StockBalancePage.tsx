@@ -31,20 +31,20 @@ function StockBalancePage() {
   const [showExpiringSoon, setShowExpiringSoon] = useState(false);
   const [lotFilter, setLotFilter] = useState<string | null>(null);
 
-  const { data: stockBalances, isLoading, error, refetch } = useQuery({
+  const { data: stockBalances = [], isLoading, error, refetch } = useQuery({
     queryKey: ['stockBalances'],
-    queryFn: getStockBalances,
+    queryFn: () => getStockBalances(),
     refetchOnMount: 'always',
   });
 
-  const { data: warehouses } = useQuery({
+  const { data: warehouses = [] } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses(),
   });
 
   const { data: inventoryLots = [] } = useQuery({
     queryKey: ['reference-data', 'inventory_lots'],
-    queryFn: getInventoryLots,
+    queryFn: () => getInventoryLots(),
   });
 
   // Calculate summary statistics

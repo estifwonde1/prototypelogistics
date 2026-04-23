@@ -80,24 +80,24 @@ function InspectionCreatePage() {
     },
   ]);
 
-  const { data: warehouses } = useQuery({
+  const { data: warehouses = [] } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses(),
   });
 
   const { data: receipts = [] } = useQuery({
     queryKey: ['receipts'],
-    queryFn: getReceipts,
+    queryFn: () => getReceipts(),
   });
 
   const { data: waybills = [] } = useQuery({
     queryKey: ['waybills'],
-    queryFn: getWaybills,
+    queryFn: () => getWaybills(),
   });
 
   const { data: grns = [] } = useQuery({
     queryKey: ['grns'],
-    queryFn: getGrns,
+    queryFn: () => getGrns(),
   });
 
   const createMutation = useMutation({
@@ -493,3 +493,5 @@ function InspectionCreatePage() {
 }
 
 export default InspectionCreatePage;
+
+

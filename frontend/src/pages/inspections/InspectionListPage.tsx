@@ -28,12 +28,12 @@ function InspectionListPage() {
 
   const { data: inspections, isLoading, error, refetch } = useQuery({
     queryKey: ['inspections'],
-    queryFn: getInspections,
+    queryFn: () => getInspections(),
   });
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses({}),
   });
 
   const filteredInspections = inspections?.filter((inspection) => {
@@ -174,3 +174,5 @@ function InspectionListPage() {
 }
 
 export default InspectionListPage;
+
+

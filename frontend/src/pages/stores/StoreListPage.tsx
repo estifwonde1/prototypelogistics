@@ -33,14 +33,14 @@ function StoreListPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [storeToDelete, setStoreToDelete] = useState<number | null>(null);
 
-  const { data: stores, isLoading, error, refetch } = useQuery({
+  const { data: stores = [], isLoading, error, refetch } = useQuery({
     queryKey: ['stores'],
-    queryFn: getStores,
+    queryFn: () => getStores(),
   });
 
-  const { data: warehouses } = useQuery({
+  const { data: warehouses = [] } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses(),
   });
 
   const deleteMutation = useMutation({

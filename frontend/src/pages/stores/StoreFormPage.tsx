@@ -38,9 +38,9 @@ function StoreFormPage() {
     enabled: isEdit,
   });
 
-  const { data: warehouses } = useQuery({
+  const { data: warehouses = [] } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses(),
   });
 
   const form = useForm({

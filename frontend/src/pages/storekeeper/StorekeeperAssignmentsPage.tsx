@@ -69,7 +69,7 @@ export default function StorekeeperAssignmentsPage() {
 
   const { data: assignments = [], isLoading, error } = useQuery({
     queryKey: ['storekeeper_assignments'],
-    queryFn: getStorekeeperAssignments,
+    queryFn: () => getStorekeeperAssignments(),
   });
 
   const acceptMutation = useMutation({

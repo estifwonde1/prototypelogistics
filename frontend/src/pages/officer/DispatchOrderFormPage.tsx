@@ -60,12 +60,12 @@ function DispatchOrderFormPage() {
 
   const { data: warehouses } = useQuery({
     queryKey: ["warehouses"],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses({}),
   });
 
   const { data: hubs } = useQuery({
     queryKey: ["hubs"],
-    queryFn: getHubs,
+    queryFn: () => getHubs(),
   });
 
   const { data: commodities = [] } = useQuery({
@@ -75,12 +75,12 @@ function DispatchOrderFormPage() {
 
   const { data: units = [] } = useQuery({
     queryKey: ["reference-data", "units"],
-    queryFn: getUnitReferences,
+    queryFn: () => getUnitReferences(),
   });
 
   const { data: stockBalances = [] } = useQuery({
     queryKey: ["stock_balances"],
-    queryFn: getStockBalances,
+    queryFn: () => getStockBalances({}),
   });
 
   const { data: existingOrder } = useQuery({
@@ -576,3 +576,5 @@ function DispatchOrderFormPage() {
 }
 
 export default DispatchOrderFormPage;
+
+

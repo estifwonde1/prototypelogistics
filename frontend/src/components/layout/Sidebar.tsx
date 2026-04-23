@@ -21,7 +21,6 @@ import {
 } from "@tabler/icons-react";
 import { useAuthStore } from "../../store/authStore";
 import { usePermission } from "../../hooks/usePermission";
-import { useOfficerScope } from "../../hooks/useOfficerScope";
 import {
   OFFICER_ROLE_SLUGS,
   type Resource,
@@ -54,7 +53,15 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
   const isOfficerRole = roleSlug
     ? OFFICER_ROLE_SLUGS.includes(roleSlug)
     : false;
-  const { scopeLabel, isFullAccess } = useOfficerScope();
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  
+  const isFullAccess = roleSlug === 'federal_officer' || roleSlug === 'officer';
+
+  const currentScopeLabel = activeAssignment?.hub?.name || 
+                           activeAssignment?.warehouse?.name || 
+                           activeAssignment?.store?.name || 
+                           activeAssignment?.location?.name ||
+                           (isFullAccess ? 'System-wide' : 'No facility assigned');
 
   const adminMenus: NavGroup[] = [
     {
@@ -202,6 +209,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
           label: "Hub Management",
           items: [
             {
+              label: "Dashboard",
+              icon: <IconChartBar size={20} />,
+              path: "/hub/dashboard",
+              resource: "hubs",
+            },
+            {
               label: "Hubs",
               icon: <IconBuilding size={20} />,
               path: "/hubs",
@@ -289,6 +302,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
           label: "Warehouse Management",
           items: [
             {
+              label: "Dashboard",
+              icon: <IconChartBar size={20} />,
+              path: "/warehouse/dashboard",
+              resource: "warehouses",
+            },
+            {
               label: "Warehouses",
               icon: <IconBuildingWarehouse size={20} />,
               path: "/warehouses",
@@ -369,6 +388,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
         {
           label: "Store Management",
           items: [
+            {
+              label: "Dashboard",
+              icon: <IconChartBar size={20} />,
+              path: "/storekeeper/dashboard",
+              resource: "stores",
+            },
             {
               label: "Stores",
               icon: <IconBox size={20} />,
@@ -543,7 +568,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
     }
 
     return [];
-  }, [isAdmin, role, isOfficerRole]);
+  }, [isAdmin, role, isOfficerRole, isFullAccess]);
 
   const filterGroupItems = (group: NavGroup) => ({
     ...group,
@@ -592,22 +617,89 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
             </div>
           ))}
 
-      {!isAdmin && isOfficerRole && (
+      {!isAdmin && (
         <div style={{ padding: "4px 8px" }}>
           <Badge
             leftSection={<IconMapPin size={12} />}
-            color={isFullAccess ? "green" : "blue"}
+            color={!activeAssignment ? "green" : "blue"}
             variant="light"
             size="sm"
             fullWidth
             style={{ justifyContent: "flex-start" }}
           >
             <Text size="xs" truncate>
-              {isFullAccess ? "System-wide" : scopeLabel}
+              {currentScopeLabel}
             </Text>
           </Badge>
         </div>
       )}
+
+      {isAdmin &&
+        adminMenus.map((group) => (
+          <div key={group.label}>
+            <MantineNavLink
+              label={group.label}
+              childrenOffset={0}
+              defaultOpened
+              style={{
+                fontWeight: 600,
+                fontSize: "0.875rem",
+                color: "var(--mantine-color-dimmed)",
+              }}
+            >
+              {group.items.map((item) => {
+                const isActive = location.pathname.startsWith(item.path);
+                return (
+                  <MantineNavLink
+                    key={item.path}
+                    component={NavLink}
+                    to={item.path}
+                    label={item.label}
+                    leftSection={item.icon}
+                    active={isActive}
+                    variant="subtle"
+                    onClick={onLinkClick}
+                  />
+                );
+              })}
+            </MantineNavLink>
+          </div>
+        ))}
+
+      {isSuperAdmin &&
+        superAdminMenus
+          .map(filterGroupItems)
+          .filter((group) => group.items.length > 0)
+          .map((group) => (
+            <div key={group.label}>
+              <MantineNavLink
+                label={group.label}
+                childrenOffset={0}
+                defaultOpened
+                style={{
+                  fontWeight: 600,
+                  fontSize: "0.875rem",
+                  color: "var(--mantine-color-dimmed)",
+                }}
+              >
+                {group.items.map((item) => {
+                  const isActive = location.pathname.startsWith(item.path);
+                  return (
+                    <MantineNavLink
+                      key={item.path}
+                      component={NavLink}
+                      to={item.path}
+                      label={item.label}
+                      leftSection={item.icon}
+                      active={isActive}
+                      variant="subtle"
+                      onClick={onLinkClick}
+                    />
+                  );
+                })}
+              </MantineNavLink>
+            </div>
+          ))}
 
       {!isAdmin &&
         roleMenus

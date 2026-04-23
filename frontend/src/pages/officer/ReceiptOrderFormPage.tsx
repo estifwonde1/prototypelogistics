@@ -87,22 +87,22 @@ function ReceiptOrderFormPage() {
   // ── Data queries ──
   const { data: commodities = [] } = useQuery({
     queryKey: ["reference-data", "commodities"],
-    queryFn: getCommodityReferences,
+    queryFn: () => getCommodityReferences(),
   });
 
   const { data: units = [] } = useQuery({
     queryKey: ["reference-data", "units"],
-    queryFn: getUnitReferences,
+    queryFn: () => getUnitReferences(),
   });
 
-  const { data: warehouses } = useQuery({
+  const { data: warehouses = [] } = useQuery({
     queryKey: ["warehouses"],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses(),
   });
 
   const { data: hubs } = useQuery({
     queryKey: ["hubs"],
-    queryFn: getHubs,
+    queryFn: () => getHubs(),
   });
 
   const {

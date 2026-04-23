@@ -57,22 +57,22 @@ function WaybillCreatePage() {
 
   const { data: warehouses = [] } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses(),
   });
 
   const { data: transporters = [] } = useQuery({
     queryKey: ['reference_data', 'transporters'],
-    queryFn: getTransporterReferences,
+    queryFn: () => getTransporterReferences(),
   });
 
   const { data: commodities = [] } = useQuery({
     queryKey: ['reference-data', 'commodities'],
-    queryFn: getCommodityReferences,
+    queryFn: () => getCommodityReferences(),
   });
 
   const { data: units = [] } = useQuery({
     queryKey: ['reference-data', 'units'],
-    queryFn: getUnitReferences,
+    queryFn: () => getUnitReferences(),
   });
 
   const transporterOptions = transporters.map((t) => ({

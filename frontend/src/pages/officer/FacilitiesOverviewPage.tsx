@@ -295,9 +295,9 @@ function StandaloneRow({ warehouse, stores }: { warehouse: Warehouse; stores: St
 function FacilitiesOverviewPage() {
   const queryClient = useQueryClient();
 
-  const { data: hubs = [],       isLoading: l1, error: e1, isFetching: f1 } = useQuery({ queryKey: ['hubs'],       queryFn: getHubs });
-  const { data: warehouses = [], isLoading: l2, error: e2, isFetching: f2 } = useQuery({ queryKey: ['warehouses'], queryFn: getWarehouses });
-  const { data: stores = [],     isLoading: l3, error: e3, isFetching: f3 } = useQuery({ queryKey: ['stores'],     queryFn: getStores });
+  const { data: hubs = [],       isLoading: l1, error: e1, isFetching: f1 } = useQuery({ queryKey: ['hubs'],       queryFn: () => getHubs() });
+  const { data: warehouses = [], isLoading: l2, error: e2, isFetching: f2 } = useQuery({ queryKey: ['warehouses'], queryFn: () => getWarehouses({}) });
+  const { data: stores = [],     isLoading: l3, error: e3, isFetching: f3 } = useQuery({ queryKey: ['stores'],     queryFn: () => getStores({}) });
 
   const isRefreshing = f1 || f2 || f3;
 

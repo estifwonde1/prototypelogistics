@@ -89,9 +89,9 @@ function StackFormPage() {
     enabled: isEdit,
   });
 
-  const { data: stores } = useQuery({
+  const { data: stores = [] } = useQuery({
     queryKey: ['stores'],
-    queryFn: getStores,
+    queryFn: () => getStores(),
   });
 
   const form = useForm({

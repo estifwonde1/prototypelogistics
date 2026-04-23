@@ -40,14 +40,14 @@ function WarehouseListPage() {
   const canDelete = can('warehouses', 'delete');
   const canReadHubs = can('hubs', 'read');
 
-  const { data: warehouses, isLoading, error, refetch } = useQuery({
+  const { data: warehouses = [], isLoading, error, refetch } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses(),
   });
 
   const { data: hubs } = useQuery({
     queryKey: ['hubs'],
-    queryFn: getHubs,
+    queryFn: () => getHubs(),
     enabled: canReadHubs,
   });
 
