@@ -4,16 +4,37 @@ module Cats
       skip_after_action :verify_authorized
 
       def index
-        assignments = ReceiptOrderAssignment
+        current_ids = current_store_ids
+
+        receipt_assignments = ReceiptOrderAssignment
           .where(assigned_to_id: current_user.id)
-          .or(ReceiptOrderAssignment.where(store_id: current_store_ids))
+          .or(ReceiptOrderAssignment.where(store_id: current_ids))
           .includes(:receipt_order, :store, :warehouse, :hub, :assigned_to, :assigned_by)
           .order(created_at: :desc)
 
+        dispatch_assignments = DispatchOrderAssignment
+          .where(assigned_to_id: current_user.id)
+          .or(DispatchOrderAssignment.where(store_id: current_ids))
+          .includes(:dispatch_order, :store, :warehouse, :hub, :assigned_to, :assigned_by)
+          .order(created_at: :desc)
+
+        activity = WorkflowEvent
+          .where(actor_id: current_user.id)
+          .limit(10)
+          .order(occurred_at: :desc)
+
         render_success(
-          assignments: ActiveModelSerializers::SerializableResource.new(
-            assignments,
+          receipt_assignments: ActiveModelSerializers::SerializableResource.new(
+            receipt_assignments,
             each_serializer: StorekeeperAssignmentSerializer
+          ).as_json,
+          dispatch_assignments: ActiveModelSerializers::SerializableResource.new(
+            dispatch_assignments,
+            each_serializer: DispatchOrderAssignmentSerializer
+          ).as_json,
+          activity: ActiveModelSerializers::SerializableResource.new(
+            activity,
+            each_serializer: WorkflowEventSerializer
           ).as_json
         )
       end

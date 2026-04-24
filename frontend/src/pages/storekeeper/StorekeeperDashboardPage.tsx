@@ -34,10 +34,9 @@ import apiClient from '../../api/client';
 import { getStockBalances } from '../../api/stockBalances';
 
 // Local API functions for dashboard specific summaries
-async function getStorekeeperAssignments() {
+async function getStorekeeperDashboardData() {
   const response = await apiClient.get('/storekeeper_assignments');
-  const data = response.data.data || response.data;
-  return Array.isArray(data.assignments) ? data.assignments : (Array.isArray(data) ? data : []);
+  return response.data.data || response.data;
 }
 
 export default function StorekeeperDashboardPage() {
@@ -47,33 +46,41 @@ export default function StorekeeperDashboardPage() {
   const storeName = activeAssignment?.store?.name ?? 'Unknown Store';
   const roleLabel = getRoleLabel(activeAssignment?.role_name);
 
-  // 1. Pending Receipt Assignments (Authorizations to confirm)
-  const { data: assignments, isLoading: assignmentsLoading } = useQuery({
-    queryKey: ['storekeeper_assignments'],
-    queryFn: () => getStorekeeperAssignments(),
+  const { data, isLoading } = useQuery({
+    queryKey: ['storekeeper_dashboard'],
+    queryFn: () => getStorekeeperDashboardData(),
   });
 
-  // 2. Inventory scoped to store
+  // 1. Inventory scoped to store
   const { data: stockBalances, isLoading: stockLoading } = useQuery({
     queryKey: ['stock_balances', { store_id: storeId }],
     queryFn: () => getStockBalances({ store_id: storeId }),
     enabled: !!storeId,
   });
 
-  const pendingAssignments = assignments?.filter((a: any) => 
+  const receiptAssignments = data?.receipt_assignments ?? [];
+  const dispatchAssignments = data?.dispatch_assignments ?? [];
+  const activity = data?.activity ?? [];
+
+  const pendingReceipts = receiptAssignments.filter((a: any) => 
     ['pending', 'assigned'].includes(a.status.toLowerCase()) && 
     (storeId ? a.store_id === storeId : true)
-  ) ?? [];
+  );
 
-  const inProgressAssignments = assignments?.filter((a: any) => 
+  const inProgressReceipts = receiptAssignments.filter((a: any) => 
     ['accepted', 'in_progress'].includes(a.status.toLowerCase()) &&
     (storeId ? a.store_id === storeId : true)
-  ) ?? [];
+  );
+
+  const pendingDispatches = dispatchAssignments.filter((a: any) => 
+    ['pending', 'assigned'].includes(a.status.toLowerCase()) &&
+    (storeId ? a.store_id === storeId : true)
+  );
 
   return (
     <Stack gap="xl">
       <Box pos="relative">
-        <LoadingOverlay visible={assignmentsLoading || stockLoading} overlayProps={{ blur: 2 }} />
+        <LoadingOverlay visible={isLoading || stockLoading} overlayProps={{ blur: 2 }} />
         
         {/* Header */}
         <Group justify="space-between" align="flex-start">
@@ -88,9 +95,23 @@ export default function StorekeeperDashboardPage() {
               Manage your daily tasks, incoming trucks, and store inventory.
             </Text>
           </div>
-          <ActionIcon variant="light" color="blue" size="xl" radius="md">
-            <IconBell size={24} />
-          </ActionIcon>
+          <Box pos="relative">
+            <ActionIcon variant="light" color="blue" size="xl" radius="md">
+              <IconBell size={24} />
+            </ActionIcon>
+            {pendingReceipts.length + pendingDispatches.length > 0 && (
+              <Badge 
+                size="xs" 
+                circle 
+                color="red" 
+                pos="absolute" 
+                top={-5} 
+                right={-5}
+              >
+                {pendingReceipts.length + pendingDispatches.length}
+              </Badge>
+            )}
+          </Box>
         </Group>
 
         {/* Quick Search for Driver Arrival */}
@@ -118,9 +139,9 @@ export default function StorekeeperDashboardPage() {
               <ThemeIcon variant="light" color="yellow" size="xl" radius="md">
                 <IconClipboardCheck size={28} />
               </ThemeIcon>
-              <Badge color="yellow">{pendingAssignments.length} Pending</Badge>
+              <Badge color="yellow">{pendingReceipts.length} New</Badge>
             </Group>
-            <Text fw={700} size="lg" mt="md">New Receipts</Text>
+            <Text fw={700} size="lg" mt="md">Pending Receipts</Text>
             <Text size="xs" c="dimmed" mt={4}>Incoming orders awaiting your confirmation.</Text>
             <Button 
               variant="light" 
@@ -139,10 +160,10 @@ export default function StorekeeperDashboardPage() {
               <ThemeIcon variant="light" color="cyan" size="xl" radius="md">
                 <IconStack size={28} />
               </ThemeIcon>
-              <Badge color="cyan">{inProgressAssignments.length} In Progress</Badge>
+              <Badge color="cyan">{inProgressReceipts.length} Active</Badge>
             </Group>
-            <Text fw={700} size="lg" mt="md">Stacking Layout</Text>
-            <Text size="xs" c="dimmed" mt={4}>Active stacking tasks and space management.</Text>
+            <Text fw={700} size="lg" mt="md">In-Progress Receipts</Text>
+            <Text size="xs" c="dimmed" mt={4}>Orders currently being received and stacked.</Text>
             <Button 
               variant="light" 
               color="cyan" 
@@ -160,7 +181,7 @@ export default function StorekeeperDashboardPage() {
               <ThemeIcon variant="light" color="teal" size="xl" radius="md">
                 <IconTruckDelivery size={28} />
               </ThemeIcon>
-              <Badge color="teal">0 Ready</Badge>
+              <Badge color="teal">{pendingDispatches.length} New</Badge>
             </Group>
             <Text fw={700} size="lg" mt="md">Pending Dispatches</Text>
             <Text size="xs" c="dimmed" mt={4}>Outgoing shipments authorized for pickup.</Text>
@@ -170,14 +191,14 @@ export default function StorekeeperDashboardPage() {
               fullWidth 
               mt="lg" 
               rightSection={<IconArrowRight size={14} />}
-              disabled
+              onClick={() => navigate('/storekeeper/assignments')}
             >
-              View Dispatches
+              Confirm Dispatches
             </Button>
           </Card>
         </SimpleGrid>
 
-        <Divider my="xl" label="Store Inventory Summary" labelPosition="center" />
+        <Divider my="xl" label="Store Overview" labelPosition="center" />
 
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xl">
           {/* Recent Stock Status */}
@@ -197,7 +218,7 @@ export default function StorekeeperDashboardPage() {
                   </ThemeIcon>
                 }
               >
-                {stockBalances.slice(0, 5).map((stock) => (
+                {stockBalances.slice(0, 5).map((stock: any) => (
                   <List.Item key={stock.id}>
                     <Group justify="space-between" style={{ width: '100%' }}>
                       <Text size="sm" fw={500}>{stock.commodity_name}</Text>
@@ -211,14 +232,28 @@ export default function StorekeeperDashboardPage() {
             )}
           </Paper>
 
-          {/* Recent Work Activity Placeholder */}
+          {/* Recent Work Activity */}
           <Paper withBorder p="md" radius="md">
             <Title order={4} mb="md">Recent Activity</Title>
             <Stack gap="sm">
-              <Group gap="sm">
-                <IconClock size={16} color="gray" />
-                <Text size="sm">No recent activity found.</Text>
-              </Group>
+              {activity.length > 0 ? activity.map((event: any) => (
+                <Group key={event.id} gap="sm" wrap="nowrap" align="flex-start">
+                  <ThemeIcon variant="light" color="gray" size="sm">
+                    <IconClock size={12} />
+                  </ThemeIcon>
+                  <Box>
+                    <Text size="sm" fw={500}>{event.event_type.replace(/_/g, ' ')}</Text>
+                    <Text size="xs" c="dimmed">
+                      {event.actor_name} • {new Date(event.occurred_at || event.created_at).toLocaleString()}
+                    </Text>
+                  </Box>
+                </Group>
+              )) : (
+                <Group gap="sm">
+                  <IconClock size={16} color="gray" />
+                  <Text size="sm">No recent activity found.</Text>
+                </Group>
+              )}
             </Stack>
           </Paper>
         </SimpleGrid>

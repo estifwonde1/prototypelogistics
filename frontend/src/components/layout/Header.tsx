@@ -3,7 +3,7 @@ import { IconLogout, IconUser, IconSwitchVertical } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
-import { getRoleLabel } from '../../utils/constants';
+import { getRoleLabel, OFFICER_ROLE_SLUGS, type RoleSlug } from '../../utils/constants';
 
 interface HeaderProps {
   mobileOpened: boolean;
@@ -17,6 +17,8 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
   const queryClient = useQueryClient();
   const { role, assignments, activeAssignment, clearAuth } = useAuthStore();
   const roleLabel = getRoleLabel(role);
+  
+  const isOfficer = role && OFFICER_ROLE_SLUGS.includes(role as RoleSlug);
   
   const facilityName = activeAssignment?.hub?.name || 
                        activeAssignment?.warehouse?.name || 
@@ -69,7 +71,7 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
           <Menu.Item leftSection={<IconUser size={14} />}>
             Profile
           </Menu.Item>
-          {assignments.length > 1 && (
+          {assignments.length > 1 && !isOfficer && (
             <Menu.Item leftSection={<IconSwitchVertical size={14} />} onClick={handleSwitchWorkspace}>
               Switch Workspace
             </Menu.Item>

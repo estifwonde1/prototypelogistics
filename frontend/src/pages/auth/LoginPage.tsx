@@ -8,7 +8,13 @@ import { useQueryClient } from '@tanstack/react-query';
 import { login } from '../../api/auth';
 import { getMyAssignments } from '../../api/me';
 import { useAuthStore } from '../../store/authStore';
-import { normalizeRoleSlug, getDefaultRouteForRole, type RoleSlug } from '../../utils/constants';
+import {
+  normalizeRoleSlug,
+  getDefaultRouteForRole,
+  type RoleSlug,
+  ROLES,
+  OFFICER_ROLE_SLUGS,
+} from '../../utils/constants';
 import type { ApiError } from '../../types/common';
 
 function LoginPage() {
@@ -80,8 +86,38 @@ function LoginPage() {
         setActiveAssignment(assignment);
         navigate(getDefaultRouteForRole(roleSlug));
       } else {
-        // Multiple assignments: let user choose
-        navigate('/select-role');
+        // Multiple assignments: check if they are all officer roles
+        const allAssignments = assignments.map(a => ({ ...a, slug: normalizeRoleSlug(a.role_name) }));
+        const officerAssignments = allAssignments.filter(a => a.slug && OFFICER_ROLE_SLUGS.includes(a.slug as RoleSlug));
+
+        // CRITICAL: Officers cannot have mixed roles. 
+        // If they have ANY officer role, we treat them exclusively as an officer and auto-select the highest one.
+        if (officerAssignments.length > 0) {
+          // Sort by precedence (Federal > Regional > Zonal > Woreda > Kebele > Officer)
+          const precedence: Record<string, number> = {
+            [ROLES.FEDERAL_OFFICER]: 6,
+            [ROLES.REGIONAL_OFFICER]: 5,
+            [ROLES.ZONAL_OFFICER]: 4,
+            [ROLES.WOREDA_OFFICER]: 3,
+            [ROLES.KEBELE_OFFICER]: 2,
+            [ROLES.OFFICER]: 1,
+          };
+
+          const bestAssignment = [...officerAssignments].sort((a, b) => {
+            const slugA = a.slug || '';
+            const slugB = b.slug || '';
+            return (precedence[slugB] || 0) - (precedence[slugA] || 0);
+          })[0];
+
+          const roleSlug = bestAssignment.slug as RoleSlug;
+          setAuth(response.token, response.user_id, roleSlug);
+          setActiveAssignment(bestAssignment);
+          navigate(getDefaultRouteForRole(roleSlug));
+        } else {
+          // No officer roles found, but multiple other roles (e.g., manager + dispatcher)
+          // Let the user choose
+          navigate('/select-role');
+        }
       }
     } catch (err: unknown) {
       const errorMessage =

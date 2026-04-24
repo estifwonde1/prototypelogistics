@@ -149,7 +149,7 @@ As a warehouse manager, I want a dedicated dashboard that shows me everything re
 
 ## Requirement 6: Storekeeper Dashboard
 
-**Status: Partial**
+**Status: Implemented**
 
 **What this means:**
 The Storekeeper is the person physically handling the goods — receiving trucks, stacking bags, picking goods for dispatch. Right now the Storekeeper only has an assignments page where they accept or reject assignments. They have no dashboard showing their daily work queue.

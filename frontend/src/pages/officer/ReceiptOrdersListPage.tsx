@@ -230,7 +230,7 @@ function ReceiptOrdersListPage() {
                       (order.source_reference != null ? String(order.source_reference) : '—')}
                   </Table.Td>
                   <Table.Td>
-                    {order.warehouse_name || order.destination_warehouse_name || '—'}
+                    {order.warehouse_name || order.destination_warehouse_name || order.hub_name || '—'}
                   </Table.Td>
                   <Table.Td>
                     <StatusBadge status={order.status} />
