@@ -17,7 +17,6 @@ import {
   Alert,
 } from '@mantine/core';
 import {
-  IconFileArrowRight,
   IconCheck,
   IconX,
   IconClock,

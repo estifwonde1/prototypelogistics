@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { getAdminUsers } from '../../../api/adminUsers';
 import { getAssignments, bulkUpdateAssignments } from '../../../api/adminAssignments';
-import { getHubsForAssignment, getKebeles, getRegions, getStoresForAssignment, getWarehousesForAssignment, getWoredas, getZones } from '../../../api/locations';
+import { getHubsForAssignment, getKebeles, getRegions, getWarehousesForAssignment, getWoredas, getZones } from '../../../api/locations';
 import { LoadingState } from '../../../components/common/LoadingState';
 import { ErrorState } from '../../../components/common/ErrorState';
 

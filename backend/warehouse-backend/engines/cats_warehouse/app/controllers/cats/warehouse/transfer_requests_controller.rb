@@ -98,6 +98,8 @@ module Cats
         end
 
         render_resource(transfer_request, serializer: TransferRequestSerializer)
+      rescue Pundit::NotAuthorizedError, ActiveRecord::RecordNotFound => e
+        raise e
       rescue StandardError => e
         Rails.logger.error("Failed to approve transfer request: #{e.message}")
         Rails.logger.error(e.backtrace.join("\n"))
@@ -115,6 +117,8 @@ module Cats
         transfer_request.reject!(current_user, notes: params[:notes])
 
         render_resource(transfer_request, serializer: TransferRequestSerializer)
+      rescue Pundit::NotAuthorizedError, ActiveRecord::RecordNotFound => e
+        raise e
       rescue StandardError => e
         render_error(e.message, status: :unprocessable_entity)
       end
