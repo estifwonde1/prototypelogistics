@@ -57,7 +57,7 @@ module Cats
         {
           id: object.commodity.id,
           name: object.commodity&.[](:name) || object.commodity&.batch_no,
-          code: object.commodity&.[](:code) || object.commodity&.batch_no
+          code: object.commodity&.[](:code) || object.commodity&.batch_no || ""
         }
       end
 
@@ -66,8 +66,8 @@ module Cats
 
         {
           id: object.unit.id,
-          name: object.unit.name,
-          abbreviation: object.unit.abbreviation
+          name: object.unit&.name || "",
+          abbreviation: object.unit&.abbreviation || ""
         }
       end
 

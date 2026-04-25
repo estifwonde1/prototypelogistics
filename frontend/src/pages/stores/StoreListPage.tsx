@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Stack,
   Title,
@@ -14,88 +14,116 @@ import {
   Text,
   Select,
   Badge,
-  Tooltip,
-  Avatar,
-} from '@mantine/core';
-import { IconPlus, IconSearch, IconEdit, IconTrash, IconEye, IconUsers } from '@tabler/icons-react';
-import { getStores, deleteStore, getStoreStorekeepers, assignStorekeeper } from '../../api/stores';
-import { getWarehouses } from '../../api/warehouses';
-import { LoadingState } from '../../components/common/LoadingState';
-import { ErrorState } from '../../components/common/ErrorState';
-import { EmptyState } from '../../components/common/EmptyState';
-import { AssignStorekeeperModal } from '../../components/stores/AssignStorekeeperModal';
-import { notifications } from '@mantine/notifications';
-import { usePermission } from '../../hooks/usePermission';
-import { useAuth } from '../../hooks/useAuth';
+} from "@mantine/core";
+import {
+  IconPlus,
+  IconSearch,
+  IconEdit,
+  IconTrash,
+  IconEye,
+  IconUsers,
+} from "@tabler/icons-react";
+import {
+  getStores,
+  deleteStore,
+  getStoreStorekeepers,
+  assignStorekeeper,
+} from "../../api/stores";
+import { getWarehouses } from "../../api/warehouses";
+import { LoadingState } from "../../components/common/LoadingState";
+import { ErrorState } from "../../components/common/ErrorState";
+import { EmptyState } from "../../components/common/EmptyState";
+import { AssignStorekeeperModal } from "../../components/stores/AssignStorekeeperModal";
+import { notifications } from "@mantine/notifications";
+import { usePermission } from "../../hooks/usePermission";
+import { useAuth } from "../../hooks/useAuth";
 
 function StoreListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { can } = usePermission();
   const { role } = useAuth();
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
   const [warehouseFilter, setWarehouseFilter] = useState<string | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [storeToDelete, setStoreToDelete] = useState<number | null>(null);
   const [assignModalOpen, setAssignModalOpen] = useState(false);
 
-  const { data: stores = [], isLoading, error, refetch } = useQuery({
-    queryKey: ['stores'],
+  const {
+    data: stores = [],
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ["stores"],
     queryFn: () => getStores(),
   });
 
   const { data: warehouses = [] } = useQuery({
-    queryKey: ['warehouses'],
+    queryKey: ["warehouses"],
     queryFn: () => getWarehouses(),
   });
 
   const { data: storekeepers = [] } = useQuery({
-    queryKey: ['store-storekeepers'],
+    queryKey: ["store-storekeepers"],
     queryFn: () => getStoreStorekeepers(),
-    enabled: role === 'Warehouse Manager' || role === 'Admin',
+    enabled: role === "warehouse_manager" || role === "admin",
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteStore,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['stores'] });
+      queryClient.invalidateQueries({ queryKey: ["stores"] });
       notifications.show({
-        title: 'Success',
-        message: 'Store deleted successfully',
-        color: 'green',
+        title: "Success",
+        message: "Store deleted successfully",
+        color: "green",
       });
       setDeleteModalOpen(false);
       setStoreToDelete(null);
     },
     onError: (error: any) => {
       notifications.show({
-        title: 'Error',
-        message: error.response?.data?.error?.message || 'Failed to delete store',
-        color: 'red',
+        title: "Error",
+        message:
+          error.response?.data?.error?.message || "Failed to delete store",
+        color: "red",
       });
     },
   });
 
   const assignMutation = useMutation({
-    mutationFn: ({ userId, storeIds }: { userId: number; storeIds?: number[] }) => {
+    mutationFn: ({
+      userId,
+      storeIds,
+    }: {
+      userId: number;
+      storeIds?: number[];
+    }) => {
       // Use the first store in the list, or any store if assigning to all
-      const storeId = storeIds && storeIds.length > 0 ? storeIds[0] : stores[0]?.id;
-      return assignStorekeeper(storeId, { user_id: userId, store_ids: storeIds });
+      const storeId =
+        storeIds && storeIds.length > 0 ? storeIds[0] : stores[0]?.id;
+      return assignStorekeeper(storeId, {
+        user_id: userId,
+        store_ids: storeIds,
+      });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['stores'] });
-      queryClient.invalidateQueries({ queryKey: ['store-storekeepers'] });
+      queryClient.invalidateQueries({ queryKey: ["stores"] });
+      queryClient.invalidateQueries({ queryKey: ["store-storekeepers"] });
       notifications.show({
-        title: 'Success',
-        message: 'Storekeeper assigned successfully',
-        color: 'green',
+        title: "Success",
+        message: "Storekeeper assigned successfully",
+        color: "green",
       });
     },
     onError: (error: any) => {
       notifications.show({
-        title: 'Error',
-        message: error.response?.data?.error?.message || 'Failed to assign storekeeper',
-        color: 'red',
+        title: "Error",
+        message:
+          error.response?.data?.error?.message ||
+          "Failed to assign storekeeper",
+        color: "red",
       });
     },
   });
@@ -114,7 +142,8 @@ function StoreListPage() {
     const matchesSearch =
       store.name.toLowerCase().includes(search.toLowerCase()) ||
       store.code.toLowerCase().includes(search.toLowerCase());
-    const matchesWarehouse = !warehouseFilter || store.warehouse_id?.toString() === warehouseFilter;
+    const matchesWarehouse =
+      !warehouseFilter || store.warehouse_id?.toString() === warehouseFilter;
     return matchesSearch && matchesWarehouse;
   });
 
@@ -123,7 +152,8 @@ function StoreListPage() {
     label: `${warehouse.name} (${warehouse.code})`,
   }));
 
-  const canManageStorekeepers = role === 'Warehouse Manager' || role === 'Admin';
+  const canManageStorekeepers =
+    role === "warehouse_manager" || role === "admin";
 
   if (isLoading) {
     return <LoadingState message="Loading stores..." />;
@@ -131,7 +161,10 @@ function StoreListPage() {
 
   if (error) {
     return (
-      <ErrorState message="Failed to load stores. Please try again." onRetry={() => refetch()} />
+      <ErrorState
+        message="Failed to load stores. Please try again."
+        onRetry={() => refetch()}
+      />
     );
   }
 
@@ -154,8 +187,11 @@ function StoreListPage() {
               Assign Storekeeper
             </Button>
           )}
-          {can('stores', 'create') && (
-            <Button leftSection={<IconPlus size={16} />} onClick={() => navigate('/stores/new')}>
+          {can("stores", "create") && (
+            <Button
+              leftSection={<IconPlus size={16} />}
+              onClick={() => navigate("/stores/new")}
+            >
               Create Store
             </Button>
           )}
@@ -185,14 +221,14 @@ function StoreListPage() {
           title="No stores found"
           description={
             search || warehouseFilter
-              ? 'Try adjusting your filters'
-              : 'Get started by creating your first store'
+              ? "Try adjusting your filters"
+              : "Get started by creating your first store"
           }
           action={
-            !search && !warehouseFilter && can('stores', 'create')
+            !search && !warehouseFilter && can("stores", "create")
               ? {
-                  label: 'Create Store',
-                  onClick: () => navigate('/stores/new'),
+                  label: "Create Store",
+                  onClick: () => navigate("/stores/new"),
                 }
               : undefined
           }
@@ -209,53 +245,54 @@ function StoreListPage() {
                 <Table.Th>Usable Space</Table.Th>
                 <Table.Th>Available Space</Table.Th>
                 <Table.Th>Type</Table.Th>
-                {canManageStorekeepers && <Table.Th>Assigned Storekeepers</Table.Th>}
-                <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>
+                {canManageStorekeepers && (
+                  <Table.Th>Assigned Storekeepers</Table.Th>
+                )}
+                <Table.Th style={{ textAlign: "right" }}>Actions</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {filteredStores?.map((store) => {
-                const warehouse = warehouses?.find((w) => w.id === store.warehouse_id);
-                const canUpdate = can('stores', 'update');
-                const canDelete = can('stores', 'delete');
-                const canView = can('stores', 'read');
-                
+                const warehouse = warehouses?.find(
+                  (w) => w.id === store.warehouse_id,
+                );
+                const canUpdate = can("stores", "update");
+                const canDelete = can("stores", "delete");
+                const canView = can("stores", "read");
+
                 return (
                   <Table.Tr key={store.id}>
                     <Table.Td>{store.code}</Table.Td>
                     <Table.Td>{store.name}</Table.Td>
-                    <Table.Td>{warehouse?.name || '-'}</Table.Td>
+                    <Table.Td>{warehouse?.name || "-"}</Table.Td>
                     <Table.Td>
                       {store.length}×{store.width}×{store.height}m
                     </Table.Td>
                     <Table.Td>{store.usable_space} m³</Table.Td>
                     <Table.Td>{store.available_space} m³</Table.Td>
                     <Table.Td>
-                      <Badge color={store.temporary ? 'yellow' : 'blue'}>
-                        {store.temporary ? 'Temporary' : 'Permanent'}
+                      <Badge color={store.temporary ? "yellow" : "blue"}>
+                        {store.temporary ? "Temporary" : "Permanent"}
                       </Badge>
                     </Table.Td>
                     {canManageStorekeepers && (
                       <Table.Td>
-                        {store.assigned_storekeepers && store.assigned_storekeepers.length > 0 ? (
-                          <Tooltip
-                            label={store.assigned_storekeepers.map((sk) => sk.name).join(', ')}
-                            multiline
-                            w={220}
-                          >
-                            <Avatar.Group spacing="sm">
-                              {store.assigned_storekeepers.slice(0, 3).map((sk) => (
-                                <Avatar key={sk.id} size="sm" radius="xl" color="blue">
-                                  {sk.name.charAt(0).toUpperCase()}
-                                </Avatar>
+                        {store.assigned_storekeepers &&
+                        store.assigned_storekeepers.length > 0 ? (
+                          <Group gap="xs" wrap="wrap">
+                            {store.assigned_storekeepers
+                              .slice(0, 3)
+                              .map((sk) => (
+                                <Badge key={sk.id} variant="light" color="blue">
+                                  {sk.name}
+                                </Badge>
                               ))}
-                              {store.assigned_storekeepers.length > 3 && (
-                                <Avatar size="sm" radius="xl">
-                                  +{store.assigned_storekeepers.length - 3}
-                                </Avatar>
-                              )}
-                            </Avatar.Group>
-                          </Tooltip>
+                            {store.assigned_storekeepers.length > 3 && (
+                              <Badge variant="outline" color="gray">
+                                +{store.assigned_storekeepers.length - 3} more
+                              </Badge>
+                            )}
+                          </Group>
                         ) : (
                           <Text size="sm" c="dimmed">
                             None
@@ -311,19 +348,24 @@ function StoreListPage() {
         title="Delete Store"
       >
         <Text mb="md">
-          Are you sure you want to delete this store? This action cannot be undone.
+          Are you sure you want to delete this store? This action cannot be
+          undone.
         </Text>
         <Group justify="flex-end">
           <Button variant="default" onClick={() => setDeleteModalOpen(false)}>
             Cancel
           </Button>
-          <Button color="red" onClick={handleDelete} loading={deleteMutation.isPending}>
+          <Button
+            color="red"
+            onClick={handleDelete}
+            loading={deleteMutation.isPending}
+          >
             Delete
           </Button>
         </Group>
       </Modal>
 
-      {canManageStorekeepers && (
+      {canManageStorekeepers && assignModalOpen && (
         <AssignStorekeeperModal
           opened={assignModalOpen}
           onClose={() => setAssignModalOpen(false)}

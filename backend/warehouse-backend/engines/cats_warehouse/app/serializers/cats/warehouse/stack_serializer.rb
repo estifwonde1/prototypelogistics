@@ -2,8 +2,8 @@ module Cats
   module Warehouse
     class StackSerializer < ApplicationSerializer
       attributes :id, :code, :length, :width, :height, :start_x, :start_y, :commodity_id, :store_id,
-                 :commodity_name, :commodity_code, :store_name, :store_code, :commodity_status,
-                 :stack_status, :quantity, :unit_id, :unit_name, :unit_abbreviation,
+                 :commodity_name, :commodity_code, :store_name, :store_code, :warehouse_id,
+                 :commodity_status, :stack_status, :quantity, :unit_id, :unit_name, :unit_abbreviation,
                  :base_unit_id, :base_unit_name, :base_quantity,
                  :created_at, :updated_at
 
@@ -21,6 +21,10 @@ module Cats
 
       def store_code
         object.store&.code
+      end
+
+      def warehouse_id
+        object.store&.warehouse_id
       end
 
       def unit_name

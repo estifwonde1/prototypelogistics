@@ -72,7 +72,7 @@ export default function UserAssignmentsPage() {
     queryFn: () => {
       if (roleName === 'Hub Manager') return getHubsForAssignment();
       if (roleName === 'Warehouse Manager') return getWarehousesForAssignment();
-      if (roleName === 'Storekeeper') return getStoresForAssignment();
+      if (roleName === 'Storekeeper') return getWarehousesForAssignment(); // Admin assigns storekeepers to warehouses
       if (isRegionalOfficer) return getRegions();
       if (isZonalOfficer) return getZones(regionId ? Number(regionId) : undefined);
       if (isWoredaOfficer) return getWoredas(Number(zoneId));
@@ -114,7 +114,7 @@ export default function UserAssignmentsPage() {
     const payload: any = { user_id: Number(userId), role_name: roleName };
     if (roleName === 'Hub Manager') payload.hub_ids = selectedIds.map(Number);
     if (roleName === 'Warehouse Manager') payload.warehouse_ids = selectedIds.map(Number);
-    if (roleName === 'Storekeeper') payload.store_ids = selectedIds.map(Number);
+    if (roleName === 'Storekeeper') payload.warehouse_ids = selectedIds.map(Number); // Admin assigns storekeepers to warehouses
     if (isRegionalOfficer || isZonalOfficer || isWoredaOfficer || isKebeleOfficer) {
       payload.location_ids = selectedIds.map(Number);
     }

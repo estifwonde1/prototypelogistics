@@ -18,6 +18,7 @@ import {
   IconReportAnalytics,
   IconClipboardList,
   IconMapPin,
+  IconFileArrowRight,
 } from "@tabler/icons-react";
 import { useAuthStore } from "../../store/authStore";
 import { usePermission } from "../../hooks/usePermission";
@@ -326,6 +327,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               resource: "stacks",
             },
             {
+              label: "Transfer Requests",
+              icon: <IconFileArrowRight size={20} />,
+              path: "/transfer-requests",
+              resource: "transfer_requests",
+            },
+            {
               label: "Receipts",
               icon: <IconInbox size={20} />,
               path: "/receipts",
@@ -411,6 +418,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               icon: <IconBox size={20} />,
               path: "/stacks/layout",
               resource: "stacks",
+            },
+            {
+              label: "Transfer Requests",
+              icon: <IconFileArrowRight size={20} />,
+              path: "/transfer-requests",
+              resource: "transfer_requests",
             },
           ],
         },

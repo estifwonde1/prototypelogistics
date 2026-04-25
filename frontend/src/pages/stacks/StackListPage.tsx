@@ -26,6 +26,8 @@ import {
   IconPlus,
   IconSearch,
   IconTrash,
+  IconTransfer,
+  IconFileArrowRight,
 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import type { AxiosError } from 'axios';
@@ -37,6 +39,9 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { usePermission } from '../../hooks/usePermission';
+import StackTransferModal from '../../components/stacks/StackTransferModal';
+import TransferRequestModal from '../../components/stacks/TransferRequestModal';
+import type { Stack as StackType } from '../../types/stack';
 
 type ApiError = {
   error?: {
@@ -58,6 +63,9 @@ function StackListPage() {
   const [warehouseFilter, setWarehouseFilter] = useState<string | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [stackToDelete, setStackToDelete] = useState<number | null>(null);
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [transferRequestModalOpen, setTransferRequestModalOpen] = useState(false);
+  const [selectedStack, setSelectedStack] = useState<StackType | null>(null);
 
   const { data: stacks, isLoading, error, refetch } = useQuery({
     queryKey: ['stacks'],
@@ -137,6 +145,25 @@ function StackListPage() {
   const totalArea = filteredStacks.reduce((sum, stack) => sum + stack.length * stack.width, 0);
   const activeStacks = filteredStacks.filter((stack) => stack.stack_status === 'active').length;
   const reservedStacks = filteredStacks.filter((stack) => stack.stack_status === 'reserved').length;
+
+  const canTransfer = can('stacks', 'update'); // storekeeper and warehouse_manager can transfer
+
+  const handleTransferSuccess = () => {
+    queryClient.invalidateQueries({ queryKey: ['stacks'] });
+    notifications.show({
+      title: 'Success',
+      message: 'Stack transferred successfully',
+      color: 'green',
+    });
+  };
+
+  const handleTransferRequestSuccess = () => {
+    notifications.show({
+      title: 'Success',
+      message: 'Transfer request submitted successfully',
+      color: 'green',
+    });
+  };
 
   if (isLoading) {
     return <LoadingState message="Loading stacks..." />;
@@ -395,6 +422,34 @@ function StackListPage() {
                           >
                             <IconEye size={16} />
                           </ActionIcon>
+                          {canTransfer && (
+                            <>
+                              <ActionIcon
+                                variant="light"
+                                color="teal"
+                                onClick={() => {
+                                  setSelectedStack(stack);
+                                  setTransferModalOpen(true);
+                                }}
+                                aria-label="Transfer within store"
+                                title="Transfer to another stack in same store"
+                              >
+                                <IconTransfer size={16} />
+                              </ActionIcon>
+                              <ActionIcon
+                                variant="light"
+                                color="violet"
+                                onClick={() => {
+                                  setSelectedStack(stack);
+                                  setTransferRequestModalOpen(true);
+                                }}
+                                aria-label="Request store-to-store transfer"
+                                title="Request transfer to another store"
+                              >
+                                <IconFileArrowRight size={16} />
+                              </ActionIcon>
+                            </>
+                          )}
                           {can('stacks', 'update') && (
                             <ActionIcon
                               variant="light"
@@ -467,6 +522,29 @@ function StackListPage() {
           </Group>
         </Stack>
       </Modal>
+
+      {selectedStack && (
+        <>
+          <StackTransferModal
+            opened={transferModalOpen}
+            onClose={() => {
+              setTransferModalOpen(false);
+              setSelectedStack(null);
+            }}
+            sourceStack={selectedStack}
+            onSuccess={handleTransferSuccess}
+          />
+          <TransferRequestModal
+            opened={transferRequestModalOpen}
+            onClose={() => {
+              setTransferRequestModalOpen(false);
+              setSelectedStack(null);
+            }}
+            sourceStack={selectedStack}
+            onSuccess={handleTransferRequestSuccess}
+          />
+        </>
+      )}
     </>
   );
 }

@@ -28,7 +28,9 @@ module Cats
       scope :completed, -> { where(status: "Completed") }
 
       def approve!(reviewed_by_user, destination_stack_id: nil, notes: nil)
-        raise "Request is not pending" unless status == "Pending"
+        unless status == "Pending"
+          raise "Request is not pending (current status: #{status}). This request may have already been processed."
+        end
 
         self.status = "Approved"
         self.reviewed_by = reviewed_by_user

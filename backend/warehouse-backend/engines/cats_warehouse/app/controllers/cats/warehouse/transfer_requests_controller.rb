@@ -59,14 +59,23 @@ module Cats
       end
 
       def approve
-        transfer_request = policy_scope(TransferRequest).find(params[:id])
+        # Use pessimistic locking to prevent race conditions
+        transfer_request = policy_scope(TransferRequest).lock.find(params[:id])
         authorize transfer_request, :approve?
 
+        # Log current status for debugging
+        Rails.logger.info("Attempting to approve transfer request #{transfer_request.id} with status: #{transfer_request.status}")
+
         destination_stack_id = params[:destination_stack_id]
+        destination_stack = nil
 
         # If destination stack provided, verify it exists and is in the destination store
         if destination_stack_id.present?
-          destination_stack = Stack.find(destination_stack_id)
+          destination_stack = Stack.find_by(id: destination_stack_id)
+          unless destination_stack.present?
+            return render_error("Destination stack not found", status: :not_found)
+          end
+
           unless destination_stack.store_id == transfer_request.destination_store_id
             return render_error("Destination stack must be in the destination store", status: :unprocessable_entity)
           end
@@ -76,17 +85,22 @@ module Cats
           end
         end
 
-        transfer_request.approve!(
-          current_user,
-          destination_stack_id: destination_stack_id,
-          notes: params[:notes]
-        )
+        # Wrap in transaction to ensure atomicity
+        ActiveRecord::Base.transaction do
+          transfer_request.approve!(
+            current_user,
+            destination_stack_id: destination_stack_id,
+            notes: params[:notes]
+          )
 
-        # Always execute the transfer (auto-create destination stack if not provided)
-        execute_transfer(transfer_request)
+          # Always execute the transfer (auto-create destination stack if not provided)
+          execute_transfer(transfer_request)
+        end
 
         render_resource(transfer_request, serializer: TransferRequestSerializer)
       rescue StandardError => e
+        Rails.logger.error("Failed to approve transfer request: #{e.message}")
+        Rails.logger.error(e.backtrace.join("\n"))
         render_error(e.message, status: :unprocessable_entity)
       end
 
@@ -164,10 +178,11 @@ module Cats
 
         # Create workflow event
         WorkflowEvent.create!(
+          entity: transfer_request,
           event_type: "transfer_request_completed",
           actor_id: current_user.id,
           occurred_at: Time.current,
-          metadata: {
+          payload: {
             transfer_request_id: transfer_request.id,
             source_stack_id: source_stack.id,
             destination_stack_id: destination_stack.id,

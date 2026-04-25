@@ -22,6 +22,7 @@ import { notifications } from '@mantine/notifications';
 import type { AxiosError } from 'axios';
 import { createStack, getStack, updateStack } from '../../api/stacks';
 import { getStores } from '../../api/stores';
+import { getCommodityReferences, getUnitReferences } from '../../api/referenceData';
 import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import type { Stack as StackType } from '../../types/stack';
@@ -32,19 +33,7 @@ type ApiError = {
   };
 };
 
-const commodityOptions = [
-  { value: '1', label: 'Wheat' },
-  { value: '2', label: 'Maize' },
-  { value: '3', label: 'Rice' },
-  { value: '4', label: 'Barley' },
-];
 
-const unitOptions = [
-  { value: '1', label: 'Quintal (qt)' },
-  { value: '2', label: 'Kilogram (kg)' },
-  { value: '3', label: 'Metric Ton (mt)' },
-  { value: '4', label: 'Bag' },
-];
 
 const commodityStatusOptions = [
   { value: 'good', label: 'Good' },
@@ -94,6 +83,16 @@ function StackFormPage() {
     queryFn: () => getStores(),
   });
 
+  const { data: commodities = [] } = useQuery({
+    queryKey: ['commodities'],
+    queryFn: () => getCommodityReferences(),
+  });
+
+  const { data: units = [] } = useQuery({
+    queryKey: ['units'],
+    queryFn: () => getUnitReferences(),
+  });
+
   const form = useForm({
     initialValues: {
       code: '',
@@ -140,7 +139,7 @@ function StackFormPage() {
         unit_id: stack.unit_id.toString(),
       });
     }
-  }, [form, stack]);
+  }, [stack]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const createMutation = useMutation({
     mutationFn: createStack,
@@ -187,6 +186,18 @@ function StackFormPage() {
     stores?.map((store) => ({
       value: store.id.toString(),
       label: `${store.name} (${store.code})`,
+    })) || [];
+
+  const commodityOptions =
+    commodities?.map((commodity) => ({
+      value: commodity.id.toString(),
+      label: commodity.name,
+    })) || [];
+
+  const unitOptions =
+    units?.map((unit) => ({
+      value: unit.id.toString(),
+      label: unit.abbreviation || unit.name,
     })) || [];
 
   const handleSubmit = (values: typeof form.values) => {

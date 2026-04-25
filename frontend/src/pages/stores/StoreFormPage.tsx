@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect */
-import { useEffect, useState } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef } from "react";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Stack,
   Title,
@@ -13,15 +13,15 @@ import {
   Switch,
   Card,
   Text,
-} from '@mantine/core';
-import { useForm } from '@mantine/form';
-import { IconArrowLeft, IconDeviceFloppy } from '@tabler/icons-react';
-import { getStore, createStore, updateStore } from '../../api/stores';
-import { getWarehouses } from '../../api/warehouses';
-import { LoadingState } from '../../components/common/LoadingState';
-import { ErrorState } from '../../components/common/ErrorState';
-import { notifications } from '@mantine/notifications';
-import type { Store } from '../../types/store';
+} from "@mantine/core";
+import { useForm } from "@mantine/form";
+import { IconArrowLeft, IconDeviceFloppy } from "@tabler/icons-react";
+import { getStore, createStore, updateStore } from "../../api/stores";
+import { getWarehouses } from "../../api/warehouses";
+import { LoadingState } from "../../components/common/LoadingState";
+import { ErrorState } from "../../components/common/ErrorState";
+import { notifications } from "@mantine/notifications";
+import type { Store } from "../../types/store";
 
 function StoreFormPage() {
   const { id } = useParams<{ id: string }>();
@@ -29,24 +29,24 @@ function StoreFormPage() {
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const isEdit = !!id;
-  const preselectedWarehouseId = searchParams.get('warehouse_id');
-  const [hasGangway, setHasGangway] = useState(false);
+  const preselectedWarehouseId = searchParams.get("warehouse_id");
+  const hydratedStoreIdRef = useRef<number | null>(null);
 
   const { data: store, isLoading } = useQuery({
-    queryKey: ['stores', id],
+    queryKey: ["stores", id],
     queryFn: () => getStore(Number(id)),
     enabled: isEdit,
   });
 
   const { data: warehouses = [] } = useQuery({
-    queryKey: ['warehouses'],
+    queryKey: ["warehouses"],
     queryFn: () => getWarehouses(),
   });
 
   const form = useForm({
     initialValues: {
-      code: '',
-      name: '',
+      code: "",
+      name: "",
       length: 0,
       width: 0,
       height: 0,
@@ -57,22 +57,24 @@ function StoreFormPage() {
       gangway_length: 0,
       gangway_width: 0,
       gangway_height: 0,
-      warehouse_id: preselectedWarehouseId || '',
+      warehouse_id: preselectedWarehouseId || "",
     },
     validate: {
-      name: (value) => (!value ? 'Name is required' : null),
-      code: (value) => (!value ? 'Code is required' : null),
-      length: (value) => (value <= 0 ? 'Length must be greater than 0' : null),
-      width: (value) => (value <= 0 ? 'Width must be greater than 0' : null),
-      height: (value) => (value <= 0 ? 'Height must be greater than 0' : null),
-      usable_space: (value) => (value <= 0 ? 'Usable space must be greater than 0' : null),
-      available_space: (value) => (value < 0 ? 'Available space cannot be negative' : null),
-      warehouse_id: (value) => (!value ? 'Warehouse is required' : null),
+      name: (value) => (!value ? "Name is required" : null),
+      code: (value) => (!value ? "Code is required" : null),
+      length: (value) => (value <= 0 ? "Length must be greater than 0" : null),
+      width: (value) => (value <= 0 ? "Width must be greater than 0" : null),
+      height: (value) => (value <= 0 ? "Height must be greater than 0" : null),
+      usable_space: (value) =>
+        value <= 0 ? "Usable space must be greater than 0" : null,
+      available_space: (value) =>
+        value < 0 ? "Available space cannot be negative" : null,
+      warehouse_id: (value) => (!value ? "Warehouse is required" : null),
     },
   });
 
   useEffect(() => {
-    if (store) {
+    if (store && hydratedStoreIdRef.current !== store.id) {
       form.setValues({
         code: store.code,
         name: store.name,
@@ -88,26 +90,27 @@ function StoreFormPage() {
         gangway_height: store.gangway_height || 0,
         warehouse_id: store.warehouse_id.toString(),
       });
-      setHasGangway(store.has_gangway);
+      hydratedStoreIdRef.current = store.id;
     }
-  }, [store]);
+  }, [store, form]);
 
   const createMutation = useMutation({
     mutationFn: createStore,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['stores'] });
+      queryClient.invalidateQueries({ queryKey: ["stores"] });
       notifications.show({
-        title: 'Success',
-        message: 'Store created successfully',
-        color: 'green',
+        title: "Success",
+        message: "Store created successfully",
+        color: "green",
       });
-      navigate('/stores');
+      navigate("/stores");
     },
     onError: (error: any) => {
       notifications.show({
-        title: 'Error',
-        message: error.response?.data?.error?.message || 'Failed to create store',
-        color: 'red',
+        title: "Error",
+        message:
+          error.response?.data?.error?.message || "Failed to create store",
+        color: "red",
       });
     },
   });
@@ -115,20 +118,21 @@ function StoreFormPage() {
   const updateMutation = useMutation({
     mutationFn: (data: Partial<Store>) => updateStore(Number(id), data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['stores'] });
-      queryClient.invalidateQueries({ queryKey: ['stores', id] });
+      queryClient.invalidateQueries({ queryKey: ["stores"] });
+      queryClient.invalidateQueries({ queryKey: ["stores", id] });
       notifications.show({
-        title: 'Success',
-        message: 'Store updated successfully',
-        color: 'green',
+        title: "Success",
+        message: "Store updated successfully",
+        color: "green",
       });
-      navigate('/stores');
+      navigate("/stores");
     },
     onError: (error: any) => {
       notifications.show({
-        title: 'Error',
-        message: error.response?.data?.error?.message || 'Failed to update store',
-        color: 'red',
+        title: "Error",
+        message:
+          error.response?.data?.error?.message || "Failed to update store",
+        color: "red",
       });
     },
   });
@@ -179,11 +183,11 @@ function StoreFormPage() {
         <Button
           variant="subtle"
           leftSection={<IconArrowLeft size={16} />}
-          onClick={() => navigate('/stores')}
+          onClick={() => navigate("/stores")}
         >
           Back
         </Button>
-        <Title order={2}>{isEdit ? 'Edit Store' : 'Create Store'}</Title>
+        <Title order={2}>{isEdit ? "Edit Store" : "Create Store"}</Title>
       </Group>
 
       <form onSubmit={form.onSubmit(handleSubmit)}>
@@ -197,13 +201,13 @@ function StoreFormPage() {
                   label="Code"
                   placeholder="STORE-001"
                   required
-                  {...form.getInputProps('code')}
+                  {...form.getInputProps("code")}
                 />
                 <TextInput
                   label="Name"
                   placeholder="Main Storage Area"
                   required
-                  {...form.getInputProps('name')}
+                  {...form.getInputProps("name")}
                 />
               </Group>
 
@@ -214,14 +218,14 @@ function StoreFormPage() {
                 searchable
                 data={warehouseOptions || []}
                 disabled={!!preselectedWarehouseId && !isEdit}
-                {...form.getInputProps('warehouse_id')}
+                {...form.getInputProps("warehouse_id")}
               />
 
               <Group grow>
                 <Switch
                   label="Temporary Storage"
                   description="Is this a temporary storage space?"
-                  {...form.getInputProps('temporary', { type: 'checkbox' })}
+                  {...form.getInputProps("temporary", { type: "checkbox" })}
                 />
               </Group>
             </Stack>
@@ -238,7 +242,7 @@ function StoreFormPage() {
                   required
                   min={0}
                   decimalScale={2}
-                  {...form.getInputProps('length')}
+                  {...form.getInputProps("length")}
                 />
                 <NumberInput
                   label="Width (m)"
@@ -246,7 +250,7 @@ function StoreFormPage() {
                   required
                   min={0}
                   decimalScale={2}
-                  {...form.getInputProps('width')}
+                  {...form.getInputProps("width")}
                 />
                 <NumberInput
                   label="Height (m)"
@@ -254,7 +258,7 @@ function StoreFormPage() {
                   required
                   min={0}
                   decimalScale={2}
-                  {...form.getInputProps('height')}
+                  {...form.getInputProps("height")}
                 />
               </Group>
 
@@ -265,7 +269,7 @@ function StoreFormPage() {
                   required
                   min={0}
                   decimalScale={2}
-                  {...form.getInputProps('usable_space')}
+                  {...form.getInputProps("usable_space")}
                 />
                 <NumberInput
                   label="Available Space (m³)"
@@ -273,7 +277,7 @@ function StoreFormPage() {
                   required
                   min={0}
                   decimalScale={2}
-                  {...form.getInputProps('available_space')}
+                  {...form.getInputProps("available_space")}
                 />
               </Group>
             </Stack>
@@ -285,15 +289,11 @@ function StoreFormPage() {
                 <Title order={4}>Gangway</Title>
                 <Switch
                   label="Has Gangway"
-                  {...form.getInputProps('has_gangway', { type: 'checkbox' })}
-                  onChange={(event) => {
-                    form.setFieldValue('has_gangway', event.currentTarget.checked);
-                    setHasGangway(event.currentTarget.checked);
-                  }}
+                  {...form.getInputProps("has_gangway", { type: "checkbox" })}
                 />
               </Group>
 
-              {hasGangway && (
+              {form.values.has_gangway && (
                 <>
                   <Text size="sm" c="dimmed">
                     Gangway dimensions (optional)
@@ -304,21 +304,21 @@ function StoreFormPage() {
                       placeholder="0"
                       min={0}
                       decimalScale={2}
-                      {...form.getInputProps('gangway_length')}
+                      {...form.getInputProps("gangway_length")}
                     />
                     <NumberInput
                       label="Gangway Width (m)"
                       placeholder="0"
                       min={0}
                       decimalScale={2}
-                      {...form.getInputProps('gangway_width')}
+                      {...form.getInputProps("gangway_width")}
                     />
                     <NumberInput
                       label="Gangway Height (m)"
                       placeholder="0"
                       min={0}
                       decimalScale={2}
-                      {...form.getInputProps('gangway_height')}
+                      {...form.getInputProps("gangway_height")}
                     />
                   </Group>
                 </>
@@ -327,7 +327,7 @@ function StoreFormPage() {
           </Card>
 
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => navigate('/stores')}>
+            <Button variant="default" onClick={() => navigate("/stores")}>
               Cancel
             </Button>
             <Button
@@ -335,7 +335,7 @@ function StoreFormPage() {
               leftSection={<IconDeviceFloppy size={16} />}
               loading={createMutation.isPending || updateMutation.isPending}
             >
-              {isEdit ? 'Update Store' : 'Create Store'}
+              {isEdit ? "Update Store" : "Create Store"}
             </Button>
           </Group>
         </Stack>

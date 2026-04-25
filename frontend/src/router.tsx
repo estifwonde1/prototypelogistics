@@ -57,6 +57,7 @@ const StorekeeperAssignmentsPage = lazy(() => import('./pages/storekeeper/Storek
 const DispatchListPage = lazy(() => import('./pages/dispatches/DispatchListPage'));
 const BinCardReportPage = lazy(() => import('./pages/reports/BinCardReportPage'));
 const StackLayoutPage = lazy(() => import('./pages/stacks/StackLayoutPage'));
+const TransferRequestsPage = lazy(() => import('./pages/stock/TransferRequestsPage'));
 
 // Loading fallback
 const LoadingFallback = () => (
@@ -539,6 +540,14 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission resource="stacks" action="read">
             <StackLayoutPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'transfer-requests',
+        element: (
+          <RequirePermission resource="transfer_requests" action="read">
+            <TransferRequestsPage />
           </RequirePermission>
         ),
       },

@@ -5,12 +5,14 @@ module Cats
     class TransferRequestPolicy < ApplicationPolicy
       class Scope < Scope
         def resolve
-          if user_context.admin?
+          access = AccessContext.new(user: user)
+          
+          if access.admin?
             scope.all
-          elsif user_context.warehouse_manager?
+          elsif access.warehouse_manager?
             # WM sees all requests in their warehouses
-            scope.where(warehouse_id: user_context.accessible_warehouse_ids)
-          elsif user_context.storekeeper?
+            scope.where(warehouse_id: access.accessible_warehouse_ids)
+          elsif access.storekeeper?
             # Storekeepers see their own requests
             scope.where(requested_by_id: user.id)
           else

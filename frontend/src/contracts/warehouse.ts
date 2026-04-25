@@ -55,6 +55,7 @@ export type Resource =
   | 'dispatches'
   | 'receipt_orders'
   | 'dispatch_orders'
+  | 'transfer_requests'
   | 'reports';
 
 export type Action = 'read' | 'create' | 'update' | 'delete' | 'confirm';
@@ -92,6 +93,7 @@ export const PATH_SEGMENT_TO_RESOURCE: Record<string, Resource> = {
   dispatches: 'dispatches',
   'receipt-orders': 'receipt_orders',
   'dispatch-orders': 'dispatch_orders',
+  'transfer-requests': 'transfer_requests',
   reports: 'reports',
 };
 
@@ -158,6 +160,7 @@ export const ROLE_CAPABILITIES: Record<RoleSlug, PermissionMatrix> = {
     dispatches: ['read'],
     receipt_orders: ['read'],
     dispatch_orders: ['read'],
+    transfer_requests: ['read', 'update'],
     reports: ['read'],
   },
   [ROLES.STOREKEEPER]: {
@@ -172,6 +175,7 @@ export const ROLE_CAPABILITIES: Record<RoleSlug, PermissionMatrix> = {
     dispatches: ['read'],
     receipt_orders: ['read'],
     dispatch_orders: ['read'],
+    transfer_requests: ['read', 'create'],
     reports: ['read'],
   },
   [ROLES.INSPECTOR]: {},

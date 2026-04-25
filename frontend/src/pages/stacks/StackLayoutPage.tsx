@@ -34,6 +34,7 @@ import { notifications } from '@mantine/notifications';
 import type { AxiosError } from 'axios';
 import { createStack, getStacks, updateStack } from '../../api/stacks';
 import { getStores } from '../../api/stores';
+import { getCommodityReferences } from '../../api/referenceData';
 import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import type { Stack as StackType } from '../../types/stack';
@@ -144,18 +145,6 @@ function getStatusMeta(status?: string) {
   return STATUS_META[status || 'empty'] || STATUS_META.empty;
 }
 
-function buildCommodityOptions(stacks: StackType[] | undefined) {
-  const map = new Map<string, string>();
-
-  stacks?.forEach((stack) => {
-    if (stack.commodity_id) {
-      map.set(String(stack.commodity_id), stack.commodity_name || stack.commodity_code || `Commodity ${stack.commodity_id}`);
-    }
-  });
-
-  return Array.from(map.entries()).map(([value, label]) => ({ value, label }));
-}
-
 function buildUnitOptions(stacks: StackType[] | undefined) {
   const map = new Map<string, string>();
 
@@ -207,6 +196,11 @@ export default function StackLayoutPage() {
     queryFn: () => getStacks(),
   });
 
+  const { data: commodities = [] } = useQuery({
+    queryKey: ['commodity-references'],
+    queryFn: () => getCommodityReferences(),
+  });
+
   const resolvedStoreId = storeId || (stores && stores.length > 0 ? String(stores[0].id) : null);
 
   const selectedStore = useMemo(
@@ -219,7 +213,14 @@ export default function StackLayoutPage() {
     [resolvedStoreId, stacks]
   );
 
-  const commodityOptions = useMemo(() => buildCommodityOptions(storeStacks), [storeStacks]);
+  const commodityOptions = useMemo(
+    () => commodities.map((commodity) => ({
+      value: String(commodity.id),
+      label: `${commodity.name} (${commodity.code})`
+    })),
+    [commodities]
+  );
+
   const unitOptions = useMemo(() => buildUnitOptions(storeStacks), [storeStacks]);
 
   const form = useForm<StackFormValues>({
@@ -432,7 +433,13 @@ export default function StackLayoutPage() {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
 
-    openCreateEditorFromDraw(completedArea);
+    // Clear draft area first to prevent re-triggering
+    setDraftArea(null);
+    
+    // Use setTimeout to break out of the current render cycle
+    setTimeout(() => {
+      openCreateEditorFromDraw(completedArea);
+    }, 0);
   };
 
   const handleEditModeToggle = () => {
@@ -652,7 +659,11 @@ export default function StackLayoutPage() {
                       onPointerDown={handleBoardPointerDown}
                       onPointerMove={handleBoardPointerMove}
                       onPointerUp={handleBoardPointerUp}
-                      onPointerLeave={handleBoardPointerUp}
+                      onPointerLeave={(e) => {
+                        if (draftArea) {
+                          handleBoardPointerUp(e);
+                        }
+                      }}
                       style={{
                         position: 'relative',
                         width: boardWidth,
