@@ -13,9 +13,13 @@ import {
   Textarea,
   SimpleGrid,
   Divider,
+  ActionIcon,
+  NumberInput,
+  Badge,
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
+import { IconPlus, IconTrash } from "@tabler/icons-react";
 import {
   createReceiptOrder,
   getReceiptOrder,
@@ -31,6 +35,26 @@ import type { ApiError } from "../../types/common";
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type DestinationKind = "hub" | "warehouse";
+
+interface DestinationRow {
+  id: string; // local key only
+  kind: DestinationKind | "";
+  hubId: string | null;
+  warehouseId: string | null;
+  quantity: number | string;
+  notes: string;
+}
+
+function newDestinationRow(): DestinationRow {
+  return {
+    id: Math.random().toString(36).slice(2),
+    kind: "",
+    hubId: null,
+    warehouseId: null,
+    quantity: "",
+    notes: "",
+  };
+}
 
 // ── Component ──────────────────────────────────────────────────────────────
 
@@ -53,9 +77,9 @@ function ReceiptOrderFormPage() {
   // ── Order header ──
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState<Date | null>(new Date());
   const [notes, setNotes] = useState("");
-  const [destinationKind, setDestinationKind] = useState<DestinationKind | "">("");
-  const [hubId, setHubId] = useState<string | null>(null);
-  const [warehouseId, setWarehouseId] = useState<string | null>(null);
+
+  // ── Multiple destinations ──
+  const [destinations, setDestinations] = useState<DestinationRow[]>([newDestinationRow()]);
 
   // ── Edit hydration guard ──
   const hydratedRef = useRef<string | null>(null);
@@ -138,6 +162,18 @@ function ReceiptOrderFormPage() {
     [warehouses]
   );
 
+  // ── Derived: total quantity assigned across all destinations ──
+  const totalAssigned = useMemo(
+    () =>
+      destinations.reduce((sum, d) => {
+        const q = Number(d.quantity);
+        return sum + (isNaN(q) ? 0 : q);
+      }, 0),
+    [destinations]
+  );
+
+  const remaining = batchQuantity - totalAssigned;
+
   // ── Handlers: commodity selection ──
   const handleCommoditySelect = useCallback(
     (val: string | null) => {
@@ -173,12 +209,26 @@ function ReceiptOrderFormPage() {
     [commodities]
   );
 
-  // ── Handlers: destination ──
-  const handleDestinationKindChange = (val: string | null) => {
-    setDestinationKind((val || "") as DestinationKind);
-    setHubId(null);
-    setWarehouseId(null);
-  };
+  // ── Handlers: destinations ──
+  const updateDestination = useCallback(
+    (rowId: string, patch: Partial<DestinationRow>) => {
+      setDestinations((prev) =>
+        prev.map((d) => (d.id === rowId ? { ...d, ...patch } : d))
+      );
+    },
+    []
+  );
+
+  const addDestination = useCallback(() => {
+    setDestinations((prev) => [...prev, newDestinationRow()]);
+  }, []);
+
+  const removeDestination = useCallback((rowId: string) => {
+    setDestinations((prev) => {
+      if (prev.length <= 1) return prev; // keep at least one row
+      return prev.filter((d) => d.id !== rowId);
+    });
+  }, []);
 
   // ── Hydrate edit form ──
   useEffect(() => {
@@ -203,9 +253,16 @@ function ReceiptOrderFormPage() {
       const batch = commodities.find((c) => c.id === first.commodity_id);
       setBatchQuantity(batch?.quantity ?? 0);
 
-      setDestinationKind(existingOrder.hub_id ? "hub" : "warehouse");
-      setHubId(existingOrder.hub_id ? String(existingOrder.hub_id) : null);
-      setWarehouseId(existingOrder.warehouse_id ? String(existingOrder.warehouse_id) : null);
+      // Build destination rows from lines
+      const rows: DestinationRow[] = rawLines.map((line) => ({
+        id: Math.random().toString(36).slice(2),
+        kind: existingOrder.hub_id ? "hub" : "warehouse",
+        hubId: existingOrder.hub_id ? String(existingOrder.hub_id) : null,
+        warehouseId: existingOrder.warehouse_id ? String(existingOrder.warehouse_id) : null,
+        quantity: line.quantity ?? "",
+        notes: line.notes ?? "",
+      }));
+      setDestinations(rows.length > 0 ? rows : [newDestinationRow()]);
     }
   }, [isEdit, existingOrder, id, commodities]);
 
@@ -276,31 +333,67 @@ function ReceiptOrderFormPage() {
       return;
     }
     if (!unitId) {
-      notifications.show({ title: "Validation Error", message: "Unit is required", color: "red" });
-      return;
-    }
-    if (!destinationKind || (!hubId && !warehouseId)) {
-      notifications.show({ title: "Validation Error", message: "Destination is required", color: "red" });
+      notifications.show({ title: "Validation Error", message: "Unit is required — select a batch first", color: "red" });
       return;
     }
 
-    const lines: ReceiptOrderLine[] = [{
-      commodity_id: parseInt(selectedBatchId),
-      quantity: batchQuantity,
-      unit_id: parseInt(unitId),
-      packaging_unit_id: packagingUnitId ? parseInt(packagingUnitId) : undefined,
-      packaging_size: packagingSize ?? undefined,
-      notes: destinationKind === "hub"
-        ? `Hub: ${hubs?.find((h) => String(h.id) === hubId)?.name ?? hubId}`
-        : `Warehouse: ${warehouses?.find((w) => String(w.id) === warehouseId)?.name ?? warehouseId}`,
-    }];
+    // Validate destinations
+    for (const dest of destinations) {
+      if (!dest.kind || (!dest.hubId && !dest.warehouseId)) {
+        notifications.show({
+          title: "Validation Error",
+          message: "Each destination must have a type and a facility selected",
+          color: "red",
+        });
+        return;
+      }
+      const q = Number(dest.quantity);
+      if (!dest.quantity || isNaN(q) || q <= 0) {
+        notifications.show({
+          title: "Validation Error",
+          message: "Each destination must have a quantity greater than 0",
+          color: "red",
+        });
+        return;
+      }
+    }
 
+    if (totalAssigned > batchQuantity && batchQuantity > 0) {
+      notifications.show({
+        title: "Validation Error",
+        message: `Total assigned (${totalAssigned}) exceeds batch quantity (${batchQuantity})`,
+        color: "red",
+      });
+      return;
+    }
+
+    // Build one line per destination
+    const lines: ReceiptOrderLine[] = destinations.map((dest) => {
+      const facilityLabel =
+        dest.kind === "hub"
+          ? hubs?.find((h) => String(h.id) === dest.hubId)?.name ?? dest.hubId ?? ""
+          : warehouses?.find((w) => String(w.id) === dest.warehouseId)?.name ?? dest.warehouseId ?? "";
+
+      return {
+        commodity_id: parseInt(selectedBatchId!),
+        quantity: Number(dest.quantity),
+        unit_id: parseInt(unitId!),
+        packaging_unit_id: packagingUnitId ? parseInt(packagingUnitId) : undefined,
+        packaging_size: packagingSize ?? undefined,
+        notes: dest.notes || `${dest.kind === "hub" ? "Hub" : "Warehouse"}: ${facilityLabel}`,
+      };
+    });
+
+    // Use first destination for hub/warehouse headers (backend links the order to one primary destination)
+    const firstDest = destinations[0];
     const payload = {
-      hub_id: destinationKind === "hub" ? Number(hubId) : null,
-      destination_warehouse_id: destinationKind === "warehouse" ? Number(warehouseId) : null,
-      expected_delivery_date: expectedDeliveryDate instanceof Date
-        ? expectedDeliveryDate.toISOString().split("T")[0]
-        : new Date().toISOString().split("T")[0],
+      hub_id: firstDest.kind === "hub" ? Number(firstDest.hubId) : null,
+      destination_warehouse_id:
+        firstDest.kind === "warehouse" ? Number(firstDest.warehouseId) : null,
+      expected_delivery_date:
+        expectedDeliveryDate instanceof Date
+          ? expectedDeliveryDate.toISOString().split("T")[0]
+          : new Date().toISOString().split("T")[0],
       notes,
       lines,
     };
@@ -315,9 +408,7 @@ function ReceiptOrderFormPage() {
   const isSaving = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
 
   // ── Selected batch info ──
-  const selectedBatch = commodities.find((c) => String(c.id) === selectedBatchId);
   const unitLabel = units.find((u) => String(u.id) === unitId)?.name ?? "";
-  const packagingUnitLabel = units.find((u) => String(u.id) === packagingUnitId)?.name ?? "";
 
   // ── Error / loading states for edit ──
   if (isEdit && orderError) {
@@ -371,7 +462,7 @@ function ReceiptOrderFormPage() {
 
           {/* ── Section 1: Commodity & Batch ── */}
           <div>
-            <Text size="sm" fw={700} mb="sm">Commodity & Batch</Text>
+            <Text size="sm" fw={700} mb="sm">Commodity &amp; Batch</Text>
 
             <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
               <Select
@@ -398,25 +489,32 @@ function ReceiptOrderFormPage() {
               />
             </SimpleGrid>
 
-            {selectedBatch && (
-              <Card withBorder mt="sm" padding="sm" bg="blue.0" radius="md">
-                <Group gap="xl" wrap="wrap">
+            {/* Batch quantity / remaining info bar */}
+            {selectedBatchId && (
+              <Card
+                withBorder
+                mt="sm"
+                padding="xs"
+                radius="sm"
+                style={{ background: "var(--mantine-color-blue-0)" }}
+              >
+                <Group gap="xl">
                   <div>
                     <Text size="xs" c="dimmed" fw={600} tt="uppercase">Batch Quantity</Text>
-                    <Text fw={700}>{batchQuantity.toLocaleString()} {unitLabel}</Text>
+                    <Text fw={700} size="sm">
+                      {batchQuantity.toLocaleString()} {unitLabel}
+                    </Text>
                   </div>
-                  {packagingUnitLabel && (
-                    <div>
-                      <Text size="xs" c="dimmed" fw={600} tt="uppercase">Packaging Unit</Text>
-                      <Text fw={700}>{packagingUnitLabel}</Text>
-                    </div>
-                  )}
-                  {packagingSize && (
-                    <div>
-                      <Text size="xs" c="dimmed" fw={600} tt="uppercase">Size per Package</Text>
-                      <Text fw={700}>{packagingSize}</Text>
-                    </div>
-                  )}
+                  <div>
+                    <Text size="xs" c="dimmed" fw={600} tt="uppercase">Remaining</Text>
+                    <Text
+                      fw={700}
+                      size="sm"
+                      c={remaining < 0 ? "red" : "blue"}
+                    >
+                      {remaining.toLocaleString()} {unitLabel}
+                    </Text>
+                  </div>
                 </Group>
               </Card>
             )}
@@ -450,53 +548,60 @@ function ReceiptOrderFormPage() {
 
           <Divider />
 
-          {/* ── Section 3: Destination ── */}
+          {/* ── Section 3: Destinations ── */}
           <div>
-            <Text size="sm" fw={700} mb="sm">Destination</Text>
-            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-              <Select
-                label="Destination Type"
-                placeholder="Select Hub or Independent Warehouse"
-                data={[
-                  { value: "hub", label: "Hub" },
-                  { value: "warehouse", label: "Independent Warehouse" },
-                ]}
-                value={destinationKind}
-                onChange={handleDestinationKindChange}
-                required
-                disabled={!fieldsEditable}
-              />
-
-              {destinationKind === "hub" && (
-                <Select
-                  label="Hub"
-                  placeholder="Select destination hub"
-                  data={hubOptions}
-                  value={hubId}
-                  onChange={setHubId}
-                  searchable
-                  required
-                  disabled={!fieldsEditable}
-                />
+            <Group justify="space-between" mb="sm">
+              <Text size="sm" fw={700}>Destinations</Text>
+              {fieldsEditable && (
+                <Button
+                  size="xs"
+                  variant="light"
+                  leftSection={<IconPlus size={14} />}
+                  onClick={addDestination}
+                >
+                  Add Destination
+                </Button>
               )}
+            </Group>
 
-              {destinationKind === "warehouse" && (
-                <Select
-                  label="Independent Warehouse"
-                  placeholder="Select independent warehouse"
-                  data={standaloneWarehouseOptions}
-                  value={warehouseId}
-                  onChange={setWarehouseId}
-                  searchable
-                  required
-                  disabled={!fieldsEditable}
-                />
-              )}
+            {/* Column headers */}
+            <SimpleGrid cols={{ base: 1, sm: 4 }} spacing="sm" mb={4}>
+              <Text size="xs" c="dimmed" fw={600} tt="uppercase">Destination Type</Text>
+              <Text size="xs" c="dimmed" fw={600} tt="uppercase">Hub / Warehouse</Text>
+              <Text size="xs" c="dimmed" fw={600} tt="uppercase">Quantity</Text>
+              <Text size="xs" c="dimmed" fw={600} tt="uppercase">Notes</Text>
             </SimpleGrid>
-            {!destinationKind && (
-              <Text size="xs" c="dimmed" mt={4}>
-                Please select a destination type first.
-              </Text>
+
+            <Stack gap="xs">
+              {destinations.map((dest, idx) => (
+                <DestinationRowItem
+                  key={dest.id}
+                  dest={dest}
+                  index={idx}
+                  fieldsEditable={fieldsEditable}
+                  hubOptions={hubOptions}
+                  warehouseOptions={standaloneWarehouseOptions}
+                  batchQuantity={batchQuantity}
+                  unitLabel={unitLabel}
+                  canRemove={destinations.length > 1}
+                  onUpdate={(patch) => updateDestination(dest.id, patch)}
+                  onRemove={() => removeDestination(dest.id)}
+                />
+              ))}
+            </Stack>
+
+            {/* Running total */}
+            {selectedBatchId && batchQuantity > 0 && (
+              <Group justify="flex-end" mt="xs">
+                <Badge
+                  color={totalAssigned > batchQuantity ? "red" : "blue"}
+                  variant="light"
+                  size="md"
+                  tt="uppercase"
+                >
+                  {totalAssigned.toLocaleString()} / {batchQuantity.toLocaleString()} {unitLabel} assigned
+                </Badge>
+              </Group>
             )}
           </div>
 
@@ -525,6 +630,124 @@ function ReceiptOrderFormPage() {
         </Stack>
       </Card>
     </Stack>
+  );
+}
+
+// ── DestinationRowItem sub-component ──────────────────────────────────────
+
+interface DestinationRowItemProps {
+  dest: DestinationRow;
+  index: number;
+  fieldsEditable: boolean;
+  hubOptions: { value: string; label: string }[];
+  warehouseOptions: { value: string; label: string }[];
+  batchQuantity: number;
+  unitLabel: string;
+  canRemove: boolean;
+  onUpdate: (patch: Partial<DestinationRow>) => void;
+  onRemove: () => void;
+}
+
+function DestinationRowItem({
+  dest,
+  fieldsEditable,
+  hubOptions,
+  warehouseOptions,
+  batchQuantity,
+  unitLabel,
+  canRemove,
+  onUpdate,
+  onRemove,
+}: DestinationRowItemProps) {
+  const facilityOptions = dest.kind === "hub" ? hubOptions : warehouseOptions;
+  const facilityValue = dest.kind === "hub" ? dest.hubId : dest.warehouseId;
+
+  const handleKindChange = (val: string | null) => {
+    onUpdate({
+      kind: (val || "") as DestinationKind | "",
+      hubId: null,
+      warehouseId: null,
+    });
+  };
+
+  const handleFacilityChange = (val: string | null) => {
+    if (dest.kind === "hub") onUpdate({ hubId: val });
+    else onUpdate({ warehouseId: val });
+  };
+
+  return (
+    <Group gap="sm" align="flex-end" wrap="nowrap">
+      {/* Destination Type */}
+      <Select
+        placeholder="Select type"
+        data={[
+          { value: "hub", label: "Hub" },
+          { value: "warehouse", label: "Independent Warehouse" },
+        ]}
+        value={dest.kind || null}
+        onChange={handleKindChange}
+        disabled={!fieldsEditable}
+        style={{ flex: "0 0 180px" }}
+      />
+
+      {/* Hub / Warehouse */}
+      <Select
+        placeholder={dest.kind ? `Select ${dest.kind === "hub" ? "hub" : "warehouse"}` : "Type first"}
+        data={dest.kind ? facilityOptions : []}
+        value={facilityValue ?? null}
+        onChange={handleFacilityChange}
+        searchable
+        disabled={!fieldsEditable || !dest.kind}
+        style={{ flex: 1 }}
+      />
+
+      {/* Quantity */}
+      <div style={{ flex: "0 0 160px" }}>
+        <NumberInput
+          placeholder="Quantity"
+          value={dest.quantity === "" ? undefined : Number(dest.quantity)}
+          onChange={(val) => onUpdate({ quantity: val ?? "" })}
+          min={0}
+          max={batchQuantity > 0 ? batchQuantity : undefined}
+          disabled={!fieldsEditable}
+          description={batchQuantity > 0 ? `Max: ${batchQuantity.toLocaleString()} ${unitLabel}` : undefined}
+        />
+      </div>
+
+      {/* Notes */}
+      <div style={{ flex: 1 }}>
+        <input
+          type="text"
+          placeholder="Notes for this destination"
+          value={dest.notes}
+          onChange={(e) => onUpdate({ notes: e.target.value })}
+          disabled={!fieldsEditable}
+          style={{
+            width: "100%",
+            padding: "7px 10px",
+            border: "1px solid var(--mantine-color-gray-4)",
+            borderRadius: 6,
+            fontSize: 14,
+            background: fieldsEditable ? "white" : "var(--mantine-color-gray-1)",
+            color: "var(--mantine-color-dark-9)",
+          }}
+        />
+      </div>
+
+      {/* Remove button */}
+      {fieldsEditable && (
+        <ActionIcon
+          color="gray"
+          variant="subtle"
+          onClick={onRemove}
+          disabled={!canRemove}
+          title="Remove destination"
+          mb={20}
+        >
+          <IconTrash size={16} />
+        </ActionIcon>
+      )}
+    </Group>
   );
 }
 
