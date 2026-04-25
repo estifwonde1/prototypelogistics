@@ -42,8 +42,9 @@ module Cats
           errors.add(:warehouse_id, "is required for Warehouse Manager") if warehouse_id.blank?
           errors.add(:base, "Hub/store not allowed for Warehouse Manager") if hub_id.present? || store_id.present?
         when "Storekeeper"
-          errors.add(:store_id, "is required for Storekeeper") if store_id.blank?
-          errors.add(:base, "Hub/warehouse not allowed for Storekeeper") if hub_id.present? || warehouse_id.present?
+          errors.add(:base, "Storekeeper must be assigned to a warehouse or store") if warehouse_id.blank? && store_id.blank?
+          errors.add(:base, "Hub not allowed for Storekeeper") if hub_id.present?
+          errors.add(:base, "Storekeeper cannot have both warehouse and store assignment") if warehouse_id.present? && store_id.present?
         when "Officer"
           errors.add(:warehouse_id, "is required for Officer") if warehouse_id.blank?
           errors.add(:base, "Hub/store not allowed for Officer") if hub_id.present? || store_id.present?

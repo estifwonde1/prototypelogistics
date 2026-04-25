@@ -59,7 +59,8 @@ module Cats
       end
 
       def current_store_ids
-        UserAssignment.where(user_id: current_user.id, role_name: "Storekeeper").pluck(:store_id)
+        access = AccessContext.new(user: current_user)
+        access.assigned_store_ids
       end
     end
   end

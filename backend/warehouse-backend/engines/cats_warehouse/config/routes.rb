@@ -46,7 +46,14 @@ Cats::Warehouse::Engine.routes.draw do
       resource :infra, only: [ :show, :create, :update ], controller: "warehouse_infras"
       resource :contacts, only: [ :show, :create, :update ], controller: "warehouse_contacts"
     end
-    resources :stores, only: [ :index, :show, :create, :update, :destroy ]
+    resources :stores, only: [ :index, :show, :create, :update, :destroy ] do
+      collection do
+        get :storekeepers
+      end
+      member do
+        post :assign_storekeeper
+      end
+    end
     resources :stacks, only: [ :index, :show, :create, :update, :destroy ]
     resources :stock_balances, only: [ :index, :show ]
     resources :receipts, only: [ :index, :show ]
