@@ -54,7 +54,17 @@ Cats::Warehouse::Engine.routes.draw do
         post :assign_storekeeper
       end
     end
-    resources :stacks, only: [ :index, :show, :create, :update, :destroy ]
+    resources :stacks, only: [ :index, :show, :create, :update, :destroy ] do
+      member do
+        post :transfer
+      end
+    end
+    resources :transfer_requests, only: [ :index, :show, :create ] do
+      member do
+        post :approve
+        post :reject
+      end
+    end
     resources :stock_balances, only: [ :index, :show ]
     resources :receipts, only: [ :index, :show ]
     resources :receipt_orders, only: [ :index, :show, :create, :update, :destroy ] do

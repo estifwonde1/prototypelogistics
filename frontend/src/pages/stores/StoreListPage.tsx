@@ -14,24 +14,30 @@ import {
   Text,
   Select,
   Badge,
+  Tooltip,
+  Avatar,
 } from '@mantine/core';
-import { IconPlus, IconSearch, IconEdit, IconTrash, IconEye } from '@tabler/icons-react';
-import { getStores, deleteStore } from '../../api/stores';
+import { IconPlus, IconSearch, IconEdit, IconTrash, IconEye, IconUsers } from '@tabler/icons-react';
+import { getStores, deleteStore, getStoreStorekeepers, assignStorekeeper } from '../../api/stores';
 import { getWarehouses } from '../../api/warehouses';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
+import { AssignStorekeeperModal } from '../../components/stores/AssignStorekeeperModal';
 import { notifications } from '@mantine/notifications';
 import { usePermission } from '../../hooks/usePermission';
+import { useAuth } from '../../hooks/useAuth';
 
 function StoreListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { can } = usePermission();
+  const { role } = useAuth();
   const [search, setSearch] = useState('');
   const [warehouseFilter, setWarehouseFilter] = useState<string | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [storeToDelete, setStoreToDelete] = useState<number | null>(null);
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
 
   const { data: stores = [], isLoading, error, refetch } = useQuery({
     queryKey: ['stores'],
@@ -41,6 +47,12 @@ function StoreListPage() {
   const { data: warehouses = [] } = useQuery({
     queryKey: ['warehouses'],
     queryFn: () => getWarehouses(),
+  });
+
+  const { data: storekeepers = [] } = useQuery({
+    queryKey: ['store-storekeepers'],
+    queryFn: () => getStoreStorekeepers(),
+    enabled: role === 'Warehouse Manager' || role === 'Admin',
   });
 
   const deleteMutation = useMutation({
@@ -64,10 +76,38 @@ function StoreListPage() {
     },
   });
 
+  const assignMutation = useMutation({
+    mutationFn: ({ userId, storeIds }: { userId: number; storeIds?: number[] }) => {
+      // Use the first store in the list, or any store if assigning to all
+      const storeId = storeIds && storeIds.length > 0 ? storeIds[0] : stores[0]?.id;
+      return assignStorekeeper(storeId, { user_id: userId, store_ids: storeIds });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stores'] });
+      queryClient.invalidateQueries({ queryKey: ['store-storekeepers'] });
+      notifications.show({
+        title: 'Success',
+        message: 'Storekeeper assigned successfully',
+        color: 'green',
+      });
+    },
+    onError: (error: any) => {
+      notifications.show({
+        title: 'Error',
+        message: error.response?.data?.error?.message || 'Failed to assign storekeeper',
+        color: 'red',
+      });
+    },
+  });
+
   const handleDelete = () => {
     if (storeToDelete) {
       deleteMutation.mutate(storeToDelete);
     }
+  };
+
+  const handleAssign = async (userId: number, storeIds?: number[]) => {
+    await assignMutation.mutateAsync({ userId, storeIds });
   };
 
   const filteredStores = stores?.filter((store) => {
@@ -82,6 +122,8 @@ function StoreListPage() {
     value: warehouse.id.toString(),
     label: `${warehouse.name} (${warehouse.code})`,
   }));
+
+  const canManageStorekeepers = role === 'Warehouse Manager' || role === 'Admin';
 
   if (isLoading) {
     return <LoadingState message="Loading stores..." />;
@@ -102,11 +144,22 @@ function StoreListPage() {
             Manage storage spaces within warehouses
           </Text>
         </div>
-        {can('stores', 'create') && (
-          <Button leftSection={<IconPlus size={16} />} onClick={() => navigate('/stores/new')}>
-            Create Store
-          </Button>
-        )}
+        <Group>
+          {canManageStorekeepers && storekeepers.length > 0 && (
+            <Button
+              leftSection={<IconUsers size={16} />}
+              variant="light"
+              onClick={() => setAssignModalOpen(true)}
+            >
+              Assign Storekeeper
+            </Button>
+          )}
+          {can('stores', 'create') && (
+            <Button leftSection={<IconPlus size={16} />} onClick={() => navigate('/stores/new')}>
+              Create Store
+            </Button>
+          )}
+        </Group>
       </Group>
 
       <Group>
@@ -145,7 +198,7 @@ function StoreListPage() {
           }
         />
       ) : (
-        <Table.ScrollContainer minWidth={1000}>
+        <Table.ScrollContainer minWidth={1200}>
           <Table striped highlightOnHover>
             <Table.Thead>
               <Table.Tr>
@@ -156,6 +209,7 @@ function StoreListPage() {
                 <Table.Th>Usable Space</Table.Th>
                 <Table.Th>Available Space</Table.Th>
                 <Table.Th>Type</Table.Th>
+                {canManageStorekeepers && <Table.Th>Assigned Storekeepers</Table.Th>}
                 <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>
               </Table.Tr>
             </Table.Thead>
@@ -181,6 +235,34 @@ function StoreListPage() {
                         {store.temporary ? 'Temporary' : 'Permanent'}
                       </Badge>
                     </Table.Td>
+                    {canManageStorekeepers && (
+                      <Table.Td>
+                        {store.assigned_storekeepers && store.assigned_storekeepers.length > 0 ? (
+                          <Tooltip
+                            label={store.assigned_storekeepers.map((sk) => sk.name).join(', ')}
+                            multiline
+                            w={220}
+                          >
+                            <Avatar.Group spacing="sm">
+                              {store.assigned_storekeepers.slice(0, 3).map((sk) => (
+                                <Avatar key={sk.id} size="sm" radius="xl" color="blue">
+                                  {sk.name.charAt(0).toUpperCase()}
+                                </Avatar>
+                              ))}
+                              {store.assigned_storekeepers.length > 3 && (
+                                <Avatar size="sm" radius="xl">
+                                  +{store.assigned_storekeepers.length - 3}
+                                </Avatar>
+                              )}
+                            </Avatar.Group>
+                          </Tooltip>
+                        ) : (
+                          <Text size="sm" c="dimmed">
+                            None
+                          </Text>
+                        )}
+                      </Table.Td>
+                    )}
                     <Table.Td>
                       <Group gap="xs" justify="flex-end">
                         {!canUpdate && !canDelete && canView && (
@@ -240,6 +322,17 @@ function StoreListPage() {
           </Button>
         </Group>
       </Modal>
+
+      {canManageStorekeepers && (
+        <AssignStorekeeperModal
+          opened={assignModalOpen}
+          onClose={() => setAssignModalOpen(false)}
+          storekeepers={storekeepers}
+          stores={stores}
+          onAssign={handleAssign}
+          isLoading={assignMutation.isPending}
+        />
+      )}
     </Stack>
   );
 }

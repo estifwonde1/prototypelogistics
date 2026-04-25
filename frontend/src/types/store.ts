@@ -13,4 +13,21 @@ export interface Store {
   gangway_width?: number;
   gangway_height?: number;
   warehouse_id: number;
+  assigned_storekeepers?: AssignedStorekeeper[];
+}
+
+export interface AssignedStorekeeper {
+  id: number;
+  name: string;
+}
+
+export interface Storekeeper {
+  id: number;
+  name: string;
+  email: string;
+  assignment_type: 'warehouse' | 'store';
+  warehouse_id: number;
+  warehouse_name: string;
+  assigned_store_ids: number[];
+  assigned_stores: { id: number; name: string }[];
 }

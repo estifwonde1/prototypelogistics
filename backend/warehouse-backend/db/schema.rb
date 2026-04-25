@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_04_19_130000) do
+ActiveRecord::Schema[7.0].define(version: 2026_04_25_104614) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1580,6 +1580,35 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_19_130000) do
     t.index ["warehouse_id"], name: "index_cats_warehouse_stores_on_warehouse_id"
   end
 
+  create_table "cats_warehouse_transfer_requests", force: :cascade do |t|
+    t.bigint "source_store_id", null: false
+    t.bigint "destination_store_id", null: false
+    t.bigint "source_stack_id", null: false
+    t.bigint "commodity_id", null: false
+    t.bigint "unit_id", null: false
+    t.decimal "quantity", precision: 15, scale: 3, null: false
+    t.string "reason"
+    t.string "status", default: "Pending", null: false
+    t.bigint "requested_by_id", null: false
+    t.bigint "reviewed_by_id"
+    t.datetime "reviewed_at"
+    t.text "review_notes"
+    t.bigint "warehouse_id", null: false
+    t.bigint "destination_stack_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["commodity_id"], name: "index_cats_warehouse_transfer_requests_on_commodity_id"
+    t.index ["destination_stack_id"], name: "index_cats_warehouse_transfer_requests_on_destination_stack_id"
+    t.index ["destination_store_id"], name: "index_cats_warehouse_transfer_requests_on_destination_store_id"
+    t.index ["requested_by_id"], name: "index_cats_warehouse_transfer_requests_on_requested_by_id"
+    t.index ["reviewed_by_id"], name: "index_cats_warehouse_transfer_requests_on_reviewed_by_id"
+    t.index ["source_stack_id"], name: "index_cats_warehouse_transfer_requests_on_source_stack_id"
+    t.index ["source_store_id"], name: "index_cats_warehouse_transfer_requests_on_source_store_id"
+    t.index ["status"], name: "index_cats_warehouse_transfer_requests_on_status"
+    t.index ["unit_id"], name: "index_cats_warehouse_transfer_requests_on_unit_id"
+    t.index ["warehouse_id"], name: "index_cats_warehouse_transfer_requests_on_warehouse_id"
+  end
+
   create_table "cats_warehouse_uom_conversions", force: :cascade do |t|
     t.bigint "commodity_id"
     t.bigint "from_unit_id", null: false
@@ -2028,6 +2057,15 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_19_130000) do
   add_foreign_key "cats_warehouse_stock_reservations", "cats_warehouse_stores", column: "store_id"
   add_foreign_key "cats_warehouse_stock_reservations", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_stores", "cats_warehouse_warehouses", column: "warehouse_id"
+  add_foreign_key "cats_warehouse_transfer_requests", "cats_core_commodities", column: "commodity_id"
+  add_foreign_key "cats_warehouse_transfer_requests", "cats_core_unit_of_measures", column: "unit_id"
+  add_foreign_key "cats_warehouse_transfer_requests", "cats_core_users", column: "requested_by_id"
+  add_foreign_key "cats_warehouse_transfer_requests", "cats_core_users", column: "reviewed_by_id"
+  add_foreign_key "cats_warehouse_transfer_requests", "cats_warehouse_stacks", column: "destination_stack_id"
+  add_foreign_key "cats_warehouse_transfer_requests", "cats_warehouse_stacks", column: "source_stack_id"
+  add_foreign_key "cats_warehouse_transfer_requests", "cats_warehouse_stores", column: "destination_store_id"
+  add_foreign_key "cats_warehouse_transfer_requests", "cats_warehouse_stores", column: "source_store_id"
+  add_foreign_key "cats_warehouse_transfer_requests", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_uom_conversions", "cats_core_commodities", column: "commodity_id"
   add_foreign_key "cats_warehouse_uom_conversions", "cats_core_unit_of_measures", column: "from_unit_id"
   add_foreign_key "cats_warehouse_uom_conversions", "cats_core_unit_of_measures", column: "to_unit_id"
