@@ -16,9 +16,10 @@ import {
   NumberInput,
   Textarea,
   SimpleGrid,
+  Alert,
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
-import { IconTrash, IconPlus } from "@tabler/icons-react";
+import { IconTrash, IconPlus, IconAlertCircle } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import {
   createDispatchOrder,
@@ -33,6 +34,7 @@ import {
   getUnitReferences,
 } from "../../api/referenceData";
 import { getStockBalances } from "../../api/stockBalances";
+import { useAuthStore } from "../../store/authStore";
 import type { DispatchOrderLine } from "../../api/dispatchOrders";
 import type { ApiError } from "../../types/common";
 
@@ -48,6 +50,20 @@ function DispatchOrderFormPage() {
   const isEdit = !!id;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  // ── Auth & location context ──
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const location = activeAssignment?.location;
+  const jurisdictionLabel = location
+    ? `${location.name} (${location.location_type})`
+    : "Federal / System-wide";
+
+  // Check if sub-federal officer without location
+  const SUB_FEDERAL_ROLES = ["Regional Officer", "Zonal Officer", "Woreda Officer", "Kebele Officer"];
+  const isSubFederalOfficer = activeAssignment?.role_name
+    ? SUB_FEDERAL_ROLES.includes(activeAssignment.role_name)
+    : false;
+  const hasLocationIssue = isSubFederalOfficer && !location;
 
   const [warehouseId, setWarehouseId] = useState<string | null>(null);
   const [destinationType, setDestinationType] = useState("");
@@ -328,6 +344,8 @@ function DispatchOrderFormPage() {
       expected_pickup_date: dateStr,
       notes,
       lines: items,
+      location_id: location?.id ?? null,
+      hierarchical_level: location?.location_type ?? "Federal",
     };
 
     if (isEdit) {
@@ -357,11 +375,24 @@ function DispatchOrderFormPage() {
 
       <Card shadow="sm" padding="lg" radius="md" withBorder>
         <Stack gap="md">
+          {/* ── Warning: Missing location assignment ── */}
+          {hasLocationIssue && (
+            <Alert icon={<IconAlertCircle size={16} />} color="yellow" title="Missing Geographic Assignment">
+              Your account has no geographic assignment. Contact your administrator.
+            </Alert>
+          )}
+
           <div>
             <Text size="sm" fw={600} mb="md">
               Order Details
             </Text>
             <SimpleGrid cols={{ base: 1, sm: 2 }}>
+              <TextInput
+                label="Jurisdiction"
+                value={jurisdictionLabel}
+                disabled
+                description="Automatically assigned based on your role"
+              />
               <Select
                 label="Source Warehouse"
                 placeholder="Select warehouse"
@@ -564,7 +595,7 @@ function DispatchOrderFormPage() {
               </Button>
             )}
             {!isEdit && (
-              <Button onClick={handleSave} loading={isLoading}>
+              <Button onClick={handleSave} loading={isLoading} disabled={hasLocationIssue}>
                 Save as Draft
               </Button>
             )}

@@ -37,6 +37,9 @@ module Cats
         payload = receipt_order_params
         authorize ReceiptOrder
 
+        # Get location tagging from the current user's assignment
+        location_attrs = LocationTagger.call(user: current_user)
+
         # Map frontend params to backend params
         warehouse_id = payload[:destination_warehouse_id].presence || payload[:warehouse_id].presence
         received_date = payload[:expected_delivery_date] || payload[:received_date] || Date.today
@@ -58,7 +61,9 @@ module Cats
           source: PolymorphicReferenceResolver.resolve_source(payload[:source_type], payload[:source_id]),
           reference_no: payload[:reference_no],
           description: payload[:description] || payload[:notes],
-          name: source_name
+          name: source_name,
+          location_id: location_attrs[:location_id],
+          hierarchical_level: location_attrs[:hierarchical_level]
         ).call
 
         # Reload with proper associations

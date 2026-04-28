@@ -76,6 +76,10 @@ export interface ReceiptOrder {
   workflow_events?: WorkflowEvent[];
   /** Raw API key; prefer `assignments` after normalization */
   receipt_order_assignments?: ReceiptOrderAssignment[];
+  // Hierarchical order management
+  location_id?: number | null;
+  hierarchical_level?: string | null;
+  location_name?: string | null;
 }
 
 function normalizeReceiptOrderAssignment(raw: Record<string, unknown>): ReceiptOrderAssignment {
@@ -149,6 +153,9 @@ export interface CreateReceiptOrderPayload {
   expected_delivery_date: string;
   notes?: string;
   lines: ReceiptOrderLine[];
+  /** Location tagging for hierarchical order management */
+  location_id?: number | null;
+  hierarchical_level?: string | null;
 }
 
 export async function getReceiptOrders(params?: { warehouse_id?: number; hub_id?: number }): Promise<ReceiptOrder[]> {

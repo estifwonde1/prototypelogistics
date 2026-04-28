@@ -43,6 +43,7 @@ interface StoreAssignment {
   commodity_name?: string;
   commodity_quantity?: number;
   unit_name?: string;
+  batch_no?: string;
 }
 
 async function getStorekeeperAssignments(): Promise<StoreAssignment[]> {
@@ -156,6 +157,15 @@ export default function StorekeeperAssignmentsPage() {
                   </Text>
                 )}
 
+                {assignment.batch_no && (
+                  <Group gap="xs">
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Batch</Text>
+                    <Text size="sm" style={{ fontFamily: 'monospace' }}>
+                      {assignment.batch_no}
+                    </Text>
+                  </Group>
+                )}
+
                 <Text size="xs" c="dimmed">
                   Assigned by {assignment.assigned_by_name} on {new Date(assignment.assigned_at).toLocaleString()}
                 </Text>
@@ -206,6 +216,15 @@ export default function StorekeeperAssignmentsPage() {
                   <Text size="sm">
                     {assignment.commodity_quantity?.toLocaleString()} {assignment.unit_name} of {assignment.commodity_name}
                   </Text>
+                )}
+
+                {assignment.batch_no && (
+                  <Group gap="xs">
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Batch</Text>
+                    <Text size="sm" style={{ fontFamily: 'monospace' }}>
+                      {assignment.batch_no}
+                    </Text>
+                  </Group>
                 )}
 
                 <Text size="xs" c="dimmed">

@@ -11,6 +11,7 @@ import {
   ActionIcon,
   Text,
   Select,
+  Badge,
 } from '@mantine/core';
 import { IconPlus, IconSearch, IconEye } from '@tabler/icons-react';
 import { getReceiptOrders, type ReceiptOrder } from '../../api/receiptOrders';
@@ -210,6 +211,7 @@ function ReceiptOrdersListPage() {
                 <Table.Th>Order ID</Table.Th>
                 <Table.Th>Source</Table.Th>
                 <Table.Th>Destination</Table.Th>
+                <Table.Th>Jurisdiction</Table.Th>
                 <Table.Th>Status</Table.Th>
                 <Table.Th>Items</Table.Th>
                 <Table.Th>Created</Table.Th>
@@ -217,43 +219,55 @@ function ReceiptOrdersListPage() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {filteredOrders?.map((order) => (
-                <Table.Tr
-                  key={order.id}
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => navigate(`/receipt-orders/${order.id}`)}
-                >
-                  <Table.Td style={{ fontWeight: 600 }}>RO-{order.id}</Table.Td>
-                  <Table.Td>
-                    {order.source_name ||
-                      order.name ||
-                      (order.source_reference != null ? String(order.source_reference) : '—')}
-                  </Table.Td>
-                  <Table.Td>
-                    {order.warehouse_name || order.destination_warehouse_name || order.hub_name || '—'}
-                  </Table.Td>
-                  <Table.Td>
-                    <StatusBadge status={order.status} />
-                  </Table.Td>
-                  <Table.Td>
-                    {order.receipt_order_lines?.length ?? order.lines?.length ?? 0}
-                  </Table.Td>
-                  <Table.Td>
-                    {new Date(order.created_at).toLocaleDateString()}
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap="xs" justify="flex-end" onClick={(e) => e.stopPropagation()}>
-                      <ActionIcon
-                        variant="subtle"
-                        color="blue"
-                        onClick={() => navigate(`/receipt-orders/${order.id}`)}
-                      >
-                        <IconEye size={16} />
-                      </ActionIcon>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
+              {filteredOrders?.map((order) => {
+                const isFederal = !order.location_name || !order.hierarchical_level || order.hierarchical_level === 'Federal';
+                return (
+                  <Table.Tr
+                    key={order.id}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => navigate(`/receipt-orders/${order.id}`)}
+                  >
+                    <Table.Td style={{ fontWeight: 600 }}>RO-{order.id}</Table.Td>
+                    <Table.Td>
+                      {order.source_name ||
+                        order.name ||
+                        (order.source_reference != null ? String(order.source_reference) : '—')}
+                    </Table.Td>
+                    <Table.Td>
+                      {order.warehouse_name || order.destination_warehouse_name || order.hub_name || '—'}
+                    </Table.Td>
+                    <Table.Td>
+                      {isFederal ? (
+                        <Badge color="gray" variant="light" size="sm">Federal</Badge>
+                      ) : (
+                        <Badge color="blue" variant="light" size="sm">
+                          {order.location_name} — {order.hierarchical_level}
+                        </Badge>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      <StatusBadge status={order.status} />
+                    </Table.Td>
+                    <Table.Td>
+                      {order.receipt_order_lines?.length ?? order.lines?.length ?? 0}
+                    </Table.Td>
+                    <Table.Td>
+                      {new Date(order.created_at).toLocaleDateString()}
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap="xs" justify="flex-end" onClick={(e) => e.stopPropagation()}>
+                        <ActionIcon
+                          variant="subtle"
+                          color="blue"
+                          onClick={() => navigate(`/receipt-orders/${order.id}`)}
+                        >
+                          <IconEye size={16} />
+                        </ActionIcon>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                );
+              })}
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>

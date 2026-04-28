@@ -11,6 +11,7 @@ import {
   ActionIcon,
   Text,
   Select,
+  Badge,
 } from '@mantine/core';
 import { IconPlus, IconSearch, IconEye } from '@tabler/icons-react';
 import { getDispatchOrders } from '../../api/dispatchOrders';
@@ -138,6 +139,7 @@ function DispatchOrdersListPage() {
                 <Table.Th>Order ID</Table.Th>
                 <Table.Th>Source</Table.Th>
                 <Table.Th>Destination</Table.Th>
+                <Table.Th>Jurisdiction</Table.Th>
                 <Table.Th>Status</Table.Th>
                 <Table.Th>Items</Table.Th>
                 <Table.Th>Created</Table.Th>
@@ -145,35 +147,47 @@ function DispatchOrdersListPage() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {filteredOrders?.map((order) => (
-                <Table.Tr
-                  key={order.id}
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => navigate(`/officer/dispatch-orders/${order.id}`)}
-                >
-                  <Table.Td style={{ fontWeight: 600 }}>DO-{order.id}</Table.Td>
-                  <Table.Td>{order.source_warehouse_name || 'N/A'}</Table.Td>
-                  <Table.Td>{order.destination_name}</Table.Td>
-                  <Table.Td>
-                    <StatusBadge status={order.status} />
-                  </Table.Td>
-                  <Table.Td>{order.lines?.length || 0}</Table.Td>
-                  <Table.Td>
-                    {new Date(order.created_at).toLocaleDateString()}
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap="xs" justify="flex-end" onClick={(e) => e.stopPropagation()}>
-                      <ActionIcon
-                        variant="subtle"
-                        color="blue"
-                        onClick={() => navigate(`/officer/dispatch-orders/${order.id}`)}
-                      >
-                        <IconEye size={16} />
-                      </ActionIcon>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
+              {filteredOrders?.map((order) => {
+                const isFederal = !order.location_name || !order.hierarchical_level || order.hierarchical_level === 'Federal';
+                return (
+                  <Table.Tr
+                    key={order.id}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => navigate(`/officer/dispatch-orders/${order.id}`)}
+                  >
+                    <Table.Td style={{ fontWeight: 600 }}>DO-{order.id}</Table.Td>
+                    <Table.Td>{order.source_warehouse_name || 'N/A'}</Table.Td>
+                    <Table.Td>{order.destination_name}</Table.Td>
+                    <Table.Td>
+                      {isFederal ? (
+                        <Badge color="gray" variant="light" size="sm">Federal</Badge>
+                      ) : (
+                        <Badge color="blue" variant="light" size="sm">
+                          {order.location_name} — {order.hierarchical_level}
+                        </Badge>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      <StatusBadge status={order.status} />
+                    </Table.Td>
+                    <Table.Td>{order.lines?.length || 0}</Table.Td>
+                    <Table.Td>
+                      {new Date(order.created_at).toLocaleDateString()}
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap="xs" justify="flex-end" onClick={(e) => e.stopPropagation()}>
+                        <ActionIcon
+                          variant="subtle"
+                          color="blue"
+                          onClick={() => navigate(`/officer/dispatch-orders/${order.id}`)}
+                        >
+                          <IconEye size={16} />
+                        </ActionIcon>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                );
+              })}
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>

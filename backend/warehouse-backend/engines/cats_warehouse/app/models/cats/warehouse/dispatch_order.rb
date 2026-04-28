@@ -7,6 +7,7 @@ module Cats
 
       belongs_to :hub, class_name: "Cats::Warehouse::Hub", optional: true
       belongs_to :warehouse, class_name: "Cats::Warehouse::Warehouse", optional: true
+      belongs_to :location, class_name: "Cats::Core::Location", optional: true
       belongs_to :created_by, class_name: "Cats::Core::User"
       belongs_to :confirmed_by, class_name: "Cats::Core::User", optional: true
       belongs_to :destination, polymorphic: true, optional: true

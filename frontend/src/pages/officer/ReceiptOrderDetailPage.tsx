@@ -31,6 +31,7 @@ import { getStores } from '../../api/stores';
 import { getWarehouses } from '../../api/warehouses';
 import { getUnitReferences, getUomConversions } from '../../api/referenceData';
 import { StatusBadge } from '../../components/common/StatusBadge';
+import { ScopeBadge } from '../../components/common/ScopeBadge';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { AssignmentCard } from '../../components/common/AssignmentCard';
@@ -483,7 +484,10 @@ function ReceiptOrderDetailPage() {
     <Stack gap="md">
       <Group justify="space-between">
         <div>
-          <Title order={2}>Receipt Order RO-{order.id}</Title>
+          <Group gap="sm" align="center">
+            <Title order={2}>Receipt Order RO-{order.id}</Title>
+            <ScopeBadge locationName={order.location_name} hierarchicalLevel={order.hierarchical_level} />
+          </Group>
           <Text c="dimmed" size="sm">
             Created on {new Date(order.created_at).toLocaleDateString()}
           </Text>

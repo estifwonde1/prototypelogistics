@@ -17,6 +17,7 @@ import {
   Alert,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
+import { useDebouncedValue } from '@mantine/hooks';
 import { IconTrash, IconPlus, IconChevronDown, IconChevronUp } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { createGrn, getGrns } from '../../api/grns';
@@ -120,6 +121,7 @@ function GrnCreatePage() {
   const [sourceId, setSourceId] = useState('');
   const [items, setItems] = useState<GrnItem[]>([createEmptyItem()]);
   const [showLotTracking, setShowLotTracking] = useState<{ [key: number]: boolean }>({});
+  const [batchFilters, setBatchFilters] = useState<{ [key: number]: string }>({});
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
@@ -445,6 +447,22 @@ function GrnCreatePage() {
     return list;
   };
 
+  /** Filtered commodity options based on batch filter for a specific item. */
+  const filteredCommodityOptionsForItem = (item: GrnItem, itemIndex: number) => {
+    const allOptions = commodityOptionsForItem(item);
+    const filter = batchFilters[itemIndex]?.trim().toLowerCase();
+    
+    if (!filter) return allOptions;
+
+    return allOptions.filter((opt) => {
+      const commodity = commodities.find((c) => c.id.toString() === opt.value);
+      if (!commodity) return false;
+      
+      const batchNo = (commodity.batch_no || commodity.line_reference_no || '').toLowerCase();
+      return batchNo.includes(filter);
+    });
+  };
+
   const selectedCommodityTemplateStack = (item: GrnItem) =>
     reservedStacks.find(
       (stack) =>
@@ -691,31 +709,50 @@ function GrnCreatePage() {
                       </Table.Td>
 
                       <Table.Td>
-                        <Select
-                          placeholder={item.store_id ? 'Select commodity' : 'Select store first'}
-                          data={commodityOptionsForItem(item)}
-                          value={item.commodity_id ? item.commodity_id.toString() : null}
-                          onChange={(value) => {
-                            const nextCommodityId = value ? parseInt(value, 10) : 0;
-                            const templateStack = reservedStacks.find(
-                              (entry) =>
-                                entry.store_id === item.store_id &&
-                                entry.commodity_id === nextCommodityId
-                            );
-                            const refCommodity = commodities.find((c) => c.id === nextCommodityId);
+                        <Stack gap="xs">
+                          <TextInput
+                            placeholder="Filter by batch number..."
+                            value={batchFilters[index] || ''}
+                            onChange={(e) => {
+                              setBatchFilters((prev) => ({
+                                ...prev,
+                                [index]: e.target.value,
+                              }));
+                            }}
+                            size="xs"
+                            disabled={!item.store_id}
+                          />
+                          <Select
+                            placeholder={item.store_id ? 'Select commodity' : 'Select store first'}
+                            data={filteredCommodityOptionsForItem(item, index)}
+                            value={item.commodity_id ? item.commodity_id.toString() : null}
+                            onChange={(value) => {
+                              const nextCommodityId = value ? parseInt(value, 10) : 0;
+                              const templateStack = reservedStacks.find(
+                                (entry) =>
+                                  entry.store_id === item.store_id &&
+                                  entry.commodity_id === nextCommodityId
+                              );
+                              const refCommodity = commodities.find((c) => c.id === nextCommodityId);
 
-                            handleItemChange(index, 'commodity_id', nextCommodityId);
-                            handleItemChange(index, 'stack_id', undefined);
-                            handleItemChange(
-                              index,
-                              'unit_id',
-                              templateStack?.unit_id || refCommodity?.unit_id || 0
-                            );
-                          }}
-                          searchable
-                          clearable
-                          disabled={!item.store_id}
-                        />
+                              handleItemChange(index, 'commodity_id', nextCommodityId);
+                              handleItemChange(index, 'stack_id', undefined);
+                              handleItemChange(
+                                index,
+                                'unit_id',
+                                templateStack?.unit_id || refCommodity?.unit_id || 0
+                              );
+                            }}
+                            searchable
+                            clearable
+                            disabled={!item.store_id}
+                          />
+                          {batchFilters[index]?.trim() && filteredCommodityOptionsForItem(item, index).length === 0 && (
+                            <Text size="xs" c="dimmed">
+                              No commodities found for this batch number.
+                            </Text>
+                          )}
+                        </Stack>
                       </Table.Td>
 
                       <Table.Td>

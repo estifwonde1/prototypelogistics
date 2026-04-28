@@ -1,7 +1,7 @@
 module Cats
   module Warehouse
     class ReceiptOrderCreator
-      def initialize(explicit_hub: nil, warehouse: nil, received_date: nil, created_by:, items: nil, source: nil, reference_no: nil, description: nil, name: nil)
+      def initialize(explicit_hub: nil, warehouse: nil, received_date: nil, created_by:, items: nil, source: nil, reference_no: nil, description: nil, name: nil, location_id: nil, hierarchical_level: nil)
         @explicit_hub = explicit_hub
         @warehouse = warehouse
         @received_date = received_date
@@ -11,6 +11,8 @@ module Cats
         @reference_no = reference_no
         @description = description
         @name = name
+        @location_id = location_id
+        @hierarchical_level = hierarchical_level
       end
 
       def call
@@ -25,7 +27,9 @@ module Cats
             reference_no: @reference_no.presence,
             name: @name,
             description: @description,
-            status: ContractConstants::DOCUMENT_STATUSES[:draft]
+            status: ContractConstants::DOCUMENT_STATUSES[:draft],
+            location_id: @location_id,
+            hierarchical_level: @hierarchical_level
           )
 
           @items.each do |raw|

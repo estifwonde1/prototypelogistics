@@ -6,7 +6,7 @@ module Cats
                  :store_id, :store_name, :assigned_by_id, :assigned_by_name,
                  :assigned_to_id, :assigned_to_name, :quantity, :status,
                  :assigned_at, :created_at, :updated_at,
-                 :reference_no, :commodity_name, :commodity_quantity, :unit_name
+                 :reference_no, :commodity_name, :commodity_quantity, :unit_name, :batch_no
 
       def hub_name
         object.hub&.name
@@ -46,6 +46,11 @@ module Cats
 
       def unit_name
         object.receipt_order_line&.unit&.name
+      end
+
+      def batch_no
+        object.receipt_order_line&.line_reference_no.presence ||
+          object.receipt_order_line&.commodity&.batch_no
       end
 
       private

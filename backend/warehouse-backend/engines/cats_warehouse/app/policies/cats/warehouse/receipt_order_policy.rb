@@ -12,6 +12,7 @@ module Cats
       end
 
       def show?
+        return false if level_excluded?
         index?
       end
 
@@ -22,11 +23,13 @@ module Cats
       def update?
         return false unless record.is_a?(ReceiptOrder)
         return false unless record.status_draft?
+        return false if level_excluded?
 
         create?
       end
 
       def destroy?
+        return false if level_excluded?
         update?
       end
 
@@ -66,6 +69,7 @@ module Cats
       def confirm?
         return false unless record.is_a?(ReceiptOrder)
         return false unless record.status.to_s.casecmp("draft").zero?
+        return false if level_excluded?
 
         return true if admin?
         return true if officer?  # Officers can confirm any order
@@ -75,6 +79,8 @@ module Cats
       end
 
       private
+
+      LEVEL_ORDER = %w[Federal Region Zone Woreda Kebele].freeze
 
       # AccessContext#accessible_warehouse_ids is an ActiveRecord::Relation for some roles, but for
       # Warehouse Manager it is already an Array<Integer> from UserAssignment — do not call .pluck(:id) on that.
@@ -89,6 +95,33 @@ module Cats
 
       def officer?
         super
+      end
+
+      # Level exclusion check: if the record's hierarchical_level is strictly higher
+      # (lower index in LEVEL_ORDER) than the current officer's own level, return false.
+      # Federal officers always pass this check.
+      def level_excluded?
+        return false if admin?
+        return false unless officer?
+
+        record_level = record.hierarchical_level.to_s
+        return false if record_level == "Federal" || record_level.blank?
+
+        assignment = UserAssignment.where(user: user).order(created_at: :desc).first
+        return false if assignment.nil?
+
+        role = assignment.role_name.to_s
+        return false if ["Federal Officer", "Officer"].include?(role) || role.blank?
+
+        officer_location = assignment.location
+        return true if officer_location.nil?
+
+        officer_level_index = LEVEL_ORDER.index(officer_location.location_type) || 0
+        record_level_index = LEVEL_ORDER.index(record_level)
+
+        return false if record_level_index.nil?
+
+        record_level_index < officer_level_index
       end
     end
   end

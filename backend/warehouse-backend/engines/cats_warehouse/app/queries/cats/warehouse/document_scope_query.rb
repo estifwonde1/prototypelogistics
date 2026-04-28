@@ -26,7 +26,7 @@ module Cats
         when "Cats::Warehouse::ReceiptOrder"
           receipt_orders_scope
         when "Cats::Warehouse::DispatchOrder"
-          scoped_relation.where(warehouse_id: access.accessible_warehouse_ids)
+          dispatch_orders_scope
         when "Cats::Warehouse::Waybill"
           waybills_scope
         when "Cats::Core::Receipt"
@@ -96,6 +96,11 @@ module Cats
       # Hub-only receipt orders have warehouse_id nil but hub_id set; include those for hub (and related) roles.
       # Hub Managers only see orders in their hub workflow queue: status must be +assigned+ (not draft/confirmed/etc.).
       def receipt_orders_scope
+        # Sub-federal officers use hierarchical scoping based on location and level
+        if access.officer? && !access.officer_full_access?
+          return HierarchicalOrderScopeQuery.new(user: access.user, scope: scoped_relation).call
+        end
+
         wh_ids = access.accessible_warehouse_ids
         hub_ids = receipt_order_visible_hub_ids
         by_warehouse = scoped_relation.where(warehouse_id: wh_ids)
@@ -104,6 +109,17 @@ module Cats
         return rel.where(status: DOCUMENT_STATUSES[:assigned]) if access.hub_manager?
 
         rel
+      end
+
+      # Dispatch orders use hierarchical scoping for sub-federal officers.
+      # Other roles (hub manager, warehouse manager, storekeeper) use warehouse-based scoping.
+      def dispatch_orders_scope
+        # Sub-federal officers use hierarchical scoping based on location and level
+        if access.officer? && !access.officer_full_access?
+          return HierarchicalOrderScopeQuery.new(user: access.user, scope: scoped_relation).call
+        end
+
+        scoped_relation.where(warehouse_id: access.accessible_warehouse_ids)
       end
 
       def receipt_order_visible_hub_ids

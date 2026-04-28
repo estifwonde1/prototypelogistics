@@ -17,6 +17,9 @@ module Cats
         payload = dispatch_order_params
         authorize DispatchOrder
 
+        # Get location tagging from the current user's assignment
+        location_attrs = LocationTagger.call(user: current_user)
+
         # Map frontend params to backend params
         warehouse_id = payload[:source_warehouse_id] || payload[:warehouse_id]
         dispatched_date = payload[:expected_pickup_date] || payload[:dispatched_date] || Date.today
@@ -32,7 +35,9 @@ module Cats
           destination: PolymorphicReferenceResolver.resolve_source(payload[:destination_type], payload[:destination_id]),
           reference_no: payload[:reference_no],
           description: payload[:description] || payload[:notes],
-          name: destination_name
+          name: destination_name,
+          location_id: location_attrs[:location_id],
+          hierarchical_level: location_attrs[:hierarchical_level]
         ).call
 
         # Reload with proper associations

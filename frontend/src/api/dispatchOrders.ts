@@ -29,6 +29,10 @@ export interface DispatchOrder {
   assignments?: DispatchOrderAssignment[];
   stock_reservations?: StockReservation[];
   workflow_events?: WorkflowEvent[];
+  // Hierarchical order management
+  location_id?: number | null;
+  hierarchical_level?: string | null;
+  location_name?: string | null;
 }
 
 export interface CreateDispatchOrderPayload {
@@ -38,6 +42,9 @@ export interface CreateDispatchOrderPayload {
   expected_pickup_date: string;
   notes?: string;
   lines: DispatchOrderLine[];
+  /** Location tagging for hierarchical order management */
+  location_id?: number | null;
+  hierarchical_level?: string | null;
 }
 
 export async function getDispatchOrders(params?: { warehouse_id?: number }): Promise<DispatchOrder[]> {

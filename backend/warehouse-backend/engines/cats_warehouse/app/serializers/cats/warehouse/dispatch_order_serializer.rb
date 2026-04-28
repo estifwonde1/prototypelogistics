@@ -4,7 +4,8 @@ module Cats
       attributes :id, :reference_no, :name, :status, :dispatched_date, :destination_type, :destination_id, :destination_reference,
                  :hub_id, :hub_name, :warehouse_id, :warehouse_name, :warehouse_code,
                  :created_by_id, :created_by_name, :confirmed_by_id, :confirmed_by_name, :confirmed_at,
-                 :description, :created_at, :updated_at
+                 :description, :created_at, :updated_at,
+                 :location_id, :hierarchical_level, :location_name
 
       has_many :dispatch_order_lines, serializer: Cats::Warehouse::DispatchOrderLineSerializer
       has_many :dispatch_order_assignments, serializer: Cats::Warehouse::DispatchOrderAssignmentSerializer
@@ -38,6 +39,10 @@ module Cats
 
       def confirmed_by_name
         [object.confirmed_by&.first_name, object.confirmed_by&.last_name].compact.join(" ").presence || object.confirmed_by&.email
+      end
+
+      def location_name
+        object.location&.name
       end
     end
   end

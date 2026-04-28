@@ -16,10 +16,12 @@ import {
   ActionIcon,
   NumberInput,
   Badge,
+  TextInput,
+  Alert,
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
-import { IconPlus, IconTrash } from "@tabler/icons-react";
+import { IconPlus, IconTrash, IconAlertCircle } from "@tabler/icons-react";
 import {
   createReceiptOrder,
   getReceiptOrder,
@@ -29,6 +31,7 @@ import {
 import { getWarehouses } from "../../api/warehouses";
 import { getHubs } from "../../api/hubs";
 import { getCommodityReferences, getUnitReferences } from "../../api/referenceData";
+import { useAuthStore } from "../../store/authStore";
 import type { ReceiptOrderLine } from "../../api/receiptOrders";
 import type { ApiError } from "../../types/common";
 
@@ -63,6 +66,20 @@ function ReceiptOrderFormPage() {
   const isEdit = !!id;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  // ── Auth & location context ──
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const location = activeAssignment?.location;
+  const jurisdictionLabel = location
+    ? `${location.name} (${location.location_type})`
+    : "Federal / System-wide";
+
+  // Check if sub-federal officer without location
+  const SUB_FEDERAL_ROLES = ["Regional Officer", "Zonal Officer", "Woreda Officer", "Kebele Officer"];
+  const isSubFederalOfficer = activeAssignment?.role_name
+    ? SUB_FEDERAL_ROLES.includes(activeAssignment.role_name)
+    : false;
+  const hasLocationIssue = isSubFederalOfficer && !location;
 
   // ── Commodity & batch selection ──
   const [selectedCommodityId, setSelectedCommodityId] = useState<string | null>(null);
@@ -396,6 +413,8 @@ function ReceiptOrderFormPage() {
           : new Date().toISOString().split("T")[0],
       notes,
       lines,
+      location_id: location?.id ?? null,
+      hierarchical_level: location?.location_type ?? "Federal",
     };
 
     if (isEdit) {
@@ -459,6 +478,13 @@ function ReceiptOrderFormPage() {
 
       <Card shadow="sm" padding="lg" radius="md" withBorder>
         <Stack gap="lg">
+
+          {/* ── Warning: Missing location assignment ── */}
+          {hasLocationIssue && (
+            <Alert icon={<IconAlertCircle size={16} />} color="yellow" title="Missing Geographic Assignment">
+              Your account has no geographic assignment. Contact your administrator.
+            </Alert>
+          )}
 
           {/* ── Section 1: Commodity & Batch ── */}
           <div>
@@ -526,6 +552,12 @@ function ReceiptOrderFormPage() {
           <div>
             <Text size="sm" fw={700} mb="sm">Order Details</Text>
             <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+              <TextInput
+                label="Jurisdiction"
+                value={jurisdictionLabel}
+                disabled
+                description="Automatically assigned based on your role"
+              />
               <DateInput
                 label="Expected Delivery Date"
                 placeholder="Select date"
@@ -621,7 +653,7 @@ function ReceiptOrderFormPage() {
               </Button>
             )}
             {fieldsEditable && (
-              <Button onClick={handleSave} loading={isSaving}>
+              <Button onClick={handleSave} loading={isSaving} disabled={hasLocationIssue}>
                 {isEdit ? "Update draft" : "Save as Draft"}
               </Button>
             )}

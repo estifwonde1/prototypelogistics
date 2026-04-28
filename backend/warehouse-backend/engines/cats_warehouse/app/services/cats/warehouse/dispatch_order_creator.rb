@@ -1,7 +1,7 @@
 module Cats
   module Warehouse
     class DispatchOrderCreator
-      def initialize(hub: nil, warehouse: nil, dispatched_date: nil, created_by:, items: nil, destination: nil, reference_no: nil, description: nil, name: nil)
+      def initialize(hub: nil, warehouse: nil, dispatched_date: nil, created_by:, items: nil, destination: nil, reference_no: nil, description: nil, name: nil, location_id: nil, hierarchical_level: nil)
         @hub = hub
         @warehouse = warehouse
         @dispatched_date = dispatched_date
@@ -11,6 +11,8 @@ module Cats
         @reference_no = reference_no
         @description = description
         @name = name
+        @location_id = location_id
+        @hierarchical_level = hierarchical_level
       end
 
       def call
@@ -24,7 +26,9 @@ module Cats
             reference_no: @reference_no.presence,
             name: @name,
             description: @description,
-            status: ContractConstants::DOCUMENT_STATUSES[:draft]
+            status: ContractConstants::DOCUMENT_STATUSES[:draft],
+            location_id: @location_id,
+            hierarchical_level: @hierarchical_level
           )
 
           @items.each do |item|
