@@ -4,8 +4,10 @@ require "rails_helper"
 
 begin
   require "rantly/rspec_extensions"
+  RANTLY_AVAILABLE = true
 rescue LoadError
   puts "Rantly gem not available - skipping property-based tests"
+  RANTLY_AVAILABLE = false
 end
 
 RSpec.describe Cats::Warehouse::LocationTagger, type: :service do
@@ -39,7 +41,7 @@ RSpec.describe Cats::Warehouse::LocationTagger, type: :service do
 
   describe "Property 1: Sub-federal order creation always tags location" do
     it "always returns the assignment location_id and location_type as hierarchical_level" do
-      if defined?(Rantly)
+      if RANTLY_AVAILABLE
         property_of {
           choose("Regional Officer", "Zonal Officer", "Woreda Officer", "Kebele Officer")
         }.check(100) do |role_name|
@@ -77,7 +79,7 @@ RSpec.describe Cats::Warehouse::LocationTagger, type: :service do
 
   describe "Property 2: Missing location assignment always rejects order creation" do
     it "always raises ArgumentError when a sub-federal officer has no location" do
-      if defined?(Rantly)
+      if RANTLY_AVAILABLE
         property_of {
           choose("Regional Officer", "Zonal Officer", "Woreda Officer", "Kebele Officer")
         }.check(100) do |role_name|
@@ -112,7 +114,7 @@ RSpec.describe Cats::Warehouse::LocationTagger, type: :service do
 
   describe "Property 3: Federal officer orders always have null location and Federal level" do
     it "always returns { location_id: nil, hierarchical_level: 'Federal' } for federal/generic/unknown roles" do
-      if defined?(Rantly)
+      if RANTLY_AVAILABLE
         property_of {
           choose(
             "Federal Officer",

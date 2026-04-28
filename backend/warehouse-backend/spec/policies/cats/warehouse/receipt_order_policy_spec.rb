@@ -4,8 +4,10 @@ require "rails_helper"
 
 begin
   require "rantly/rspec_extensions"
+  RANTLY_AVAILABLE = true
 rescue LoadError
   puts "Rantly gem not available - skipping property-based tests"
+  RANTLY_AVAILABLE = false
 end
 
 RSpec.describe Cats::Warehouse::ReceiptOrderPolicy, type: :policy do
@@ -59,7 +61,7 @@ RSpec.describe Cats::Warehouse::ReceiptOrderPolicy, type: :policy do
   #
   # Validates: Requirements 2.3, 3.3, 3.5
   # ─────────────────────────────────────────────────────────────────────────────
-  if defined?(Rantly)
+  if RANTLY_AVAILABLE
     describe "Property 6: Out-of-scope order operations always return not-authorized" do
       it "returns false for all operations when the order is at a higher hierarchical level" do
         property_of {

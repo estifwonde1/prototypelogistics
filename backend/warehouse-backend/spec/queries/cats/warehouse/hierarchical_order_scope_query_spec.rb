@@ -4,8 +4,10 @@ require "rails_helper"
 
 begin
   require "rantly/rspec_extensions"
+  RANTLY_AVAILABLE = true
 rescue LoadError
   puts "Rantly gem not available - skipping property-based tests"
+  RANTLY_AVAILABLE = false
 end
 
 RSpec.describe Cats::Warehouse::HierarchicalOrderScopeQuery, type: :query do
@@ -64,7 +66,7 @@ RSpec.describe Cats::Warehouse::HierarchicalOrderScopeQuery, type: :query do
   #
   # Validates: Requirements 2.1, 3.1, 3.2
   # ─────────────────────────────────────────────────────────────────────────────
-  if defined?(Rantly)
+  if RANTLY_AVAILABLE
     describe "Property 4: Officer order list satisfies both visibility conditions" do
       it "returns only orders satisfying both geographic subtree and level conditions" do
         property_of {
