@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Stack, Title, Group, Button, Tabs, Card, Text, Grid, Badge,
-  Modal, Anchor, Table, TextInput, NumberInput, Switch, Select, Divider,
+  Modal, Anchor, Table, TextInput, NumberInput, Switch, Select, Divider, ActionIcon,
 } from '@mantine/core';
 import { IconEdit, IconTrash, IconArrowLeft, IconMapPin } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
@@ -85,6 +85,7 @@ function WarehouseDetailPage() {
       total_storage_capacity_mt: '' as number | '',
       construction_year: '' as number | '',
       ownership_type: '',
+      usable_space_percentage: 75 as number,
     },
   });
 
@@ -123,6 +124,7 @@ function WarehouseDetailPage() {
       total_storage_capacity_mt: warehouse.capacity?.total_storage_capacity_mt ?? '',
       construction_year: warehouse.capacity?.construction_year ?? '',
       ownership_type: warehouse.ownership_type || '',
+      usable_space_percentage: (warehouse.capacity as any)?.usable_space_percentage ?? 75,
     });
     accessForm.setValues({
       has_loading_dock: !!warehouse.access?.has_loading_dock,
@@ -152,6 +154,7 @@ function WarehouseDetailPage() {
         total_area_sqm: toNumber(payload.total_area_sqm),
         total_storage_capacity_mt: toNumber(payload.total_storage_capacity_mt),
         construction_year: toNumber(payload.construction_year),
+        usable_space_percentage: payload.usable_space_percentage,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['warehouses', id] });
@@ -713,15 +716,47 @@ function WarehouseDetailPage() {
           <Stack gap="md">
             <NumberInput label="Total Area (sqm)" min={0} {...capacityForm.getInputProps('total_area_sqm')} />
             <NumberInput label="Total Storage Capacity (MT)" min={0} {...capacityForm.getInputProps('total_storage_capacity_mt')} />
-            <TextInput
-              label="Usable Capacity (calculated)"
-              value={
-                warehouse.capacity?.usable_storage_capacity_mt !== undefined
-                  ? String(warehouse.capacity.usable_storage_capacity_mt)
-                  : ''
-              }
-              readOnly
-            />
+            <div>
+              <Text size="sm" fw={500} mb={4}>Usable Capacity (calculated)</Text>
+              <Group gap="xs" align="center">
+                <ActionIcon
+                  variant="default"
+                  size="lg"
+                  onClick={() => {
+                    const current = capacityForm.values.usable_space_percentage ?? 75;
+                    if (current > 70) capacityForm.setFieldValue('usable_space_percentage', current - 1);
+                  }}
+                  disabled={capacityForm.values.usable_space_percentage <= 70}
+                >
+                  −
+                </ActionIcon>
+                <Text fw={700} size="sm" w={40} ta="center">
+                  {capacityForm.values.usable_space_percentage}%
+                </Text>
+                <ActionIcon
+                  variant="default"
+                  size="lg"
+                  onClick={() => {
+                    const current = capacityForm.values.usable_space_percentage ?? 75;
+                    if (current < 80) capacityForm.setFieldValue('usable_space_percentage', current + 1);
+                  }}
+                  disabled={capacityForm.values.usable_space_percentage >= 80}
+                >
+                  +
+                </ActionIcon>
+                <Text size="sm" c="dimmed">
+                  ={' '}
+                  {capacityForm.values.total_storage_capacity_mt !== ''
+                    ? (
+                        Number(capacityForm.values.total_storage_capacity_mt) *
+                        (capacityForm.values.usable_space_percentage / 100)
+                      ).toLocaleString(undefined, { maximumFractionDigits: 2 })
+                    : '—'}{' '}
+                  MT
+                </Text>
+              </Group>
+              <Text size="xs" c="dimmed" mt={4}>Range: 70% – 80%</Text>
+            </div>
             <TextInput
               label="Number of Stores"
               value={warehouseStores?.length?.toString() || '0'}

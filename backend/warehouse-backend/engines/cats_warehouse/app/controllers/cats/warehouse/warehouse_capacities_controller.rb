@@ -29,7 +29,8 @@ module Cats
           :total_area_sqm,
           :total_storage_capacity_mt,
           :no_of_stores,
-          :construction_year
+          :construction_year,
+          :usable_space_percentage
         )
       end
     end

@@ -397,7 +397,7 @@ function ReceiptOrderFormPage() {
         unit_id: parseInt(unitId!),
         packaging_unit_id: packagingUnitId ? parseInt(packagingUnitId) : undefined,
         packaging_size: packagingSize ?? undefined,
-        notes: dest.notes || `${dest.kind === "hub" ? "Hub" : "Warehouse"}: ${facilityLabel}`,
+        notes: `${dest.kind === "hub" ? "Hub" : "Warehouse"}: ${facilityLabel}${dest.notes ? ` | ${dest.notes}` : ""}`,
       };
     });
 

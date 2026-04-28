@@ -3,7 +3,9 @@ module Cats
     class StacksController < BaseController
       def index
         authorize Stack
-        render_resource(policy_scope(Stack).order(:id), each_serializer: StackSerializer)
+        scope = policy_scope(Stack).order(:id)
+        scope = scope.where(store_id: params[:store_id]) if params[:store_id].present?
+        render_resource(scope, each_serializer: StackSerializer)
       end
 
       def show

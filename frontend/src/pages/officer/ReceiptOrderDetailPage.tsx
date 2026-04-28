@@ -16,6 +16,9 @@ import {
   Textarea,
   NumberInput,
   Alert,
+  Divider,
+  Badge,
+  Progress,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -26,8 +29,11 @@ import {
   getReceiptOrderAssignableManagers,
   reserveSpace,
   getReceiptOrderWorkflow,
+  startStacking,
+  finishStacking,
 } from '../../api/receiptOrders';
 import { getStores } from '../../api/stores';
+import { getStacks } from '../../api/stacks';
 import { getWarehouses } from '../../api/warehouses';
 import { getUnitReferences, getUomConversions } from '../../api/referenceData';
 import { StatusBadge } from '../../components/common/StatusBadge';
@@ -46,6 +52,7 @@ import { useAuthStore } from '../../store/authStore';
 import { OFFICER_ROLE_SLUGS, normalizeRoleSlug } from '../../contracts/warehouse';
 import type { Warehouse } from '../../types/warehouse';
 import type { Store } from '../../types/store';
+import type { Stack as StackType } from '../../types/stack';
 import type { UnitReference, UomConversion } from '../../types/referenceData';
 import type { WorkflowEvent } from '../../types/assignment';
 
@@ -112,6 +119,9 @@ function ReceiptOrderDetailPage() {
   const isOfficerRole = roleSlug ? OFFICER_ROLE_SLUGS.includes(roleSlug) : false;
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('details');
+
+  // Stacking state
+  const [stackingItems, setStackingItems] = useState<Array<{ stack_id: string; quantity: number }>>([{ stack_id: '', quantity: 0 }]);
   
   // Assignment form state
   const [showAssignmentForm, setShowAssignmentForm] = useState(false);
@@ -119,6 +129,7 @@ function ReceiptOrderDetailPage() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedAssignmentStoreId, setSelectedAssignmentStoreId] = useState<string | null>(null);
   const [assignmentNotes, setAssignmentNotes] = useState('');
+  const [assignmentQuantity, setAssignmentQuantity] = useState<number>(0);
   
   // Space reservation form state
   const [showSpaceReservationForm, setShowSpaceReservationForm] = useState(false);
@@ -188,10 +199,26 @@ function ReceiptOrderDetailPage() {
   const storesLoading = storesQuery.isLoading;
   const storesError = storesQuery.isError;
 
+  // Stacks for storekeeper's assigned store
+  const stackingStoreId = useAuthStore((state) => state.activeAssignment?.store?.id ?? null);
+
+  const stacksQuery = useQuery({
+    queryKey: ['stacks', { store_id: stackingStoreId }],
+    queryFn: () => getStacks({ store_id: stackingStoreId ?? undefined }),
+    enabled: !!stackingStoreId && normalizeOrderStatus(order?.status ?? '') === 'in_progress',
+  });
+  const stackOptions = useMemo(() => {
+    const stacks = (stacksQuery.data as StackType[]) || [];
+    return stacks.map((s) => ({
+      value: String(s.id),
+      label: `${s.code}${s.quantity > 0 ? ` (${s.quantity} ${s.unit_name ?? ''})` : ' (empty)'}`,
+    }));
+  }, [stacksQuery.data]);
+
   const allWarehousesQuery = useQuery({
     queryKey: ['warehouses'],
     queryFn: () => getWarehouses({}),
-    enabled: showWarehouseAssignmentModal,
+    enabled: roleSlug === 'hub_manager' || showWarehouseAssignmentModal,
   });
   const allWarehouses = (allWarehousesQuery.data as Warehouse[]) || [];
 
@@ -327,6 +354,7 @@ function ReceiptOrderDetailPage() {
       setSelectedUserId(null);
       setSelectedAssignmentStoreId(null);
       setAssignmentNotes('');
+      setAssignmentQuantity(0);
       refetch();
     },
     onError: (error: unknown) => {
@@ -368,6 +396,42 @@ function ReceiptOrderDetailPage() {
     },
   });
 
+  // ── Stacking mutations ──────────────────────────────────────────────────
+  const startStackingMutation = useMutation({
+    mutationFn: () => startStacking(Number(id)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['receipt_orders', id] });
+      notifications.show({ title: 'Stacking Started', message: 'You can now add stack placements.', color: 'blue' });
+      refetch();
+    },
+    onError: (error: unknown) => {
+      notifications.show({
+        title: 'Error',
+        message: (isAxiosError<any>(error) ? error.response?.data?.error?.message : undefined) || 'Failed to start stacking',
+        color: 'red',
+      });
+    },
+  });
+
+  const finishStackingMutation = useMutation({
+    mutationFn: () => finishStacking(Number(id), stackingItems.map(i => ({ stack_id: Number(i.stack_id), quantity: i.quantity }))),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['receipt_orders', id] });
+      queryClient.invalidateQueries({ queryKey: ['stacks'] });
+      notifications.show({ title: 'Stacking Completed', message: 'GRN has been generated and stacks updated.', color: 'green' });
+      setStackingItems([{ stack_id: '', quantity: 0 }]);
+      refetch();
+    },
+    onError: (error: unknown) => {
+      notifications.show({
+        title: 'Error',
+        message: (isAxiosError<any>(error) ? error.response?.data?.error?.message : undefined) || 'Failed to finish stacking',
+        color: 'red',
+      });
+    },
+  });
+
+
   const handleCreateAssignment = () => {
     if (isOfficerRole) {
       if (!selectedUserId) {
@@ -395,9 +459,22 @@ function ReceiptOrderDetailPage() {
         return;
       }
 
+      const totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
+      const alreadyAssigned = assignments.filter(a => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+      const remaining = totalOrdered - alreadyAssigned;
+      if (assignmentQuantity > remaining) {
+        notifications.show({
+          title: 'Validation Error',
+          message: `Quantity exceeds remaining (${remaining.toLocaleString()} left)`,
+          color: 'red',
+        });
+        return;
+      }
+
       const payload: any = {
         assignments: [{
           store_id: Number(selectedAssignmentStoreId),
+          quantity: assignmentQuantity > 0 ? assignmentQuantity : undefined,
           notes: assignmentNotes,
         }],
       };
@@ -642,6 +719,13 @@ function ReceiptOrderDetailPage() {
                           ? destinationPart.replace('Warehouse:', '').trim()
                           : destinationPart || '—';
 
+                      // Find assigned warehouse from assignments for this line (or order-level)
+                      const assignedWarehouse = assignments.find(a =>
+                        a.warehouse_id != null &&
+                        (a.receipt_order_line_id == null || a.receipt_order_line_id === line.id)
+                      );
+                      const assignedWarehouseName = assignedWarehouse?.warehouse_name?.trim() || null;
+
                       return (
                         <Table.Tr key={line.id ?? index}>
                           <Table.Td>
@@ -667,7 +751,11 @@ function ReceiptOrderDetailPage() {
                           </Table.Td>
                           <Table.Td>
                             {isHub ? (
-                              <Text size="sm" c="dimmed">Not yet assigned</Text>
+                              assignedWarehouseName ? (
+                                <Text size="sm" fw={500}>{assignedWarehouseName}</Text>
+                              ) : (
+                                <Text size="sm" c="dimmed">Not yet assigned</Text>
+                              )
                             ) : isWarehouse ? (
                               <Text size="sm" fw={500}>{destinationLabel}</Text>
                             ) : (
@@ -693,7 +781,148 @@ function ReceiptOrderDetailPage() {
               </Table.ScrollContainer>
             </div>
 
+            {/* ── Stacking Section ── */}
+            {(() => {
+              const orderStatus = normalizeOrderStatus(order.status);
+              const isStorekeeper = roleSlug === 'storekeeper';
+              const canStartStacking = (isStorekeeper || roleSlug === 'warehouse_manager' || roleSlug === 'admin' || roleSlug === 'superadmin') &&
+                ['confirmed', 'assigned', 'reserved'].includes(orderStatus);
+              const isStacking = orderStatus === 'in_progress';
+              const isCompleted = orderStatus === 'completed';
+
+              if (!canStartStacking && !isStacking && !isCompleted) return null;
+
+              const totalOrdered = lines.reduce((sum, l) => sum + Number(l.quantity ?? 0), 0);
+              const totalStacked = stackingItems.reduce((sum, i) => sum + i.quantity, 0);
+              const remaining = totalOrdered - totalStacked;
+              const progressPct = totalOrdered > 0 ? Math.min(100, (totalStacked / totalOrdered) * 100) : 0;
+
+              return (
+                <Card withBorder padding="lg" mt="md">
+                  <Stack gap="md">
+                    <Group justify="space-between">
+                      <Text fw={700} size="lg">Stacking</Text>
+                      {isCompleted && <Badge color="green" size="lg">Stacking Completed</Badge>}
+                      {isStacking && <Badge color="blue" size="lg">In Progress</Badge>}
+                    </Group>
+
+                    {canStartStacking && (
+                      <Alert color="blue" variant="light">
+                        The order is confirmed. Click "Start Stacking" to begin placing goods into stacks.
+                      </Alert>
+                    )}
+
+                    {isStacking && (
+                      <>
+                        <Group>
+                          <Text size="sm">Total to stack: <strong>{totalOrdered}</strong></Text>
+                          <Text size="sm">Stacked so far: <strong>{totalStacked}</strong></Text>
+                          <Text size="sm" c={remaining < 0 ? 'red' : remaining === 0 ? 'green' : 'dimmed'}>
+                            Remaining: <strong>{remaining}</strong>
+                          </Text>
+                        </Group>
+                        <Progress value={progressPct} color={remaining === 0 ? 'green' : 'blue'} size="md" />
+
+                        <Divider label="Add Stack Placement" labelPosition="left" />
+
+                        {stackingItems.map((item, idx) => (
+                          <Group key={idx} gap="sm" align="flex-end">
+                            <Text size="sm" w={24} mb={6}>{idx + 1}.</Text>
+                            <Select
+                              label="Stack"
+                              placeholder={stacksQuery.isLoading ? 'Loading stacks…' : stackOptions.length === 0 ? 'No stacks in your store' : 'Select a stack'}
+                              data={stackOptions}
+                              value={item.stack_id || null}
+                              onChange={(val) => {
+                                const next = [...stackingItems];
+                                next[idx] = { ...next[idx], stack_id: val || '' };
+                                setStackingItems(next);
+                              }}
+                              searchable
+                              style={{ flex: 2 }}
+                            />
+                            <NumberInput
+                              label="Quantity"
+                              placeholder="Qty"
+                              value={item.quantity || ''}
+                              onChange={(val) => {
+                                const next = [...stackingItems];
+                                next[idx] = { ...next[idx], quantity: Number(val) || 0 };
+                                setStackingItems(next);
+                              }}
+                              min={0}
+                              style={{ flex: 1 }}
+                            />
+                            <Button
+                              variant="subtle"
+                              color="red"
+                              size="xs"
+                              mb={2}
+                              onClick={() => {
+                                if (stackingItems.length > 1) {
+                                  setStackingItems(stackingItems.filter((_, i) => i !== idx));
+                                }
+                              }}
+                              disabled={stackingItems.length <= 1}
+                            >
+                              Remove
+                            </Button>
+                          </Group>
+                        ))}
+
+                        <Button
+                          variant="light"
+                          size="xs"
+                          onClick={() => setStackingItems([...stackingItems, { stack_id: '', quantity: 0 }])}
+                        >
+                          + Add Stack Placement
+                        </Button>
+                      </>
+                    )}
+
+                    {isCompleted && (
+                      <Alert color="green" variant="light">
+                        Stacking is complete. GRN has been generated and stack quantities updated.
+                      </Alert>
+                    )}
+                  </Stack>
+                </Card>
+              );
+            })()}
+
             <Group justify="flex-end">
+              {(() => {
+                const orderStatus = normalizeOrderStatus(order.status);
+                const canStartStacking = (roleSlug === 'storekeeper' || roleSlug === 'warehouse_manager' || roleSlug === 'admin' || roleSlug === 'superadmin') &&
+                  ['confirmed', 'assigned', 'reserved'].includes(orderStatus);
+                const isStacking = orderStatus === 'in_progress';
+                const totalOrdered = lines.reduce((sum, l) => sum + Number(l.quantity ?? 0), 0);
+                const totalStacked = stackingItems.reduce((sum, i) => sum + i.quantity, 0);
+
+                return (
+                  <>
+                    {canStartStacking && (
+                      <Button
+                        color="blue"
+                        onClick={() => startStackingMutation.mutate()}
+                        loading={startStackingMutation.isPending}
+                      >
+                        Start Stacking
+                      </Button>
+                    )}
+                    {isStacking && (
+                      <Button
+                        color="green"
+                        onClick={() => finishStackingMutation.mutate()}
+                        loading={finishStackingMutation.isPending}
+                        disabled={stackingItems.every(i => !i.stack_id || i.quantity <= 0)}
+                      >
+                        Finish Stacking
+                      </Button>
+                    )}
+                  </>
+                );
+              })()}
               {isDraft && (
                 <>
                   {canUpdateOrder ? (
@@ -745,14 +974,16 @@ function ReceiptOrderDetailPage() {
                   + Assign Warehouse
                 </Button>
               ) : null}
-              {roleSlug === 'warehouse_manager' && ['confirmed', 'assigned', 'reserved', 'in_progress'].includes(String(order.status).toLowerCase()) && (
-                <Button
-                  size="sm"
-                  onClick={() => setShowAssignmentForm(true)}
-                >
-                  + Assign Store
-                </Button>
-              )}
+              {roleSlug === 'warehouse_manager' && ['confirmed', 'assigned', 'reserved', 'in_progress'].includes(String(order.status).toLowerCase()) && (() => {
+                const totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
+                const totalStoreAssigned = assignments.filter(a => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+                if (totalOrdered > 0 && totalStoreAssigned >= totalOrdered) return null;
+                return (
+                  <Button size="sm" onClick={() => setShowAssignmentForm(true)}>
+                    + Assign Store
+                  </Button>
+                );
+              })()}
               {isOfficerRole && String(order.status).toLowerCase() === 'confirmed' && (
                 <Button
                   size="sm"
@@ -870,6 +1101,21 @@ function ReceiptOrderDetailPage() {
                           No storekeeper is assigned to this store. The assignment will still be created.
                         </Text>
                       )}
+                      <NumberInput
+                        label="Quantity to assign to this store"
+                        placeholder={`Max: ${lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0).toLocaleString()}`}
+                        value={assignmentQuantity || ''}
+                        onChange={(val) => setAssignmentQuantity(Number(val) || 0)}
+                        min={0}
+                        description={`Total ordered: ${lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0).toLocaleString()} — already store-assigned: ${assignments.filter(a => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0).toLocaleString()}`}
+                        error={(() => {
+                          const totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
+                          const alreadyAssigned = assignments.filter(a => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+                          const remaining = totalOrdered - alreadyAssigned;
+                          if (assignmentQuantity > remaining) return `Exceeds remaining quantity (${remaining.toLocaleString()} left)`;
+                          return null;
+                        })()}
+                      />
                       {!assignableManagersLoading &&
                       assignmentStoreSelectData.length === 0 &&
                       !assignableManagersError ? (

@@ -262,3 +262,15 @@ export async function getReceiptOrderWorkflow(id: number): Promise<WorkflowEvent
   const response = await apiClient.get(`/receipt_orders/${id}/workflow`);
   return extractWorkflowEvents(response.data);
 }
+
+export async function startStacking(id: number): Promise<ReceiptOrder> {
+  const response = await apiClient.post(`/receipt_orders/${id}/start_stacking`);
+  const raw = response.data.data || response.data;
+  return normalizeReceiptOrder(typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {});
+}
+
+export async function finishStacking(id: number, placements: Array<{ stack_id: number; quantity: number }>): Promise<ReceiptOrder> {
+  const response = await apiClient.post(`/receipt_orders/${id}/finish_stacking`, { placements });
+  const raw = response.data.data || response.data;
+  return normalizeReceiptOrder(typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {});
+}
