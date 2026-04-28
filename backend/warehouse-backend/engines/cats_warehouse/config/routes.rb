@@ -75,6 +75,10 @@ Cats::Warehouse::Engine.routes.draw do
       get :workflow, on: :member
     end
     resources :storekeeper_assignments, only: [ :index ] do
+      collection do
+        post :search_delivery
+        get :dashboard_data
+      end
       member do
         post :accept
         post :reject
