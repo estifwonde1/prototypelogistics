@@ -73,8 +73,14 @@ Cats::Warehouse::Engine.routes.draw do
       get :assignable_managers, on: :member
       post :reserve_space, on: :member
       get :workflow, on: :member
+      post :start_stacking, on: :member
+      post :finish_stacking, on: :member
     end
     resources :storekeeper_assignments, only: [ :index ] do
+      collection do
+        post :search_delivery
+        get :dashboard_data
+      end
       member do
         post :accept
         post :reject

@@ -31,6 +31,8 @@ import { getRoleLabel } from '../../contracts/warehouse';
 import { getReceiptOrders } from '../../api/receiptOrders';
 import { getDispatchOrders } from '../../api/dispatchOrders';
 import { getStockBalances } from '../../api/stockBalances';
+import { getInspections } from '../../api/inspections';
+import type { Inspection } from '../../types/inspection';
 
 export default function WarehouseManagerDashboardPage() {
   const navigate = useNavigate();
@@ -63,6 +65,19 @@ export default function WarehouseManagerDashboardPage() {
   const pendingReceiptAssignments = receiptOrders?.filter(o => o.status === 'Confirmed') ?? [];
   const pendingDispatchAuthorizations = dispatchOrders?.filter(o => o.status === 'Draft') ?? [];
   const activeDispatchAuthorizations = dispatchOrders?.filter(o => o.status === 'Confirmed') ?? [];
+
+  // 4. Lost Commodity records
+  const { data: inspectionsData } = useQuery({
+    queryKey: ['inspections', { warehouse_id: warehouseId }],
+    queryFn: () => getInspections(),
+    enabled: !!warehouseId,
+  });
+  const lostCommodityRecords = ((inspectionsData as Inspection[]) ?? [])
+    .filter(i => Number(i.warehouse_id) === Number(warehouseId))
+    .flatMap(i => (i.inspection_items ?? [])
+      .filter(item => Number(item.quantity_lost ?? 0) > 0)
+      .map(item => ({ ...item, inspected_on: i.inspected_on, receipt_order_id: i.receipt_order_id }))
+    );
 
   return (
     <Stack gap="xl">
@@ -234,6 +249,56 @@ export default function WarehouseManagerDashboardPage() {
             </SimpleGrid>
           ) : (
             <Text c="dimmed" py="xl" ta="center">No inventory records found for this warehouse.</Text>
+          )}
+        </Paper>
+
+        {/* Lost Commodity Records */}
+        <Paper withBorder p="md" radius="md" mt="xl">
+          <Group justify="space-between" mb="md">
+            <Group gap="xs">
+              <Title order={4}>Lost Commodity Records</Title>
+              {lostCommodityRecords.length > 0 && (
+                <Badge color="red" variant="light">{lostCommodityRecords.length}</Badge>
+              )}
+            </Group>
+          </Group>
+          {lostCommodityRecords.length === 0 ? (
+            <Text c="dimmed" py="xl" ta="center">No lost commodity records for this warehouse.</Text>
+          ) : (
+            <Table striped>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Receipt Order</Table.Th>
+                  <Table.Th>Commodity</Table.Th>
+                  <Table.Th>Qty Lost</Table.Th>
+                  <Table.Th>Loss Type</Table.Th>
+                  <Table.Th>Remarks</Table.Th>
+                  <Table.Th>Recorded On</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {lostCommodityRecords.map((record, idx) => {
+                  const remarks = record.remarks ?? '';
+                  const lossTypeMatch = remarks.match(/Loss type: ([^|]+)/);
+                  const lossType = lossTypeMatch ? lossTypeMatch[1].trim() : '—';
+                  const cleanRemarks = remarks.replace(/\s*\|\s*Loss type:[^|]+/, '').trim() || '—';
+                  return (
+                    <Table.Tr key={idx}>
+                      <Table.Td>
+                        {record.receipt_order_id ? (
+                          <Text size="sm" fw={500}>RO-{record.receipt_order_id}</Text>
+                        ) : <Text size="sm" c="dimmed">—</Text>}
+                      </Table.Td>
+                      <Table.Td><Text size="sm">{record.commodity_name || '—'}</Text></Table.Td>
+                      <Table.Td><Badge color="red" variant="light">{Number(record.quantity_lost).toLocaleString()}</Badge></Table.Td>
+                      <Table.Td><Badge color="orange" variant="light">{lossType}</Badge></Table.Td>
+                      <Table.Td><Text size="sm" c="dimmed">{cleanRemarks}</Text></Table.Td>
+                      <Table.Td><Text size="xs" c="dimmed">{new Date(record.inspected_on).toLocaleDateString()}</Text></Table.Td>
+                    </Table.Tr>
+                  );
+                })}
+              </Table.Tbody>
+            </Table>
           )}
         </Paper>
 

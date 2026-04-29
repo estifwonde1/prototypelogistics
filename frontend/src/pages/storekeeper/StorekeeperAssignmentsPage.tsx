@@ -49,7 +49,7 @@ interface StoreAssignment {
 async function getStorekeeperAssignments(): Promise<StoreAssignment[]> {
   const response = await apiClient.get('/storekeeper_assignments');
   const data = response.data.data || response.data;
-  return Array.isArray(data.assignments) ? data.assignments : (Array.isArray(data) ? data : []);
+  return Array.isArray(data.receipt_assignments) ? data.receipt_assignments : (Array.isArray(data.assignments) ? data.assignments : (Array.isArray(data) ? data : []));
 }
 
 async function acceptAssignment(id: number) {
@@ -156,6 +156,13 @@ export default function StorekeeperAssignmentsPage() {
                     {assignment.commodity_quantity?.toLocaleString()} {assignment.unit_name} of {assignment.commodity_name}
                   </Text>
                 )}
+
+                <Group gap="xs">
+                  <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Assigned Quantity</Text>
+                  <Text size="sm" fw={700} c={assignment.quantity ? undefined : 'orange'}>
+                    {assignment.quantity ? `${Number(assignment.quantity).toLocaleString()} ${assignment.unit_name ?? ''}` : 'No quantity specified'}
+                  </Text>
+                </Group>
 
                 {assignment.batch_no && (
                   <Group gap="xs">

@@ -3,9 +3,19 @@ module Cats
     class WarehouseCapacity < ApplicationRecord
       self.table_name = "cats_warehouse_warehouse_capacity"
 
-      RESERVE_FACTOR = 0.85
+      USABLE_PERCENTAGE_MIN = 70
+      USABLE_PERCENTAGE_MAX = 80
+      USABLE_PERCENTAGE_DEFAULT = 75
 
       belongs_to :warehouse, class_name: "Cats::Warehouse::Warehouse"
+
+      validates :usable_space_percentage,
+                numericality: {
+                  only_integer: true,
+                  greater_than_or_equal_to: USABLE_PERCENTAGE_MIN,
+                  less_than_or_equal_to: USABLE_PERCENTAGE_MAX
+                },
+                allow_nil: true
 
       before_validation :derive_usable_storage_capacity
       before_destroy :store_hub_id
@@ -16,7 +26,8 @@ module Cats
       def derive_usable_storage_capacity
         return if total_storage_capacity_mt.blank?
 
-        self.usable_storage_capacity_mt = (total_storage_capacity_mt.to_f * RESERVE_FACTOR).round(2)
+        pct = usable_space_percentage.presence || USABLE_PERCENTAGE_DEFAULT
+        self.usable_storage_capacity_mt = (total_storage_capacity_mt.to_f * pct.to_f / 100.0).round(2)
       end
 
       def recalculate_hub_capacity

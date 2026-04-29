@@ -15,7 +15,11 @@ import {
   Select,
   Textarea,
   NumberInput,
+  TextInput,
   Alert,
+  Divider,
+  Badge,
+  Progress,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -26,8 +30,12 @@ import {
   getReceiptOrderAssignableManagers,
   reserveSpace,
   getReceiptOrderWorkflow,
+  startStacking,
+  finishStacking,
 } from '../../api/receiptOrders';
 import { getStores } from '../../api/stores';
+import { getStacks } from '../../api/stacks';
+import { createInspection, getInspections } from '../../api/inspections';
 import { getWarehouses } from '../../api/warehouses';
 import { getUnitReferences, getUomConversions } from '../../api/referenceData';
 import { StatusBadge } from '../../components/common/StatusBadge';
@@ -46,6 +54,8 @@ import { useAuthStore } from '../../store/authStore';
 import { OFFICER_ROLE_SLUGS, normalizeRoleSlug } from '../../contracts/warehouse';
 import type { Warehouse } from '../../types/warehouse';
 import type { Store } from '../../types/store';
+import type { Stack as StackType } from '../../types/stack';
+import type { Inspection } from '../../types/inspection';
 import type { UnitReference, UomConversion } from '../../types/referenceData';
 import type { WorkflowEvent } from '../../types/assignment';
 
@@ -112,6 +122,18 @@ function ReceiptOrderDetailPage() {
   const isOfficerRole = roleSlug ? OFFICER_ROLE_SLUGS.includes(roleSlug) : false;
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('details');
+
+  // Stacking state
+  const [stackingItems, setStackingItems] = useState<Array<{ stack_id: string; quantity: number }>>([{ stack_id: '', quantity: 0 }]);
+
+  // Receipt recording state
+  const [showReceiptForm, setShowReceiptForm] = useState(false);
+  const [receiptQty, setReceiptQty] = useState<number | string>('');
+  const [receiptCondition, setReceiptCondition] = useState<string | null>('Good');
+  const [receiptGrade, setReceiptGrade] = useState('');
+  const [receiptRemarks, setReceiptRemarks] = useState('');
+  const [receiptLostQty, setReceiptLostQty] = useState<number | string>('');
+  const [receiptLossType, setReceiptLossType] = useState<string | null>(null);
   
   // Assignment form state
   const [showAssignmentForm, setShowAssignmentForm] = useState(false);
@@ -119,6 +141,7 @@ function ReceiptOrderDetailPage() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedAssignmentStoreId, setSelectedAssignmentStoreId] = useState<string | null>(null);
   const [assignmentNotes, setAssignmentNotes] = useState('');
+  const [assignmentQuantity, setAssignmentQuantity] = useState<number>(0);
   
   // Space reservation form state
   const [showSpaceReservationForm, setShowSpaceReservationForm] = useState(false);
@@ -188,10 +211,35 @@ function ReceiptOrderDetailPage() {
   const storesLoading = storesQuery.isLoading;
   const storesError = storesQuery.isError;
 
+  // Stacks for storekeeper's assigned store
+  const stackingStoreId = useAuthStore((state) => state.activeAssignment?.store?.id ?? null);
+
+  const stacksQuery = useQuery({
+    queryKey: ['stacks', { store_id: stackingStoreId }],
+    queryFn: () => getStacks({ store_id: stackingStoreId ?? undefined }),
+    enabled: !!stackingStoreId && normalizeOrderStatus(order?.status ?? '') === 'in_progress',
+  });
+  const stackOptions = useMemo(() => {
+    const stacks = (stacksQuery.data as StackType[]) || [];
+    return stacks.map((s) => ({
+      value: String(s.id),
+      label: `${s.code}${s.quantity > 0 ? ` (${s.quantity} ${s.unit_name ?? ''})` : ' (empty)'}`,
+    }));
+  }, [stacksQuery.data]);
+
+  // Inspections (receipt recordings) for this order
+  const inspectionsQuery = useQuery({
+    queryKey: ['inspections', { receipt_order_id: id }],
+    queryFn: () => getInspections(),
+    enabled: !!order && ['assigned', 'in_progress', 'completed'].includes(normalizeOrderStatus(order.status)),
+    select: (data) => (data as Inspection[]).filter((i) => i.receipt_order_id === Number(id)),
+  });
+  const inspections = (inspectionsQuery.data as Inspection[]) || [];
+
   const allWarehousesQuery = useQuery({
     queryKey: ['warehouses'],
     queryFn: () => getWarehouses({}),
-    enabled: showWarehouseAssignmentModal,
+    enabled: roleSlug === 'hub_manager' || showWarehouseAssignmentModal,
   });
   const allWarehouses = (allWarehousesQuery.data as Warehouse[]) || [];
 
@@ -327,6 +375,7 @@ function ReceiptOrderDetailPage() {
       setSelectedUserId(null);
       setSelectedAssignmentStoreId(null);
       setAssignmentNotes('');
+      setAssignmentQuantity(0);
       refetch();
     },
     onError: (error: unknown) => {
@@ -368,6 +417,92 @@ function ReceiptOrderDetailPage() {
     },
   });
 
+  // ── Receipt recording mutation ───────────────────────────────────────────
+  const recordReceiptMutation = useMutation({
+    mutationFn: () => {
+      if (!order) throw new Error('No order');
+      const firstLine = lines[0];
+      // Get warehouse from order or from assignments
+      const warehouseId = order.warehouse_id ??
+        assignments.find(a => a.warehouse_id != null)?.warehouse_id;
+      if (!warehouseId) throw new Error('No warehouse assigned to this order yet. The warehouse manager must assign a warehouse first.');
+      return createInspection({
+        warehouse_id: warehouseId,
+        inspected_on: new Date().toISOString().split('T')[0],
+        inspector_id: useAuthStore.getState().userId ?? 0,
+        receipt_order_id: order.id,
+        status: 'confirmed',
+        items: [{
+          commodity_id: firstLine?.commodity_id ?? 0,
+          unit_id: firstLine?.unit_id ?? 0,
+          quantity_received: Number(receiptQty),
+          quantity_lost: receiptLostQty ? Number(receiptLostQty) : undefined,
+          quality_status: receiptCondition ?? 'Good',
+          packaging_condition: receiptGrade || 'Standard',
+          remarks: [
+            receiptRemarks,
+            receiptLossType && Number(receiptLostQty) > 0 ? `Loss type: ${receiptLossType}` : null,
+          ].filter(Boolean).join(' | ') || undefined,
+        }],
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inspections', { receipt_order_id: id }] });
+      notifications.show({ title: 'Receipt Recorded', message: 'Receipt entry saved successfully.', color: 'green' });
+      setReceiptQty('');
+      setReceiptCondition('Good');
+      setReceiptGrade('');
+      setReceiptRemarks('');
+      setReceiptLostQty('');
+      setReceiptLossType(null);
+      setShowReceiptForm(false);
+      inspectionsQuery.refetch();
+    },
+    onError: (error: unknown) => {
+      notifications.show({
+        title: 'Error',
+        message: (isAxiosError<any>(error) ? error.response?.data?.error?.message : undefined) || 'Failed to record receipt',
+        color: 'red',
+      });
+    },
+  });
+
+  // ── Stacking mutations ──────────────────────────────────────────────────
+  const startStackingMutation = useMutation({
+    mutationFn: () => startStacking(Number(id)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['receipt_orders', id] });
+      notifications.show({ title: 'Stacking Started', message: 'You can now add stack placements.', color: 'blue' });
+      refetch();
+    },
+    onError: (error: unknown) => {
+      notifications.show({
+        title: 'Error',
+        message: (isAxiosError<any>(error) ? error.response?.data?.error?.message : undefined) || 'Failed to start stacking',
+        color: 'red',
+      });
+    },
+  });
+
+  const finishStackingMutation = useMutation({
+    mutationFn: () => finishStacking(Number(id), stackingItems.map(i => ({ stack_id: Number(i.stack_id), quantity: i.quantity }))),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['receipt_orders', id] });
+      queryClient.invalidateQueries({ queryKey: ['stacks'] });
+      notifications.show({ title: 'Stacking Completed', message: 'GRN has been generated and stacks updated.', color: 'green' });
+      setStackingItems([{ stack_id: '', quantity: 0 }]);
+      refetch();
+    },
+    onError: (error: unknown) => {
+      notifications.show({
+        title: 'Error',
+        message: (isAxiosError<any>(error) ? error.response?.data?.error?.message : undefined) || 'Failed to finish stacking',
+        color: 'red',
+      });
+    },
+  });
+
+
   const handleCreateAssignment = () => {
     if (isOfficerRole) {
       if (!selectedUserId) {
@@ -395,9 +530,22 @@ function ReceiptOrderDetailPage() {
         return;
       }
 
+      const totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
+      const alreadyAssigned = assignments.filter(a => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+      const remaining = totalOrdered - alreadyAssigned;
+      if (assignmentQuantity > remaining) {
+        notifications.show({
+          title: 'Validation Error',
+          message: `Quantity exceeds remaining (${remaining.toLocaleString()} left)`,
+          color: 'red',
+        });
+        return;
+      }
+
       const payload: any = {
         assignments: [{
           store_id: Number(selectedAssignmentStoreId),
+          quantity: assignmentQuantity > 0 ? assignmentQuantity : undefined,
           notes: assignmentNotes,
         }],
       };
@@ -642,6 +790,13 @@ function ReceiptOrderDetailPage() {
                           ? destinationPart.replace('Warehouse:', '').trim()
                           : destinationPart || '—';
 
+                      // Find assigned warehouse from assignments for this line (or order-level)
+                      const assignedWarehouse = assignments.find(a =>
+                        a.warehouse_id != null &&
+                        (a.receipt_order_line_id == null || a.receipt_order_line_id === line.id)
+                      );
+                      const assignedWarehouseName = assignedWarehouse?.warehouse_name?.trim() || null;
+
                       return (
                         <Table.Tr key={line.id ?? index}>
                           <Table.Td>
@@ -667,7 +822,11 @@ function ReceiptOrderDetailPage() {
                           </Table.Td>
                           <Table.Td>
                             {isHub ? (
-                              <Text size="sm" c="dimmed">Not yet assigned</Text>
+                              assignedWarehouseName ? (
+                                <Text size="sm" fw={500}>{assignedWarehouseName}</Text>
+                              ) : (
+                                <Text size="sm" c="dimmed">Not yet assigned</Text>
+                              )
                             ) : isWarehouse ? (
                               <Text size="sm" fw={500}>{destinationLabel}</Text>
                             ) : (
@@ -693,7 +852,333 @@ function ReceiptOrderDetailPage() {
               </Table.ScrollContainer>
             </div>
 
+            {/* ── Receipt Recording Section ── */}
+            {(() => {
+              const orderStatus = normalizeOrderStatus(order.status);
+              const isStorekeeper = roleSlug === 'storekeeper';
+              if (!isStorekeeper) return null;
+              if (!['assigned', 'in_progress'].includes(orderStatus)) return null;
+
+              const totalAuthorized = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
+              const totalRecorded = inspections.reduce((s, i) => {
+                return s + (i.inspection_items ?? []).reduce((ss, item) => ss + Number(item.quantity_received ?? 0), 0);
+              }, 0);
+              const remaining = Math.max(0, totalAuthorized - totalRecorded);
+              const progressPct = totalAuthorized > 0 ? Math.min(100, (totalRecorded / totalAuthorized) * 100) : 0;
+
+              return (
+                <Card withBorder padding="lg" mt="md">
+                  <Stack gap="md">
+                    <Group justify="space-between">
+                      <Text fw={700} size="lg">Receipt Recording</Text>
+                      <Badge color={totalRecorded >= totalAuthorized ? 'green' : 'blue'} size="lg">
+                        {totalRecorded.toLocaleString()} / {totalAuthorized.toLocaleString()} recorded
+                      </Badge>
+                    </Group>
+
+                    <Progress value={progressPct} color={totalRecorded >= totalAuthorized ? 'green' : 'blue'} size="md" />
+
+                    <Group gap="xl">
+                      <Text size="sm">Authorized: <strong>{totalAuthorized.toLocaleString()}</strong></Text>
+                      <Text size="sm">Recorded: <strong>{totalRecorded.toLocaleString()}</strong></Text>
+                      <Text size="sm" c={remaining > 0 ? 'dimmed' : 'green'}>
+                        Remaining: <strong>{remaining.toLocaleString()}</strong>
+                      </Text>
+                    </Group>
+
+                    {/* Existing inspection records */}
+                    {inspections.length > 0 && (
+                      <Table.ScrollContainer minWidth={500}>
+                        <Table striped>
+                          <Table.Thead>
+                            <Table.Tr>
+                              <Table.Th>Qty Received</Table.Th>
+                              <Table.Th>Qty Lost</Table.Th>
+                              <Table.Th>Condition</Table.Th>
+                              <Table.Th>Grade</Table.Th>
+                              <Table.Th>Remarks</Table.Th>
+                              <Table.Th>Recorded On</Table.Th>
+                            </Table.Tr>
+                          </Table.Thead>
+                          <Table.Tbody>
+                            {inspections.flatMap((inspection) =>
+                              (inspection.inspection_items ?? []).map((item, idx) => (
+                                <Table.Tr key={`${inspection.id}-${idx}`}>
+                                  <Table.Td><Text fw={600}>{Number(item.quantity_received).toLocaleString()}</Text></Table.Td>
+                                  <Table.Td>
+                                    {item.quantity_lost && Number(item.quantity_lost) > 0 ? (
+                                      <Badge color="red" variant="light">{Number(item.quantity_lost).toLocaleString()} lost</Badge>
+                                    ) : (
+                                      <Text size="sm" c="dimmed">—</Text>
+                                    )}
+                                  </Table.Td>
+                                  <Table.Td><Badge color={item.quality_status === 'Good' ? 'green' : 'orange'} variant="light">{item.quality_status}</Badge></Table.Td>
+                                  <Table.Td>{item.packaging_condition || '—'}</Table.Td>
+                                  <Table.Td><Text size="sm" c="dimmed">{item.remarks || '—'}</Text></Table.Td>
+                                  <Table.Td><Text size="xs" c="dimmed">{new Date(inspection.inspected_on).toLocaleDateString()}</Text></Table.Td>
+                                </Table.Tr>
+                              ))
+                            )}
+                          </Table.Tbody>
+                        </Table>
+                      </Table.ScrollContainer>
+                    )}
+
+                    {/* Add new receipt entry */}
+                    {orderStatus !== 'completed' && remaining > 0 && (
+                      <>
+                        {!showReceiptForm ? (
+                          <Button variant="light" size="sm" onClick={() => setShowReceiptForm(true)}>
+                            + Add Receipt Entry
+                          </Button>
+                        ) : (
+                          <Card withBorder padding="md" radius="sm">
+                            <Stack gap="sm">
+                              <Text fw={600} size="sm">New Receipt Entry</Text>
+                              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                                <NumberInput
+                                  label="Quantity Received"
+                                  placeholder="Enter quantity"
+                                  value={receiptQty}
+                                  onChange={(val) => setReceiptQty(val)}
+                                  min={0}
+                                  max={remaining > 0 ? remaining : undefined}
+                                  description={`Max: ${remaining.toLocaleString()} remaining`}
+                                  error={Number(receiptQty) > remaining && remaining > 0 ? `Exceeds remaining (${remaining.toLocaleString()})` : null}
+                                  required
+                                />
+                                <Select
+                                  label="Condition"
+                                  data={['Good', 'Damaged', 'Infested', 'Wet', 'Other']}
+                                  value={receiptCondition}
+                                  onChange={setReceiptCondition}
+                                  required
+                                />
+                                <Select
+                                  label="Grade"
+                                  placeholder="Select grade"
+                                  data={['Grade 1', 'Grade 2', 'Grade 3', 'Grade A', 'Grade B', 'Grade C', 'Substandard', 'Unknown']}
+                                  value={receiptGrade || null}
+                                  onChange={(val) => setReceiptGrade(val ?? '')}
+                                />
+                                <TextInput
+                                  label="Remarks"
+                                  placeholder="Any notes about the condition"
+                                  value={receiptRemarks}
+                                  onChange={(e) => setReceiptRemarks(e.target.value)}
+                                />
+                              </SimpleGrid>
+                              {/* Lost Commodity — only show when received < authorized */}
+                              {Number(receiptQty) > 0 && Number(receiptQty) < remaining && (
+                                <>
+                                  <Divider label="Lost Commodity (optional)" labelPosition="left" />
+                                  <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                                    <NumberInput
+                                      label="Quantity Lost"
+                                      placeholder="How many were lost?"
+                                      value={receiptLostQty}
+                                      onChange={(val) => setReceiptLostQty(val)}
+                                      min={0}
+                                      error={(() => {
+                                        const received = Number(receiptQty) || 0;
+                                        const lost = Number(receiptLostQty) || 0;
+                                        if (received + lost > remaining) return `Received + Lost (${received + lost}) exceeds authorized (${remaining.toLocaleString()})`;
+                                        return null;
+                                      })()}
+                                      description="Bags that were dispatched but did not arrive"
+                                    />
+                                    <Select
+                                      label="Loss Type"
+                                      placeholder="Select reason"
+                                      data={['Theft', 'Damage', 'Infested', 'Wet', 'Other']}
+                                      value={receiptLossType}
+                                      onChange={setReceiptLossType}
+                                    />
+                                  </SimpleGrid>
+                                </>
+                              )}
+                              <Group gap="sm">
+                                <Button
+                                  size="sm"
+                                  onClick={() => recordReceiptMutation.mutate()}
+                                  loading={recordReceiptMutation.isPending}
+                                  disabled={
+                                    !receiptQty ||
+                                    Number(receiptQty) <= 0 ||
+                                    Number(receiptQty) > remaining ||
+                                    Number(receiptQty) + Number(receiptLostQty || 0) > remaining
+                                  }
+                                >
+                                  Save Entry
+                                </Button>
+                                <Button size="sm" variant="light" onClick={() => setShowReceiptForm(false)}>
+                                  Cancel
+                                </Button>
+                              </Group>
+                            </Stack>
+                          </Card>
+                        )}
+                      </>
+                    )}
+                  </Stack>
+                </Card>
+              );
+            })()}
+
+            {/* ── Stacking Section ── */}
+            {(() => {
+              const orderStatus = normalizeOrderStatus(order.status);
+              const isStorekeeper = roleSlug === 'storekeeper';
+              const canStartStacking = (isStorekeeper || roleSlug === 'warehouse_manager' || roleSlug === 'admin' || roleSlug === 'superadmin') &&
+                ['confirmed', 'assigned', 'reserved'].includes(orderStatus);
+              const isStacking = orderStatus === 'in_progress';
+              const isCompleted = orderStatus === 'completed';
+
+              if (!canStartStacking && !isStacking && !isCompleted) return null;
+
+              const totalOrdered = lines.reduce((sum, l) => sum + Number(l.quantity ?? 0), 0);
+              const totalStacked = stackingItems.reduce((sum, i) => sum + i.quantity, 0);
+              const remaining = totalOrdered - totalStacked;
+              const progressPct = totalOrdered > 0 ? Math.min(100, (totalStacked / totalOrdered) * 100) : 0;
+
+              // For storekeepers: require at least one receipt recording before stacking
+              const totalRecorded = inspections.reduce((s, i) =>
+                s + (i.inspection_items ?? []).reduce((ss, item) => ss + Number(item.quantity_received ?? 0), 0), 0);
+              const hasReceiptRecording = roleSlug !== 'storekeeper' || totalRecorded > 0;
+
+              return (
+                <Card withBorder padding="lg" mt="md">
+                  <Stack gap="md">
+                    <Group justify="space-between">
+                      <Text fw={700} size="lg">Stacking</Text>
+                      {isCompleted && <Badge color="green" size="lg">Stacking Completed</Badge>}
+                      {isStacking && <Badge color="blue" size="lg">In Progress</Badge>}
+                    </Group>
+
+                    {canStartStacking && (
+                      <Alert color={hasReceiptRecording ? 'blue' : 'yellow'} variant="light">
+                        {hasReceiptRecording
+                          ? 'Receipt recorded. Click "Start Stacking" to begin placing goods into stacks.'
+                          : 'Record the receipt above (quantity, condition, grade) before you can start stacking.'}
+                      </Alert>
+                    )}
+
+                    {isStacking && (
+                      <>
+                        <Group>
+                          <Text size="sm">Total to stack: <strong>{totalOrdered}</strong></Text>
+                          <Text size="sm">Stacked so far: <strong>{totalStacked}</strong></Text>
+                          <Text size="sm" c={remaining < 0 ? 'red' : remaining === 0 ? 'green' : 'dimmed'}>
+                            Remaining: <strong>{remaining}</strong>
+                          </Text>
+                        </Group>
+                        <Progress value={progressPct} color={remaining === 0 ? 'green' : 'blue'} size="md" />
+
+                        <Divider label="Add Stack Placement" labelPosition="left" />
+
+                        {stackingItems.map((item, idx) => (
+                          <Group key={idx} gap="sm" align="flex-end">
+                            <Text size="sm" w={24} mb={6}>{idx + 1}.</Text>
+                            <Select
+                              label="Stack"
+                              placeholder={stacksQuery.isLoading ? 'Loading stacks…' : stackOptions.length === 0 ? 'No stacks in your store' : 'Select a stack'}
+                              data={stackOptions}
+                              value={item.stack_id || null}
+                              onChange={(val) => {
+                                const next = [...stackingItems];
+                                next[idx] = { ...next[idx], stack_id: val || '' };
+                                setStackingItems(next);
+                              }}
+                              searchable
+                              style={{ flex: 2 }}
+                            />
+                            <NumberInput
+                              label="Quantity"
+                              placeholder="Qty"
+                              value={item.quantity || ''}
+                              onChange={(val) => {
+                                const next = [...stackingItems];
+                                next[idx] = { ...next[idx], quantity: Number(val) || 0 };
+                                setStackingItems(next);
+                              }}
+                              min={0}
+                              style={{ flex: 1 }}
+                            />
+                            <Button
+                              variant="subtle"
+                              color="red"
+                              size="xs"
+                              mb={2}
+                              onClick={() => {
+                                if (stackingItems.length > 1) {
+                                  setStackingItems(stackingItems.filter((_, i) => i !== idx));
+                                }
+                              }}
+                              disabled={stackingItems.length <= 1}
+                            >
+                              Remove
+                            </Button>
+                          </Group>
+                        ))}
+
+                        <Button
+                          variant="light"
+                          size="xs"
+                          onClick={() => setStackingItems([...stackingItems, { stack_id: '', quantity: 0 }])}
+                        >
+                          + Add Stack Placement
+                        </Button>
+                      </>
+                    )}
+
+                    {isCompleted && (
+                      <Alert color="green" variant="light">
+                        Stacking is complete. GRN has been generated and stack quantities updated.
+                      </Alert>
+                    )}
+                  </Stack>
+                </Card>
+              );
+            })()}
+
             <Group justify="flex-end">
+              {(() => {
+                const orderStatus = normalizeOrderStatus(order.status);
+                const canStartStacking = (roleSlug === 'storekeeper' || roleSlug === 'warehouse_manager' || roleSlug === 'admin' || roleSlug === 'superadmin') &&
+                  ['confirmed', 'assigned', 'reserved'].includes(orderStatus);
+                const isStacking = orderStatus === 'in_progress';
+                const totalOrdered = lines.reduce((sum, l) => sum + Number(l.quantity ?? 0), 0);
+                const totalStacked = stackingItems.reduce((sum, i) => sum + i.quantity, 0);
+                const totalRecorded = inspections.reduce((s, i) =>
+                  s + (i.inspection_items ?? []).reduce((ss, item) => ss + Number(item.quantity_received ?? 0), 0), 0);
+                const hasReceiptRecording = roleSlug !== 'storekeeper' || totalRecorded > 0;
+
+                return (
+                  <>
+                    {canStartStacking && (
+                      <Button
+                        color="blue"
+                        onClick={() => startStackingMutation.mutate()}
+                        loading={startStackingMutation.isPending}
+                        disabled={!hasReceiptRecording}
+                        title={!hasReceiptRecording ? 'Record receipt first' : undefined}
+                      >
+                        Start Stacking
+                      </Button>
+                    )}
+                    {isStacking && (
+                      <Button
+                        color="green"
+                        onClick={() => finishStackingMutation.mutate()}
+                        loading={finishStackingMutation.isPending}
+                        disabled={stackingItems.every(i => !i.stack_id || i.quantity <= 0)}
+                      >
+                        Finish Stacking
+                      </Button>
+                    )}
+                  </>
+                );
+              })()}
               {isDraft && (
                 <>
                   {canUpdateOrder ? (
@@ -745,14 +1230,16 @@ function ReceiptOrderDetailPage() {
                   + Assign Warehouse
                 </Button>
               ) : null}
-              {roleSlug === 'warehouse_manager' && ['confirmed', 'assigned', 'reserved', 'in_progress'].includes(String(order.status).toLowerCase()) && (
-                <Button
-                  size="sm"
-                  onClick={() => setShowAssignmentForm(true)}
-                >
-                  + Assign Store
-                </Button>
-              )}
+              {roleSlug === 'warehouse_manager' && ['confirmed', 'assigned', 'reserved', 'in_progress'].includes(String(order.status).toLowerCase()) && (() => {
+                const totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
+                const totalStoreAssigned = assignments.filter(a => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+                if (totalOrdered > 0 && totalStoreAssigned >= totalOrdered) return null;
+                return (
+                  <Button size="sm" onClick={() => setShowAssignmentForm(true)}>
+                    + Assign Store
+                  </Button>
+                );
+              })()}
               {isOfficerRole && String(order.status).toLowerCase() === 'confirmed' && (
                 <Button
                   size="sm"
@@ -870,6 +1357,21 @@ function ReceiptOrderDetailPage() {
                           No storekeeper is assigned to this store. The assignment will still be created.
                         </Text>
                       )}
+                      <NumberInput
+                        label="Quantity to assign to this store"
+                        placeholder={`Max: ${lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0).toLocaleString()}`}
+                        value={assignmentQuantity || ''}
+                        onChange={(val) => setAssignmentQuantity(Number(val) || 0)}
+                        min={0}
+                        description={`Total ordered: ${lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0).toLocaleString()} — already store-assigned: ${assignments.filter(a => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0).toLocaleString()}`}
+                        error={(() => {
+                          const totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
+                          const alreadyAssigned = assignments.filter(a => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+                          const remaining = totalOrdered - alreadyAssigned;
+                          if (assignmentQuantity > remaining) return `Exceeds remaining quantity (${remaining.toLocaleString()} left)`;
+                          return null;
+                        })()}
+                      />
                       {!assignableManagersLoading &&
                       assignmentStoreSelectData.length === 0 &&
                       !assignableManagersError ? (

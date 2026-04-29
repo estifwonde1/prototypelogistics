@@ -19,8 +19,12 @@ module Cats
             "cats_warehouse_receipt_order_assignments.store_id IS NULL"
           )
         elsif warehouse_manager?
+          wh_ids = UserAssignment.where(user: current_user, role_name: "Warehouse Manager").pluck(:warehouse_id).compact
+          store_ids = Cats::Warehouse::Store.where(warehouse_id: wh_ids).pluck(:id)
           assignments = assignments.where(
-            "cats_warehouse_receipt_order_assignments.hub_id IS NULL"
+            "cats_warehouse_receipt_order_assignments.hub_id IS NULL OR cats_warehouse_receipt_order_assignments.warehouse_id IN (?) OR cats_warehouse_receipt_order_assignments.store_id IN (?)",
+            wh_ids.presence || [0],
+            store_ids.presence || [0]
           )
         end
 
@@ -277,6 +281,104 @@ module Cats
             each_serializer: WorkflowEventSerializer
           ).as_json
         )
+      end
+
+      def start_stacking
+        order = policy_scope(ReceiptOrder).find(params[:id])
+        authorize order, :start_stacking?
+
+        allowed_statuses = %w[confirmed assigned reserved in_progress]
+        unless allowed_statuses.include?(order.status.to_s.downcase)
+          raise ArgumentError, "Cannot start stacking — order must be confirmed or assigned (current: #{order.status})"
+        end
+
+        old_status = order.status
+        order.update!(status: "in_progress")
+        WorkflowEventRecorder.record!(
+          entity: order,
+          event_type: "receipt_order.stacking_started",
+          actor: current_user,
+          from_status: old_status,
+          to_status: order.status
+        )
+
+        order = ReceiptOrder.includes(*order_detail_includes).find(order.id)
+        render_order_payload(order)
+      end
+
+      def finish_stacking
+        order = policy_scope(ReceiptOrder).includes(receipt_order_lines: [:commodity, :unit]).find(params[:id])
+        authorize order, :finish_stacking?
+
+        unless order.status.to_s.downcase == "in_progress"
+          raise ArgumentError, "Cannot finish stacking — order must be in progress (current: #{order.status})"
+        end
+
+        placements = Array(params[:placements])
+        raise ArgumentError, "Please add at least one stack placement before finishing." if placements.empty?
+
+        total_ordered = order.receipt_order_lines.sum { |l| l.quantity.to_f }
+        total_stacked = placements.sum { |p| p[:quantity].to_f }
+
+        if (total_stacked - total_ordered).abs > 0.001
+          raise ArgumentError, "Total stacked (#{total_stacked.round(2)}) does not match total ordered (#{total_ordered.round(2)}). Please adjust your stack placements."
+        end
+
+        first_line = order.receipt_order_lines.first
+        warehouse_id = order.warehouse_id || order.receipt_order_assignments
+          .joins(:store)
+          .where.not(store_id: nil)
+          .pick("cats_warehouse_stores.warehouse_id")
+
+        raise ArgumentError, "Cannot determine warehouse for this order. Ensure it is assigned to a store." unless warehouse_id
+
+        ReceiptOrder.transaction do
+          # Auto-create GRN with stack placements
+          grn = Grn.create!(
+            warehouse_id: warehouse_id,
+            received_on: Date.today,
+            received_by: current_user,
+            receipt_order: order,
+            status: "draft"
+          )
+
+          placements.each do |placement|
+            stack = Stack.find(placement[:stack_id].to_i)
+            grn.grn_items.create!(
+              commodity_id: first_line.commodity_id,
+              quantity: placement[:quantity].to_f,
+              unit_id: first_line.unit_id,
+              stack_id: stack.id,
+              store_id: stack.store_id,
+              line_reference_no: SourceDetailReference.generate_unique
+            )
+          end
+
+          # Confirm GRN — apply inventory ledger entries and update stack quantities
+          grn.ensure_confirmable!
+          grn.update!(status: :confirmed, approved_by: current_user, workflow_status: "confirmed")
+          grn.grn_items.find_each do |item|
+            InventoryLedger.apply_receipt!(
+              warehouse: grn.warehouse,
+              item: item,
+              transaction_date: grn.received_on,
+              reference: grn
+            )
+          end
+          WorkflowEventRecorder.record!(entity: grn, event_type: "grn.confirmed", actor: current_user, from_status: "draft", to_status: "confirmed")
+
+          order.update!(status: "completed")
+          WorkflowEventRecorder.record!(
+            entity: order,
+            event_type: "receipt_order.stacking_completed",
+            actor: current_user,
+            from_status: "in_progress",
+            to_status: "completed"
+          )
+        end
+
+        order = ReceiptOrder.includes(*order_detail_includes).find(order.id)
+        render_order_payload(order)
       end
 
       private

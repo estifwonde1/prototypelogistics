@@ -45,6 +45,8 @@ export default function AdminUsersPage() {
   const [roleFilter, setRoleFilter] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<AdminUser | null>(null);
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
@@ -141,6 +143,8 @@ export default function AdminUsersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: usersQueryKey });
       notifications.show({ title: 'Success', message: 'User deleted', color: 'green' });
+      setDeleteConfirmOpen(false);
+      setUserToDelete(null);
     },
     onError: (err: any) => {
       notifications.show({
@@ -148,6 +152,8 @@ export default function AdminUsersPage() {
         message: err.response?.data?.error?.message || 'Failed to delete user',
         color: 'red',
       });
+      setDeleteConfirmOpen(false);
+      setUserToDelete(null);
     },
   });
 
@@ -169,6 +175,22 @@ export default function AdminUsersPage() {
       role_names: user.roles || [],
     });
     setModalOpen(true);
+  };
+
+  const openDeleteConfirm = (user: AdminUser) => {
+    setUserToDelete(user);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (userToDelete) {
+      deleteMutation.mutate(userToDelete.id);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmOpen(false);
+    setUserToDelete(null);
   };
 
   const handleSubmit = (values: typeof form.values) => {
@@ -263,7 +285,7 @@ export default function AdminUsersPage() {
                       <ActionIcon
                         variant="subtle"
                         color="red"
-                        onClick={() => deleteMutation.mutate(user.id)}
+                        onClick={() => openDeleteConfirm(user)}
                       >
                         <IconTrash size={16} />
                       </ActionIcon>
@@ -316,6 +338,38 @@ export default function AdminUsersPage() {
             </Group>
           </Stack>
         </form>
+      </Modal>
+
+      <Modal 
+        opened={deleteConfirmOpen} 
+        onClose={handleDeleteCancel} 
+        title="Delete User"
+        size="sm"
+      >
+        <Stack gap="md">
+          <Text>
+            Are you sure you want to delete user{' '}
+            <Text component="span" fw={600}>
+              {userToDelete ? `${userToDelete.first_name} ${userToDelete.last_name}` : ''}
+            </Text>
+            ?
+          </Text>
+          <Text size="sm" c="dimmed">
+            This action cannot be undone. The user will be permanently removed from the system.
+          </Text>
+          <Group justify="flex-end" mt="md">
+            <Button variant="default" onClick={handleDeleteCancel}>
+              Cancel
+            </Button>
+            <Button 
+              color="red" 
+              onClick={handleDeleteConfirm}
+              loading={deleteMutation.isPending}
+            >
+              Delete User
+            </Button>
+          </Group>
+        </Stack>
       </Modal>
     </Stack>
   );

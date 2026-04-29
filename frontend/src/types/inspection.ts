@@ -6,6 +6,7 @@ export interface Inspection {
   inspector_id?: number;
   source_type?: string;
   source_id?: number;
+  receipt_order_id?: number;
   status: string;
   inspection_items?: InspectionItem[];
 }

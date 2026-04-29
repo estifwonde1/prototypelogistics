@@ -62,6 +62,7 @@ jobs:
       - name: Install dependencies
         run: |
           bundle config set --local frozen false
+          bundle config set --local with 'development test'
           bundle install
 
       - name: Set up database

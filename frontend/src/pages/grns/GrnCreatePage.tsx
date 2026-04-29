@@ -17,7 +17,7 @@ import {
   Alert,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
-import { useDebouncedValue } from '@mantine/hooks';
+
 import { IconTrash, IconPlus, IconChevronDown, IconChevronUp } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { createGrn, getGrns } from '../../api/grns';
@@ -458,7 +458,7 @@ function GrnCreatePage() {
       const commodity = commodities.find((c) => c.id.toString() === opt.value);
       if (!commodity) return false;
       
-      const batchNo = (commodity.batch_no || commodity.line_reference_no || '').toLowerCase();
+      const batchNo = (commodity.batch_no || '').toLowerCase();
       return batchNo.includes(filter);
     });
   };

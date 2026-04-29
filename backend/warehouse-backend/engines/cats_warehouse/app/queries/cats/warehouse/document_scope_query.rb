@@ -106,7 +106,14 @@ module Cats
         by_warehouse = scoped_relation.where(warehouse_id: wh_ids)
         rel = hub_ids.blank? ? by_warehouse : by_warehouse.or(scoped_relation.where(hub_id: hub_ids))
 
-        return rel.where(status: DOCUMENT_STATUSES[:assigned]) if access.hub_manager?
+        return rel.where(status: [DOCUMENT_STATUSES[:confirmed], DOCUMENT_STATUSES[:assigned]]) if access.hub_manager?
+
+        # Storekeepers see orders assigned to their store
+        if access.storekeeper?
+          store_ids = access.assigned_store_ids
+          assigned_order_ids = ReceiptOrderAssignment.where(store_id: store_ids).pluck(:receipt_order_id).uniq
+          return scoped_relation.where(id: assigned_order_ids)
+        end
 
         rel
       end

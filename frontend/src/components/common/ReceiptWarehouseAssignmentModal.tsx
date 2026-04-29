@@ -360,18 +360,23 @@ function ReceiptWarehouseAssignmentModal({
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {lineMeta.map((line) => (
-                <Table.Tr key={line.lineId}>
-                  <Table.Td>{line.commodityName}</Table.Td>
-                  <Table.Td>{line.ordered.toLocaleString()} {line.unitName}</Table.Td>
-                  <Table.Td>{line.assigned.toLocaleString()} {line.unitName}</Table.Td>
-                  <Table.Td>
-                    <Badge color={line.remaining > EPSILON ? 'blue' : 'green'}>
-                      {line.remaining.toLocaleString()} {line.unitName}
-                    </Badge>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
+              {lineMeta.map((line) => {
+                const pending = pendingAssignedByLine[line.lineId] || 0;
+                const displayAssigned = line.assigned + pending;
+                const displayRemaining = Math.max(0, line.remaining - pending);
+                return (
+                  <Table.Tr key={line.lineId}>
+                    <Table.Td>{line.commodityName}</Table.Td>
+                    <Table.Td>{line.ordered.toLocaleString()} {line.unitName}</Table.Td>
+                    <Table.Td>{displayAssigned.toLocaleString()} {line.unitName}</Table.Td>
+                    <Table.Td>
+                      <Badge color={displayRemaining > EPSILON ? 'blue' : 'green'}>
+                        {displayRemaining.toLocaleString()} {line.unitName}
+                      </Badge>
+                    </Table.Td>
+                  </Table.Tr>
+                );
+              })}
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>

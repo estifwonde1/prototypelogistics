@@ -66,6 +66,16 @@ module Cats
         show?
       end
 
+      def start_stacking?
+        return false unless record.is_a?(ReceiptOrder)
+        return true if admin?
+        storekeeper? || warehouse_manager?
+      end
+
+      def finish_stacking?
+        start_stacking?
+      end
+
       def confirm?
         return false unless record.is_a?(ReceiptOrder)
         return false unless record.status.to_s.casecmp("draft").zero?
