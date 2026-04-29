@@ -45,7 +45,8 @@ module Cats
         
         receipt_orders.each do |order|
           commodity_names = order.receipt_order_lines.map { |l|
-            Cats::Core::Commodity.find_by(id: l.commodity_id)&.name || "Commodity ##{l.commodity_id}"
+            commodity = Cats::Core::Commodity.find_by(id: l.commodity_id)
+            commodity&.read_attribute(:name).presence || commodity&.batch_no || "Commodity ##{l.commodity_id}"
           }.join(", ")
           total_qty = order.receipt_order_lines.sum(&:quantity)
           first_line = order.receipt_order_lines.first
