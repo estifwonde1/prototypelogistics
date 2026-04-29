@@ -15,6 +15,7 @@ import {
   Select,
   Textarea,
   NumberInput,
+  TextInput,
   Alert,
   Divider,
   Badge,
@@ -34,6 +35,7 @@ import {
 } from '../../api/receiptOrders';
 import { getStores } from '../../api/stores';
 import { getStacks } from '../../api/stacks';
+import { createInspection, getInspections } from '../../api/inspections';
 import { getWarehouses } from '../../api/warehouses';
 import { getUnitReferences, getUomConversions } from '../../api/referenceData';
 import { StatusBadge } from '../../components/common/StatusBadge';
@@ -53,6 +55,7 @@ import { OFFICER_ROLE_SLUGS, normalizeRoleSlug } from '../../contracts/warehouse
 import type { Warehouse } from '../../types/warehouse';
 import type { Store } from '../../types/store';
 import type { Stack as StackType } from '../../types/stack';
+import type { Inspection } from '../../types/inspection';
 import type { UnitReference, UomConversion } from '../../types/referenceData';
 import type { WorkflowEvent } from '../../types/assignment';
 
@@ -122,6 +125,15 @@ function ReceiptOrderDetailPage() {
 
   // Stacking state
   const [stackingItems, setStackingItems] = useState<Array<{ stack_id: string; quantity: number }>>([{ stack_id: '', quantity: 0 }]);
+
+  // Receipt recording state
+  const [showReceiptForm, setShowReceiptForm] = useState(false);
+  const [receiptQty, setReceiptQty] = useState<number | string>('');
+  const [receiptCondition, setReceiptCondition] = useState<string | null>('Good');
+  const [receiptGrade, setReceiptGrade] = useState('');
+  const [receiptRemarks, setReceiptRemarks] = useState('');
+  const [receiptLostQty, setReceiptLostQty] = useState<number | string>('');
+  const [receiptLossType, setReceiptLossType] = useState<string | null>(null);
   
   // Assignment form state
   const [showAssignmentForm, setShowAssignmentForm] = useState(false);
@@ -214,6 +226,15 @@ function ReceiptOrderDetailPage() {
       label: `${s.code}${s.quantity > 0 ? ` (${s.quantity} ${s.unit_name ?? ''})` : ' (empty)'}`,
     }));
   }, [stacksQuery.data]);
+
+  // Inspections (receipt recordings) for this order
+  const inspectionsQuery = useQuery({
+    queryKey: ['inspections', { receipt_order_id: id }],
+    queryFn: () => getInspections(),
+    enabled: !!order && ['assigned', 'in_progress', 'completed'].includes(normalizeOrderStatus(order.status)),
+    select: (data) => (data as Inspection[]).filter((i) => i.receipt_order_id === Number(id)),
+  });
+  const inspections = (inspectionsQuery.data as Inspection[]) || [];
 
   const allWarehousesQuery = useQuery({
     queryKey: ['warehouses'],
@@ -391,6 +412,56 @@ function ReceiptOrderDetailPage() {
         message:
           (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) ||
           'Failed to create space reservation',
+        color: 'red',
+      });
+    },
+  });
+
+  // ── Receipt recording mutation ───────────────────────────────────────────
+  const recordReceiptMutation = useMutation({
+    mutationFn: () => {
+      if (!order) throw new Error('No order');
+      const firstLine = lines[0];
+      // Get warehouse from order or from assignments
+      const warehouseId = order.warehouse_id ??
+        assignments.find(a => a.warehouse_id != null)?.warehouse_id;
+      if (!warehouseId) throw new Error('No warehouse assigned to this order yet. The warehouse manager must assign a warehouse first.');
+      return createInspection({
+        warehouse_id: warehouseId,
+        inspected_on: new Date().toISOString().split('T')[0],
+        inspector_id: useAuthStore.getState().userId ?? 0,
+        receipt_order_id: order.id,
+        status: 'confirmed',
+        items: [{
+          commodity_id: firstLine?.commodity_id ?? 0,
+          unit_id: firstLine?.unit_id ?? 0,
+          quantity_received: Number(receiptQty),
+          quantity_lost: receiptLostQty ? Number(receiptLostQty) : undefined,
+          quality_status: receiptCondition ?? 'Good',
+          packaging_condition: receiptGrade || 'Standard',
+          remarks: [
+            receiptRemarks,
+            receiptLossType && Number(receiptLostQty) > 0 ? `Loss type: ${receiptLossType}` : null,
+          ].filter(Boolean).join(' | ') || undefined,
+        }],
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inspections', { receipt_order_id: id }] });
+      notifications.show({ title: 'Receipt Recorded', message: 'Receipt entry saved successfully.', color: 'green' });
+      setReceiptQty('');
+      setReceiptCondition('Good');
+      setReceiptGrade('');
+      setReceiptRemarks('');
+      setReceiptLostQty('');
+      setReceiptLossType(null);
+      setShowReceiptForm(false);
+      inspectionsQuery.refetch();
+    },
+    onError: (error: unknown) => {
+      notifications.show({
+        title: 'Error',
+        message: (isAxiosError<any>(error) ? error.response?.data?.error?.message : undefined) || 'Failed to record receipt',
         color: 'red',
       });
     },
@@ -781,6 +852,179 @@ function ReceiptOrderDetailPage() {
               </Table.ScrollContainer>
             </div>
 
+            {/* ── Receipt Recording Section ── */}
+            {(() => {
+              const orderStatus = normalizeOrderStatus(order.status);
+              const isStorekeeper = roleSlug === 'storekeeper';
+              if (!isStorekeeper) return null;
+              if (!['assigned', 'in_progress'].includes(orderStatus)) return null;
+
+              const totalAuthorized = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
+              const totalRecorded = inspections.reduce((s, i) => {
+                return s + (i.inspection_items ?? []).reduce((ss, item) => ss + Number(item.quantity_received ?? 0), 0);
+              }, 0);
+              const remaining = Math.max(0, totalAuthorized - totalRecorded);
+              const progressPct = totalAuthorized > 0 ? Math.min(100, (totalRecorded / totalAuthorized) * 100) : 0;
+
+              return (
+                <Card withBorder padding="lg" mt="md">
+                  <Stack gap="md">
+                    <Group justify="space-between">
+                      <Text fw={700} size="lg">Receipt Recording</Text>
+                      <Badge color={totalRecorded >= totalAuthorized ? 'green' : 'blue'} size="lg">
+                        {totalRecorded.toLocaleString()} / {totalAuthorized.toLocaleString()} recorded
+                      </Badge>
+                    </Group>
+
+                    <Progress value={progressPct} color={totalRecorded >= totalAuthorized ? 'green' : 'blue'} size="md" />
+
+                    <Group gap="xl">
+                      <Text size="sm">Authorized: <strong>{totalAuthorized.toLocaleString()}</strong></Text>
+                      <Text size="sm">Recorded: <strong>{totalRecorded.toLocaleString()}</strong></Text>
+                      <Text size="sm" c={remaining > 0 ? 'dimmed' : 'green'}>
+                        Remaining: <strong>{remaining.toLocaleString()}</strong>
+                      </Text>
+                    </Group>
+
+                    {/* Existing inspection records */}
+                    {inspections.length > 0 && (
+                      <Table.ScrollContainer minWidth={500}>
+                        <Table striped>
+                          <Table.Thead>
+                            <Table.Tr>
+                              <Table.Th>Qty Received</Table.Th>
+                              <Table.Th>Qty Lost</Table.Th>
+                              <Table.Th>Condition</Table.Th>
+                              <Table.Th>Grade</Table.Th>
+                              <Table.Th>Remarks</Table.Th>
+                              <Table.Th>Recorded On</Table.Th>
+                            </Table.Tr>
+                          </Table.Thead>
+                          <Table.Tbody>
+                            {inspections.flatMap((inspection) =>
+                              (inspection.inspection_items ?? []).map((item, idx) => (
+                                <Table.Tr key={`${inspection.id}-${idx}`}>
+                                  <Table.Td><Text fw={600}>{Number(item.quantity_received).toLocaleString()}</Text></Table.Td>
+                                  <Table.Td>
+                                    {item.quantity_lost && Number(item.quantity_lost) > 0 ? (
+                                      <Badge color="red" variant="light">{Number(item.quantity_lost).toLocaleString()} lost</Badge>
+                                    ) : (
+                                      <Text size="sm" c="dimmed">—</Text>
+                                    )}
+                                  </Table.Td>
+                                  <Table.Td><Badge color={item.quality_status === 'Good' ? 'green' : 'orange'} variant="light">{item.quality_status}</Badge></Table.Td>
+                                  <Table.Td>{item.packaging_condition || '—'}</Table.Td>
+                                  <Table.Td><Text size="sm" c="dimmed">{item.remarks || '—'}</Text></Table.Td>
+                                  <Table.Td><Text size="xs" c="dimmed">{new Date(inspection.inspected_on).toLocaleDateString()}</Text></Table.Td>
+                                </Table.Tr>
+                              ))
+                            )}
+                          </Table.Tbody>
+                        </Table>
+                      </Table.ScrollContainer>
+                    )}
+
+                    {/* Add new receipt entry */}
+                    {orderStatus !== 'completed' && remaining > 0 && (
+                      <>
+                        {!showReceiptForm ? (
+                          <Button variant="light" size="sm" onClick={() => setShowReceiptForm(true)}>
+                            + Add Receipt Entry
+                          </Button>
+                        ) : (
+                          <Card withBorder padding="md" radius="sm">
+                            <Stack gap="sm">
+                              <Text fw={600} size="sm">New Receipt Entry</Text>
+                              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                                <NumberInput
+                                  label="Quantity Received"
+                                  placeholder="Enter quantity"
+                                  value={receiptQty}
+                                  onChange={(val) => setReceiptQty(val)}
+                                  min={0}
+                                  max={remaining > 0 ? remaining : undefined}
+                                  description={`Max: ${remaining.toLocaleString()} remaining`}
+                                  error={Number(receiptQty) > remaining && remaining > 0 ? `Exceeds remaining (${remaining.toLocaleString()})` : null}
+                                  required
+                                />
+                                <Select
+                                  label="Condition"
+                                  data={['Good', 'Damaged', 'Infested', 'Wet', 'Other']}
+                                  value={receiptCondition}
+                                  onChange={setReceiptCondition}
+                                  required
+                                />
+                                <Select
+                                  label="Grade"
+                                  placeholder="Select grade"
+                                  data={['Grade 1', 'Grade 2', 'Grade 3', 'Grade A', 'Grade B', 'Grade C', 'Substandard', 'Unknown']}
+                                  value={receiptGrade || null}
+                                  onChange={(val) => setReceiptGrade(val ?? '')}
+                                />
+                                <TextInput
+                                  label="Remarks"
+                                  placeholder="Any notes about the condition"
+                                  value={receiptRemarks}
+                                  onChange={(e) => setReceiptRemarks(e.target.value)}
+                                />
+                              </SimpleGrid>
+                              {/* Lost Commodity — only show when received < authorized */}
+                              {Number(receiptQty) > 0 && Number(receiptQty) < remaining && (
+                                <>
+                                  <Divider label="Lost Commodity (optional)" labelPosition="left" />
+                                  <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                                    <NumberInput
+                                      label="Quantity Lost"
+                                      placeholder="How many were lost?"
+                                      value={receiptLostQty}
+                                      onChange={(val) => setReceiptLostQty(val)}
+                                      min={0}
+                                      error={(() => {
+                                        const received = Number(receiptQty) || 0;
+                                        const lost = Number(receiptLostQty) || 0;
+                                        if (received + lost > remaining) return `Received + Lost (${received + lost}) exceeds authorized (${remaining.toLocaleString()})`;
+                                        return null;
+                                      })()}
+                                      description="Bags that were dispatched but did not arrive"
+                                    />
+                                    <Select
+                                      label="Loss Type"
+                                      placeholder="Select reason"
+                                      data={['Theft', 'Damage', 'Infested', 'Wet', 'Other']}
+                                      value={receiptLossType}
+                                      onChange={setReceiptLossType}
+                                    />
+                                  </SimpleGrid>
+                                </>
+                              )}
+                              <Group gap="sm">
+                                <Button
+                                  size="sm"
+                                  onClick={() => recordReceiptMutation.mutate()}
+                                  loading={recordReceiptMutation.isPending}
+                                  disabled={
+                                    !receiptQty ||
+                                    Number(receiptQty) <= 0 ||
+                                    Number(receiptQty) > remaining ||
+                                    Number(receiptQty) + Number(receiptLostQty || 0) > remaining
+                                  }
+                                >
+                                  Save Entry
+                                </Button>
+                                <Button size="sm" variant="light" onClick={() => setShowReceiptForm(false)}>
+                                  Cancel
+                                </Button>
+                              </Group>
+                            </Stack>
+                          </Card>
+                        )}
+                      </>
+                    )}
+                  </Stack>
+                </Card>
+              );
+            })()}
+
             {/* ── Stacking Section ── */}
             {(() => {
               const orderStatus = normalizeOrderStatus(order.status);
@@ -797,6 +1041,11 @@ function ReceiptOrderDetailPage() {
               const remaining = totalOrdered - totalStacked;
               const progressPct = totalOrdered > 0 ? Math.min(100, (totalStacked / totalOrdered) * 100) : 0;
 
+              // For storekeepers: require at least one receipt recording before stacking
+              const totalRecorded = inspections.reduce((s, i) =>
+                s + (i.inspection_items ?? []).reduce((ss, item) => ss + Number(item.quantity_received ?? 0), 0), 0);
+              const hasReceiptRecording = roleSlug !== 'storekeeper' || totalRecorded > 0;
+
               return (
                 <Card withBorder padding="lg" mt="md">
                   <Stack gap="md">
@@ -807,8 +1056,10 @@ function ReceiptOrderDetailPage() {
                     </Group>
 
                     {canStartStacking && (
-                      <Alert color="blue" variant="light">
-                        The order is confirmed. Click "Start Stacking" to begin placing goods into stacks.
+                      <Alert color={hasReceiptRecording ? 'blue' : 'yellow'} variant="light">
+                        {hasReceiptRecording
+                          ? 'Receipt recorded. Click "Start Stacking" to begin placing goods into stacks.'
+                          : 'Record the receipt above (quantity, condition, grade) before you can start stacking.'}
                       </Alert>
                     )}
 
@@ -898,6 +1149,9 @@ function ReceiptOrderDetailPage() {
                 const isStacking = orderStatus === 'in_progress';
                 const totalOrdered = lines.reduce((sum, l) => sum + Number(l.quantity ?? 0), 0);
                 const totalStacked = stackingItems.reduce((sum, i) => sum + i.quantity, 0);
+                const totalRecorded = inspections.reduce((s, i) =>
+                  s + (i.inspection_items ?? []).reduce((ss, item) => ss + Number(item.quantity_received ?? 0), 0), 0);
+                const hasReceiptRecording = roleSlug !== 'storekeeper' || totalRecorded > 0;
 
                 return (
                   <>
@@ -906,6 +1160,8 @@ function ReceiptOrderDetailPage() {
                         color="blue"
                         onClick={() => startStackingMutation.mutate()}
                         loading={startStackingMutation.isPending}
+                        disabled={!hasReceiptRecording}
+                        title={!hasReceiptRecording ? 'Record receipt first' : undefined}
                       >
                         Start Stacking
                       </Button>

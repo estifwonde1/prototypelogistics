@@ -39,7 +39,11 @@ export async function searchDeliveryByReference(referenceNo: string): Promise<De
   const response = await apiClient.post('/storekeeper_assignments/search_delivery', {
     reference_no: referenceNo
   });
-  return response.data;
+  const data = response.data.data || response.data;
+  return {
+    results: Array.isArray(data.results) ? data.results : [],
+    message: data.message || '',
+  };
 }
 
 export async function getStorekeeperDashboardData(): Promise<StorekeeperDashboardData> {

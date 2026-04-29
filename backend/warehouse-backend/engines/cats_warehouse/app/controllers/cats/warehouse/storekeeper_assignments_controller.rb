@@ -30,27 +30,41 @@ module Cats
         # Search across different document types
         results = []
         
-        # Search Receipt Orders
-        receipt_orders = ReceiptOrder
-          .where("reference_no ILIKE ?", "%#{reference_no}%")
+        # Search Receipt Orders by reference_no OR by RO-{id} pattern
+        ro_id = reference_no.match(/^RO-?(\d+)$/i)&.captures&.first&.to_i
+        receipt_order_scope = ReceiptOrder
           .joins(:receipt_order_assignments)
           .where(receipt_order_assignments: { store_id: current_ids })
           .includes(:warehouse, :hub, :created_by, :receipt_order_lines)
-          .limit(5)
+
+        receipt_orders = if ro_id.present?
+          receipt_order_scope.where("reference_no ILIKE ? OR cats_warehouse_receipt_orders.id = ?", "%#{reference_no}%", ro_id).limit(5)
+        else
+          receipt_order_scope.where("reference_no ILIKE ?", "%#{reference_no}%").limit(5)
+        end
         
         receipt_orders.each do |order|
+          commodity_names = order.receipt_order_lines.map { |l|
+            Cats::Core::Commodity.find_by(id: l.commodity_id)&.name || "Commodity ##{l.commodity_id}"
+          }.join(", ")
+          total_qty = order.receipt_order_lines.sum(&:quantity)
+          first_line = order.receipt_order_lines.first
+          unit_name = first_line ? Cats::Core::UnitOfMeasure.find_by(id: first_line.unit_id)&.abbreviation : nil
+          created_by = order.created_by
+          created_by_name = created_by ? [created_by.first_name, created_by.last_name].compact.join(" ").presence || created_by.email : nil
+
           results << {
             type: "Receipt Order",
-            reference_no: order.reference_no,
-            commodity: order.receipt_order_lines.map(&:commodity_name).join(", "),
-            quantity: order.receipt_order_lines.sum(&:quantity),
-            unit: order.receipt_order_lines.first&.unit_name,
+            reference_no: order.reference_no || "RO-#{order.id}",
+            commodity: commodity_names,
+            quantity: total_qty.to_f,
+            unit: unit_name,
             source_location: order.warehouse&.name || order.hub&.name,
-            expected_date: order.expected_date,
-            created_by: order.created_by&.name,
-            status: order.status,
+            expected_date: order.received_date,
+            created_by: created_by_name,
+            status: order.status.to_s.downcase,
             id: order.id,
-            can_start_receipt: order.status == "confirmed"
+            can_start_receipt: %w[confirmed assigned].include?(order.status.to_s.downcase)
           }
         end
         
@@ -133,21 +147,29 @@ module Cats
           .order(created_at: :desc)
 
         # Get recent completed transactions (GRNs and GINs)
-        recent_grns = Grn
-          .joins(:warehouse)
-          .where(warehouse_id: current_ids)
-          .where(status: "completed")
-          .includes(:receipt_order, :received_by)
-          .order(created_at: :desc)
-          .limit(5)
+        warehouse_ids = Cats::Warehouse::Store.where(id: current_ids).pluck(:warehouse_id).compact
 
-        recent_gins = Gin
-          .joins(:warehouse)
-          .where(warehouse_id: current_ids)
-          .where(status: "completed")
-          .includes(:dispatch_order, :issued_by)
-          .order(created_at: :desc)
-          .limit(5) rescue []
+        recent_grns = begin
+          Grn
+            .where(warehouse_id: warehouse_ids)
+            .where(status: "confirmed")
+            .includes(:receipt_order, :received_by)
+            .order(created_at: :desc)
+            .limit(5)
+        rescue StandardError
+          []
+        end
+
+        recent_gins = begin
+          Gin
+            .where(warehouse_id: warehouse_ids)
+            .where(status: "confirmed")
+            .includes(:dispatch_order, :issued_by)
+            .order(created_at: :desc)
+            .limit(5)
+        rescue StandardError
+          []
+        end
 
         completed_transactions = []
         
@@ -157,7 +179,7 @@ module Cats
             reference_no: grn.reference_no,
             order_reference: grn.receipt_order&.reference_no,
             completed_at: grn.updated_at,
-            completed_by: grn.received_by&.name,
+            completed_by: [grn.received_by&.first_name, grn.received_by&.last_name].compact.join(" ").presence || grn.received_by&.email,
             status: grn.status
           }
         end
@@ -168,7 +190,7 @@ module Cats
             reference_no: gin.reference_no,
             order_reference: gin.dispatch_order&.reference_no,
             completed_at: gin.updated_at,
-            completed_by: gin.issued_by&.name,
+            completed_by: [gin.issued_by&.first_name, gin.issued_by&.last_name].compact.join(" ").presence || gin.issued_by&.email,
             status: gin.status
           }
         end
