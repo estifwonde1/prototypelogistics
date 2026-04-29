@@ -1147,8 +1147,6 @@ function ReceiptOrderDetailPage() {
                 const canStartStacking = (roleSlug === 'storekeeper' || roleSlug === 'warehouse_manager' || roleSlug === 'admin' || roleSlug === 'superadmin') &&
                   ['confirmed', 'assigned', 'reserved'].includes(orderStatus);
                 const isStacking = orderStatus === 'in_progress';
-                const totalOrdered = lines.reduce((sum, l) => sum + Number(l.quantity ?? 0), 0);
-                const totalStacked = stackingItems.reduce((sum, i) => sum + i.quantity, 0);
                 const totalRecorded = inspections.reduce((s, i) =>
                   s + (i.inspection_items ?? []).reduce((ss, item) => ss + Number(item.quantity_received ?? 0), 0), 0);
                 const hasReceiptRecording = roleSlug !== 'storekeeper' || totalRecorded > 0;
