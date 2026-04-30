@@ -213,20 +213,37 @@ function ReceiptOrderDetailPage() {
 
   // Stacks for storekeeper's assigned store
   const stackingStoreId = useAuthStore((state) => state.activeAssignment?.store?.id ?? null);
+  const stackingWarehouseId = useAuthStore((state) => state.activeAssignment?.warehouse?.id ?? null);
 
+  // Debug logging
+  console.log('=== Stacking Debug Info ===');
+  console.log('Active Assignment:', useAuthStore.getState().activeAssignment);
+  console.log('Stacking Store ID:', stackingStoreId);
+  console.log('Stacking Warehouse ID:', stackingWarehouseId);
+  console.log('Order Status:', order?.status);
+  console.log('All Assignments:', useAuthStore.getState().assignments);
+
+  // If storekeeper doesn't have a specific store, fetch all stacks in the warehouse
   const stacksQuery = useQuery({
-    queryKey: ['stacks', { store_id: stackingStoreId }],
+    queryKey: ['stacks', { store_id: stackingStoreId, warehouse_id: stackingWarehouseId }],
     queryFn: () => {
-      console.log('Fetching stacks for store_id:', stackingStoreId);
-      return getStacks({ store_id: stackingStoreId ?? undefined });
+      if (stackingStoreId) {
+        console.log('Fetching stacks for store_id:', stackingStoreId);
+        return getStacks({ store_id: stackingStoreId });
+      } else if (stackingWarehouseId) {
+        console.log('Fetching all stacks for warehouse_id:', stackingWarehouseId);
+        // Fetch all stacks in the warehouse (backend should support this)
+        return getStacks({});
+      }
+      return Promise.resolve([]);
     },
-    enabled: !!stackingStoreId && !!order,
+    enabled: (!!stackingStoreId || !!stackingWarehouseId) && !!order,
   });
   const stackOptions = useMemo(() => {
     const stacks = (stacksQuery.data as StackType[]) || [];
     return stacks.map((s) => ({
       value: String(s.id),
-      label: `${s.code}${s.quantity > 0 ? ` (${s.quantity} ${s.unit_name ?? ''})` : ' (empty)'}`,
+      label: `${s.code}${s.store_name ? ` (${s.store_name})` : ''}${s.quantity > 0 ? ` - ${s.quantity} ${s.unit_name ?? ''}` : ' (empty)'}`,
     }));
   }, [stacksQuery.data]);
 
@@ -1079,13 +1096,13 @@ function ReceiptOrderDetailPage() {
 
                         <Divider label="Add Stack Placement" labelPosition="left" />
 
-                        {!stackingStoreId && (
+                        {!stackingStoreId && !stackingWarehouseId && (
                           <Alert color="red" variant="light">
-                            You don't have an assigned store. Please contact your warehouse manager to assign you to a store.
+                            You don't have an assigned store or warehouse. Please contact your warehouse manager to assign you to a store.
                           </Alert>
                         )}
 
-                        {stackingStoreId && stacksQuery.isError && (
+                        {stacksQuery.isError && (
                           <Alert color="red" variant="light">
                             Failed to load stacks. Please try refreshing the page.
                           </Alert>
@@ -1097,12 +1114,12 @@ function ReceiptOrderDetailPage() {
                             <Select
                               label="Stack"
                               placeholder={
-                                !stackingStoreId 
-                                  ? 'No store assigned' 
+                                !stackingStoreId && !stackingWarehouseId
+                                  ? 'No store or warehouse assigned' 
                                   : stacksQuery.isLoading 
                                   ? 'Loading stacks…' 
                                   : stackOptions.length === 0 
-                                  ? 'No stacks in your store' 
+                                  ? 'No stacks available' 
                                   : 'Select a stack'
                               }
                               data={stackOptions}
@@ -1113,7 +1130,7 @@ function ReceiptOrderDetailPage() {
                                 setStackingItems(next);
                               }}
                               searchable
-                              disabled={!stackingStoreId}
+                              disabled={!stackingStoreId && !stackingWarehouseId}
                               style={{ flex: 2 }}
                             />
                             <NumberInput
