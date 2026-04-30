@@ -24,6 +24,10 @@ module Cats
         length.to_f * width.to_f
       end
 
+      def total_space
+        footprint_area * height.to_f
+      end
+
       def gangway_area
         return 0 unless has_gangway?
 
@@ -39,8 +43,14 @@ module Cats
       def calculate_capacity_metrics
         return if length.blank? || width.blank? || height.blank?
 
+        previous_used_space = if persisted?
+                                self.class.find(id).then { |record| record.usable_space.to_f - record.available_space.to_f }
+                              else
+                                0
+                              end
+
         self.usable_space = usable_floor_area * height.to_f
-        self.available_space = usable_space
+        self.available_space = [usable_space.to_f - previous_used_space, 0].max
       end
 
       def gangway_dimensions_are_valid
