@@ -50,8 +50,6 @@ function StoreFormPage() {
       length: 0,
       width: 0,
       height: 0,
-      usable_space: 0,
-      available_space: 0,
       temporary: false,
       has_gangway: false,
       gangway_length: 0,
@@ -65,10 +63,6 @@ function StoreFormPage() {
       length: (value) => (value <= 0 ? "Length must be greater than 0" : null),
       width: (value) => (value <= 0 ? "Width must be greater than 0" : null),
       height: (value) => (value <= 0 ? "Height must be greater than 0" : null),
-      usable_space: (value) =>
-        value <= 0 ? "Usable space must be greater than 0" : null,
-      available_space: (value) =>
-        value < 0 ? "Available space cannot be negative" : null,
       warehouse_id: (value) => (!value ? "Warehouse is required" : null),
     },
   });
@@ -81,8 +75,6 @@ function StoreFormPage() {
         length: store.length,
         width: store.width,
         height: store.height,
-        usable_space: store.usable_space,
-        available_space: store.available_space,
         temporary: store.temporary,
         has_gangway: store.has_gangway,
         gangway_length: store.gangway_length || 0,
@@ -144,8 +136,6 @@ function StoreFormPage() {
       length: values.length,
       width: values.width,
       height: values.height,
-      usable_space: values.usable_space,
-      available_space: values.available_space,
       temporary: values.temporary,
       has_gangway: values.has_gangway,
       warehouse_id: Number(values.warehouse_id),
@@ -168,6 +158,12 @@ function StoreFormPage() {
     value: warehouse.id.toString(),
     label: `${warehouse.name} (${warehouse.code})`,
   }));
+
+  const totalSpace = form.values.length * form.values.width * form.values.height;
+  const gangwayVolume = form.values.has_gangway
+    ? form.values.gangway_length * form.values.gangway_width * form.values.height
+    : 0;
+  const estimatedUsableSpace = Math.max(totalSpace - gangwayVolume, 0);
 
   if (isEdit && isLoading) {
     return <LoadingState message="Loading store..." />;
@@ -264,20 +260,17 @@ function StoreFormPage() {
 
               <Group grow>
                 <NumberInput
-                  label="Usable Space (m³)"
-                  placeholder="0"
-                  required
-                  min={0}
-                  decimalScale={2}
-                  {...form.getInputProps("usable_space")}
+                  label="Total Space (m³)"
+                  value={Number(totalSpace.toFixed(2))}
+                  readOnly
+                  disabled
                 />
                 <NumberInput
-                  label="Available Space (m³)"
-                  placeholder="0"
-                  required
-                  min={0}
-                  decimalScale={2}
-                  {...form.getInputProps("available_space")}
+                  label="Estimated Usable Space (m³)"
+                  value={Number(estimatedUsableSpace.toFixed(2))}
+                  readOnly
+                  disabled
+                  description="Final usable and available space are calculated automatically by the backend."
                 />
               </Group>
             </Stack>

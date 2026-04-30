@@ -5,6 +5,7 @@ export interface Store {
   length: number;
   width: number;
   height: number;
+  total_space?: number;
   usable_space: number;
   available_space: number;
   temporary: boolean;

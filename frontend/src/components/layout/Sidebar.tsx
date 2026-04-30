@@ -598,38 +598,6 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
       h="calc(100dvh - 60px)"
       style={{ overflowY: "auto", overflowX: "hidden" }}
     >
-      {isAdmin &&
-        [...adminMenus, ...(isSuperAdmin ? superAdminMenus : [])]
-          .map(filterGroupItems)
-          .filter((group) => group.items.length > 0)
-          .map((group) => (
-            <div key={group.label}>
-              <MantineNavLink
-                label={group.label}
-                childrenOffset={0}
-                defaultOpened
-                style={{
-                  fontWeight: 600,
-                  fontSize: "0.875rem",
-                  color: "var(--mantine-color-dimmed)",
-                }}
-              >
-                {group.items.map((item) => (
-                  <MantineNavLink
-                    key={item.path}
-                    component={NavLink}
-                    to={item.path}
-                    label={item.label}
-                    leftSection={item.icon}
-                    active={location.pathname.startsWith(item.path)}
-                    variant="subtle"
-                    onClick={onLinkClick}
-                  />
-                ))}
-              </MantineNavLink>
-            </div>
-          ))}
-
       {!isAdmin && (
         <div style={{ padding: "4px 8px" }}>
           <Badge

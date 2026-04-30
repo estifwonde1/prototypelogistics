@@ -694,8 +694,8 @@ stores = warehouses.flat_map do |warehouse|
         length: 60,
         width: 40,
         height: 10,
-        usable_space: 2400,
-        available_space: 2000,
+        has_gangway: false,
+        temporary: false,
         warehouse: warehouse
       }
     )
