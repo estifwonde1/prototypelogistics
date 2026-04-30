@@ -23,7 +23,7 @@ module Cats
               warehouse_id: payload[:warehouse_id] || @order.warehouse_id,
               store_id: payload[:store_id],
               assigned_by: @actor,
-              assigned_to_id: payload[:assigned_to_id],
+              assigned_to_id: assigned_to_id_for(payload),
               quantity: payload[:quantity],
               status: normalize_assignment_status(payload[:status])
             )
@@ -66,6 +66,35 @@ module Cats
         return nil if id.blank?
 
         @order.receipt_order_lines.find(id)
+      end
+
+      def assigned_to_id_for(payload)
+        return payload[:assigned_to_id] if payload[:assigned_to_id].present?
+
+        if payload[:store_id].present?
+          store = Store.find_by(id: payload[:store_id])
+          return facility_user_id(role_name: "Storekeeper", store_id: store.id) ||
+                 facility_user_id(role_name: "Storekeeper", warehouse_id: store.warehouse_id) if store
+        end
+
+        warehouse_id = payload[:warehouse_id].presence || @order.warehouse_id
+        if warehouse_id.present?
+          return facility_user_id(role_name: "Warehouse Manager", warehouse_id: warehouse_id)
+        end
+
+        hub_id = payload[:hub_id].presence || @order.warehouse&.hub_id || @order.hub_id
+        return facility_user_id(role_name: "Hub Manager", hub_id: hub_id) if hub_id.present?
+
+        nil
+      end
+
+      def facility_user_id(role_name:, hub_id: nil, warehouse_id: nil, store_id: nil)
+        UserAssignment.includes(:user)
+                      .where(role_name: role_name, hub_id: hub_id, warehouse_id: warehouse_id, store_id: store_id)
+                      .order(:id)
+                      .map(&:user)
+                      .find { |user| user&.active? }
+                      &.id
       end
 
       def transition_order!(new_status, event_type, payload)

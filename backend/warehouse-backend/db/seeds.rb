@@ -22,6 +22,16 @@ def kebele_location_type
   Cats::Core::Location::KEBELE
 end
 
+def kebele_number_for(location)
+  return unless location
+
+  match = location.name.to_s.match(/\d+/)
+  return unless match
+
+  number = match[0].to_i
+  number if number.between?(1, 40)
+end
+
 puts "Creating application module and roles..."
 application_module = find_or_create_with(
   Cats::Core::ApplicationModule,
@@ -170,6 +180,71 @@ officer_user = find_or_create_with(
   }
 )
 add_role(officer_user, "Officer")
+
+federal_officer_user = find_or_create_with(
+  Cats::Core::User,
+  { email: "federal_officer@example.com" },
+  {
+    first_name: "Selam",
+    last_name: "Tesfaye",
+    password: "password123",
+    phone_number: "0911111120",
+    application_module: application_module
+  }
+)
+add_role(federal_officer_user, "Federal Officer")
+
+regional_officer_user = find_or_create_with(
+  Cats::Core::User,
+  { email: "regional_officer@example.com" },
+  {
+    first_name: "Daniel",
+    last_name: "Haile",
+    password: "password123",
+    phone_number: "0911111121",
+    application_module: application_module
+  }
+)
+add_role(regional_officer_user, "Regional Officer")
+
+zonal_officer_user = find_or_create_with(
+  Cats::Core::User,
+  { email: "zonal_officer@example.com" },
+  {
+    first_name: "Liya",
+    last_name: "Desta",
+    password: "password123",
+    phone_number: "0911111122",
+    application_module: application_module
+  }
+)
+add_role(zonal_officer_user, "Zonal Officer")
+
+woreda_officer_user = find_or_create_with(
+  Cats::Core::User,
+  { email: "woreda_officer@example.com" },
+  {
+    first_name: "Tewodros",
+    last_name: "Mamo",
+    password: "password123",
+    phone_number: "0911111123",
+    application_module: application_module
+  }
+)
+add_role(woreda_officer_user, "Woreda Officer")
+
+kebele_officer_user = find_or_create_with(
+  Cats::Core::User,
+  { email: "kebele_officer@example.com" },
+  {
+    first_name: "Mimi",
+    last_name: "Worku",
+    password: "password123",
+    phone_number: "0911111124",
+    application_module: application_module
+  }
+)
+add_role(kebele_officer_user, "Kebele Officer")
 
 puts "Seeding Ethiopian regions..."
 ethiopian_regions = [
@@ -557,6 +632,7 @@ dispatch = find_or_create_with(
 )
 
 puts "Seeding warehouse structures..."
+facility_locations = kebeles.any? ? kebeles.first(3) : woredas.first(3)
 geos = [
   { latitude: 8.995, longitude: 38.789, address: "Bole, Addis Ababa" },
   { latitude: 9.005, longitude: 38.765, address: "Yeka, Addis Ababa" },
@@ -566,9 +642,9 @@ geos = [
 end
 
 hubs = [
-  { code: "ADD-HUB-01", name: "Bole Hub", location: hub_locations[0], geo: geos[0] },
-  { code: "ADD-HUB-02", name: "Yeka Hub", location: hub_locations[1], geo: geos[1] },
-  { code: "ADD-HUB-03", name: "Kirkos Hub", location: hub_locations[2], geo: geos[2] }
+  { code: "ADD-HUB-01", name: "Bole Hub", location: facility_locations[0], geo: geos[0] },
+  { code: "ADD-HUB-02", name: "Yeka Hub", location: facility_locations[1], geo: geos[1] },
+  { code: "ADD-HUB-03", name: "Kirkos Hub", location: facility_locations[2], geo: geos[2] }
 ].map do |h|
   find_or_create_with(
     Cats::Warehouse::Hub,
@@ -577,8 +653,9 @@ hubs = [
       name: h[:name],
       location: h[:location],
       geo: h[:geo],
-      hub_type: "regional",
-      status: "Active",
+      hub_type: h[:location]&.location_type.to_s == kebele_location_type.to_s ? "kebele" : "woreda",
+      status: "active",
+      kebele: kebele_number_for(h[:location]),
       description: "Addis Ababa hub"
     }
   )
@@ -596,22 +673,23 @@ hubs.each_with_index do |hub, idx|
 end
 
 warehouses = [
-  { code: "ADD-WH-01", name: "Bole Central Warehouse", location: warehouse_locations[0], hub: hubs[0], geo: geos[0] },
-  { code: "ADD-WH-02", name: "Yeka Logistics Warehouse", location: warehouse_locations[1], hub: hubs[1], geo: geos[1] },
-  { code: "ADD-WH-03", name: "Kirkos Storage Warehouse", location: warehouse_locations[2], hub: hubs[2], geo: geos[2] }
+  { code: "ADD-WH-01", name: "Bole Central Warehouse", hub: hubs[0], geo: geos[0] },
+  { code: "ADD-WH-02", name: "Yeka Logistics Warehouse", hub: hubs[1], geo: geos[1] },
+  { code: "ADD-WH-03", name: "Kirkos Storage Warehouse", hub: hubs[2], geo: geos[2] }
 ].map do |w|
   find_or_create_with(
     Cats::Warehouse::Warehouse,
     { code: w[:code] },
     {
       name: w[:name],
-      location: w[:location],
+      location: w[:hub].location,
       hub: w[:hub],
       geo: w[:geo],
       ownership_type: "self_owned",
       managed_under: "Hub",
-      warehouse_type: "Standard",
-      status: "Active",
+      warehouse_type: "main",
+      status: "active",
+      kebele: kebele_number_for(w[:hub].location),
       description: "Addis Ababa warehouse"
     }
   )
@@ -652,7 +730,7 @@ warehouses.each_with_index do |warehouse, idx|
     {
       total_area_sqm: 10000 + idx * 500,
       total_storage_capacity_mt: 100000 + idx * 1000,
-      usable_storage_capacity_mt: 80000 + idx * 1000,
+      usable_space_percentage: 75,
       no_of_stores: 2,
       ownership_type: "Government"
     }
@@ -663,6 +741,7 @@ warehouses.each_with_index do |warehouse, idx|
     {
       has_loading_dock: true,
       number_of_loading_docks: 1,
+      loading_dock_type: "flush",
       access_road_type: "asphalt"
     }
   )
@@ -829,6 +908,32 @@ commodities.first(2).each_with_index do |commodity, idx|
 end
 
 puts "Seeding user assignments..."
+find_or_create_with(
+  Cats::Warehouse::UserAssignment,
+  { user: federal_officer_user, role_name: "Federal Officer" }
+)
+find_or_create_with(
+  Cats::Warehouse::UserAssignment,
+  { user: regional_officer_user, role_name: "Regional Officer" },
+  { location: region_addis }
+)
+find_or_create_with(
+  Cats::Warehouse::UserAssignment,
+  { user: zonal_officer_user, role_name: "Zonal Officer" },
+  { location: zones.first }
+)
+find_or_create_with(
+  Cats::Warehouse::UserAssignment,
+  { user: woreda_officer_user, role_name: "Woreda Officer" },
+  { location: woredas.first }
+)
+if kebeles.any?
+  find_or_create_with(
+    Cats::Warehouse::UserAssignment,
+    { user: kebele_officer_user, role_name: "Kebele Officer" },
+    { location: kebeles.first }
+  )
+end
 find_or_create_with(
   Cats::Warehouse::UserAssignment,
   { user: hub_manager_user, hub: hubs.first },
