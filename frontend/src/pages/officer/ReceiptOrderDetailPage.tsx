@@ -216,8 +216,11 @@ function ReceiptOrderDetailPage() {
 
   const stacksQuery = useQuery({
     queryKey: ['stacks', { store_id: stackingStoreId }],
-    queryFn: () => getStacks({ store_id: stackingStoreId ?? undefined }),
-    enabled: !!stackingStoreId && normalizeOrderStatus(order?.status ?? '') === 'in_progress',
+    queryFn: () => {
+      console.log('Fetching stacks for store_id:', stackingStoreId);
+      return getStacks({ store_id: stackingStoreId ?? undefined });
+    },
+    enabled: !!stackingStoreId && !!order,
   });
   const stackOptions = useMemo(() => {
     const stacks = (stacksQuery.data as StackType[]) || [];
@@ -1076,12 +1079,32 @@ function ReceiptOrderDetailPage() {
 
                         <Divider label="Add Stack Placement" labelPosition="left" />
 
+                        {!stackingStoreId && (
+                          <Alert color="red" variant="light">
+                            You don't have an assigned store. Please contact your warehouse manager to assign you to a store.
+                          </Alert>
+                        )}
+
+                        {stackingStoreId && stacksQuery.isError && (
+                          <Alert color="red" variant="light">
+                            Failed to load stacks. Please try refreshing the page.
+                          </Alert>
+                        )}
+
                         {stackingItems.map((item, idx) => (
                           <Group key={idx} gap="sm" align="flex-end">
                             <Text size="sm" w={24} mb={6}>{idx + 1}.</Text>
                             <Select
                               label="Stack"
-                              placeholder={stacksQuery.isLoading ? 'Loading stacks…' : stackOptions.length === 0 ? 'No stacks in your store' : 'Select a stack'}
+                              placeholder={
+                                !stackingStoreId 
+                                  ? 'No store assigned' 
+                                  : stacksQuery.isLoading 
+                                  ? 'Loading stacks…' 
+                                  : stackOptions.length === 0 
+                                  ? 'No stacks in your store' 
+                                  : 'Select a stack'
+                              }
                               data={stackOptions}
                               value={item.stack_id || null}
                               onChange={(val) => {
@@ -1090,6 +1113,7 @@ function ReceiptOrderDetailPage() {
                                 setStackingItems(next);
                               }}
                               searchable
+                              disabled={!stackingStoreId}
                               style={{ flex: 2 }}
                             />
                             <NumberInput
