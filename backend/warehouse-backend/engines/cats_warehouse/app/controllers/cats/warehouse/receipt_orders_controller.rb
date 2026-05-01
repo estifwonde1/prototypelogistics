@@ -246,10 +246,20 @@ module Cats
 
         effective_hub_id = order.warehouse&.hub_id.presence || order.hub_id
         manager_only = params[:manager_only] == 'true'
+        
+        # CRITICAL: Filter by active warehouse context for multi-warehouse managers
+        active_warehouse_id = params[:warehouse_id].present? ? params[:warehouse_id].to_i : nil
 
         if effective_hub_id.present?
           managers = manager_only ? receipt_order_managers_for_hub_managers_only(effective_hub_id) : receipt_order_managers_for_hub(effective_hub_id)
-          stores = manager_only ? [] : available_stores_for_hub(effective_hub_id)
+          
+          # CRITICAL: If warehouse_id param is provided, only return stores from that warehouse
+          if active_warehouse_id.present?
+            stores = manager_only ? [] : available_stores_for_warehouse(active_warehouse_id)
+          else
+            stores = manager_only ? [] : available_stores_for_hub(effective_hub_id)
+          end
+          
           hub = Hub.find_by(id: effective_hub_id)
           return render_success(
             assignable_managers: managers,

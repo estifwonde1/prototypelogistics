@@ -247,8 +247,12 @@ function ReceiptOrderDetailPage() {
   const allWarehouses = (allWarehousesQuery.data as Warehouse[]) || [];
 
   const allStoresQuery = useQuery({
-    queryKey: ['stores'],
-    queryFn: () => getStores({}),
+    queryKey: ['stores', { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],
+    queryFn: () => {
+      // CRITICAL: Warehouse managers should only see stores from their active warehouse
+      const params = isWarehouseManager && userWarehouseId ? { warehouse_id: userWarehouseId } : {};
+      return getStores(params);
+    },
     enabled: showWarehouseAssignmentModal,
   });
   const allStores = (allStoresQuery.data as Store[]) || [];
@@ -282,8 +286,11 @@ function ReceiptOrderDetailPage() {
   const workflowEvents = (workflowEventsQuery.data as WorkflowEvent[]) || [];
 
   const assignableManagersQuery = useQuery({
-    queryKey: ['receipt_orders', id, 'assignable_managers', roleSlug],
-    queryFn: () => getReceiptOrderAssignableManagers(Number(id), isOfficerRole),
+    queryKey: ['receipt_orders', id, 'assignable_managers', roleSlug, { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],
+    queryFn: () => {
+      const params = isWarehouseManager && userWarehouseId ? { warehouse_id: userWarehouseId } : {};
+      return getReceiptOrderAssignableManagers(Number(id), isOfficerRole, params);
+    },
     enabled:
       !!order &&
       showAssignmentForm &&
