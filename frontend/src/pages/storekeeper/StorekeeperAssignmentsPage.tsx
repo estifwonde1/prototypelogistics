@@ -17,6 +17,7 @@ import { useNavigate } from 'react-router-dom';
 import apiClient from '../../api/client';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
+import { statusArrayFilter, getPendingAssignmentStatuses, getCompletedAssignmentStatuses } from '../../utils/filterUtils';
 import type { ApiError } from '../../types/common';
 
 interface StoreAssignment {
@@ -100,12 +101,16 @@ export default function StorekeeperAssignmentsPage() {
   });
 
   const pendingAssignments = useMemo(
-    () => assignments.filter((a) => ['pending', 'assigned'].includes(a.status.toLowerCase())),
+    () => assignments.filter((a) => 
+      statusArrayFilter(a.status, getPendingAssignmentStatuses())
+    ),
     [assignments]
   );
 
   const completedAssignments = useMemo(
-    () => assignments.filter((a) => ['accepted', 'in_progress', 'completed'].includes(a.status.toLowerCase())),
+    () => assignments.filter((a) => 
+      statusArrayFilter(a.status, getCompletedAssignmentStatuses())
+    ),
     [assignments]
   );
 

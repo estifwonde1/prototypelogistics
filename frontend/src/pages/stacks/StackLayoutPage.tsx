@@ -37,6 +37,8 @@ import { getStores } from '../../api/stores';
 import { getCommodityReferences, getInventoryLots } from '../../api/referenceData';
 import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
+import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 import type { Stack as StackType } from '../../types/stack';
 
 type StackFormValues = {
@@ -188,14 +190,49 @@ export default function StackLayoutPage() {
 
   const autoPrepare = searchParams.get('auto_prepare') === 'true';
 
+  // Get active assignment context for filtering
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
+  const userWarehouseId = activeAssignment?.warehouse?.id;
+  const userStoreId = activeAssignment?.store?.id;
+  const userHubId = activeAssignment?.hub?.id;
+  const isWarehouseManager = roleSlug === 'warehouse_manager';
+  const isStorekeeper = roleSlug === 'storekeeper';
+  const isHubManager = roleSlug === 'hub_manager';
+
   const { data: stores = [], isLoading: storesLoading } = useQuery({
-    queryKey: ['stores'],
-    queryFn: () => getStores(),
+    queryKey: ['stores', { 
+      warehouse_id: isWarehouseManager ? userWarehouseId : undefined,
+      hub_id: isHubManager ? userHubId : undefined 
+    }],
+    queryFn: () => {
+      if (isWarehouseManager && userWarehouseId) {
+        return getStores({ warehouse_id: userWarehouseId });
+      } else if (isHubManager && userHubId) {
+        // For hub managers, get stores from warehouses in their hub
+        return getStores(); // Backend should handle hub-level filtering
+      }
+      return getStores();
+    },
   });
 
   const { data: stacks, isLoading, error, refetch } = useQuery({
-    queryKey: ['stacks'],
-    queryFn: () => getStacks(),
+    queryKey: ['stacks', { 
+      warehouse_id: isWarehouseManager ? userWarehouseId : undefined,
+      store_id: isStorekeeper ? userStoreId : undefined,
+      hub_id: isHubManager ? userHubId : undefined 
+    }],
+    queryFn: () => {
+      if (isWarehouseManager && userWarehouseId) {
+        return getStacks({ warehouse_id: userWarehouseId });
+      } else if (isStorekeeper && userStoreId) {
+        return getStacks({ store_id: userStoreId });
+      } else if (isHubManager && userHubId) {
+        // For hub managers, get stacks from warehouses in their hub
+        return getStacks(); // Backend should handle hub-level filtering
+      }
+      return getStacks();
+    },
   });
 
   const { data: commodities = [] } = useQuery({

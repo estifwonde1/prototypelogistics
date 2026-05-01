@@ -52,35 +52,55 @@ function StoreListPage() {
 
   // CRITICAL: Get the active warehouse context
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
-  const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
+  const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || useAuthStore((state) => state.role));
   const userWarehouseId = activeAssignment?.warehouse?.id;
+  const userHubId = activeAssignment?.hub?.id;
   const isWarehouseManager = roleSlug === 'warehouse_manager';
+  const isHubManager = roleSlug === 'hub_manager';
 
   // Debug logging
   console.log('=== StoreListPage Debug ===');
   console.log('Active Assignment:', activeAssignment);
   console.log('User Warehouse ID:', userWarehouseId);
+  console.log('User Hub ID:', userHubId);
   console.log('Role Slug:', roleSlug);
   console.log('Is Warehouse Manager:', isWarehouseManager);
+  console.log('Is Hub Manager:', isHubManager);
 
   // CRITICAL: Warehouse managers should ONLY see stores from their active warehouse
+  // Hub managers should ONLY see stores from warehouses in their active hub
   const {
     data: stores = [],
     isLoading,
     error,
     refetch,
   } = useQuery({
-    queryKey: ["stores", { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],
+    queryKey: ["stores", { 
+      warehouse_id: isWarehouseManager ? userWarehouseId : undefined,
+      hub_id: isHubManager ? userHubId : undefined 
+    }],
     queryFn: () => {
-      const params = isWarehouseManager && userWarehouseId ? { warehouse_id: userWarehouseId } : {};
-      console.log('Fetching stores with params:', params);
-      return getStores(params);
+      if (isWarehouseManager && userWarehouseId) {
+        const params = { warehouse_id: userWarehouseId };
+        console.log('Fetching stores with warehouse params:', params);
+        return getStores(params);
+      } else if (isHubManager && userHubId) {
+        // For hub managers, we need to get warehouses in their hub first, then get stores
+        console.log('Hub manager - need to fetch stores from hub warehouses');
+        return getStores(); // Will be filtered by backend based on user access
+      }
+      return getStores();
     },
   });
 
   const { data: warehouses = [] } = useQuery({
-    queryKey: ["warehouses"],
-    queryFn: () => getWarehouses(),
+    queryKey: ["warehouses", { hub_id: isHubManager ? userHubId : undefined }],
+    queryFn: () => {
+      if (isHubManager && userHubId) {
+        return getWarehouses({ hub_id: userHubId });
+      }
+      return getWarehouses();
+    },
   });
 
   const { data: storekeepers = [] } = useQuery({

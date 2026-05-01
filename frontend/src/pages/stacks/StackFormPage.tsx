@@ -25,6 +25,8 @@ import { getStores } from '../../api/stores';
 import { getCommodityReferences, getUnitReferences, getInventoryLots } from '../../api/referenceData';
 import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
+import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 import type { Stack as StackType } from '../../types/stack';
 
 type ApiError = {
@@ -78,9 +80,28 @@ function StackFormPage() {
     enabled: isEdit,
   });
 
+  // Get active assignment context for filtering
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
+  const userWarehouseId = activeAssignment?.warehouse?.id;
+  const userHubId = activeAssignment?.hub?.id;
+  const isWarehouseManager = roleSlug === 'warehouse_manager';
+  const isHubManager = roleSlug === 'hub_manager';
+
   const { data: stores = [] } = useQuery({
-    queryKey: ['stores'],
-    queryFn: () => getStores(),
+    queryKey: ['stores', { 
+      warehouse_id: isWarehouseManager ? userWarehouseId : undefined,
+      hub_id: isHubManager ? userHubId : undefined 
+    }],
+    queryFn: () => {
+      if (isWarehouseManager && userWarehouseId) {
+        return getStores({ warehouse_id: userWarehouseId });
+      } else if (isHubManager && userHubId) {
+        // For hub managers, get stores from warehouses in their hub
+        return getStores(); // Backend should handle hub-level filtering
+      }
+      return getStores();
+    },
   });
 
   const { data: commodities = [] } = useQuery({

@@ -71,27 +71,54 @@ function StackListPage() {
 
   // CRITICAL: Get the active warehouse context
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
-  const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
+  const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || useAuthStore((state) => state.role));
   const userWarehouseId = activeAssignment?.warehouse?.id;
+  const userHubId = activeAssignment?.hub?.id;
   const isWarehouseManager = roleSlug === 'warehouse_manager';
+  const isHubManager = roleSlug === 'hub_manager';
 
   const { data: stacks, isLoading, error, refetch } = useQuery({
-    queryKey: ['stacks', { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],
+    queryKey: ['stacks', { 
+      warehouse_id: isWarehouseManager ? userWarehouseId : undefined,
+      hub_id: isHubManager ? userHubId : undefined 
+    }],
     queryFn: () => {
-      const params = isWarehouseManager && userWarehouseId ? { warehouse_id: userWarehouseId } : {};
-      return getStacks(params);
+      if (isWarehouseManager && userWarehouseId) {
+        return getStacks({ warehouse_id: userWarehouseId });
+      } else if (isHubManager && userHubId) {
+        // For hub managers, backend should filter stacks from warehouses in their hub
+        return getStacks(); // Backend will handle hub-level filtering
+      }
+      return getStacks();
     },
   });
 
   // CRITICAL: Warehouse managers should ONLY see stores from their active warehouse
+  // Hub managers should ONLY see stores from warehouses in their active hub
   const { data: stores = [] } = useQuery({
-    queryKey: ['stores', { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],
-    queryFn: () => getStores(isWarehouseManager && userWarehouseId ? { warehouse_id: userWarehouseId } : {}),
+    queryKey: ['stores', { 
+      warehouse_id: isWarehouseManager ? userWarehouseId : undefined,
+      hub_id: isHubManager ? userHubId : undefined 
+    }],
+    queryFn: () => {
+      if (isWarehouseManager && userWarehouseId) {
+        return getStores({ warehouse_id: userWarehouseId });
+      } else if (isHubManager && userHubId) {
+        // For hub managers, get stores from warehouses in their hub
+        return getStores(); // Backend should handle hub-level filtering
+      }
+      return getStores({});
+    },
   });
 
   const { data: warehouses = [] } = useQuery({
-    queryKey: ['warehouses'],
-    queryFn: () => getWarehouses(),
+    queryKey: ['warehouses', { hub_id: isHubManager ? userHubId : undefined }],
+    queryFn: () => {
+      if (isHubManager && userHubId) {
+        return getWarehouses({ hub_id: userHubId });
+      }
+      return getWarehouses();
+    },
   });
 
   const warehouseOptions =

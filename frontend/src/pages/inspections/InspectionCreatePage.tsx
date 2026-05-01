@@ -29,6 +29,7 @@ import { generateSourceDetailReference } from '../../utils/sourceDetailReference
 import type { InspectionItem } from '../../types/inspection';
 import type { ApiError } from '../../types/common';
 import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 
 function uniqueLineRefsForInspectionItems(list: InspectionItem[]): InspectionItem[] {
   const used = new Set<string>();
@@ -80,9 +81,20 @@ function InspectionCreatePage() {
     },
   ]);
 
+  // Get active assignment context for filtering
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
+  const userHubId = activeAssignment?.hub?.id;
+  const isHubManager = roleSlug === 'hub_manager';
+
   const { data: warehouses = [] } = useQuery({
-    queryKey: ['warehouses'],
-    queryFn: () => getWarehouses(),
+    queryKey: ['warehouses', { hub_id: isHubManager ? userHubId : undefined }],
+    queryFn: () => {
+      if (isHubManager && userHubId) {
+        return getWarehouses({ hub_id: userHubId });
+      }
+      return getWarehouses();
+    },
   });
 
   const { data: receipts = [] } = useQuery({

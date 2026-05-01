@@ -50,7 +50,14 @@ const TransferRequestModal: React.FC<TransferRequestModalProps> = ({
 
   const loadAvailableStores = async () => {
     try {
-      const stores = await getStores();
+      // Get stores filtered by warehouse context if user is a warehouse manager
+      const activeAssignment = useAuthStore.getState().activeAssignment;
+      const userWarehouseId = activeAssignment?.warehouse?.id;
+      
+      const stores = userWarehouseId 
+        ? await getStores({ warehouse_id: userWarehouseId })
+        : await getStores();
+        
       console.log('All stores:', stores);
       console.log('Source stack:', sourceStack);
       console.log('Source stack store_id:', sourceStack.store_id);

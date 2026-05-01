@@ -32,19 +32,34 @@ function DispatchOrdersListPage() {
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
   const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
   const userWarehouseId = activeAssignment?.warehouse?.id;
+  const userHubId = activeAssignment?.hub?.id;
   const isWarehouseManager = roleSlug === 'warehouse_manager';
+  const isHubManager = roleSlug === 'hub_manager';
 
   const { data: orders, isLoading, error, refetch } = useQuery({
-    queryKey: ['dispatch_orders', { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],
+    queryKey: ['dispatch_orders', { 
+      warehouse_id: isWarehouseManager ? userWarehouseId : undefined,
+      hub_id: isHubManager ? userHubId : undefined 
+    }],
     queryFn: () => {
-      const params = isWarehouseManager && userWarehouseId ? { warehouse_id: userWarehouseId } : {};
-      return getDispatchOrders(params);
+      if (isWarehouseManager && userWarehouseId) {
+        return getDispatchOrders({ warehouse_id: userWarehouseId });
+      } else if (isHubManager && userHubId) {
+        // For hub managers, backend should filter dispatch orders from warehouses in their hub
+        return getDispatchOrders(); // Backend will handle hub-level filtering
+      }
+      return getDispatchOrders({});
     },
   });
 
   const { data: warehouses } = useQuery({
-    queryKey: ['warehouses'],
-    queryFn: () => getWarehouses({}),
+    queryKey: ['warehouses', { hub_id: isHubManager ? userHubId : undefined }],
+    queryFn: () => {
+      if (isHubManager && userHubId) {
+        return getWarehouses({ hub_id: userHubId });
+      }
+      return getWarehouses({});
+    },
   });
 
   const filteredOrders = orders?.filter((order) => {

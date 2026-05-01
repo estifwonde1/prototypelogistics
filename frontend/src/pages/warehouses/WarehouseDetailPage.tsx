@@ -27,6 +27,7 @@ import { formatDate } from '../../utils/formatters';
 import { useForm } from '@mantine/form';
 import { usePermission } from '../../hooks/usePermission';
 import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 import { getFacilityOptions } from '../../api/referenceData';
 
 function WarehouseDetailPage() {
@@ -53,8 +54,25 @@ function WarehouseDetailPage() {
     enabled: !!id,
   });
 
+  // Get active assignment context for filtering initial data load
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
+  const userWarehouseId = activeAssignment?.warehouse?.id;
+  const isWarehouseManager = roleSlug === 'warehouse_manager';
+
   const { data: hubs } = useQuery({ queryKey: ['hubs'], queryFn: () => getHubs(), enabled: canReadHubs });
-  const { data: stores = [] } = useQuery({ queryKey: ['stores'], queryFn: () => getStores() });
+  
+  const { data: stores = [] } = useQuery({ 
+    queryKey: ['stores', { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }], 
+    queryFn: () => {
+      // For warehouse detail page, we want to load stores for the specific warehouse being viewed
+      // But if user is a warehouse manager, we should still respect their access
+      if (isWarehouseManager && userWarehouseId) {
+        return getStores({ warehouse_id: userWarehouseId });
+      }
+      return getStores();
+    }
+  });
   const { data: stockBalances = [] } = useQuery({ queryKey: ['stockBalances'], queryFn: () => getStockBalances() });
   const { data: grns } = useQuery({ queryKey: ['grns'], queryFn: () => getGrns() });
   const { data: gins } = useQuery({ queryKey: ['gins'], queryFn: () => getGins() });

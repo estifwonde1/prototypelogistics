@@ -20,6 +20,8 @@ import { getStore, createStore, updateStore } from "../../api/stores";
 import { getWarehouses } from "../../api/warehouses";
 import { LoadingState } from "../../components/common/LoadingState";
 import { ErrorState } from "../../components/common/ErrorState";
+import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 import { notifications } from "@mantine/notifications";
 import type { Store } from "../../types/store";
 
@@ -38,9 +40,20 @@ function StoreFormPage() {
     enabled: isEdit,
   });
 
+  // Get active assignment context for filtering
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || useAuthStore((state) => state.role));
+  const userHubId = activeAssignment?.hub?.id;
+  const isHubManager = roleSlug === 'hub_manager';
+
   const { data: warehouses = [] } = useQuery({
-    queryKey: ["warehouses"],
-    queryFn: () => getWarehouses(),
+    queryKey: ["warehouses", { hub_id: isHubManager ? userHubId : undefined }],
+    queryFn: () => {
+      if (isHubManager && userHubId) {
+        return getWarehouses({ hub_id: userHubId });
+      }
+      return getWarehouses();
+    },
   });
 
   const form = useForm({

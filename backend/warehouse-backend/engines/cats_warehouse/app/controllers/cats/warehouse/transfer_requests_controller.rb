@@ -3,6 +3,8 @@
 module Cats
   module Warehouse
     class TransferRequestsController < BaseController
+      include FilterValidation
+      
       def index
         authorize TransferRequest
         
@@ -10,8 +12,13 @@ module Cats
           .includes(:source_store, :destination_store, :source_stack, :destination_stack, :commodity, :unit, :requested_by, :reviewed_by)
           .order(created_at: :desc)
 
-        # Filter by status if provided
-        requests = requests.where(status: params[:status]) if params[:status].present?
+        # Filter by status if provided (with validation)
+        begin
+          status = validate_status_param(:status, TransferRequest::STATUSES)
+          requests = requests.where(status: status) if status.present?
+        rescue ArgumentError => e
+          return render_error(e.message, status: :bad_request)
+        end
 
         render_resource(requests, each_serializer: TransferRequestSerializer)
       end

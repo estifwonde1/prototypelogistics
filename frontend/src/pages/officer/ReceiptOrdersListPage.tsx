@@ -84,19 +84,33 @@ function ReceiptOrdersListPage() {
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
   const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
   const userWarehouseId = activeAssignment?.warehouse?.id;
+  const userHubId = activeAssignment?.hub?.id;
   const isWarehouseManager = roleSlug === 'warehouse_manager';
+  const isHubManager = roleSlug === 'hub_manager';
 
   const { data: orders = [], isLoading, error, refetch } = useQuery({
-    queryKey: ['receipt_orders', { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],
+    queryKey: ['receipt_orders', { 
+      warehouse_id: isWarehouseManager ? userWarehouseId : undefined,
+      hub_id: isHubManager ? userHubId : undefined 
+    }],
     queryFn: () => {
-      const params = isWarehouseManager && userWarehouseId ? { warehouse_id: userWarehouseId } : {};
-      return getReceiptOrders(params);
+      if (isWarehouseManager && userWarehouseId) {
+        return getReceiptOrders({ warehouse_id: userWarehouseId });
+      } else if (isHubManager && userHubId) {
+        return getReceiptOrders({ hub_id: userHubId });
+      }
+      return getReceiptOrders({});
     },
   });
 
   const { data: warehouses = [] } = useQuery({
-    queryKey: ['warehouses'],
-    queryFn: () => getWarehouses(),
+    queryKey: ['warehouses', { hub_id: isHubManager ? userHubId : undefined }],
+    queryFn: () => {
+      if (isHubManager && userHubId) {
+        return getWarehouses({ hub_id: userHubId });
+      }
+      return getWarehouses();
+    },
   });
 
   const filteredOrders = useMemo(() => {

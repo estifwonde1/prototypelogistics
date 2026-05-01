@@ -45,7 +45,14 @@ const StackTransferModal: React.FC<StackTransferModalProps> = ({
 
   const loadAvailableStacks = async () => {
     try {
-      const stacks = await getStacks();
+      // Get stacks filtered by warehouse context if user is a warehouse manager
+      const activeAssignment = useAuthStore.getState().activeAssignment;
+      const userWarehouseId = activeAssignment?.warehouse?.id;
+      
+      const stacks = userWarehouseId 
+        ? await getStacks({ warehouse_id: userWarehouseId })
+        : await getStacks();
+        
       // Filter: same store, same commodity, not the source stack
       const filtered = stacks.filter(
         (stack) =>

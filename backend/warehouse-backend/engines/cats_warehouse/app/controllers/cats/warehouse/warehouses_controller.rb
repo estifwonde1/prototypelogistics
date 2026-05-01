@@ -5,7 +5,30 @@ module Cats
         authorize Warehouse
         warehouses = policy_scope(Warehouse)
                      .includes(:warehouse_capacity, :warehouse_access, :warehouse_infra, :warehouse_contacts, :location, :hub, :geo, user_assignments: :user)
-                     .order(:id)
+        
+        # Filter by hub_id if provided (for hub managers with multiple hub assignments)
+        if params[:hub_id].present?
+          hub_id = params[:hub_id].to_i
+          
+          # Verify user has access to this hub
+          access = AccessContext.new(user: current_user)
+          accessible_hubs = access.accessible_hub_ids
+          
+          # Handle both array and ActiveRecord relation cases
+          has_access = if accessible_hubs.is_a?(Array)
+            accessible_hubs.include?(hub_id)
+          else
+            accessible_hubs.exists?(id: hub_id)
+          end
+          
+          unless has_access
+            return render_error("Access denied to hub #{hub_id}", status: :forbidden)
+          end
+          
+          warehouses = warehouses.where(hub_id: hub_id)
+        end
+        
+        warehouses = warehouses.order(:id)
         render_resource(warehouses, each_serializer: WarehouseSerializer)
       end
 

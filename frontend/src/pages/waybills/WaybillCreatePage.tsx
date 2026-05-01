@@ -25,6 +25,8 @@ import {
 } from '../../api/referenceData';
 import { getWarehouses } from '../../api/warehouses';
 import { notifications } from '@mantine/notifications';
+import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 import type { WaybillItem, WaybillTransport } from '../../types/waybill';
 import { DocumentStatus } from '../../utils/constants';
 import type { ApiError } from '../../types/common';
@@ -55,9 +57,20 @@ function WaybillCreatePage() {
     },
   ]);
 
+  // Get active assignment context for filtering
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || useAuthStore((state) => state.role));
+  const userHubId = activeAssignment?.hub?.id;
+  const isHubManager = roleSlug === 'hub_manager';
+
   const { data: warehouses = [] } = useQuery({
-    queryKey: ['warehouses'],
-    queryFn: () => getWarehouses(),
+    queryKey: ['warehouses', { hub_id: isHubManager ? userHubId : undefined }],
+    queryFn: () => {
+      if (isHubManager && userHubId) {
+        return getWarehouses({ hub_id: userHubId });
+      }
+      return getWarehouses();
+    },
   });
 
   const { data: transporters = [] } = useQuery({
