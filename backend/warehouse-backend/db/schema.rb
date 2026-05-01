@@ -1455,7 +1455,11 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_01_100000) do
     t.string "line_reference_no", null: false
     t.bigint "packaging_unit_id"
     t.decimal "packaging_size", precision: 15, scale: 4
+    t.integer "destination_hub_id"
+    t.integer "destination_warehouse_id"
     t.index ["commodity_id"], name: "index_cats_warehouse_receipt_order_lines_on_commodity_id"
+    t.index ["destination_hub_id"], name: "idx_ro_lines_dest_hub_id"
+    t.index ["destination_warehouse_id"], name: "idx_ro_lines_dest_wh_id"
     t.index ["line_reference_no"], name: "index_cats_warehouse_receipt_order_lines_on_line_reference_no", unique: true
     t.index ["packaging_unit_id"], name: "index_cats_warehouse_receipt_order_lines_on_packaging_unit_id"
     t.index ["receipt_order_id"], name: "index_receipt_order_lines_on_order_id"

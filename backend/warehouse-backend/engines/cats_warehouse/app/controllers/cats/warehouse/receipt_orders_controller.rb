@@ -571,7 +571,9 @@ module Cats
             :line_reference_no,
             :notes,
             :packaging_unit_id,
-            :packaging_size
+            :packaging_size,
+            :destination_hub_id,
+            :destination_warehouse_id
           ],
           lines: [
             :commodity_id,
@@ -580,7 +582,9 @@ module Cats
             :line_reference_no,
             :notes,
             :packaging_unit_id,
-            :packaging_size
+            :packaging_size,
+            :destination_hub_id,
+            :destination_warehouse_id
           ]
         )
       end

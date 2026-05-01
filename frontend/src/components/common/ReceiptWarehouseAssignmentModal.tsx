@@ -14,6 +14,7 @@ import {
 } from '@mantine/core';
 import { IconAlertCircle, IconPlus, IconTrash } from '@tabler/icons-react';
 import type { ReceiptOrder } from '../../api/receiptOrders';
+import type { ReceiptOrderLine } from '../../api/receiptOrders';
 import type { Store } from '../../types/store';
 import type { Warehouse } from '../../types/warehouse';
 import type { UnitReference, UomConversion } from '../../types/referenceData';
@@ -28,6 +29,7 @@ interface ReceiptWarehouseAssignmentModalProps {
   opened: boolean;
   onClose: () => void;
   receiptOrder: ReceiptOrder;
+  filteredLines?: ReceiptOrderLine[];
   warehouses: Warehouse[];
   stores: Store[];
   units: UnitReference[];
@@ -100,6 +102,7 @@ function ReceiptWarehouseAssignmentModal({
   opened,
   onClose,
   receiptOrder,
+  filteredLines,
   warehouses,
   stores,
   units,
@@ -107,7 +110,7 @@ function ReceiptWarehouseAssignmentModal({
   onSubmit,
   loading = false,
 }: ReceiptWarehouseAssignmentModalProps) {
-  const lines = useMemo(() => orderLines(receiptOrder), [receiptOrder]);
+  const lines = useMemo(() => filteredLines ?? orderLines(receiptOrder), [filteredLines, receiptOrder]);
 
   const assignedByLine = useMemo(() => {
     const result: Record<number, number> = {};

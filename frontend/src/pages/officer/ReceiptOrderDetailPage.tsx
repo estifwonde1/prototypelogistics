@@ -593,6 +593,38 @@ function ReceiptOrderDetailPage() {
   const assignments = order?.assignments || [];
   const spaceReservations = order?.space_reservations || [];
   const lines = order ? receiptLines(order) : [];
+
+  // Hub managers only see lines destined for their hub
+  // Warehouse managers only see lines assigned to their warehouse
+  const visibleLines = useMemo(() => {
+    if (!order) return lines;
+
+    if (roleSlug === 'hub_manager') {
+      const hubId = order.hub_id;
+      if (!hubId) return lines;
+      const filtered = lines.filter(l => l.destination_hub_id === hubId);
+      return filtered.length > 0 ? filtered : lines.filter(l => !l.destination_warehouse_id);
+    }
+
+    if (roleSlug === 'warehouse_manager') {
+      const warehouseId = activeAssignment?.warehouse?.id;
+      if (!warehouseId) return lines;
+      // Lines assigned to this warehouse via assignments
+      const assignedLineIds = new Set(
+        assignments
+          .filter(a => a.warehouse_id === warehouseId && a.receipt_order_line_id != null)
+          .map(a => a.receipt_order_line_id!)
+      );
+      if (assignedLineIds.size > 0) {
+        return lines.filter(l => l.id != null && assignedLineIds.has(l.id));
+      }
+      // Fall back: lines with destination_warehouse_id matching
+      const byDest = lines.filter(l => l.destination_warehouse_id === warehouseId);
+      return byDest.length > 0 ? byDest : lines;
+    }
+
+    return lines;
+  }, [lines, order, roleSlug, assignments, activeAssignment]);
   const assignedLocationRows = useMemo(() => {
     const lineById = new Map(lines.map((line) => [Number(line.id), line]));
     const rows = assignments.map((assignment) => {
@@ -684,6 +716,17 @@ function ReceiptOrderDetailPage() {
     normalizeOrderStatus(order?.status) !== 'completed' &&
     !fullyAssigned &&
     hubScopedWarehouses.length > 0;
+
+  // Lines scoped to this hub manager's hub — used in the Assign Warehouse modal
+  const hubScopedLines = useMemo(() => {
+    if (roleSlug !== 'hub_manager' || !order) return lines;
+    const hubId = order.hub_id;
+    if (!hubId) return lines;
+    // Filter lines that are destined for this hub
+    const filtered = lines.filter(l => l.destination_hub_id === hubId);
+    // Fall back to all lines if no lines have destination_hub_id set (old orders)
+    return filtered.length > 0 ? filtered : lines.filter(l => !l.destination_warehouse_id);
+  }, [lines, order, roleSlug]);
 
   if (isLoading) {
     return <LoadingState message="Loading Receipt Order..." />;
@@ -849,7 +892,7 @@ function ReceiptOrderDetailPage() {
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
-                    {lines.map((line, index) => {
+                    {visibleLines.map((line, index) => {
                       const noteText = line.notes?.trim() || '';
                       const pipeIndex = noteText.indexOf(' | ');
                       const destinationPart = pipeIndex >= 0 ? noteText.slice(0, pipeIndex) : noteText;
@@ -1754,6 +1797,7 @@ function ReceiptOrderDetailPage() {
         opened={showWarehouseAssignmentModal}
         onClose={() => setShowWarehouseAssignmentModal(false)}
         receiptOrder={order}
+        filteredLines={hubScopedLines}
         warehouses={hubScopedWarehouses}
         stores={allStores}
         units={units}
