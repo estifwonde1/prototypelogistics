@@ -62,9 +62,32 @@ export default function WarehouseManagerDashboardPage() {
     enabled: !!warehouseId,
   });
 
-  const pendingReceiptAssignments = receiptOrders?.filter(o => o.status === 'Confirmed') ?? [];
-  const pendingDispatchAuthorizations = dispatchOrders?.filter(o => o.status === 'Draft') ?? [];
-  const activeDispatchAuthorizations = dispatchOrders?.filter(o => o.status === 'Confirmed') ?? [];
+  const pendingReceiptAssignments = receiptOrders?.filter(o => {
+    const status = String(o.status || '').toLowerCase();
+    
+    // CRITICAL: Only show orders explicitly assigned to THIS warehouse
+    // Do NOT show orders assigned only to the hub (hub manager should handle those first)
+    const hasWarehouseAssignment = o.warehouse_id === warehouseId || 
+                                   o.destination_warehouse_id === warehouseId;
+    
+    // If order is assigned to hub but not to specific warehouse, hide it from warehouse manager
+    if (o.hub_id && !hasWarehouseAssignment) {
+      return false;
+    }
+    
+    // Show orders that are confirmed or draft AND assigned to this warehouse
+    return hasWarehouseAssignment && (status === 'confirmed' || status === 'draft');
+  }) ?? [];
+  
+  const pendingDispatchAuthorizations = dispatchOrders?.filter(o => {
+    const status = String(o.status || '').toLowerCase();
+    return status === 'draft';
+  }) ?? [];
+  
+  const activeDispatchAuthorizations = dispatchOrders?.filter(o => {
+    const status = String(o.status || '').toLowerCase();
+    return status === 'confirmed';
+  }) ?? [];
 
   // 4. Lost Commodity records
   const { data: inspectionsData } = useQuery({

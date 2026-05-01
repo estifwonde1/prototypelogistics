@@ -21,6 +21,8 @@ import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
 import { usePermission } from '../../hooks/usePermission';
+import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 
 /** Matches Rails `ReceiptOrderSerializer#status` (enum value + `.titleize`). */
 const RECEIPT_ORDER_STATUS_FILTER_OPTIONS = [
@@ -79,6 +81,11 @@ function ReceiptOrdersListPage() {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [warehouseFilter, setWarehouseFilter] = useState<string | null>(null);
 
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
+  const userWarehouseId = activeAssignment?.warehouse?.id;
+  const isWarehouseManager = roleSlug === 'warehouse_manager';
+
   const { data: orders = [], isLoading, error, refetch } = useQuery({
     queryKey: ['receipt_orders'],
     queryFn: () => getReceiptOrders(),
@@ -93,6 +100,23 @@ function ReceiptOrdersListPage() {
     if (!orders?.length) return orders;
 
     return orders.filter((order) => {
+      // CRITICAL: Warehouse managers should ONLY see orders explicitly assigned to their warehouse
+      // NOT orders assigned only to the hub (hub manager handles those first)
+      if (isWarehouseManager && userWarehouseId) {
+        const hasWarehouseAssignment = order.warehouse_id === userWarehouseId || 
+                                       order.destination_warehouse_id === userWarehouseId;
+        
+        // If order is assigned to hub but not to specific warehouse, hide it
+        if (order.hub_id && !hasWarehouseAssignment) {
+          return false;
+        }
+        
+        // If order has no warehouse assignment at all, hide it
+        if (!hasWarehouseAssignment) {
+          return false;
+        }
+      }
+
       if (!receiptOrderMatchesSearch(order, search)) return false;
 
       if (statusFilter) {
@@ -113,7 +137,7 @@ function ReceiptOrdersListPage() {
 
       return true;
     });
-  }, [orders, search, statusFilter, warehouseFilter]);
+  }, [orders, search, statusFilter, warehouseFilter, isWarehouseManager, userWarehouseId]);
 
   const statusOptions = [...RECEIPT_ORDER_STATUS_FILTER_OPTIONS];
 
