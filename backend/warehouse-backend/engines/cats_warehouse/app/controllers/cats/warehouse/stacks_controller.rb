@@ -4,7 +4,15 @@ module Cats
       def index
         authorize Stack
         scope = policy_scope(Stack).order(:id)
-        scope = scope.where(store_id: params[:store_id]) if params[:store_id].present?
+        
+        # CRITICAL: Filter by warehouse_id if provided (for warehouse managers with multiple warehouses)
+        if params[:warehouse_id].present?
+          store_ids = Store.where(warehouse_id: params[:warehouse_id]).select(:id)
+          scope = scope.where(store_id: store_ids)
+        elsif params[:store_id].present?
+          scope = scope.where(store_id: params[:store_id])
+        end
+        
         render_resource(scope, each_serializer: StackSerializer)
       end
 

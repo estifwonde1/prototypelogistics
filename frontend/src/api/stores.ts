@@ -26,8 +26,8 @@ export const deleteStore = async (id: number): Promise<void> => {
   await apiClient.delete(`/stores/${id}`);
 };
 
-export const getStoreStorekeepers = async (): Promise<Storekeeper[]> => {
-  const response = await apiClient.get<ApiResponse<{ storekeepers: Storekeeper[] }>>('/stores/storekeepers');
+export const getStoreStorekeepers = async (params?: { warehouse_id?: number }): Promise<Storekeeper[]> => {
+  const response = await apiClient.get<ApiResponse<{ storekeepers: Storekeeper[] }>>('/stores/storekeepers', { params });
   return response.data.data.storekeepers;
 };
 

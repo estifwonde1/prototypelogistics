@@ -2,7 +2,7 @@ import apiClient from './client';
 import type { Stack } from '../types/stack';
 import type { ApiResponse } from '../types/common';
 
-export const getStacks = async (params?: { store_id?: number }): Promise<Stack[]> => {
+export const getStacks = async (params?: { store_id?: number; warehouse_id?: number }): Promise<Stack[]> => {
   const response = await apiClient.get<ApiResponse<Stack[]>>('/stacks', { params });
   return response.data.data;
 };

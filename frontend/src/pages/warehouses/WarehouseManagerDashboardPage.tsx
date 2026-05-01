@@ -62,9 +62,22 @@ export default function WarehouseManagerDashboardPage() {
     enabled: !!warehouseId,
   });
 
-  const pendingReceiptAssignments = receiptOrders?.filter(o => o.status === 'Confirmed') ?? [];
-  const pendingDispatchAuthorizations = dispatchOrders?.filter(o => o.status === 'Draft') ?? [];
-  const activeDispatchAuthorizations = dispatchOrders?.filter(o => o.status === 'Confirmed') ?? [];
+  const pendingReceiptAssignments = receiptOrders?.filter(o => {
+    const status = String(o.status || '').toLowerCase();
+    // Backend now filters by warehouse, so we only need to filter by status
+    // Show orders that are confirmed or draft (pending storekeeper assignment)
+    return status === 'confirmed' || status === 'draft';
+  }) ?? [];
+  
+  const pendingDispatchAuthorizations = dispatchOrders?.filter(o => {
+    const status = String(o.status || '').toLowerCase();
+    return status === 'draft';
+  }) ?? [];
+  
+  const activeDispatchAuthorizations = dispatchOrders?.filter(o => {
+    const status = String(o.status || '').toLowerCase();
+    return status === 'confirmed';
+  }) ?? [];
 
   // 4. Lost Commodity records
   const { data: inspectionsData } = useQuery({

@@ -20,6 +20,8 @@ import { StatusBadge } from '../../components/common/StatusBadge';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
+import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 
 function DispatchOrdersListPage() {
   const navigate = useNavigate();
@@ -27,9 +29,17 @@ function DispatchOrdersListPage() {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [warehouseFilter, setWarehouseFilter] = useState<string | null>(null);
 
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
+  const userWarehouseId = activeAssignment?.warehouse?.id;
+  const isWarehouseManager = roleSlug === 'warehouse_manager';
+
   const { data: orders, isLoading, error, refetch } = useQuery({
-    queryKey: ['dispatch_orders'],
-    queryFn: () => getDispatchOrders({}),
+    queryKey: ['dispatch_orders', { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],
+    queryFn: () => {
+      const params = isWarehouseManager && userWarehouseId ? { warehouse_id: userWarehouseId } : {};
+      return getDispatchOrders(params);
+    },
   });
 
   const { data: warehouses } = useQuery({

@@ -3,7 +3,14 @@ module Cats
     class StoresController < BaseController
       def index
         authorize Store
-        render_resource(policy_scope(Store).order(:id), each_serializer: StoreSerializer)
+        stores = policy_scope(Store)
+        
+        # CRITICAL: Filter by warehouse_id if provided (for warehouse managers with multiple warehouses)
+        if params[:warehouse_id].present?
+          stores = stores.where(warehouse_id: params[:warehouse_id])
+        end
+        
+        render_resource(stores.order(:id), each_serializer: StoreSerializer)
       end
 
       def show
@@ -38,6 +45,11 @@ module Cats
         # Get all warehouses accessible to the current user
         access = AccessContext.new(user: current_user)
         warehouse_ids = access.accessible_warehouse_ids
+        
+        # CRITICAL: Filter by warehouse_id if provided (for warehouse managers with multiple warehouses)
+        if params[:warehouse_id].present?
+          warehouse_ids = warehouse_ids & [params[:warehouse_id].to_i]
+        end
         
         # Get all storekeepers assigned to these warehouses (warehouse-level or store-level)
         assignments = UserAssignment

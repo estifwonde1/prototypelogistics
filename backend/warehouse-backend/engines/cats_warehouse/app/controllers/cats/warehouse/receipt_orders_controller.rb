@@ -3,7 +3,41 @@ module Cats
     class ReceiptOrdersController < BaseController
       def index
         authorize ReceiptOrder
-        orders = policy_scope(ReceiptOrder).includes(*order_detail_includes).order(created_at: :desc)
+        
+        # CRITICAL: For warehouse managers with warehouse_id parameter, we need to filter
+        # BEFORE policy_scope to ensure we only get orders for the active warehouse
+        if params[:warehouse_id].present?
+          warehouse_id = params[:warehouse_id].to_i
+          
+          # Get store IDs for this warehouse
+          store_ids = Store.where(warehouse_id: warehouse_id).pluck(:id)
+          
+          # Find receipt order IDs that are assigned to this warehouse or its stores
+          assigned_order_ids = ReceiptOrderAssignment
+            .where(warehouse_id: warehouse_id)
+            .or(ReceiptOrderAssignment.where(store_id: store_ids))
+            .where.not(status: 'rejected')
+            .distinct
+            .pluck(:receipt_order_id)
+          
+          # Get orders where:
+          # 1. Main warehouse_id matches, OR
+          # 2. Order has an assignment to this warehouse/stores
+          orders = ReceiptOrder
+            .where(warehouse_id: warehouse_id)
+            .or(ReceiptOrder.where(id: assigned_order_ids))
+            .includes(*order_detail_includes)
+            .order(created_at: :desc)
+          
+          # Apply policy scope for authorization
+          orders = policy_scope(orders)
+        else
+          # No warehouse filter - use standard policy scope
+          orders = policy_scope(ReceiptOrder)
+            .includes(*order_detail_includes)
+            .order(created_at: :desc)
+        end
+        
         render_resource(orders, each_serializer: ReceiptOrderSerializer)
       end
 
@@ -33,9 +67,19 @@ module Cats
             assignments = assignments.where(hub_id: hub_ids.presence || [0])
             Rails.logger.info "DEBUG: After hub filtering: #{assignments.count} assignments"
           elsif warehouse_manager?
-            # Warehouse managers should only see assignments to their specific warehouse(s) or stores under those warehouses
+          # CRITICAL: Filter by active warehouse context, not all warehouses user has access to
+          # If warehouse_id param is provided, use it (for multi-warehouse managers)
+          # Otherwise, get all warehouses user is assigned to
+          if params[:warehouse_id].present?
+            active_warehouse_id = params[:warehouse_id].to_i
+            wh_ids = [active_warehouse_id]
+            store_ids = Cats::Warehouse::Store.where(warehouse_id: active_warehouse_id).pluck(:id)
+          else
+              # Warehouse managers should only see assignments to their specific warehouse(s) or stores under those warehouses
             wh_ids = UserAssignment.where(user: current_user, role_name: "Warehouse Manager").pluck(:warehouse_id).compact
-            store_ids = Cats::Warehouse::Store.where(warehouse_id: wh_ids).pluck(:id)
+              store_ids = Cats::Warehouse::Store.where(warehouse_id: wh_ids).pluck(:id)
+          end
+          
             Rails.logger.info "DEBUG: Warehouse Manager - User's warehouse IDs: #{wh_ids}, store IDs: #{store_ids}"
             assignments = assignments.where(
               "cats_warehouse_receipt_order_assignments.warehouse_id IN (?) OR cats_warehouse_receipt_order_assignments.store_id IN (?)",
@@ -233,10 +277,20 @@ module Cats
 
         effective_hub_id = order.warehouse&.hub_id.presence || order.hub_id
         manager_only = params[:manager_only] == 'true'
+        
+        # CRITICAL: Filter by active warehouse context for multi-warehouse managers
+        active_warehouse_id = params[:warehouse_id].present? ? params[:warehouse_id].to_i : nil
 
         if effective_hub_id.present?
           managers = manager_only ? receipt_order_managers_for_hub_managers_only(effective_hub_id) : receipt_order_managers_for_hub(effective_hub_id)
-          stores = manager_only ? [] : available_stores_for_hub(effective_hub_id)
+          
+          # CRITICAL: If warehouse_id param is provided, only return stores from that warehouse
+          if active_warehouse_id.present?
+            stores = manager_only ? [] : available_stores_for_warehouse(active_warehouse_id)
+          else
+            stores = manager_only ? [] : available_stores_for_hub(effective_hub_id)
+          end
+          
           hub = Hub.find_by(id: effective_hub_id)
           return render_success(
             assignable_managers: managers,

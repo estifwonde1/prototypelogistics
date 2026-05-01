@@ -166,8 +166,8 @@ export async function getReceiptOrders(params?: { warehouse_id?: number; hub_id?
   );
 }
 
-export async function getReceiptOrder(id: number): Promise<ReceiptOrder> {
-  const response = await apiClient.get(`/receipt_orders/${id}`);
+export async function getReceiptOrder(id: number, params?: { warehouse_id?: number }): Promise<ReceiptOrder> {
+  const response = await apiClient.get(`/receipt_orders/${id}`, { params });
   const raw = response.data.data || response.data;
   return normalizeReceiptOrder(typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {});
 }
@@ -196,7 +196,11 @@ export async function confirmReceiptOrder(id: number): Promise<ReceiptOrder> {
 
 export type AssignableManagersScope = 'hub' | 'warehouse' | null;
 
-export async function getReceiptOrderAssignableManagers(id: number, managerOnly = false): Promise<{
+export async function getReceiptOrderAssignableManagers(
+  id: number, 
+  managerOnly = false,
+  params?: { warehouse_id?: number }
+): Promise<{
   assignable_managers: AssignableManagerOption[];
   stores: StoreOption[];
   hub_id?: number | null;
@@ -206,7 +210,7 @@ export async function getReceiptOrderAssignableManagers(id: number, managerOnly 
   managers_scope?: AssignableManagersScope;
 }> {
   const response = await apiClient.get(`/receipt_orders/${id}/assignable_managers`, {
-    params: { manager_only: managerOnly },
+    params: { manager_only: managerOnly, ...params },
   });
   const data = response.data.data || response.data;
   const scope = data.managers_scope;

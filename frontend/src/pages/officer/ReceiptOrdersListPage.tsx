@@ -21,6 +21,8 @@ import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
 import { usePermission } from '../../hooks/usePermission';
+import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 
 /** Matches Rails `ReceiptOrderSerializer#status` (enum value + `.titleize`). */
 const RECEIPT_ORDER_STATUS_FILTER_OPTIONS = [
@@ -79,9 +81,17 @@ function ReceiptOrdersListPage() {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [warehouseFilter, setWarehouseFilter] = useState<string | null>(null);
 
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
+  const userWarehouseId = activeAssignment?.warehouse?.id;
+  const isWarehouseManager = roleSlug === 'warehouse_manager';
+
   const { data: orders = [], isLoading, error, refetch } = useQuery({
-    queryKey: ['receipt_orders'],
-    queryFn: () => getReceiptOrders(),
+    queryKey: ['receipt_orders', { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],
+    queryFn: () => {
+      const params = isWarehouseManager && userWarehouseId ? { warehouse_id: userWarehouseId } : {};
+      return getReceiptOrders(params);
+    },
   });
 
   const { data: warehouses = [] } = useQuery({
@@ -93,6 +103,7 @@ function ReceiptOrdersListPage() {
     if (!orders?.length) return orders;
 
     return orders.filter((order) => {
+      // Backend now handles warehouse filtering, so we only need to filter by search and status
       if (!receiptOrderMatchesSearch(order, search)) return false;
 
       if (statusFilter) {

@@ -452,10 +452,16 @@ commodities = [
 ].map do |c|
   # Create a Commodity Definition so it's available in the frontend dropdown
   if Object.const_defined?("Cats::Warehouse::CommodityDefinition")
-    Cats::Warehouse::CommodityDefinition.find_or_create_by!(
-      name: c[:description],
-    ) do |d|
-      d.commodity_category_id = c[:category].id
+    commodity_def = Cats::Warehouse::CommodityDefinition.find_or_initialize_by(name: c[:description])
+    if commodity_def.new_record?
+      commodity_def.commodity_category_id = c[:category].id
+      begin
+        commodity_def.save!
+      rescue ActiveRecord::RecordInvalid => e
+        puts "  Warning: Could not create commodity definition '#{c[:description]}': #{e.message}"
+        # Try to find existing record
+        commodity_def = Cats::Warehouse::CommodityDefinition.find_by(name: c[:description])
+      end
     end
   end
 
@@ -488,7 +494,11 @@ transporters = [
 end
 
 # Ensure funding records exist before records that depend on them
-etb_currency = Cats::Core::Currency.find_or_create_by!(code: "ETB", name: "Ethiopian Birr")
+etb_currency = Cats::Core::Currency.find_or_initialize_by(code: "ETB")
+if etb_currency.new_record?
+  etb_currency.name = "Ethiopian Birr"
+  etb_currency.save!
+end
 
 cash_donation = find_or_create_with(
   Cats::Core::CashDonation,
