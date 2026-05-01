@@ -14,18 +14,49 @@ module Cats
         assignments = order.receipt_order_assignments
           .includes(:assigned_to, :assigned_by, :store, :warehouse, :hub)
 
-        if hub_manager?
-          assignments = assignments.where(
-            "cats_warehouse_receipt_order_assignments.store_id IS NULL"
-          )
-        elsif warehouse_manager?
-          wh_ids = UserAssignment.where(user: current_user, role_name: "Warehouse Manager").pluck(:warehouse_id).compact
-          store_ids = Cats::Warehouse::Store.where(warehouse_id: wh_ids).pluck(:id)
-          assignments = assignments.where(
-            "cats_warehouse_receipt_order_assignments.hub_id IS NULL OR cats_warehouse_receipt_order_assignments.warehouse_id IN (?) OR cats_warehouse_receipt_order_assignments.store_id IN (?)",
-            wh_ids.presence || [0],
-            store_ids.presence || [0]
-          )
+        # Debug: Log assignment details and user role
+        Rails.logger.info "DEBUG: User #{current_user.id} role check - Hub Manager: #{hub_manager?}, Warehouse Manager: #{warehouse_manager?}, Officer: #{officer?}"
+        Rails.logger.info "DEBUG: Found #{assignments.count} total assignments before filtering"
+        assignments.each_with_index do |assignment, index|
+          Rails.logger.info "DEBUG: Assignment #{index + 1}: ID=#{assignment.id}, Hub=#{assignment.hub_id} (#{assignment.hub&.name}), Warehouse=#{assignment.warehouse_id} (#{assignment.warehouse&.name}), Quantity=#{assignment.quantity}"
+        end
+
+        # Only apply role-based filtering for non-officers to maintain visibility of all assignments
+        # Officers need to see all assignments to get the complete picture of commodity classification
+        # This ensures that when commodities are classified to different destinations, all locations
+        # are visible in the assignment tab of the receipt order details page
+        unless officer?
+          if hub_manager?
+            # Hub managers should only see assignments to their specific hub(s)
+            hub_ids = UserAssignment.where(user: current_user, role_name: "Hub Manager").pluck(:hub_id).compact
+            Rails.logger.info "DEBUG: Hub Manager - User's hub IDs: #{hub_ids}"
+            assignments = assignments.where(hub_id: hub_ids.presence || [0])
+            Rails.logger.info "DEBUG: After hub filtering: #{assignments.count} assignments"
+          elsif warehouse_manager?
+            # Warehouse managers should only see assignments to their specific warehouse(s) or stores under those warehouses
+            wh_ids = UserAssignment.where(user: current_user, role_name: "Warehouse Manager").pluck(:warehouse_id).compact
+            store_ids = Cats::Warehouse::Store.where(warehouse_id: wh_ids).pluck(:id)
+            Rails.logger.info "DEBUG: Warehouse Manager - User's warehouse IDs: #{wh_ids}, store IDs: #{store_ids}"
+            assignments = assignments.where(
+              "cats_warehouse_receipt_order_assignments.warehouse_id IN (?) OR cats_warehouse_receipt_order_assignments.store_id IN (?)",
+              wh_ids.presence || [0],
+              store_ids.presence || [0]
+            )
+            Rails.logger.info "DEBUG: After warehouse filtering: #{assignments.count} assignments"
+          elsif storekeeper?
+            # Storekeepers should only see assignments to their specific store(s)
+            store_ids = UserAssignment.where(user: current_user, role_name: "Storekeeper").pluck(:store_id).compact
+            Rails.logger.info "DEBUG: Storekeeper - User's store IDs: #{store_ids}"
+            assignments = assignments.where(store_id: store_ids.presence || [0])
+            Rails.logger.info "DEBUG: After store filtering: #{assignments.count} assignments"
+          end
+        else
+          Rails.logger.info "DEBUG: Officer - No filtering applied, showing all assignments"
+        end
+
+        Rails.logger.info "DEBUG: Final assignments count: #{assignments.count}"
+        assignments.each_with_index do |assignment, index|
+          Rails.logger.info "DEBUG: Final Assignment #{index + 1}: ID=#{assignment.id}, Hub=#{assignment.hub_id} (#{assignment.hub&.name}), Warehouse=#{assignment.warehouse_id} (#{assignment.warehouse&.name}), Quantity=#{assignment.quantity}"
         end
 
         serialized = ReceiptOrderSerializer.new(order).as_json
@@ -401,10 +432,44 @@ module Cats
       end
 
       def render_order_payload(order, status: :ok)
+        # Apply role-based filtering to assignments
+        assignments = order.receipt_order_assignments
+          .includes(:assigned_to, :assigned_by, :store, :warehouse, :hub)
+
+        # Only apply role-based filtering for non-officers to maintain visibility of all assignments
+        # Officers need to see all assignments to get the complete picture of commodity classification
+        unless officer?
+          if hub_manager?
+            # Hub managers should only see assignments to their specific hub(s)
+            hub_ids = UserAssignment.where(user: current_user, role_name: "Hub Manager").pluck(:hub_id).compact
+            assignments = assignments.where(hub_id: hub_ids.presence || [0])
+          elsif warehouse_manager?
+            # Warehouse managers should only see assignments to their specific warehouse(s) or stores under those warehouses
+            wh_ids = UserAssignment.where(user: current_user, role_name: "Warehouse Manager").pluck(:warehouse_id).compact
+            store_ids = Cats::Warehouse::Store.where(warehouse_id: wh_ids).pluck(:id)
+            assignments = assignments.where(
+              "cats_warehouse_receipt_order_assignments.warehouse_id IN (?) OR cats_warehouse_receipt_order_assignments.store_id IN (?)",
+              wh_ids.presence || [0],
+              store_ids.presence || [0]
+            )
+          elsif storekeeper?
+            # Storekeepers should only see assignments to their specific store(s)
+            store_ids = UserAssignment.where(user: current_user, role_name: "Storekeeper").pluck(:store_id).compact
+            assignments = assignments.where(store_id: store_ids.presence || [0])
+          end
+        end
+
         payload = ActiveModelSerializers::SerializableResource.new(
           order,
           serializer: ReceiptOrderSerializer
         ).as_json
+        
+        # Override assignments with filtered ones
+        payload[:receipt_order_assignments] = ActiveModelSerializers::SerializableResource.new(
+          assignments,
+          each_serializer: ReceiptOrderAssignmentSerializer
+        ).as_json
+        
         payload = payload.merge(can_confirm: ReceiptOrderPolicy.new(current_user, order).confirm?)
         render_success(payload, status: status)
       end
