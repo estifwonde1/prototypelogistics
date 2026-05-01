@@ -317,11 +317,16 @@ module Cats
         placements = Array(params[:placements])
         raise ArgumentError, "Please add at least one stack placement before finishing." if placements.empty?
 
-        total_ordered = order.receipt_order_lines.sum { |l| l.quantity.to_f }
+        # Use quantity_received from inspections if available, otherwise fall back to ordered quantity
+        total_received = Inspection
+          .joins(:inspection_items)
+          .where(receipt_order: order)
+          .sum("cats_warehouse_inspection_items.quantity_received")
+        total_to_stack = total_received > 0 ? total_received : order.receipt_order_lines.sum { |l| l.quantity.to_f }
         total_stacked = placements.sum { |p| p[:quantity].to_f }
 
-        if (total_stacked - total_ordered).abs > 0.001
-          raise ArgumentError, "Total stacked (#{total_stacked.round(2)}) does not match total ordered (#{total_ordered.round(2)}). Please adjust your stack placements."
+        if (total_stacked - total_to_stack).abs > 0.001
+          raise ArgumentError, "Total stacked (#{total_stacked.round(2)}) does not match total received (#{total_to_stack.round(2)}). Please adjust your stack placements."
         end
 
         first_line = order.receipt_order_lines.first
