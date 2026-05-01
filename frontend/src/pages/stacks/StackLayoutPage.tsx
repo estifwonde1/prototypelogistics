@@ -260,17 +260,28 @@ export default function StackLayoutPage() {
     queryFn: () => getUnitReferences(),
   });
 
-  const resolvedStoreId = storeId || (stores && stores.length > 0 ? String(stores[0].id) : null);
+  const resolvedStoreId = storeId || (isStorekeeper && userStoreId ? String(userStoreId) : (stores && stores.length > 0 ? String(stores[0].id) : null));
 
   const selectedStore = useMemo(
     () => stores?.find((store) => String(store.id) === resolvedStoreId) || null,
     [resolvedStoreId, stores]
   );
 
-  const storeStacks = useMemo(
-    () => stacks?.filter((stack) => String(stack.store_id) === resolvedStoreId) || [],
-    [resolvedStoreId, stacks]
-  );
+  const storeStacks = useMemo(() => {
+    const filtered = stacks?.filter((stack) => String(stack.store_id) === resolvedStoreId) || [];
+    
+    // Debug logging to help diagnose missing stacks
+    if (resolvedStoreId && stacks && stacks.length > 0) {
+      console.log('=== Stack Filtering Debug ===');
+      console.log('Selected Store ID:', resolvedStoreId);
+      console.log('Total stacks fetched:', stacks.length);
+      console.log('Stacks for this store:', filtered.length);
+      console.log('All stack store_ids:', stacks.map(s => ({ id: s.id, store_id: s.store_id, code: s.code })));
+      console.log('Filtered stacks:', filtered.map(s => ({ id: s.id, code: s.code })));
+    }
+    
+    return filtered;
+  }, [resolvedStoreId, stacks]);
 
   const commodityOptions = useMemo(() => {
     const seen = new Set<string>();
@@ -387,6 +398,13 @@ export default function StackLayoutPage() {
       }
     }, 400);
   }, []);
+
+  // Auto-select user's assigned store for storekeepers
+  useEffect(() => {
+    if (isStorekeeper && userStoreId && !storeId) {
+      setStoreId(String(userStoreId));
+    }
+  }, [isStorekeeper, userStoreId, storeId]);
 
   // Fetch default assignments on mount
   useEffect(() => {

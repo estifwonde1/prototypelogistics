@@ -670,14 +670,28 @@ function ReceiptOrderDetailPage() {
     });
     return result;
   }, [assignments]);
+  
   const fullyAssigned = useMemo(() => {
     if (lines.length === 0) return false;
-    return lines.every((line) => {
-      const lineId = Number(line.id);
-      const assigned = assignedByLine[lineId] || 0;
-      return Number(line.quantity ?? 0) - assigned <= 0.000001;
-    });
-  }, [assignedByLine, lines]);
+    
+    // Calculate total ordered quantity
+    const totalOrdered = lines.reduce((sum, line) => sum + Number(line.quantity ?? 0), 0);
+    
+    // Calculate total assigned quantity to WAREHOUSES only
+    // Hub-level assignments don't count as "fully assigned" because the hub manager
+    // still needs to assign them down to warehouses
+    const totalAssigned = assignments.reduce((sum, assignment) => {
+      // Only count warehouse assignments (not hub or store-level assignments)
+      if (assignment.warehouse_id != null) {
+        return sum + Number(assignment.quantity ?? 0);
+      }
+      return sum;
+    }, 0);
+    
+    // Check if fully assigned (with small tolerance for floating point)
+    const remaining = totalOrdered - totalAssigned;
+    return remaining <= 0.000001;
+  }, [assignments, lines]);
   const canHubAssignWarehouse =
     roleSlug === 'hub_manager' &&
     !isDraft &&

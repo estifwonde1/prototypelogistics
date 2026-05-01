@@ -113,7 +113,9 @@ function ReceiptWarehouseAssignmentModal({
     const result: Record<number, number> = {};
     (receiptOrder.assignments ?? []).forEach((assignment) => {
       const lineId = assignment.receipt_order_line_id;
-      if (lineId == null) return;
+      // Only count warehouse-level assignments, not hub-level assignments
+      // Hub managers need to see the full quantity available to assign to warehouses
+      if (lineId == null || assignment.warehouse_id == null) return;
       result[lineId] = (result[lineId] || 0) + Number(assignment.quantity ?? 0);
     });
     return result;
