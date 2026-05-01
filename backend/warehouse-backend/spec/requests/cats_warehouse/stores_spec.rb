@@ -21,6 +21,9 @@ RSpec.describe "Cats Warehouse Stores", type: :request do
          headers: headers
     expect(response).to have_http_status(:created)
     store_id = json_response.dig("data", "id")
+    expect(json_response.dig("data", "total_space")).to eq(320.0)
+    expect(json_response.dig("data", "usable_space")).to eq(320.0)
+    expect(json_response.dig("data", "available_space")).to eq(320.0)
 
     get "/cats_warehouse/v1/stores/#{store_id}", headers: headers
     expect(response).to have_http_status(:ok)

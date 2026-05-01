@@ -3,7 +3,7 @@ module Cats
     class WarehouseSerializer < ApplicationSerializer
       attributes :id, :code, :name, :warehouse_type, :status, :description, :location_id, :location_name,
                  :subcity_name, :woreda_name, :kebele_name, :kebele, :hub_id, :hub_name, :geo_id, :managed_under, :ownership_type,
-                 :rental_agreement_document, :created_at, :updated_at
+                 :rental_agreement_document, :created_at, :updated_at, :assigned_manager
 
       has_one :warehouse_capacity, serializer: WarehouseCapacitySerializer
       has_one :warehouse_access, serializer: WarehouseAccessSerializer
@@ -42,6 +42,17 @@ module Cats
 
       def hub_name
         object.hub&.name
+      end
+      
+      def assigned_manager
+        # Get all warehouse managers assigned to this warehouse
+        managers = object.user_assignments
+                         .select { |a| a.role_name == "Warehouse Manager" }
+                         .map { |a| "#{a.user.first_name} #{a.user.last_name}" }
+                         .uniq
+        
+        return managers.join(", ") if managers.any?
+        nil
       end
 
       private

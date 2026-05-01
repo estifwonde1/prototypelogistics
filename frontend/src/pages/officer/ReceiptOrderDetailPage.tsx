@@ -42,7 +42,6 @@ import { StatusBadge } from '../../components/common/StatusBadge';
 import { ScopeBadge } from '../../components/common/ScopeBadge';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
-import { AssignmentCard } from '../../components/common/AssignmentCard';
 import { ReservationCard } from '../../components/common/ReservationCard';
 import { WorkflowTimeline } from '../../components/common/WorkflowTimeline';
 import ReceiptWarehouseAssignmentModal from '../../components/common/ReceiptWarehouseAssignmentModal';
@@ -290,22 +289,6 @@ function ReceiptOrderDetailPage() {
   const assignableManagersLoading = assignableManagersQuery.isLoading;
   const assignableManagersError = assignableManagersQuery.isError;
 
-  const managerSelectData = useMemo(() => {
-    const rows = assignableManagersPayload?.assignable_managers ?? [];
-    const seen = new Set<string>();
-    return rows
-      .filter((m: any) => {
-        const key = String(m.id);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .map((m: any) => ({
-        value: String(m.id),
-        label: `${m.name}${m.role === 'Storekeeper' && m.store_name ? ` (${m.store_name})` : ''}`,
-      }));
-  }, [assignableManagersPayload]);
-
   const assignmentStoreSelectData = useMemo(() => {
     const rows = (assignableManagersPayload?.stores as any[]) ?? [];
     return rows.map((s: any) => ({ value: String(s.id), label: `${s.name} (${s.code})` }));
@@ -504,58 +487,40 @@ function ReceiptOrderDetailPage() {
 
 
   const handleCreateAssignment = () => {
-    if (isOfficerRole) {
-      if (!selectedUserId) {
-        notifications.show({
-          title: 'Error',
-          message: 'Please select a manager to assign',
-          color: 'red',
-        });
-        return;
-      }
-
-      assignMutation.mutate({
-        assignments: [{
-          assigned_to_id: Number(selectedUserId),
-          notes: assignmentNotes,
-        }],
+    if (!selectedAssignmentStoreId) {
+      notifications.show({
+        title: 'Error',
+        message: 'Please select a store',
+        color: 'red',
       });
-    } else {
-      if (!selectedAssignmentStoreId) {
-        notifications.show({
-          title: 'Error',
-          message: 'Please select a store',
-          color: 'red',
-        });
-        return;
-      }
-
-      const totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
-      const alreadyAssigned = assignments.filter(a => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
-      const remaining = totalOrdered - alreadyAssigned;
-      if (assignmentQuantity > remaining) {
-        notifications.show({
-          title: 'Validation Error',
-          message: `Quantity exceeds remaining (${remaining.toLocaleString()} left)`,
-          color: 'red',
-        });
-        return;
-      }
-
-      const payload: any = {
-        assignments: [{
-          store_id: Number(selectedAssignmentStoreId),
-          quantity: assignmentQuantity > 0 ? assignmentQuantity : undefined,
-          notes: assignmentNotes,
-        }],
-      };
-
-      if (selectedUserId) {
-        payload.assignments[0].assigned_to_id = Number(selectedUserId);
-      }
-
-      assignMutation.mutate(payload);
+      return;
     }
+
+    const totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
+    const alreadyAssigned = assignments.filter(a => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+    const remaining = totalOrdered - alreadyAssigned;
+    if (assignmentQuantity > remaining) {
+      notifications.show({
+        title: 'Validation Error',
+        message: `Quantity exceeds remaining (${remaining.toLocaleString()} left)`,
+        color: 'red',
+      });
+      return;
+    }
+
+    const payload: any = {
+      assignments: [{
+        store_id: Number(selectedAssignmentStoreId),
+        quantity: assignmentQuantity > 0 ? assignmentQuantity : undefined,
+        notes: assignmentNotes,
+      }],
+    };
+
+    if (selectedUserId) {
+      payload.assignments[0].assigned_to_id = Number(selectedUserId);
+    }
+
+    assignMutation.mutate(payload);
   };
 
   const handleCreateSpaceReservation = () => {
@@ -579,6 +544,64 @@ function ReceiptOrderDetailPage() {
   const assignments = order?.assignments || [];
   const spaceReservations = order?.space_reservations || [];
   const lines = order ? receiptLines(order) : [];
+  const assignedLocationRows = useMemo(() => {
+    const lineById = new Map(lines.map((line) => [Number(line.id), line]));
+    const rows = assignments.map((assignment) => {
+      const line = assignment.receipt_order_line_id != null
+        ? lineById.get(Number(assignment.receipt_order_line_id))
+        : undefined;
+      const type = assignment.store_id != null
+        ? 'Store'
+        : assignment.warehouse_id != null
+          ? 'Warehouse'
+          : assignment.hub_id != null
+            ? 'Hub'
+            : 'Destination';
+      const locationName =
+        assignment.store_name ||
+        assignment.warehouse_name ||
+        assignment.hub_name ||
+        'Assigned location';
+
+      return {
+        id: assignment.id,
+        type,
+        locationName,
+        managerName: assignment.assigned_to_name || 'Assigned by facility setup',
+        commodityName: line?.commodity_name || (line?.commodity_id ? `Commodity #${line.commodity_id}` : 'Order level'),
+        quantity: assignment.quantity,
+        status: assignment.status,
+      };
+    });
+
+    if (rows.length > 0 || !order) return rows;
+
+    if (order.warehouse_id) {
+      return [{
+        id: -1,
+        type: 'Warehouse',
+        locationName: order.warehouse_name || `Warehouse #${order.warehouse_id}`,
+        managerName: 'Manager from facility setup',
+        commodityName: 'Order destination',
+        quantity: undefined,
+        status: order.status,
+      }];
+    }
+
+    if (order.hub_id) {
+      return [{
+        id: -1,
+        type: 'Hub',
+        locationName: order.hub_name || `Hub #${order.hub_id}`,
+        managerName: 'Manager from facility setup',
+        commodityName: 'Order destination',
+        quantity: undefined,
+        status: order.status,
+      }];
+    }
+
+    return rows;
+  }, [assignments, lines, order]);
   const isDraft = String(order?.status || '').toLowerCase() === 'draft';
   const canCreateGrn = can('grns', 'create') && !!order && !isDraft;
   const canUpdateOrder = can('receipt_orders', 'update');
@@ -1152,8 +1175,6 @@ function ReceiptOrderDetailPage() {
                 const canStartStacking = (roleSlug === 'storekeeper' || roleSlug === 'warehouse_manager' || roleSlug === 'admin' || roleSlug === 'superadmin') &&
                   ['confirmed', 'assigned', 'reserved'].includes(orderStatus);
                 const isStacking = orderStatus === 'in_progress';
-                const totalOrdered = lines.reduce((sum, l) => sum + Number(l.quantity ?? 0), 0);
-                const totalStacked = stackingItems.reduce((sum, i) => sum + i.quantity, 0);
                 const totalRecorded = inspections.reduce((s, i) =>
                   s + (i.inspection_items ?? []).reduce((ss, item) => ss + Number(item.quantity_received ?? 0) + Number(item.quantity_lost ?? 0), 0), 0);
                 const hasReceiptRecording = roleSlug !== 'storekeeper' || totalRecorded > 0;
@@ -1226,7 +1247,7 @@ function ReceiptOrderDetailPage() {
         <Tabs.Panel value="assignments" pt="md">
           <Stack gap="md">
             <Group justify="space-between">
-              <Text fw={600}>Warehouse Assignments</Text>
+              <Text fw={600}>Assigned Locations</Text>
               {canHubAssignWarehouse ? (
                 <Button
                   size="sm"
@@ -1245,25 +1266,53 @@ function ReceiptOrderDetailPage() {
                   </Button>
                 );
               })()}
-              {isOfficerRole && String(order.status).toLowerCase() === 'confirmed' && (
-                <Button
-                  size="sm"
-                  onClick={() => setShowAssignmentForm(true)}
-                >
-                  + Assign Manager
-                </Button>
-              )}
             </Group>
 
-            {assignments.length === 0 ? (
-              <Text c="dimmed">No assignments yet</Text>
+            {assignedLocationRows.length === 0 ? (
+              <Text c="dimmed">No assigned locations yet</Text>
             ) : (
-              assignments.map((assignment) => (
-                <AssignmentCard
-                  key={assignment.id}
-                  assignment={assignment}
-                />
-              ))
+              <Table.ScrollContainer minWidth={760}>
+                <Table striped highlightOnHover>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Type</Table.Th>
+                      <Table.Th>Assigned Location</Table.Th>
+                      <Table.Th>Manager</Table.Th>
+                      <Table.Th>Commodity / Scope</Table.Th>
+                      <Table.Th>Quantity</Table.Th>
+                      <Table.Th>Status</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {assignedLocationRows.map((row) => (
+                      <Table.Tr key={row.id}>
+                        <Table.Td>
+                          <Badge variant="light">{row.type}</Badge>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text fw={600}>{row.locationName}</Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm">{row.managerName}</Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm">{row.commodityName}</Text>
+                        </Table.Td>
+                        <Table.Td>
+                          {row.quantity != null ? (
+                            <Text fw={600}>{Number(row.quantity).toLocaleString()}</Text>
+                          ) : (
+                            <Text size="sm" c="dimmed">All order lines</Text>
+                          )}
+                        </Table.Td>
+                        <Table.Td>
+                          <StatusBadge status={row.status} />
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
             )}
 
             {showAssignmentForm && (
@@ -1289,10 +1338,10 @@ function ReceiptOrderDetailPage() {
                             ? 'Loading managers…'
                             : 'Select a manager to assign'
                         }
-                        data={managerSelectData}
+                        data={[]}
                         disabled={
                           assignableManagersLoading ||
-                          (!assignableManagersError && managerSelectData.length === 0)
+                          !assignableManagersError
                         }
                         value={selectedUserId}
                         onChange={setSelectedUserId}
@@ -1300,10 +1349,10 @@ function ReceiptOrderDetailPage() {
                         required
                       />
                       {!assignableManagersLoading &&
-                      managerSelectData.length === 0 &&
+                      false &&
                       !assignableManagersError ? (
                         <Text size="sm" c="dimmed">
-                          No managers are assigned to this {order.hub_id ? 'hub' : 'warehouse'} in admin. Add a user under Hub Manager or Warehouse Manager roles.
+                          No managers are assigned to this {order?.hub_id ? 'hub' : 'warehouse'} in admin. Add a user under Hub Manager or Warehouse Manager roles.
                         </Text>
                       ) : null}
                     </>

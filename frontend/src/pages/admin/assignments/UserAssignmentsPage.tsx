@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Stack, Title, Group, Select, MultiSelect, Button, Table, Badge, Text } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { getAdminUsers } from '../../../api/adminUsers';
-import { getAssignments, bulkUpdateAssignments } from '../../../api/adminAssignments';
+import { getAssignments, bulkUpdateAssignments, deleteAssignment } from '../../../api/adminAssignments';
 import { getHubsForAssignment, getKebeles, getRegions, getWarehousesForAssignment, getWoredas, getZones } from '../../../api/locations';
 import { LoadingState } from '../../../components/common/LoadingState';
 import { ErrorState } from '../../../components/common/ErrorState';
@@ -103,10 +103,47 @@ export default function UserAssignmentsPage() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: deleteAssignment,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-assignments', roleName] });
+      notifications.show({ title: 'Success', message: 'Assignment removed', color: 'green' });
+    },
+    onError: (err: any) => {
+      notifications.show({
+        title: 'Error',
+        message: err.response?.data?.error?.message || 'Failed to remove assignment',
+        color: 'red',
+      });
+    },
+  });
+
   const locationOptions = useMemo(
     () => locations?.map((l) => ({ value: String(l.id), label: l.name })) || [],
     [locations]
   );
+
+  useEffect(() => {
+    if (!roleName || !userId || !assignments) {
+      setSelectedIds([]);
+      return;
+    }
+
+    const selectedUserId = Number(userId);
+    const existingIds = assignments
+      .filter((assignment) => assignment.user?.id === selectedUserId)
+      .map((assignment) => {
+        if (roleName === 'Hub Manager') return assignment.hub?.id;
+        if (roleName === 'Warehouse Manager' || roleName === 'Storekeeper') return assignment.warehouse?.id;
+        if (isRegionalOfficer || isZonalOfficer || isWoredaOfficer || isKebeleOfficer) {
+          return assignment.location?.id;
+        }
+        return undefined;
+      })
+      .filter((id): id is number => id !== undefined);
+
+    setSelectedIds(Array.from(new Set(existingIds.map(String))));
+  }, [roleName, userId, assignments, isRegionalOfficer, isZonalOfficer, isWoredaOfficer, isKebeleOfficer]);
 
   const handleAssign = () => {
     if (!roleName || !userId) return;
@@ -222,6 +259,7 @@ export default function UserAssignmentsPage() {
               <Table.Th>Role</Table.Th>
               <Table.Th>User</Table.Th>
               <Table.Th>Location</Table.Th>
+              <Table.Th>Action</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -232,6 +270,17 @@ export default function UserAssignmentsPage() {
                 </Table.Td>
                 <Table.Td>{a.user?.name || '-'}</Table.Td>
                 <Table.Td>{a.hub?.name || a.warehouse?.name || a.store?.name || a.location?.name || '-'}</Table.Td>
+                <Table.Td>
+                  <Button
+                    size="xs"
+                    variant="subtle"
+                    color="red"
+                    loading={deleteMutation.isPending}
+                    onClick={() => deleteMutation.mutate(a.id)}
+                  >
+                    Unassign
+                  </Button>
+                </Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>

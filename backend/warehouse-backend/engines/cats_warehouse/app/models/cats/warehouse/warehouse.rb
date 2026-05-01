@@ -27,6 +27,7 @@ module Cats
       has_many :stock_reservations, class_name: "Cats::Warehouse::StockReservation", dependent: :destroy
       has_many :space_reservations, class_name: "Cats::Warehouse::SpaceReservation", dependent: :destroy
       has_many :inventory_lots, class_name: "Cats::Warehouse::InventoryLot", dependent: :destroy
+      has_many :user_assignments, class_name: "Cats::Warehouse::UserAssignment", dependent: :destroy
 
       enum :ownership_type, {
         self_owned: "self_owned",

@@ -25,6 +25,16 @@ import { resolveLocationContextFromQuery } from '../../../utils/locationContext'
 
 const DEFAULT_REGION_NAME = 'Addis Ababa';
 
+const kebeleNumberFromName = (name?: string): number | undefined => {
+  if (!name) return undefined;
+
+  const match = name.match(/\d+/);
+  if (!match) return undefined;
+
+  const value = Number(match[0]);
+  return value >= 1 && value <= 40 ? value : undefined;
+};
+
 export default function HubSetupPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -182,12 +192,21 @@ export default function HubSetupPage() {
     return [{ value: String(inheritedContext.woredaId), label: inheritedContext.woredaName }, ...woredaOptions];
   }, [isInheritedFromLocationPage, inheritedContext, woredaOptions]);
 
+  const selectedKebeleName =
+    kebeleOptions.find((option) => option.value === kebeleId)?.label ||
+    inheritedContext.kebeleName ||
+    '';
+
   if (regionsLoading) return <LoadingState message="Loading regions..." />;
   if (regionsError) return <ErrorState message="Failed to load regions" />;
 
   const handleSubmit = (values: typeof form.values) => {
     if (!woredaId) return;
     const targetLocationId = kebeleId || woredaId;
+    const kebeleNumber =
+      values.kebele !== ''
+        ? Number(values.kebele)
+        : kebeleNumberFromName(selectedKebeleName);
     createMutation.mutate({
       code: values.code,
       name: values.name,
@@ -195,7 +214,7 @@ export default function HubSetupPage() {
       status: values.status,
       description: values.description || undefined,
       location_id: Number(targetLocationId),
-      kebele: values.kebele !== '' ? Number(values.kebele) : undefined,
+      kebele: kebeleNumber,
     });
   };
 
@@ -288,7 +307,7 @@ export default function HubSetupPage() {
                 placeholder="1-40"
                 min={1}
                 max={40}
-                description="Optional"
+                description={selectedKebeleName || 'Optional'}
                 {...form.getInputProps('kebele')}
               />
             </Group>

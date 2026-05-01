@@ -154,7 +154,6 @@ function WarehouseDetailPage() {
         total_area_sqm: toNumber(payload.total_area_sqm),
         total_storage_capacity_mt: toNumber(payload.total_storage_capacity_mt),
         construction_year: toNumber(payload.construction_year),
-        usable_space_percentage: payload.usable_space_percentage,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['warehouses', id] });

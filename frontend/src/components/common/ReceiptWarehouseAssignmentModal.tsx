@@ -536,6 +536,23 @@ function ReceiptWarehouseAssignmentModal({
                   </Group>
                 ) : null}
 
+                {row.warehouse_id != null ? (
+                  <Group gap="xs" mt={4}>
+                    <ThemeIcon variant="light" size="sm" color="cyan">
+                      <IconAlertCircle size={14} />
+                    </ThemeIcon>
+                    <Text size="sm" c="dimmed">
+                      {(() => {
+                        const wh = warehouses.find((w) => w.id === row.warehouse_id);
+                        if (!wh) return 'Warehouse not found';
+                        return wh.assigned_manager 
+                          ? `Assigned Warehouse Manager: ${wh.assigned_manager}`
+                          : 'No manager assigned to this warehouse';
+                      })()}
+                    </Text>
+                  </Group>
+                ) : null}
+
                 {validation?.error ? (
                   <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />}>
                     {validation.error}

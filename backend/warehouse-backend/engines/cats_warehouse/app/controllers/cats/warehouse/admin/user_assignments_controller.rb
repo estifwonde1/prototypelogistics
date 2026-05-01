@@ -77,6 +77,11 @@ module Cats
               return render_success(assignments: [assignment_payload(assignment)])
             end
 
+            if ["Hub Manager", "Warehouse Manager"].include?(role_name)
+              assignments = Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name)
+              return render_success(assignments: assignments.map { |a| assignment_payload(a) })
+            end
+
             Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name).delete_all
             return render_success(assignments: [])
           end
@@ -85,8 +90,6 @@ module Cats
           when "Hub Manager"
             existing_ids = Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name).pluck(:hub_id)
             create_ids = ids - existing_ids
-            delete_ids = existing_ids - ids
-            Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name, hub_id: delete_ids).delete_all if delete_ids.any?
             create_ids.each do |id|
               find_or_create_with(Cats::Warehouse::UserAssignment, user: user, role_name: role_name, hub_id: id)
             end
@@ -94,8 +97,6 @@ module Cats
           when "Warehouse Manager"
             existing_ids = Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name).pluck(:warehouse_id)
             create_ids = ids - existing_ids
-            delete_ids = existing_ids - ids
-            Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name, warehouse_id: delete_ids).delete_all if delete_ids.any?
             create_ids.each { |id| find_or_create_with(Cats::Warehouse::UserAssignment, user: user, role_name: role_name, warehouse_id: id) }
           when "Officer"
             existing_ids = Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name).pluck(:warehouse_id)

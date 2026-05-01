@@ -3,11 +3,16 @@ module Cats
     class WarehousesController < BaseController
       def index
         authorize Warehouse
-        render_resource(policy_scope(Warehouse).order(:id), each_serializer: WarehouseSerializer)
+        warehouses = policy_scope(Warehouse)
+                     .includes(:warehouse_capacity, :warehouse_access, :warehouse_infra, :warehouse_contacts, :location, :hub, :geo, user_assignments: :user)
+                     .order(:id)
+        render_resource(warehouses, each_serializer: WarehouseSerializer)
       end
 
       def show
-        warehouse = policy_scope(Warehouse).find(params[:id])
+        warehouse = policy_scope(Warehouse)
+                    .includes(:warehouse_capacity, :warehouse_access, :warehouse_infra, :warehouse_contacts, :location, :hub, :geo, user_assignments: :user)
+                    .find(params[:id])
         authorize warehouse
         render_resource(warehouse, serializer: WarehouseSerializer)
       end

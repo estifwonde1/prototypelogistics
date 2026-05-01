@@ -43,6 +43,16 @@ const OWNERSHIP_TYPE_OPTIONS = [
 
 const DEFAULT_REGION_NAME = 'Addis Ababa';
 
+const kebeleNumberFromName = (name?: string): number | undefined => {
+  if (!name) return undefined;
+
+  const match = name.match(/\d+/);
+  if (!match) return undefined;
+
+  const value = Number(match[0]);
+  return value >= 1 && value <= 40 ? value : undefined;
+};
+
 export default function WarehouseSetupPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -245,6 +255,11 @@ export default function WarehouseSetupPage() {
     return [{ value: String(context.woredaId), label: context.woredaName }, ...woredaOptions];
   }, [hubId, inheritedContext, inheritedContextFromQuery, woredaOptions]);
 
+  const kebeleOptions = useMemo(
+    () => kebeles?.map((kebele) => ({ value: String(kebele.id), label: kebele.name })) || [],
+    [kebeles]
+  );
+
   if (regionsLoading) return <LoadingState message="Loading regions..." />;
   if (regionsError) return <ErrorState message="Failed to load regions" />;
 
@@ -263,6 +278,10 @@ export default function WarehouseSetupPage() {
     : isInheritedFromLocationPage
       ? inheritedContextFromQuery.kebeleId
       : kebeleId ? Number(kebeleId) : undefined;
+  const selectedKebeleName =
+    kebeleOptions.find((option) => option.value === String(effectiveKebeleId))?.label ||
+    (hubId ? inheritedContext?.kebeleName : inheritedContextFromQuery.kebeleName) ||
+    '';
 
   const handleSubmit = (values: typeof form.values) => {
     const targetLocationId = effectiveKebeleId || effectiveWoredaId;
@@ -277,6 +296,11 @@ export default function WarehouseSetupPage() {
       return;
     }
 
+    const kebeleNumber =
+      values.kebele !== ''
+        ? Number(values.kebele)
+        : kebeleNumberFromName(selectedKebeleName);
+
     createMutation.mutate({
       code: values.code,
       name: values.name,
@@ -288,7 +312,7 @@ export default function WarehouseSetupPage() {
       managed_under: hubId ? 'Hub' : values.managed_under,
       ownership_type: values.ownership_type,
       rental_agreement_document: values.ownership_type === 'rental' ? rentalAgreementFile : null,
-      kebele: values.kebele !== '' ? Number(values.kebele) : undefined,
+      kebele: kebeleNumber,
     });
   };
 
@@ -401,7 +425,7 @@ export default function WarehouseSetupPage() {
                 placeholder="1-40"
                 min={1}
                 max={40}
-                description="Optional"
+                description={selectedKebeleName || 'Optional'}
                 {...form.getInputProps('kebele')}
               />
             </Group>

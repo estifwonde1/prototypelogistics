@@ -22,6 +22,7 @@ export interface Warehouse {
   infra?: WarehouseInfra;
   contacts?: WarehouseContacts;
   rental_agreement_document?: UploadedDocument | null;
+  assigned_manager?: string;
 }
 
 export interface UploadedDocument {
