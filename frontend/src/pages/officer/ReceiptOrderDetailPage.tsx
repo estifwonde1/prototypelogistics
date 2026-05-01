@@ -562,6 +562,8 @@ function ReceiptOrderDetailPage() {
         store_id: Number(selectedAssignmentStoreId),
         quantity: assignmentQuantity > 0 ? assignmentQuantity : undefined,
         notes: assignmentNotes,
+        // Include line ID so storekeeper sees only their line
+        receipt_order_line_id: visibleLines.length === 1 ? visibleLines[0].id : undefined,
       }],
     };
 
@@ -621,6 +623,21 @@ function ReceiptOrderDetailPage() {
       // Fall back: lines with destination_warehouse_id matching
       const byDest = lines.filter(l => l.destination_warehouse_id === warehouseId);
       return byDest.length > 0 ? byDest : lines;
+    }
+
+    if (roleSlug === 'storekeeper') {
+      const storeId = activeAssignment?.store?.id;
+      if (!storeId) return lines;
+      // Lines assigned to this storekeeper's store via assignments
+      const assignedLineIds = new Set(
+        assignments
+          .filter(a => a.store_id === storeId && a.receipt_order_line_id != null)
+          .map(a => a.receipt_order_line_id!)
+      );
+      if (assignedLineIds.size > 0) {
+        return lines.filter(l => l.id != null && assignedLineIds.has(l.id));
+      }
+      return lines;
     }
 
     return lines;
