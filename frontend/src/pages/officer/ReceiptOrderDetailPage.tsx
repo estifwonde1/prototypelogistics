@@ -861,7 +861,7 @@ function ReceiptOrderDetailPage() {
 
               const totalAuthorized = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
               const totalRecorded = inspections.reduce((s, i) => {
-                return s + (i.inspection_items ?? []).reduce((ss, item) => ss + Number(item.quantity_received ?? 0), 0);
+                return s + (i.inspection_items ?? []).reduce((ss, item) => ss + Number(item.quantity_received ?? 0) + Number(item.quantity_lost ?? 0), 0);
               }, 0);
               const remaining = Math.max(0, totalAuthorized - totalRecorded);
               const progressPct = totalAuthorized > 0 ? Math.min(100, (totalRecorded / totalAuthorized) * 100) : 0;
@@ -1037,13 +1037,18 @@ function ReceiptOrderDetailPage() {
               if (!canStartStacking && !isStacking && !isCompleted) return null;
 
               const totalOrdered = lines.reduce((sum, l) => sum + Number(l.quantity ?? 0), 0);
+              // Total to stack = quantity actually received (excludes lost)
+              const totalToStack = inspections.length > 0
+                ? inspections.reduce((s, i) =>
+                    s + (i.inspection_items ?? []).reduce((ss, item) => ss + Number(item.quantity_received ?? 0), 0), 0)
+                : totalOrdered;
               const totalStacked = stackingItems.reduce((sum, i) => sum + i.quantity, 0);
-              const remaining = totalOrdered - totalStacked;
-              const progressPct = totalOrdered > 0 ? Math.min(100, (totalStacked / totalOrdered) * 100) : 0;
+              const remaining = totalToStack - totalStacked;
+              const progressPct = totalToStack > 0 ? Math.min(100, (totalStacked / totalToStack) * 100) : 0;
 
               // For storekeepers: require at least one receipt recording before stacking
               const totalRecorded = inspections.reduce((s, i) =>
-                s + (i.inspection_items ?? []).reduce((ss, item) => ss + Number(item.quantity_received ?? 0), 0), 0);
+                s + (i.inspection_items ?? []).reduce((ss, item) => ss + Number(item.quantity_received ?? 0) + Number(item.quantity_lost ?? 0), 0), 0);
               const hasReceiptRecording = roleSlug !== 'storekeeper' || totalRecorded > 0;
 
               return (
@@ -1066,7 +1071,7 @@ function ReceiptOrderDetailPage() {
                     {isStacking && (
                       <>
                         <Group>
-                          <Text size="sm">Total to stack: <strong>{totalOrdered}</strong></Text>
+                          <Text size="sm">Total to stack: <strong>{totalToStack.toLocaleString()}</strong></Text>
                           <Text size="sm">Stacked so far: <strong>{totalStacked}</strong></Text>
                           <Text size="sm" c={remaining < 0 ? 'red' : remaining === 0 ? 'green' : 'dimmed'}>
                             Remaining: <strong>{remaining}</strong>
@@ -1150,7 +1155,7 @@ function ReceiptOrderDetailPage() {
                 const totalOrdered = lines.reduce((sum, l) => sum + Number(l.quantity ?? 0), 0);
                 const totalStacked = stackingItems.reduce((sum, i) => sum + i.quantity, 0);
                 const totalRecorded = inspections.reduce((s, i) =>
-                  s + (i.inspection_items ?? []).reduce((ss, item) => ss + Number(item.quantity_received ?? 0), 0), 0);
+                  s + (i.inspection_items ?? []).reduce((ss, item) => ss + Number(item.quantity_received ?? 0) + Number(item.quantity_lost ?? 0), 0), 0);
                 const hasReceiptRecording = roleSlug !== 'storekeeper' || totalRecorded > 0;
 
                 return (
