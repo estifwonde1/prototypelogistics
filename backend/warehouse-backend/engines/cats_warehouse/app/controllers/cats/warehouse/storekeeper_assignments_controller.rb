@@ -82,10 +82,12 @@ module Cats
             if is_unrestricted
               true
             elsif st_ids.present?
-              # Storekeeper: ONLY store-level assignments for their stores
-              st_ids.include?(a.store_id)
+              # Storekeeper: store-level assignments for their stores
+              # OR warehouse-level assignments for their warehouse (not yet assigned to stores)
+              st_ids.include?(a.store_id) ||
+              (wh_ids.present? && wh_ids.include?(a.warehouse_id) && a.store_id.nil?)
             elsif wh_ids.present?
-              # Warehouse manager: warehouse-level (no store_id) OR store-level for their warehouse
+              # Warehouse manager: all assignments for their warehouse
               wh_ids.include?(a.warehouse_id)
             else
               false
@@ -376,14 +378,23 @@ module Cats
         conditions = []
         values = {}
 
-        if wh_ids.present?
-          conditions << "#{table}.warehouse_id IN (:wh_ids)"
-          values[:wh_ids] = wh_ids
-        end
-
+        # For storekeepers: match store-level assignments OR warehouse-level assignments
+        # (warehouse-level means the warehouse manager hasn't assigned to stores yet)
+        # For warehouse managers: match warehouse-level OR store-level assignments
         if st_ids.present?
+          # Storekeeper: store-level assignments OR warehouse-level for their warehouse
           conditions << "#{table}.store_id IN (:st_ids)"
           values[:st_ids] = st_ids
+          
+          if wh_ids.present?
+            # Also include warehouse-level assignments (where store_id is NULL)
+            conditions << "(#{table}.warehouse_id IN (:wh_ids) AND #{table}.store_id IS NULL)"
+            values[:wh_ids] = wh_ids
+          end
+        elsif wh_ids.present?
+          # Warehouse manager: all assignments for their warehouse
+          conditions << "#{table}.warehouse_id IN (:wh_ids)"
+          values[:wh_ids] = wh_ids
         end
 
         if conditions.any?
