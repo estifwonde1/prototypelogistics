@@ -21,6 +21,8 @@ export interface ReceiptOrderLine {
   total_quantity?: number;
   source_type?: string;
   source_name?: string;
+  destination_hub_id?: number | null;
+  destination_warehouse_id?: number | null;
 }
 
 export interface AssignableManagerOption {
