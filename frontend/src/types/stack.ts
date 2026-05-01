@@ -19,4 +19,5 @@ export interface Stack {
   unit_id: number;
   unit_name?: string;
   unit_abbreviation?: string;
+  reference?: string;
 }

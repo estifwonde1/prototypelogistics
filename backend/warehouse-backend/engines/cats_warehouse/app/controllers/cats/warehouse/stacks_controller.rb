@@ -115,7 +115,8 @@ module Cats
           :commodity_status,
           :stack_status,
           :quantity,
-          :unit_id
+          :unit_id,
+          :reference
         )
       end
 
