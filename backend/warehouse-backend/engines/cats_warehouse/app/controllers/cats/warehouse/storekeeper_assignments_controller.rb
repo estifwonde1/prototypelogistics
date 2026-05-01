@@ -79,9 +79,17 @@ module Cats
           # CRITICAL: Calculate quantity based on assignments to THIS storekeeper's warehouse/store
           # Get assignments that are relevant to this storekeeper
           relevant_assignments = order.receipt_order_assignments.select do |a|
-            is_unrestricted ||
-            (st_ids.present? && st_ids.include?(a.store_id)) ||
-            (wh_ids.present? && a.warehouse_id.present? && wh_ids.include?(a.warehouse_id) && a.store_id.nil?)
+            if is_unrestricted
+              true
+            elsif st_ids.present?
+              # Storekeeper: ONLY store-level assignments for their stores
+              st_ids.include?(a.store_id)
+            elsif wh_ids.present?
+              # Warehouse manager: warehouse-level (no store_id) OR store-level for their warehouse
+              wh_ids.include?(a.warehouse_id)
+            else
+              false
+            end
           end
           
           next if relevant_assignments.empty?

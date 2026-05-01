@@ -366,7 +366,7 @@ export default function StackLayoutPage() {
   const refSearchOptions = useMemo(() => {
     return refSearchResults.map((r) => ({
       value: `${r.type}::${r.id}::0::${r.reference_no}`,
-      label: `${r.reference_no} — ${r.commodity} (${r.quantity} ${r.unit || ''})`,
+      label: r.reference_no, // Only show reference number
     }));
   }, [refSearchResults]);
 
