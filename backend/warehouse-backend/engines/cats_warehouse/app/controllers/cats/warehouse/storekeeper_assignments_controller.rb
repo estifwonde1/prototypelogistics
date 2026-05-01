@@ -20,30 +20,33 @@ module Cats
       def search_delivery
         reference_no = params[:reference_no]&.strip
         
-        if reference_no.blank?
-          render_error("Reference number is required", :bad_request)
-          return
-        end
-
-        # Sanitize input to prevent SQL injection
-        sanitized_ref = sanitize_like_input(reference_no)
-
         current_ids = current_store_ids
         
         # Search across different document types
         results = []
         
-        # Search Receipt Orders by reference_no OR by RO-{id} pattern
-        ro_id = reference_no.match(/^RO-?(\d+)$/i)&.captures&.first&.to_i
         receipt_order_scope = ReceiptOrder
           .joins(:receipt_order_assignments)
           .where(receipt_order_assignments: { store_id: current_ids })
           .includes(:warehouse, :hub, :created_by, :receipt_order_lines)
 
-        receipt_orders = if ro_id.present?
-          receipt_order_scope.where("reference_no ILIKE ? OR cats_warehouse_receipt_orders.id = ?", "%#{sanitized_ref}%", ro_id).limit(5)
+        if reference_no.blank?
+          receipt_orders = receipt_order_scope
+            .where(status: ['assigned', 'in_progress'])
+            .order(updated_at: :desc)
+            .limit(10)
         else
-          receipt_order_scope.where("reference_no ILIKE ?", "%#{sanitized_ref}%").limit(5)
+          # Sanitize input to prevent SQL injection
+          sanitized_ref = sanitize_like_input(reference_no)
+          
+          # Search Receipt Orders by reference_no OR by RO-{id} pattern
+          ro_id = reference_no.match(/^RO-?(\d+)$/i)&.captures&.first&.to_i
+          
+          receipt_orders = if ro_id.present?
+            receipt_order_scope.where("reference_no ILIKE ? OR cats_warehouse_receipt_orders.id = ?", "%#{sanitized_ref}%", ro_id).limit(5)
+          else
+            receipt_order_scope.where("reference_no ILIKE ?", "%#{sanitized_ref}%").limit(5)
+          end
         end
         
         receipt_orders.each do |order|
@@ -51,18 +54,52 @@ module Cats
             commodity = Cats::Core::Commodity.find_by(id: l.commodity_id)
             commodity&.read_attribute(:name).presence || commodity&.batch_no || "Commodity ##{l.commodity_id}"
           }.join(", ")
-          total_qty = order.receipt_order_lines.sum(&:quantity)
+          
+          assignments = order.receipt_order_assignments.select { |a| current_ids.include?(a.store_id) }
+          total_assigned_qty = assignments.any? ? assignments.sum(&:quantity).to_f : order.receipt_order_lines.sum(&:quantity).to_f
+
           first_line = order.receipt_order_lines.first
           unit_name = first_line ? Cats::Core::UnitOfMeasure.find_by(id: first_line.unit_id)&.abbreviation : nil
           created_by = order.created_by
           created_by_name = created_by ? [created_by.first_name, created_by.last_name].compact.join(" ").presence || created_by.email : nil
 
+          # Build per-line details for stack configuration auto-fill
+          lines_data = order.receipt_order_lines.map { |l|
+            line_assignments = assignments.select { |a| a.receipt_order_line_id == l.id }
+            assigned_qty = if line_assignments.any?
+                             line_assignments.sum(&:quantity)
+                           elsif assignments.any? && assignments.first.receipt_order_line_id.nil?
+                             # Order-level assignment, use the assigned quantity
+                             assignments.first.quantity
+                           else
+                             l.quantity
+                           end
+
+            commodity = Cats::Core::Commodity.find_by(id: l.commodity_id)
+            unit = Cats::Core::UnitOfMeasure.find_by(id: l.unit_id)
+            {
+              commodity_id: l.commodity_id,
+              commodity_name: commodity&.read_attribute(:name).presence || commodity&.batch_no || "Commodity ##{l.commodity_id}",
+              batch_no: l.line_reference_no.presence || commodity&.batch_no,
+              quantity: assigned_qty.to_f,
+              unit_id: l.unit_id,
+              unit_name: unit&.name,
+              unit_abbreviation: unit&.abbreviation
+            }
+          }
+
+          first_commodity = first_line ? Cats::Core::Commodity.find_by(id: first_line.commodity_id) : nil
+
           results << {
             type: "Receipt Order",
             reference_no: order.reference_no || "RO-#{order.id}",
             commodity: commodity_names,
-            quantity: total_qty.to_f,
+            quantity: total_assigned_qty,
             unit: unit_name,
+            batch_no: first_line&.line_reference_no.presence || first_commodity&.batch_no,
+            commodity_id: first_line&.commodity_id,
+            unit_id: first_line&.unit_id,
+            lines: lines_data,
             source_location: order.warehouse&.name || order.hub&.name,
             expected_date: order.received_date,
             created_by: created_by_name,
@@ -72,53 +109,55 @@ module Cats
           }
         end
         
-        # Search Dispatch Orders
-        dispatch_orders = DispatchOrder
-          .where("reference_no ILIKE ?", "%#{sanitized_ref}%")
-          .joins(:dispatch_order_assignments)
-          .where(dispatch_order_assignments: { store_id: current_ids })
-          .includes(:warehouse, :hub, :created_by, :dispatch_order_lines)
-          .limit(5)
-        
-        dispatch_orders.each do |order|
-          results << {
-            type: "Dispatch Order",
-            reference_no: order.reference_no,
-            commodity: order.dispatch_order_lines.map(&:commodity_name).join(", "),
-            quantity: order.dispatch_order_lines.sum(&:quantity),
-            unit: order.dispatch_order_lines.first&.unit_name,
-            source_location: order.warehouse&.name || order.hub&.name,
-            expected_date: order.dispatched_date,
-            created_by: order.created_by&.name,
-            status: order.status,
-            id: order.id,
-            can_start_receipt: false
-          }
-        end
-        
-        # Search Waybills if they exist
-        if defined?(Waybill)
-          waybills = Waybill
+        if reference_no.present?
+          # Search Dispatch Orders
+          dispatch_orders = DispatchOrder
             .where("reference_no ILIKE ?", "%#{sanitized_ref}%")
-            .includes(:dispatch_order, :created_by)
+            .joins(:dispatch_order_assignments)
+            .where(dispatch_order_assignments: { store_id: current_ids })
+            .includes(:warehouse, :hub, :created_by, :dispatch_order_lines)
             .limit(5)
           
-          waybills.each do |waybill|
-            next unless waybill.dispatch_order
-            
+          dispatch_orders.each do |order|
             results << {
-              type: "Waybill",
-              reference_no: waybill.reference_no,
-              commodity: waybill.dispatch_order.dispatch_order_lines.map(&:commodity_name).join(", "),
-              quantity: waybill.dispatch_order.dispatch_order_lines.sum(&:quantity),
-              unit: waybill.dispatch_order.dispatch_order_lines.first&.unit_name,
-              source_location: waybill.dispatch_order.warehouse&.name || waybill.dispatch_order.hub&.name,
-              expected_date: waybill.dispatch_order.dispatched_date,
-              created_by: waybill.created_by&.name,
-              status: waybill.status,
-              id: waybill.id,
+              type: "Dispatch Order",
+              reference_no: order.reference_no,
+              commodity: order.dispatch_order_lines.map(&:commodity_name).join(", "),
+              quantity: order.dispatch_order_lines.sum(&:quantity),
+              unit: order.dispatch_order_lines.first&.unit_name,
+              source_location: order.warehouse&.name || order.hub&.name,
+              expected_date: order.dispatched_date,
+              created_by: order.created_by&.name,
+              status: order.status,
+              id: order.id,
               can_start_receipt: false
             }
+          end
+          
+          # Search Waybills if they exist
+          if defined?(Waybill)
+            waybills = Waybill
+              .where("reference_no ILIKE ?", "%#{sanitized_ref}%")
+              .includes(:dispatch_order)
+              .limit(5)
+            
+            waybills.each do |waybill|
+              next unless waybill.dispatch_order
+              
+              results << {
+                type: "Waybill",
+                reference_no: waybill.reference_no,
+                commodity: waybill.dispatch_order.dispatch_order_lines.map(&:commodity_name).join(", "),
+                quantity: waybill.dispatch_order.dispatch_order_lines.sum(&:quantity),
+                unit: waybill.dispatch_order.dispatch_order_lines.first&.unit_name,
+                source_location: waybill.dispatch_order.warehouse&.name || waybill.dispatch_order.hub&.name,
+                expected_date: waybill.dispatch_order.dispatched_date,
+                created_by: waybill.respond_to?(:created_by) ? waybill.created_by&.name : nil,
+                status: waybill.status,
+                id: waybill.id,
+                can_start_receipt: false
+              }
+            end
           end
         end
         

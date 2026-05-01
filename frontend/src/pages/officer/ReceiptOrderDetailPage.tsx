@@ -1442,141 +1442,142 @@ function ReceiptOrderDetailPage() {
                           Could not load available stores.
                         </Text>
                       ) : null}
-                      <Select
-                        label="Store"
-                        placeholder={
-                          assignableManagersLoading
-                            ? 'Loading stores…'
-                            : 'Select a store'
-                        }
-                        data={assignmentStoreSelectData}
-                        disabled={
-                          assignableManagersLoading ||
-                          (!assignableManagersError && assignmentStoreSelectData.length === 0)
-                        }
-                        value={selectedAssignmentStoreId}
-                        onChange={(val) => {
-                          setSelectedAssignmentStoreId(val);
-                          const store = (assignableManagersPayload?.stores as any[])?.find(
-                            (s: any) => Number(s.id) === Number(val)
-                          );
-                          
-                          console.log('=== Store Selection Debug ===');
-                          console.log('Selected store ID (val):', val);
-                          console.log('Found store:', store);
-                          console.log('All stores:', assignableManagersPayload?.stores);
-                          console.log('All assignable_managers:', assignableManagersPayload?.assignable_managers);
-                          
-                          if (store) {
-                            const managers = assignableManagersPayload?.assignable_managers as any[] || [];
-                            console.log('Searching for storekeeper with store_id:', store.id);
-                            
-                            // Find storekeeper for this store
-                            // A storekeeper matches if:
-                            // 1. They have a store_id that matches this store, OR
-                            // 2. They have a warehouse_id that matches this store's warehouse (warehouse-level storekeeper)
-                            const storekeeper = managers.find((m: any) => {
-                              const isStorekeeper = m.role === 'Storekeeper';
-                              const matchesStore = Number(m.store_id) === Number(store.id);
-                              const matchesWarehouse = m.warehouse_id && Number(m.warehouse_id) === Number(store.warehouse_id);
-                              console.log(`Manager ${m.name}: role=${m.role}, store_id=${m.store_id}, warehouse_id=${m.warehouse_id}, isStorekeeper=${isStorekeeper}, matchesStore=${matchesStore}, matchesWarehouse=${matchesWarehouse}`);
-                              return isStorekeeper && (matchesStore || matchesWarehouse);
-                            });
-                            
-                            console.log('Found storekeeper:', storekeeper);
-                            
-                            if (storekeeper) {
-                              setSelectedUserId(String(storekeeper.id));
-                            } else {
-                              setSelectedUserId(null);
+                      
+                      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                        <Stack gap="xs">
+                          <Select
+                            label="Store"
+                            placeholder={
+                              assignableManagersLoading
+                                ? 'Loading stores…'
+                                : 'Select a store'
                             }
-                          } else {
-                            setSelectedUserId(null);
-                          }
-                        }}
-                        required
-                        searchable
-                      />
-                      {assignableManagersLoading && selectedAssignmentStoreId && (
-                        <Text size="sm" c="dimmed">
-                          Loading storekeeper information...
-                        </Text>
-                      )}
-                      {!assignableManagersLoading && selectedAssignmentStoreId && selectedManager && (
-                        <Text size="sm" c="dimmed">
-                          Storekeeper: <strong>{selectedManager.name}</strong>
-                        </Text>
-                      )}
-                      <NumberInput
-                        label="Quantity to assign to this store"
-                        placeholder={(() => {
-                          if (isWarehouseManager && userWarehouseId) {
-                            const warehouseAssignment = assignments.find(
-                              a => a.warehouse_id != null && Number(a.warehouse_id) === Number(userWarehouseId)
-                            );
-                            const warehouseTotal = warehouseAssignment?.quantity 
-                              ? Number(warehouseAssignment.quantity) 
-                              : lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
-                            return `Max: ${warehouseTotal.toLocaleString()}`;
-                          }
-                          return `Max: ${lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0).toLocaleString()}`;
-                        })()}
-                        value={assignmentQuantity || ''}
-                        onChange={(val) => setAssignmentQuantity(Number(val) || 0)}
-                        min={0}
-                        description={(() => {
-                          if (isWarehouseManager && userWarehouseId) {
-                            const warehouseAssignment = assignments.find(
-                              a => a.warehouse_id != null && Number(a.warehouse_id) === Number(userWarehouseId)
-                            );
-                            const warehouseTotal = warehouseAssignment?.quantity 
-                              ? Number(warehouseAssignment.quantity) 
-                              : lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
-                            const alreadyAssigned = assignments
-                              .filter(a => {
-                                if (a.store_id == null) return false;
-                                const store = (assignableManagersPayload?.stores as any[])?.find(
-                                  (s: any) => Number(s.id) === Number(a.store_id)
-                                );
-                                return store && Number(store.warehouse_id) === Number(userWarehouseId);
-                              })
-                              .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
-                            return `Your warehouse allocation: ${warehouseTotal.toLocaleString()} — already store-assigned: ${alreadyAssigned.toLocaleString()}`;
-                          }
-                          const totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
-                          const alreadyAssigned = assignments.filter(a => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
-                          return `Total ordered: ${totalOrdered.toLocaleString()} — already store-assigned: ${alreadyAssigned.toLocaleString()}`;
-                        })()}
-                        error={(() => {
-                          let totalOrdered: number;
-                          let alreadyAssigned: number;
-                          
-                          if (isWarehouseManager && userWarehouseId) {
-                            const warehouseAssignment = assignments.find(
-                              a => a.warehouse_id != null && Number(a.warehouse_id) === Number(userWarehouseId)
-                            );
-                            totalOrdered = warehouseAssignment?.quantity 
-                              ? Number(warehouseAssignment.quantity) 
-                              : lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
-                            alreadyAssigned = assignments
-                              .filter(a => {
-                                if (a.store_id == null) return false;
-                                const store = (assignableManagersPayload?.stores as any[])?.find(
-                                  (s: any) => Number(s.id) === Number(a.store_id)
-                                );
-                                return store && Number(store.warehouse_id) === Number(userWarehouseId);
-                              })
-                              .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
-                          } else {
-                            totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
-                            alreadyAssigned = assignments.filter(a => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
-                          }
-                          
-                          const remaining = totalOrdered - alreadyAssigned;
-                          if (assignmentQuantity > remaining) return `Exceeds remaining quantity (${remaining.toLocaleString()} left)`;
-                          return null;
-                        })()}
-                      />
+                            data={assignmentStoreSelectData}
+                            disabled={
+                              assignableManagersLoading ||
+                              (!assignableManagersError && assignmentStoreSelectData.length === 0)
+                            }
+                            value={selectedAssignmentStoreId}
+                            onChange={(val) => {
+                              setSelectedAssignmentStoreId(val);
+                              const store = (assignableManagersPayload?.stores as any[])?.find(
+                                (s: any) => Number(s.id) === Number(val)
+                              );
+                              
+                              if (store) {
+                                const managers = assignableManagersPayload?.assignable_managers as any[] || [];
+                                
+                                // Find storekeeper for this store
+                                // A storekeeper matches if:
+                                // 1. They have a store_id that matches this store, OR
+                                // 2. They have a warehouse_id that matches this store's warehouse (warehouse-level storekeeper)
+                                const storekeeper = managers.find((m: any) => {
+                                  const isStorekeeper = m.role === 'Storekeeper';
+                                  const matchesStore = Number(m.store_id) === Number(store.id);
+                                  const matchesWarehouse = m.warehouse_id && Number(m.warehouse_id) === Number(store.warehouse_id);
+                                  return isStorekeeper && (matchesStore || matchesWarehouse);
+                                });
+                                
+                                if (storekeeper) {
+                                  setSelectedUserId(String(storekeeper.id));
+                                } else {
+                                  setSelectedUserId(null);
+                                }
+                              } else {
+                                setSelectedUserId(null);
+                              }
+                            }}
+                            required
+                            searchable
+                          />
+                          {assignableManagersLoading && selectedAssignmentStoreId && (
+                            <Text size="xs" c="dimmed">
+                              Loading storekeeper information...
+                            </Text>
+                          )}
+                          {!assignableManagersLoading && selectedAssignmentStoreId && selectedManager && (
+                            <Text size="xs" c="dimmed">
+                              Storekeeper: <strong>{selectedManager.name}</strong>
+                            </Text>
+                          )}
+                          {!assignableManagersLoading && selectedAssignmentStoreId && !selectedManager && (
+                            <Text size="xs" c="orange">
+                              No storekeeper is assigned to this store.
+                            </Text>
+                          )}
+                        </Stack>
+
+                        <NumberInput
+                          label="Quantity to assign to this store"
+                          placeholder={(() => {
+                            if (isWarehouseManager && userWarehouseId) {
+                              const warehouseAssignment = assignments.find(
+                                a => a.warehouse_id != null && Number(a.warehouse_id) === Number(userWarehouseId)
+                              );
+                              const warehouseTotal = warehouseAssignment?.quantity 
+                                ? Number(warehouseAssignment.quantity) 
+                                : lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
+                              return `Max: ${warehouseTotal.toLocaleString()}`;
+                            }
+                            return `Max: ${lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0).toLocaleString()}`;
+                          })()}
+                          value={assignmentQuantity || ''}
+                          onChange={(val) => setAssignmentQuantity(Number(val) || 0)}
+                          min={0}
+                          description={(() => {
+                            if (isWarehouseManager && userWarehouseId) {
+                              const warehouseAssignment = assignments.find(
+                                a => a.warehouse_id != null && Number(a.warehouse_id) === Number(userWarehouseId)
+                              );
+                              const warehouseTotal = warehouseAssignment?.quantity 
+                                ? Number(warehouseAssignment.quantity) 
+                                : lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
+                              const alreadyAssigned = assignments
+                                .filter(a => {
+                                  if (a.store_id == null) return false;
+                                  const store = (assignableManagersPayload?.stores as any[])?.find(
+                                    (s: any) => Number(s.id) === Number(a.store_id)
+                                  );
+                                  return store && Number(store.warehouse_id) === Number(userWarehouseId);
+                                })
+                                .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+                              return `Your warehouse allocation: ${warehouseTotal.toLocaleString()} — already store-assigned: ${alreadyAssigned.toLocaleString()}`;
+                            }
+                            const totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
+                            const alreadyAssigned = assignments.filter(a => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+                            return `Total ordered: ${totalOrdered.toLocaleString()} — already store-assigned: ${alreadyAssigned.toLocaleString()}`;
+                          })()}
+                          error={(() => {
+                            let totalOrdered: number;
+                            let alreadyAssigned: number;
+                            
+                            if (isWarehouseManager && userWarehouseId) {
+                              const warehouseAssignment = assignments.find(
+                                a => a.warehouse_id != null && Number(a.warehouse_id) === Number(userWarehouseId)
+                              );
+                              totalOrdered = warehouseAssignment?.quantity 
+                                ? Number(warehouseAssignment.quantity) 
+                                : lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
+                              alreadyAssigned = assignments
+                                .filter(a => {
+                                  if (a.store_id == null) return false;
+                                  const store = (assignableManagersPayload?.stores as any[])?.find(
+                                    (s: any) => Number(s.id) === Number(a.store_id)
+                                  );
+                                  return store && Number(store.warehouse_id) === Number(userWarehouseId);
+                                })
+                                .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+                            } else {
+                              totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
+                              alreadyAssigned = assignments.filter(a => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+                            }
+                            
+                            const remaining = totalOrdered - alreadyAssigned;
+                            if (assignmentQuantity > remaining) return `Exceeds remaining quantity (${remaining.toLocaleString()} left)`;
+                            return null;
+                          })()}
+                        />
+                      </SimpleGrid>
                       {!assignableManagersLoading &&
                       assignmentStoreSelectData.length === 0 &&
                       !assignableManagersError ? (

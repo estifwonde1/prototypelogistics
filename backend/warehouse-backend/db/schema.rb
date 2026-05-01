@@ -1267,7 +1267,6 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_01_100000) do
     t.index ["receipt_order_id"], name: "index_cats_warehouse_grns_on_receipt_order_id"
     t.index ["received_by_id"], name: "index_cats_warehouse_grns_on_received_by_id"
     t.index ["source_type", "source_id"], name: "index_cats_warehouse_grns_on_source"
-    t.index ["stack_reservation_id"], name: "idx_cw_grns_stack_reservation"
     t.index ["warehouse_id"], name: "index_cats_warehouse_grns_on_warehouse_id"
     t.index ["waybill_id"], name: "idx_cw_grns_waybill"
   end
@@ -1421,61 +1420,6 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_01_100000) do
     t.index ["source_type", "source_id"], name: "index_cats_warehouse_inventory_lots_on_source"
     t.index ["warehouse_id", "commodity_id", "batch_no", "expiry_date"], name: "idx_lot_warehouse_commodity_batch_expiry", unique: true
     t.index ["warehouse_id"], name: "index_cats_warehouse_inventory_lots_on_warehouse_id"
-  end
-
-  create_table "cats_warehouse_operational_tasks", force: :cascade do |t|
-    t.string "task_type", null: false
-    t.string "related_type"
-    t.bigint "related_id"
-    t.string "recipient_role", null: false
-    t.bigint "recipient_user_id"
-    t.string "facility_scope_type", null: false
-    t.bigint "facility_scope_id", null: false
-    t.string "status", default: "open", null: false
-    t.text "message"
-    t.bigint "created_by_id"
-    t.bigint "completed_by_id"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["completed_by_id"], name: "idx_cw_operational_tasks_completed_by"
-    t.index ["created_by_id"], name: "idx_cw_operational_tasks_created_by"
-    t.index ["facility_scope_type", "facility_scope_id"], name: "idx_cw_operational_tasks_scope"
-    t.index ["recipient_user_id"], name: "idx_cw_operational_tasks_recipient"
-    t.index ["related_type", "related_id"], name: "idx_cw_operational_tasks_related"
-  end
-
-  create_table "cats_warehouse_receipt_advice_items", force: :cascade do |t|
-    t.bigint "receipt_advice_id", null: false
-    t.bigint "commodity_id", null: false
-    t.float "quantity", null: false
-    t.bigint "unit_id", null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["commodity_id"], name: "idx_cw_receipt_items_commodity"
-    t.index ["receipt_advice_id"], name: "idx_cw_receipt_items_advice"
-    t.index ["unit_id"], name: "idx_cw_receipt_items_unit"
-  end
-
-  create_table "cats_warehouse_receipt_advices", force: :cascade do |t|
-    t.string "reference_no", null: false
-    t.string "source_kind", null: false
-    t.string "source_name"
-    t.string "source_reference_no"
-    t.bigint "destination_hub_id"
-    t.bigint "destination_warehouse_id", null: false
-    t.string "status", default: "Draft", null: false
-    t.datetime "expected_arrival_at"
-    t.bigint "created_by_id"
-    t.bigint "assigned_by_id"
-    t.bigint "assigned_to_user_id"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["assigned_by_id"], name: "idx_cw_receipt_advices_assigned_by"
-    t.index ["assigned_to_user_id"], name: "idx_cw_receipt_advices_assigned_to"
-    t.index ["created_by_id"], name: "idx_cw_receipt_advices_created_by"
-    t.index ["destination_hub_id"], name: "idx_cw_receipt_advices_dest_hub"
-    t.index ["destination_warehouse_id"], name: "idx_cw_receipt_advices_dest_wh"
-    t.index ["reference_no"], name: "idx_cw_receipt_advices_reference_no", unique: true
   end
 
   create_table "cats_warehouse_receipt_order_assignments", force: :cascade do |t|
@@ -1813,10 +1757,6 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_01_100000) do
     t.string "ownership_type"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.float "length_m"
-    t.float "width_m"
-    t.float "height_m"
-    t.float "usable_area_sqm"
     t.integer "usable_space_percentage", default: 75, null: false
     t.index ["warehouse_id"], name: "index_cats_warehouse_warehouse_capacity_on_warehouse_id"
   end
@@ -2182,17 +2122,6 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_01_100000) do
   add_foreign_key "cats_warehouse_inventory_adjustments", "cats_warehouse_stacks", column: "stack_id"
   add_foreign_key "cats_warehouse_inventory_lots", "cats_core_commodities", column: "commodity_id"
   add_foreign_key "cats_warehouse_inventory_lots", "cats_warehouse_warehouses", column: "warehouse_id"
-  add_foreign_key "cats_warehouse_operational_tasks", "cats_core_users", column: "completed_by_id"
-  add_foreign_key "cats_warehouse_operational_tasks", "cats_core_users", column: "created_by_id"
-  add_foreign_key "cats_warehouse_operational_tasks", "cats_core_users", column: "recipient_user_id"
-  add_foreign_key "cats_warehouse_receipt_advice_items", "cats_core_commodities", column: "commodity_id"
-  add_foreign_key "cats_warehouse_receipt_advice_items", "cats_core_unit_of_measures", column: "unit_id"
-  add_foreign_key "cats_warehouse_receipt_advice_items", "cats_warehouse_receipt_advices", column: "receipt_advice_id"
-  add_foreign_key "cats_warehouse_receipt_advices", "cats_core_users", column: "assigned_by_id"
-  add_foreign_key "cats_warehouse_receipt_advices", "cats_core_users", column: "assigned_to_user_id"
-  add_foreign_key "cats_warehouse_receipt_advices", "cats_core_users", column: "created_by_id"
-  add_foreign_key "cats_warehouse_receipt_advices", "cats_warehouse_hubs", column: "destination_hub_id"
-  add_foreign_key "cats_warehouse_receipt_advices", "cats_warehouse_warehouses", column: "destination_warehouse_id"
   add_foreign_key "cats_warehouse_receipt_order_assignments", "cats_core_users", column: "assigned_by_id"
   add_foreign_key "cats_warehouse_receipt_order_assignments", "cats_core_users", column: "assigned_to_id"
   add_foreign_key "cats_warehouse_receipt_order_assignments", "cats_warehouse_hubs", column: "hub_id"
