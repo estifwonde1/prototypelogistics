@@ -80,7 +80,7 @@ module Cats
             {
               commodity_id: l.commodity_id,
               commodity_name: commodity&.read_attribute(:name).presence || commodity&.batch_no || "Commodity ##{l.commodity_id}",
-              batch_no: l.line_reference_no.presence || commodity&.batch_no,
+              batch_no: commodity&.batch_no.presence || l.line_reference_no,
               quantity: assigned_qty.to_f,
               unit_id: l.unit_id,
               unit_name: unit&.name,
@@ -96,7 +96,7 @@ module Cats
             commodity: commodity_names,
             quantity: total_assigned_qty,
             unit: unit_name,
-            batch_no: first_line&.line_reference_no.presence || first_commodity&.batch_no,
+            batch_no: first_commodity&.batch_no.presence || first_line&.line_reference_no,
             commodity_id: first_line&.commodity_id,
             unit_id: first_line&.unit_id,
             lines: lines_data,
