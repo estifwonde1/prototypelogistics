@@ -40,14 +40,35 @@ export function AssignStorekeeperModal({
   );
   const [selectedStores, setSelectedStores] = useState<string[]>([]);
 
-  const currentStorekeeper = storekeepers.find(
+  // CRITICAL: Get current warehouse ID from stores to filter storekeepers
+  const currentWarehouseId = stores.length > 0 ? stores[0].warehouse_id : null;
+  const currentWarehouseStoreIds = new Set(stores.map(s => s.id));
+
+  // CRITICAL: Filter storekeepers to only show those assigned to current warehouse
+  const filteredStorekeepers = storekeepers.filter((sk) => {
+    if (!currentWarehouseId) return true; // If no warehouse context, show all (admin view)
+    
+    // Check if storekeeper's warehouse_id matches current warehouse
+    if (sk.warehouse_id === currentWarehouseId) {
+      return true;
+    }
+    
+    // Check if storekeeper is assigned to any store in the current warehouse
+    const hasStoreInCurrentWarehouse = sk.assigned_store_ids.some(
+      (storeId) => currentWarehouseStoreIds.has(storeId)
+    );
+    
+    return hasStoreInCurrentWarehouse;
+  });
+
+  const currentStorekeeper = filteredStorekeepers.find(
     (sk) => sk.id === selectedStorekeeper,
   );
 
   const handleSelectStorekeeper = (storekeeperId: number) => {
     setSelectedStorekeeper(storekeeperId);
 
-    const selected = storekeepers.find((sk) => sk.id === storekeeperId);
+    const selected = filteredStorekeepers.find((sk) => sk.id === storekeeperId);
     if (!selected) {
       setAssignmentType("warehouse");
       setSelectedStores([]);
@@ -101,7 +122,12 @@ export function AssignStorekeeperModal({
             Select Storekeeper
           </Text>
           <Stack gap="xs">
-            {storekeepers.map((storekeeper) => (
+            {filteredStorekeepers.length === 0 ? (
+              <Alert color="yellow" variant="light">
+                No storekeepers are assigned to this warehouse yet.
+              </Alert>
+            ) : (
+              filteredStorekeepers.map((storekeeper) => (
               <Group
                 key={storekeeper.id}
                 p="sm"
@@ -153,7 +179,8 @@ export function AssignStorekeeperModal({
                     )}
                 </div>
               </Group>
-            ))}
+            ))
+            )}
           </Stack>
         </div>
 

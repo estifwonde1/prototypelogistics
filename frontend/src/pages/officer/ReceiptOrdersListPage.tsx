@@ -87,8 +87,11 @@ function ReceiptOrdersListPage() {
   const isWarehouseManager = roleSlug === 'warehouse_manager';
 
   const { data: orders = [], isLoading, error, refetch } = useQuery({
-    queryKey: ['receipt_orders'],
-    queryFn: () => getReceiptOrders(),
+    queryKey: ['receipt_orders', { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],
+    queryFn: () => {
+      const params = isWarehouseManager && userWarehouseId ? { warehouse_id: userWarehouseId } : {};
+      return getReceiptOrders(params);
+    },
   });
 
   const { data: warehouses = [] } = useQuery({

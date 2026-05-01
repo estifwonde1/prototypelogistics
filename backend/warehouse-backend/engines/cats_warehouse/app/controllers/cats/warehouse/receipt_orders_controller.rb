@@ -3,7 +3,14 @@ module Cats
     class ReceiptOrdersController < BaseController
       def index
         authorize ReceiptOrder
-        orders = policy_scope(ReceiptOrder).includes(*order_detail_includes).order(created_at: :desc)
+        orders = policy_scope(ReceiptOrder).includes(*order_detail_includes)
+        
+        # CRITICAL: Filter by warehouse_id if provided (for warehouse managers with multiple warehouses)
+        if params[:warehouse_id].present?
+          orders = orders.where(warehouse_id: params[:warehouse_id])
+        end
+        
+        orders = orders.order(created_at: :desc)
         render_resource(orders, each_serializer: ReceiptOrderSerializer)
       end
 

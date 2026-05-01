@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -37,6 +36,8 @@ import { AssignStorekeeperModal } from "../../components/stores/AssignStorekeepe
 import { notifications } from "@mantine/notifications";
 import { usePermission } from "../../hooks/usePermission";
 import { useAuth } from "../../hooks/useAuth";
+import { useAuthStore } from "../../store/authStore";
+import { normalizeRoleSlug } from "../../contracts/warehouse";
 
 function StoreListPage() {
   const navigate = useNavigate();
@@ -49,14 +50,32 @@ function StoreListPage() {
   const [storeToDelete, setStoreToDelete] = useState<number | null>(null);
   const [assignModalOpen, setAssignModalOpen] = useState(false);
 
+  // CRITICAL: Get the active warehouse context
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
+  const userWarehouseId = activeAssignment?.warehouse?.id;
+  const isWarehouseManager = roleSlug === 'warehouse_manager';
+
+  // Debug logging
+  console.log('=== StoreListPage Debug ===');
+  console.log('Active Assignment:', activeAssignment);
+  console.log('User Warehouse ID:', userWarehouseId);
+  console.log('Role Slug:', roleSlug);
+  console.log('Is Warehouse Manager:', isWarehouseManager);
+
+  // CRITICAL: Warehouse managers should ONLY see stores from their active warehouse
   const {
     data: stores = [],
     isLoading,
     error,
     refetch,
   } = useQuery({
-    queryKey: ["stores"],
-    queryFn: () => getStores(),
+    queryKey: ["stores", { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],
+    queryFn: () => {
+      const params = isWarehouseManager && userWarehouseId ? { warehouse_id: userWarehouseId } : {};
+      console.log('Fetching stores with params:', params);
+      return getStores(params);
+    },
   });
 
   const { data: warehouses = [] } = useQuery({
@@ -65,8 +84,8 @@ function StoreListPage() {
   });
 
   const { data: storekeepers = [] } = useQuery({
-    queryKey: ["store-storekeepers"],
-    queryFn: () => getStoreStorekeepers(),
+    queryKey: ["store-storekeepers", { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],
+    queryFn: () => getStoreStorekeepers(isWarehouseManager && userWarehouseId ? { warehouse_id: userWarehouseId } : {}),
     enabled: role === "warehouse_manager" || role === "admin",
   });
 
@@ -139,6 +158,14 @@ function StoreListPage() {
   };
 
   const filteredStores = stores?.filter((store) => {
+    // CRITICAL: Double-check warehouse filtering on frontend as safety measure
+    if (isWarehouseManager && userWarehouseId) {
+      if (store.warehouse_id !== userWarehouseId) {
+        console.warn('Filtering out store from wrong warehouse:', store.name, 'warehouse_id:', store.warehouse_id, 'expected:', userWarehouseId);
+        return false;
+      }
+    }
+
     const matchesSearch =
       store.name.toLowerCase().includes(search.toLowerCase()) ||
       store.code.toLowerCase().includes(search.toLowerCase());

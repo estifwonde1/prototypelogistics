@@ -42,6 +42,8 @@ import { usePermission } from '../../hooks/usePermission';
 import StackTransferModal from '../../components/stacks/StackTransferModal';
 import TransferRequestModal from '../../components/stacks/TransferRequestModal';
 import type { Stack as StackType } from '../../types/stack';
+import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 
 type ApiError = {
   error?: {
@@ -67,14 +69,24 @@ function StackListPage() {
   const [transferRequestModalOpen, setTransferRequestModalOpen] = useState(false);
   const [selectedStack, setSelectedStack] = useState<StackType | null>(null);
 
+  // CRITICAL: Get the active warehouse context
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
+  const userWarehouseId = activeAssignment?.warehouse?.id;
+  const isWarehouseManager = roleSlug === 'warehouse_manager';
+
   const { data: stacks, isLoading, error, refetch } = useQuery({
-    queryKey: ['stacks'],
-    queryFn: () => getStacks(),
+    queryKey: ['stacks', { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],
+    queryFn: () => {
+      const params = isWarehouseManager && userWarehouseId ? { warehouse_id: userWarehouseId } : {};
+      return getStacks(params);
+    },
   });
 
+  // CRITICAL: Warehouse managers should ONLY see stores from their active warehouse
   const { data: stores = [] } = useQuery({
-    queryKey: ['stores'],
-    queryFn: () => getStores(),
+    queryKey: ['stores', { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],
+    queryFn: () => getStores(isWarehouseManager && userWarehouseId ? { warehouse_id: userWarehouseId } : {}),
   });
 
   const { data: warehouses = [] } = useQuery({

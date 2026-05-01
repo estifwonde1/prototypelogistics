@@ -3,7 +3,14 @@ module Cats
     class DispatchOrdersController < BaseController
       def index
         authorize DispatchOrder
-        orders = policy_scope(DispatchOrder).includes(:hub, :warehouse, dispatch_order_lines: [:commodity, :unit]).order(created_at: :desc)
+        orders = policy_scope(DispatchOrder).includes(:hub, :warehouse, dispatch_order_lines: [:commodity, :unit])
+        
+        # CRITICAL: Filter by warehouse_id if provided (for warehouse managers with multiple warehouses)
+        if params[:warehouse_id].present?
+          orders = orders.where(warehouse_id: params[:warehouse_id])
+        end
+        
+        orders = orders.order(created_at: :desc)
         render_resource(orders, each_serializer: DispatchOrderSerializer)
       end
 
