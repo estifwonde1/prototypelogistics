@@ -364,20 +364,10 @@ export default function StackLayoutPage() {
 
   // ── Reference Search Options (from search_delivery API) ──
   const refSearchOptions = useMemo(() => {
-    return refSearchResults.map((r) => {
-      // For multi-line orders, create one option per line
-      if (r.lines && r.lines.length > 1) {
-        return r.lines.map((line, idx) => ({
-          value: `${r.type}::${r.id}::${idx}::${r.reference_no}`,
-          label: `${r.reference_no} — ${line.commodity_name} (${line.quantity} ${line.unit_abbreviation || line.unit_name || ''})`,
-        }));
-      }
-      // Single-line order: one option
-      return [{
-        value: `${r.type}::${r.id}::0::${r.reference_no}`,
-        label: `${r.reference_no} — ${r.commodity} (${r.quantity} ${r.unit || ''})`,
-      }];
-    }).flat();
+    return refSearchResults.map((r) => ({
+      value: `${r.type}::${r.id}::0::${r.reference_no}`,
+      label: `${r.reference_no} — ${r.commodity} (${r.quantity} ${r.unit || ''})`,
+    }));
   }, [refSearchResults]);
 
   // ── Debounced reference search ──
@@ -388,8 +378,13 @@ export default function StackLayoutPage() {
     setRefSearchLoading(true);
     refSearchTimer.current = setTimeout(async () => {
       try {
-        // Query can be empty string now to fetch default assignments
-        const response = await searchDeliveryByReference(query);
+        // Find the resolved store
+        const currentStoreId = storeId || (isStorekeeper && userStoreId ? String(userStoreId) : (stores && stores.length > 0 ? String(stores[0].id) : null));
+        const selectedStore = stores?.find(s => s.id.toString() === currentStoreId);
+        const contextWarehouseId = selectedStore?.warehouse_id || userWarehouseId;
+        const contextStoreId = currentStoreId ? parseInt(currentStoreId, 10) : undefined;
+
+        const response = await searchDeliveryByReference(query, contextWarehouseId ?? undefined, contextStoreId);
         setRefSearchResults(response.results);
       } catch {
         setRefSearchResults((prev) => prev.length === 0 ? prev : []);
@@ -397,7 +392,7 @@ export default function StackLayoutPage() {
         setRefSearchLoading(false);
       }
     }, 400);
-  }, []);
+  }, [userWarehouseId, storeId, isStorekeeper, userStoreId, stores]);
 
   // Auto-select user's assigned store for storekeepers
   useEffect(() => {

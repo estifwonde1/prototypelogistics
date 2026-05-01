@@ -150,6 +150,7 @@ function ReceiptOrderDetailPage() {
 
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
   const userWarehouseId = activeAssignment?.warehouse?.id;
+  const userHubId = activeAssignment?.hub?.id;
   const isWarehouseManager = roleSlug === 'warehouse_manager';
 
   const orderQuery = useQuery({
@@ -602,10 +603,26 @@ function ReceiptOrderDetailPage() {
     if (!order) return lines;
 
     if (roleSlug === 'hub_manager') {
-      const hubId = order.hub_id;
+      // CRITICAL: Use the user's assigned hub, not the order-level hub_id
+      const hubId = userHubId;
       if (!hubId) return lines;
+      
+      // Filter lines by destination_hub_id matching the user's hub
       const filtered = lines.filter(l => l.destination_hub_id === hubId);
-      return filtered.length > 0 ? filtered : lines.filter(l => !l.destination_warehouse_id);
+      
+      // If no lines match, check assignments for this hub
+      if (filtered.length === 0) {
+        const assignedLineIds = new Set(
+          assignments
+            .filter(a => a.hub_id === hubId && a.receipt_order_line_id != null)
+            .map(a => a.receipt_order_line_id!)
+        );
+        if (assignedLineIds.size > 0) {
+          return lines.filter(l => l.id != null && assignedLineIds.has(l.id));
+        }
+      }
+      
+      return filtered.length > 0 ? filtered : lines;
     }
 
     if (roleSlug === 'warehouse_manager') {
@@ -641,7 +658,7 @@ function ReceiptOrderDetailPage() {
     }
 
     return lines;
-  }, [lines, order, roleSlug, assignments, activeAssignment]);
+  }, [lines, order, roleSlug, assignments, activeAssignment, userHubId]);
   const assignedLocationRows = useMemo(() => {
     const lineById = new Map(lines.map((line) => [Number(line.id), line]));
     const rows = assignments.map((assignment) => {

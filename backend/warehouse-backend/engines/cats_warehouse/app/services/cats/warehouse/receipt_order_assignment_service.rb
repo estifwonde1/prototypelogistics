@@ -29,11 +29,8 @@ module Cats
             )
           end
 
-          transition_order!(
-            ContractConstants::DOCUMENT_STATUSES[:assigned],
-            "receipt_order.assigned",
-            assignments_count: @assignments.size
-          )
+          # Recalculate and update order status based on assignment completeness
+          update_order_status!
 
           enqueue_notification(
             "receipt_order.assigned",
@@ -46,6 +43,46 @@ module Cats
       end
 
       private
+
+      def update_order_status!
+        # Determine the correct status based on assignment completeness
+        new_status = if all_lines_assigned_to_warehouses?
+                       ContractConstants::DOCUMENT_STATUSES[:assigned]
+                     else
+                       # If not all lines are assigned, keep it as confirmed (or current status if not assigned)
+                       current = @order.status.to_s.downcase
+                       current == 'assigned' ? ContractConstants::DOCUMENT_STATUSES[:confirmed] : @order.status
+                     end
+
+        # Only transition if status actually changes
+        if @order.status.to_s.downcase != new_status.to_s.downcase
+          transition_order!(
+            new_status,
+            new_status == ContractConstants::DOCUMENT_STATUSES[:assigned] ? "receipt_order.assigned" : "receipt_order.partially_assigned",
+            assignments_count: @assignments.size
+          )
+        end
+      end
+
+      def all_lines_assigned_to_warehouses?
+        # Reload assignments to get the latest state
+        all_assignments = ReceiptOrderAssignment.where(receipt_order: @order)
+        
+        # Get all lines
+        lines = @order.receipt_order_lines
+        return false if lines.empty?
+        
+        # For each line, check if it has a warehouse-level assignment
+        lines.all? do |line|
+          # Find assignments for this specific line
+          line_assignments = all_assignments.select do |assignment|
+            assignment.receipt_order_line_id == line.id
+          end
+          
+          # Check if any of these assignments have a warehouse_id
+          line_assignments.any? { |a| a.warehouse_id.present? }
+        end
+      end
 
       def enqueue_notification(event, payload)
         return unless ENV["ENABLE_WAREHOUSE_JOBS"] == "true"

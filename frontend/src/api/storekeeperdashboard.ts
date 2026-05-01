@@ -49,10 +49,19 @@ export interface StorekeeperDashboardData {
   activity: any[];
 }
 
-export async function searchDeliveryByReference(referenceNo: string): Promise<DeliverySearchResponse> {
-  const response = await apiClient.post('/storekeeper_assignments/search_delivery', {
-    reference_no: referenceNo
-  });
+export async function searchDeliveryByReference(
+  referenceNo: string,
+  warehouseId?: number,
+  storeId?: number
+): Promise<DeliverySearchResponse> {
+  const payload: Record<string, unknown> = { reference_no: referenceNo };
+  if (warehouseId) {
+    payload.warehouse_id = warehouseId;
+  }
+  if (storeId) {
+    payload.store_id = storeId;
+  }
+  const response = await apiClient.post('/storekeeper_assignments/search_delivery', payload);
   const data = response.data.data || response.data;
   return {
     results: Array.isArray(data.results) ? data.results : [],

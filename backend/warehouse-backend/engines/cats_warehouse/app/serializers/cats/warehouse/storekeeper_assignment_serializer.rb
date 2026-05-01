@@ -37,7 +37,18 @@ module Cats
       end
 
       def commodity_name
-        object.receipt_order_line&.commodity&.name
+        return nil unless object.receipt_order_line
+        
+        commodity = object.receipt_order_line.commodity
+        return nil unless commodity
+        
+        # Use read_attribute to bypass any custom name method that might cause issues
+        commodity.read_attribute(:name).presence || 
+          commodity.batch_no.presence ||
+          "Commodity ##{commodity.id}"
+      rescue StandardError => e
+        Rails.logger.error("Error getting commodity_name: #{e.message}")
+        nil
       end
 
       def commodity_quantity
@@ -45,12 +56,28 @@ module Cats
       end
 
       def unit_name
-        object.receipt_order_line&.unit&.name
+        return nil unless object.receipt_order_line
+        
+        unit = object.receipt_order_line.unit
+        return nil unless unit
+        
+        # Use read_attribute to bypass any custom name method
+        unit.read_attribute(:name).presence || 
+          unit.abbreviation.presence ||
+          "Unit ##{unit.id}"
+      rescue StandardError => e
+        Rails.logger.error("Error getting unit_name: #{e.message}")
+        nil
       end
 
       def batch_no
-        object.receipt_order_line&.line_reference_no.presence ||
-          object.receipt_order_line&.commodity&.batch_no
+        return nil unless object.receipt_order_line
+        
+        object.receipt_order_line.line_reference_no.presence ||
+          object.receipt_order_line.commodity&.batch_no
+      rescue StandardError => e
+        Rails.logger.error("Error getting batch_no: #{e.message}")
+        nil
       end
 
       private

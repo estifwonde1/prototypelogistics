@@ -73,7 +73,14 @@ module Cats
           assignment.assigned_by = @confirmed_by || @order.confirmed_by || @order.created_by
           assignment.assigned_to_id = assignment_attrs[:assigned_to_id]
           assignment.quantity = line.quantity
-          assignment.status = ContractConstants::DOCUMENT_STATUSES[:assigned]
+          
+          # CRITICAL: Only set status to "assigned" if there's a warehouse_id
+          # Hub-level assignments should be "pending" until hub manager assigns to warehouse
+          assignment.status = if assignment_attrs[:warehouse_id].present?
+                                ContractConstants::DOCUMENT_STATUSES[:assigned]
+                              else
+                                'pending'
+                              end
           
           was_new = assignment.new_record?
           Rails.logger.info "DEBUG: Saving assignment for line #{line.id}, was_new: #{was_new}"
@@ -161,7 +168,16 @@ module Cats
           store_id: nil
         )
         assignment.assigned_by = @confirmed_by || @order.confirmed_by || @order.created_by
-        assignment.status = ContractConstants::DOCUMENT_STATUSES[:assigned]
+        
+        # CRITICAL: Hub-level assignments should be "pending" not "assigned"
+        # They represent routing/notification, not actual warehouse assignments
+        # Only warehouse/store assignments should have "assigned" status
+        assignment.status = if assignment_attrs[:warehouse_id].present?
+                              ContractConstants::DOCUMENT_STATUSES[:assigned]
+                            else
+                              'pending'  # Hub-level assignment is pending until hub manager assigns to warehouse
+                            end
+        
         was_new = assignment.new_record?
         assignment.save! if assignment.new_record? || assignment.changed?
 

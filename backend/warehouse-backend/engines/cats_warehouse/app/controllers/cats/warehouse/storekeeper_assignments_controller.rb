@@ -19,16 +19,31 @@ module Cats
 
       def search_delivery
         reference_no = params[:reference_no]&.strip
-        
-        current_ids = current_store_ids
-        
+        explicit_warehouse_id = params[:warehouse_id]&.to_i.presence
+        explicit_store_id = params[:store_id]&.to_i.presence
+
+        # Resolve accessible warehouse and store IDs based on user role
+        scope = resolve_accessible_ids(explicit_warehouse_id, explicit_store_id)
+        wh_ids = scope[:warehouse_ids]
+        st_ids = scope[:store_ids]
+        is_unrestricted = scope[:unrestricted]
+
         # Search across different document types
         results = []
-        
+
+        # ── Receipt Orders ──
         receipt_order_scope = ReceiptOrder
           .joins(:receipt_order_assignments)
-          .where(receipt_order_assignments: { store_id: current_ids })
-          .includes(:warehouse, :hub, :created_by, :receipt_order_lines)
+          .includes(:warehouse, :hub, :created_by, :receipt_order_lines, :receipt_order_assignments)
+
+        unless is_unrestricted
+          receipt_order_scope = apply_assignment_scope(
+            receipt_order_scope, wh_ids, st_ids,
+            table: "cats_warehouse_receipt_order_assignments"
+          )
+        end
+
+        receipt_order_scope = receipt_order_scope.distinct
 
         if reference_no.blank?
           receipt_orders = receipt_order_scope
@@ -36,27 +51,43 @@ module Cats
             .order(updated_at: :desc)
             .limit(10)
         else
-          # Sanitize input to prevent SQL injection
           sanitized_ref = sanitize_like_input(reference_no)
-          
-          # Search Receipt Orders by reference_no OR by RO-{id} pattern
           ro_id = reference_no.match(/^RO-?(\d+)$/i)&.captures&.first&.to_i
-          
+
           receipt_orders = if ro_id.present?
-            receipt_order_scope.where("reference_no ILIKE ? OR cats_warehouse_receipt_orders.id = ?", "%#{sanitized_ref}%", ro_id).limit(5)
+            receipt_order_scope.where(
+              "cats_warehouse_receipt_orders.reference_no ILIKE ? OR cats_warehouse_receipt_orders.id = ?",
+              "%#{sanitized_ref}%", ro_id
+            ).limit(5)
           else
-            receipt_order_scope.where("reference_no ILIKE ?", "%#{sanitized_ref}%").limit(5)
+            receipt_order_scope.where(
+              "cats_warehouse_receipt_orders.reference_no ILIKE ?",
+              "%#{sanitized_ref}%"
+            ).limit(5)
           end
         end
-        
+
+        seen_ids = Set.new
         receipt_orders.each do |order|
+          next if seen_ids.include?(order.id)
+          seen_ids.add(order.id)
           commodity_names = order.receipt_order_lines.map { |l|
             commodity = Cats::Core::Commodity.find_by(id: l.commodity_id)
             commodity&.read_attribute(:name).presence || commodity&.batch_no || "Commodity ##{l.commodity_id}"
-          }.join(", ")
+          }.uniq.join(", ")
+
+          # CRITICAL: Calculate quantity based on assignments to THIS storekeeper's warehouse/store
+          # Get assignments that are relevant to this storekeeper
+          relevant_assignments = order.receipt_order_assignments.select do |a|
+            is_unrestricted ||
+            (st_ids.present? && st_ids.include?(a.store_id)) ||
+            (wh_ids.present? && a.warehouse_id.present? && wh_ids.include?(a.warehouse_id) && a.store_id.nil?)
+          end
           
-          assignments = order.receipt_order_assignments.select { |a| current_ids.include?(a.store_id) }
-          total_assigned_qty = assignments.any? ? assignments.sum(&:quantity).to_f : order.receipt_order_lines.sum(&:quantity).to_f
+          next if relevant_assignments.empty?
+
+          # Calculate total quantity from relevant assignments
+          total_qty = relevant_assignments.sum { |a| a.quantity.to_f }
 
           first_line = order.receipt_order_lines.first
           unit_name = first_line ? Cats::Core::UnitOfMeasure.find_by(id: first_line.unit_id)&.abbreviation : nil
@@ -64,24 +95,30 @@ module Cats
           created_by_name = created_by ? [created_by.first_name, created_by.last_name].compact.join(" ").presence || created_by.email : nil
 
           # Build per-line details for stack configuration auto-fill
-          lines_data = order.receipt_order_lines.map { |l|
-            line_assignments = assignments.select { |a| a.receipt_order_line_id == l.id }
-            assigned_qty = if line_assignments.any?
-                             line_assignments.sum(&:quantity)
-                           elsif assignments.any? && assignments.first.receipt_order_line_id.nil?
-                             # Order-level assignment, use the assigned quantity
-                             assignments.first.quantity
-                           else
-                             l.quantity
-                           end
+          # Use quantities from relevant assignments, not the original line quantities
+          lines_data = order.receipt_order_lines.filter_map { |l|
+            # Find assignments for this specific line
+            line_assignments = relevant_assignments.select { |a| a.receipt_order_line_id == l.id }
+            
+            # Calculate quantity for this line from assignments
+            line_qty = if line_assignments.any?
+              line_assignments.sum { |a| a.quantity.to_f }
+            elsif relevant_assignments.first.receipt_order_line_id.nil?
+              # Order-level assignment, use the assigned quantity
+              relevant_assignments.first.quantity.to_f
+            else
+              0
+            end
 
+            next if line_qty <= 0
+            
             commodity = Cats::Core::Commodity.find_by(id: l.commodity_id)
             unit = Cats::Core::UnitOfMeasure.find_by(id: l.unit_id)
             {
               commodity_id: l.commodity_id,
               commodity_name: commodity&.read_attribute(:name).presence || commodity&.batch_no || "Commodity ##{l.commodity_id}",
               batch_no: commodity&.batch_no.presence || l.line_reference_no,
-              quantity: assigned_qty.to_f,
+              quantity: line_qty,
               unit_id: l.unit_id,
               unit_name: unit&.name,
               unit_abbreviation: unit&.abbreviation
@@ -90,11 +127,14 @@ module Cats
 
           first_commodity = first_line ? Cats::Core::Commodity.find_by(id: first_line.commodity_id) : nil
 
+          # Always use RO-{id} format for immediate recognition
+          display_ref = "RO-#{order.id}"
+
           results << {
             type: "Receipt Order",
-            reference_no: order.reference_no || "RO-#{order.id}",
+            reference_no: display_ref,
             commodity: commodity_names,
-            quantity: total_assigned_qty,
+            quantity: total_qty,
             unit: unit_name,
             batch_no: first_commodity&.batch_no.presence || first_line&.line_reference_no,
             commodity_id: first_line&.commodity_id,
@@ -108,17 +148,24 @@ module Cats
             can_start_receipt: %w[confirmed assigned].include?(order.status.to_s.downcase)
           }
         end
-        
+
         if reference_no.present?
-          # Search Dispatch Orders
-          dispatch_orders = DispatchOrder
+          sanitized_ref ||= sanitize_like_input(reference_no)
+
+          # ── Dispatch Orders ──
+          dispatch_scope = DispatchOrder
             .where("reference_no ILIKE ?", "%#{sanitized_ref}%")
             .joins(:dispatch_order_assignments)
-            .where(dispatch_order_assignments: { store_id: current_ids })
             .includes(:warehouse, :hub, :created_by, :dispatch_order_lines)
-            .limit(5)
-          
-          dispatch_orders.each do |order|
+
+          unless is_unrestricted
+            dispatch_scope = apply_assignment_scope(
+              dispatch_scope, wh_ids, st_ids,
+              table: "cats_warehouse_dispatch_order_assignments"
+            )
+          end
+
+          dispatch_scope.distinct.limit(5).each do |order|
             results << {
               type: "Dispatch Order",
               reference_no: order.reference_no,
@@ -133,17 +180,15 @@ module Cats
               can_start_receipt: false
             }
           end
-          
-          # Search Waybills if they exist
+
+          # ── Waybills ──
           if defined?(Waybill)
-            waybills = Waybill
+            Waybill
               .where("reference_no ILIKE ?", "%#{sanitized_ref}%")
               .includes(:dispatch_order)
-              .limit(5)
-            
-            waybills.each do |waybill|
+              .limit(5).each do |waybill|
               next unless waybill.dispatch_order
-              
+
               results << {
                 type: "Waybill",
                 reference_no: waybill.reference_no,
@@ -160,7 +205,7 @@ module Cats
             end
           end
         end
-        
+
         if results.empty?
           render_success(
             results: [],
@@ -177,15 +222,24 @@ module Cats
       def dashboard_data
         current_ids = current_store_ids
 
+        # CRITICAL: Storekeepers should only see store-level assignments
+        # The where(store_id: current_ids) already filters to only assignments
+        # where store_id is set and matches their store
         receipt_assignments = ReceiptOrderAssignment
-          .where(assigned_to_id: current_user.id)
-          .or(ReceiptOrderAssignment.where(store_id: current_ids))
-          .includes(:receipt_order, :store, :warehouse, :hub, :assigned_to, :assigned_by)
+          .where(store_id: current_ids)
+          .includes(
+            :receipt_order, 
+            :store, 
+            :warehouse, 
+            :hub, 
+            :assigned_to, 
+            :assigned_by,
+            receipt_order_line: [:commodity, :unit]
+          )
           .order(created_at: :desc)
 
         dispatch_assignments = DispatchOrderAssignment
-          .where(assigned_to_id: current_user.id)
-          .or(DispatchOrderAssignment.where(store_id: current_ids))
+          .where(store_id: current_ids)
           .includes(:dispatch_order, :store, :warehouse, :hub, :assigned_to, :assigned_by)
           .order(created_at: :desc)
 
@@ -266,8 +320,7 @@ module Cats
 
       def find_assignment
         ReceiptOrderAssignment
-          .where(assigned_to_id: current_user.id)
-          .or(ReceiptOrderAssignment.where(store_id: current_store_ids))
+          .where(store_id: current_store_ids)
           .find(params[:id])
       end
 
@@ -276,10 +329,66 @@ module Cats
         access.assigned_store_ids
       end
 
+      # Resolve accessible warehouse and store IDs based on user role.
+      # Returns { warehouse_ids: [...], store_ids: [...], unrestricted: bool }
+      def resolve_accessible_ids(explicit_warehouse_id = nil, explicit_store_id = nil)
+        if explicit_store_id.present?
+          wh_id = Store.where(id: explicit_store_id).pluck(:warehouse_id).first
+          return { warehouse_ids: [wh_id].compact, store_ids: [explicit_store_id], unrestricted: false }
+        elsif explicit_warehouse_id.present?
+          st_ids = Store.where(warehouse_id: explicit_warehouse_id).pluck(:id)
+          return { warehouse_ids: [explicit_warehouse_id], store_ids: st_ids, unrestricted: false }
+        end
+
+        access = AccessContext.new(user: current_user)
+
+        if access.admin?
+          { warehouse_ids: [], store_ids: [], unrestricted: true }
+        elsif access.hub_manager?
+          hub_ids = access.assigned_hub_ids
+          w_ids = Warehouse.where(hub_id: hub_ids).pluck(:id)
+          s_ids = Store.where(warehouse_id: w_ids).pluck(:id)
+          { warehouse_ids: w_ids, store_ids: s_ids, unrestricted: false }
+        elsif access.warehouse_manager?
+          w_ids = access.assigned_warehouse_ids
+          s_ids = Store.where(warehouse_id: w_ids).pluck(:id)
+          { warehouse_ids: w_ids, store_ids: s_ids, unrestricted: false }
+        elsif access.storekeeper?
+          s_ids = access.assigned_store_ids
+          w_ids = Store.where(id: s_ids).pluck(:warehouse_id).compact.uniq
+          { warehouse_ids: w_ids, store_ids: s_ids, unrestricted: false }
+        else
+          { warehouse_ids: [], store_ids: [], unrestricted: false }
+        end
+      end
+
+      # Apply warehouse_id / store_id filter to an assignment-joined scope.
+      # table: the assignment table name, e.g. "cats_warehouse_receipt_order_assignments"
+      def apply_assignment_scope(scope, wh_ids, st_ids, table:)
+        conditions = []
+        values = {}
+
+        if wh_ids.present?
+          conditions << "#{table}.warehouse_id IN (:wh_ids)"
+          values[:wh_ids] = wh_ids
+        end
+
+        if st_ids.present?
+          conditions << "#{table}.store_id IN (:st_ids)"
+          values[:st_ids] = st_ids
+        end
+
+        if conditions.any?
+          scope.where(conditions.join(" OR "), values)
+        else
+          scope.none
+        end
+      end
+
       # Sanitize input for LIKE queries to prevent SQL injection
       def sanitize_like_input(input)
         # Escape SQL LIKE wildcards and backslashes
-        input.gsub(/[%_\\]/, '\\\\\\&')
+        input.gsub(/[%_\\]/, '\\\\\&')
       end
     end
   end

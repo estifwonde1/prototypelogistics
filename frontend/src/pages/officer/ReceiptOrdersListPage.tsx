@@ -259,7 +259,31 @@ function ReceiptOrdersListPage() {
                         (order.source_reference != null ? String(order.source_reference) : '—')}
                     </Table.Td>
                     <Table.Td>
-                      {order.warehouse_name || order.destination_warehouse_name || order.hub_name || '—'}
+                      {(() => {
+                        const lines = order.receipt_order_lines ?? order.lines ?? [];
+                        
+                        // Check if there are multiple unique destinations across lines
+                        const destinations = new Set<string>();
+                        lines.forEach((line: any) => {
+                          const dest = line.destination_hub_name || line.destination_warehouse_name || line.hub_name || line.warehouse_name;
+                          if (dest) destinations.add(dest);
+                        });
+                        
+                        // If multiple line-level destinations, show "Multiple Destinations"
+                        if (destinations.size > 1) {
+                          return (
+                            <Group gap={4}>
+                              <Text size="sm">Multiple Destinations</Text>
+                              <Badge size="xs" color="blue" variant="light">
+                                {destinations.size}
+                              </Badge>
+                            </Group>
+                          );
+                        }
+                        
+                        // Otherwise show the order-level destination
+                        return order.warehouse_name || order.destination_warehouse_name || order.hub_name || '—';
+                      })()}
                     </Table.Td>
                     <Table.Td>
                       {isFederal ? (

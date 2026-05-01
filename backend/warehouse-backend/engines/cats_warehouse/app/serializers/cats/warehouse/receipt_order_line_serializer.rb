@@ -1,7 +1,7 @@
 module Cats
   module Warehouse
     class ReceiptOrderLineSerializer < ApplicationSerializer
-      attributes :id, :commodity_id, :commodity_name, :commodity_batch_no, :quantity, :unit_id, :unit_name, :line_reference_no, :source_type, :source_name, :destination_hub_id, :destination_warehouse_id
+      attributes :id, :commodity_id, :commodity_name, :commodity_batch_no, :quantity, :unit_id, :unit_name, :line_reference_no, :source_type, :source_name, :destination_hub_id, :destination_warehouse_id, :destination_hub_name, :destination_warehouse_name
 
       attribute :notes, if: :line_has_notes?
       attribute :packaging_unit_id, if: :line_has_packaging?
@@ -51,6 +51,16 @@ module Cats
 
       def source_name
         Cats::Core::Commodity.find_by(id: object.commodity_id)&.source_name
+      end
+
+      def destination_hub_name
+        return nil unless object.respond_to?(:destination_hub_id) && object.destination_hub_id.present?
+        Hub.find_by(id: object.destination_hub_id)&.name
+      end
+
+      def destination_warehouse_name
+        return nil unless object.respond_to?(:destination_warehouse_id) && object.destination_warehouse_id.present?
+        Warehouse.find_by(id: object.destination_warehouse_id)&.name
       end
     end
   end
