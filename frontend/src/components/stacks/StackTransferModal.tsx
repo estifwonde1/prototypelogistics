@@ -13,6 +13,7 @@ import {
 import { IconAlertCircle } from '@tabler/icons-react';
 import type { Stack } from '../../types/stack';
 import { getStacks, transferStack } from '../../api/stacks';
+import { useAuthStore } from '../../store/authStore';
 
 interface StackTransferModalProps {
   opened: boolean;

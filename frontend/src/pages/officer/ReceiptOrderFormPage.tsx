@@ -114,8 +114,7 @@ function ReceiptOrderFormPage() {
   });
 
   // Get active assignment context for filtering
-  const activeAssignment = useAuthStore((state) => state.activeAssignment);
-  const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
+  const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || useAuthStore((state) => state.role));
   const userHubId = activeAssignment?.hub?.id;
   const isHubManager = roleSlug === 'hub_manager';
 

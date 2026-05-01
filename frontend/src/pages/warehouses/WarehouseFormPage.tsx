@@ -25,6 +25,7 @@ import { notifications } from '@mantine/notifications';
 import type { WarehouseUpsertPayload } from '../../types/warehouse';
 import { usePermission } from '../../hooks/usePermission';
 import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 
 const HUB_MANAGER_OWNERSHIP_OPTIONS = [
   { value: 'self_owned', label: 'Self Owned' },

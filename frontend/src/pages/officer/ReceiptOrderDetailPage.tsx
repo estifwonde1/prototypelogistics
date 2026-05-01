@@ -1442,7 +1442,6 @@ function ReceiptOrderDetailPage() {
                           Could not load available stores.
                         </Text>
                       ) : null}
-<<<<<<< Updated upstream
                       <Select
                         label="Store"
                         placeholder={
@@ -1578,74 +1577,6 @@ function ReceiptOrderDetailPage() {
                           return null;
                         })()}
                       />
-=======
-                      
-                      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-                        <Stack gap="xs">
-                          <Select
-                            label="Store"
-                            placeholder={
-                              assignableManagersLoading
-                                ? 'Loading stores…'
-                                : 'Select a store'
-                            }
-                            data={assignmentStoreSelectData}
-                            disabled={
-                              assignableManagersLoading ||
-                              (!assignableManagersError && assignmentStoreSelectData.length === 0)
-                            }
-                            value={selectedAssignmentStoreId}
-                            onChange={(val) => {
-                              setSelectedAssignmentStoreId(val);
-                              const store = (assignableManagersPayload?.stores as any[])?.find(
-                                (s: any) => s.id === Number(val)
-                              );
-                              if (store) {
-                                const storekeeper = (assignableManagersPayload?.assignable_managers as any[])?.find(
-                                  (m: any) => m.role === 'Storekeeper' && m.store_id === store.id
-                                );
-                                if (storekeeper) {
-                                  setSelectedUserId(String(storekeeper.id));
-                                } else {
-                                  setSelectedUserId(null);
-                                }
-                              } else {
-                                setSelectedUserId(null);
-                              }
-                            }}
-                            required
-                            searchable
-                          />
-                          {selectedAssignmentStoreId && selectedManager && (
-                            <Text size="xs" c="dimmed">
-                              Storekeeper: <strong>{selectedManager.name}</strong>
-                            </Text>
-                          )}
-                          {selectedAssignmentStoreId && !selectedManager && (
-                            <Text size="xs" c="orange">
-                              No storekeeper is assigned to this store.
-                            </Text>
-                          )}
-                        </Stack>
-
-                        <NumberInput
-                          label="Quantity"
-                          placeholder={`Max: ${lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0).toLocaleString()}`}
-                          value={assignmentQuantity || ''}
-                          onChange={(val) => setAssignmentQuantity(Number(val) || 0)}
-                          min={0}
-                          description={`Ordered: ${lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0).toLocaleString()} — Remaining: ${(lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0) - assignments.filter(a => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0)).toLocaleString()}`}
-                          error={(() => {
-                            const totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
-                            const alreadyAssigned = assignments.filter(a => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
-                            const remaining = totalOrdered - alreadyAssigned;
-                            if (assignmentQuantity > remaining) return `Exceeds remaining quantity (${remaining.toLocaleString()} left)`;
-                            return null;
-                          })()}
-                        />
-                      </SimpleGrid>
-
->>>>>>> Stashed changes
                       {!assignableManagersLoading &&
                       assignmentStoreSelectData.length === 0 &&
                       !assignableManagersError ? (

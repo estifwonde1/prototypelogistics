@@ -176,6 +176,38 @@ function CommodityFormPage() {
       });
       return;
     }
+    if (!unitId) {
+      notifications.show({
+        title: "Error",
+        message: "Default unit is required",
+        color: "red",
+      });
+      return;
+    }
+    if (!packageUnitId) {
+      notifications.show({
+        title: "Error",
+        message: "Packaging unit is required",
+        color: "red",
+      });
+      return;
+    }
+    if (packageSize === "" || packageSize === null || (typeof packageSize === 'number' && packageSize <= 0)) {
+      notifications.show({
+        title: "Error",
+        message: "Size per package is required and must be greater than 0",
+        color: "red",
+      });
+      return;
+    }
+    if (!expiryDate) {
+      notifications.show({
+        title: "Error",
+        message: "Expiry date is required",
+        color: "red",
+      });
+      return;
+    }
     const qty =
       typeof quantity === "number"
         ? quantity
@@ -434,29 +466,35 @@ function CommodityFormPage() {
           />
 
           <Select
-            label="Default Unit (optional)"
+            label="Default Unit"
             placeholder="Select unit"
             data={unitOptions}
             value={unitId}
             onChange={setUnitId}
             clearable
+            required
+            description="Unit of measurement for this commodity"
           />
 
           <Select
-            label="Packaging Unit (optional)"
+            label="Packaging Unit"
             placeholder="Select packaging unit"
             data={unitOptions}
             value={packageUnitId}
             onChange={setPackageUnitId}
             clearable
+            required
+            description="Unit used for packaging"
           />
 
           <NumberInput
-            label="Size per Package (optional)"
+            label="Size per Package"
             placeholder="e.g. 25"
             min={0}
             value={packageSize}
             onChange={setPackageSize}
+            required
+            description="Number of units per package"
           />
 
           <Select
@@ -469,11 +507,13 @@ function CommodityFormPage() {
           />
 
           <DateInput
-            label="Expiry Date (optional)"
+            label="Expiry Date"
             placeholder="Select expiry date"
             value={expiryDate}
             onChange={(val) => setExpiryDate(val as Date | null)}
             clearable
+            required
+            description="Best use before date for this commodity"
           />
 
           <Group>

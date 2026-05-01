@@ -13,10 +13,11 @@ This document summarizes all the filter issues identified and fixed across the w
 - **DETAILS**: Successfully implemented activeAssignment context filtering for warehouse managers and storekeepers. When managers select a specific warehouse/store assignment, all API calls now pass warehouse_id/store_id parameters to show only data for that selected location. Fixed 10+ frontend pages to respect activeAssignment context.
 
 ### TASK 3: Implement Location Context Filtering for Hub Managers ✅ COMPLETED
-- **USER QUERIES**: 3 ("do the same fixes for hub managers"), 4 ("i logged in as main hub manager but it still brings every warehouse")
-- **DETAILS**: Successfully implemented frontend filtering for hub managers across 8+ pages to respect activeAssignment.hub context. **CRITICAL FIX**: The issue was that frontend pages were using `useAuthStore((state) => state.role)` instead of the role from `activeAssignment.role_name`. When users select a specific assignment, the role should come from that assignment, not the global store role.
+- **USER QUERIES**: 3 ("do the same fixes for hub managers"), 4 ("i logged in as main hub manager but it still brings every warehouse"), 5 ("wen i try to create new receipt order from officer side")
+- **DETAILS**: Successfully implemented frontend filtering for hub managers across 8+ pages to respect activeAssignment.hub context. **CRITICAL FIX**: The issue was that frontend pages were using `useAuthStore((state) => state.role)` instead of the role from `activeAssignment.role_name`. When users select a specific assignment, the role should come from that assignment, not the global store role. **ADDITIONAL FIX**: Resolved TypeScript error in ReceiptOrderFormPage.tsx caused by duplicate `activeAssignment` declarations.
 - **ROOT CAUSE**: Role detection was using the wrong source - `useAuthStore.role` instead of `activeAssignment.role_name`
 - **SOLUTION**: Updated all affected pages to use `normalizeRoleSlug(activeAssignment?.role_name || useAuthStore((state) => state.role))` for proper role detection
+- **TYPESCRIPT FIX**: Removed duplicate `activeAssignment` declaration in ReceiptOrderFormPage.tsx that was causing compilation errors
 - **FIXED PAGES**:
   * WarehouseListPage.tsx - Hub managers now see only warehouses from their selected hub
   * WaybillCreatePage.tsx - Hub context filtering for waybill creation
@@ -26,8 +27,9 @@ This document summarizes all the filter issues identified and fixed across the w
   * TransferRequestsPage.tsx - Hub-level transfer request filtering
   * StockBalancePage.tsx - Hub context for stock balance viewing
   * StackListPage.tsx - Hub-level stack filtering
+  * **ReceiptOrderFormPage.tsx** - Fixed duplicate activeAssignment declaration causing TypeScript errors
 - **BACKEND**: Already had proper hub_id filtering logic in warehouses controller
-- **RESULT**: Hub managers now correctly see only data from their currently selected hub assignment
+- **RESULT**: Hub managers now correctly see only data from their currently selected hub assignment, and all TypeScript compilation errors are resolved
 
 ## Issues Fixed
 

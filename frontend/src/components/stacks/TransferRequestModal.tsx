@@ -16,6 +16,7 @@ import type { Stack } from '../../types/stack';
 import type { Store } from '../../types/store';
 import { getStores } from '../../api/stores';
 import { createTransferRequest } from '../../api/transferRequests';
+import { useAuthStore } from '../../store/authStore';
 
 interface TransferRequestModalProps {
   opened: boolean;
