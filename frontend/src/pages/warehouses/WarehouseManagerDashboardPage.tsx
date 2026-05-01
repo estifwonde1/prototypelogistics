@@ -64,19 +64,9 @@ export default function WarehouseManagerDashboardPage() {
 
   const pendingReceiptAssignments = receiptOrders?.filter(o => {
     const status = String(o.status || '').toLowerCase();
-    
-    // CRITICAL: Only show orders explicitly assigned to THIS warehouse
-    // Do NOT show orders assigned only to the hub (hub manager should handle those first)
-    const hasWarehouseAssignment = o.warehouse_id === warehouseId || 
-                                   o.destination_warehouse_id === warehouseId;
-    
-    // If order is assigned to hub but not to specific warehouse, hide it from warehouse manager
-    if (o.hub_id && !hasWarehouseAssignment) {
-      return false;
-    }
-    
-    // Show orders that are confirmed or draft AND assigned to this warehouse
-    return hasWarehouseAssignment && (status === 'confirmed' || status === 'draft');
+    // Backend now filters by warehouse, so we only need to filter by status
+    // Show orders that are confirmed or draft (pending storekeeper assignment)
+    return status === 'confirmed' || status === 'draft';
   }) ?? [];
   
   const pendingDispatchAuthorizations = dispatchOrders?.filter(o => {

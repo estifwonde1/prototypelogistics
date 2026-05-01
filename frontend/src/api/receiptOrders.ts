@@ -166,8 +166,8 @@ export async function getReceiptOrders(params?: { warehouse_id?: number; hub_id?
   );
 }
 
-export async function getReceiptOrder(id: number): Promise<ReceiptOrder> {
-  const response = await apiClient.get(`/receipt_orders/${id}`);
+export async function getReceiptOrder(id: number, params?: { warehouse_id?: number }): Promise<ReceiptOrder> {
+  const response = await apiClient.get(`/receipt_orders/${id}`, { params });
   const raw = response.data.data || response.data;
   return normalizeReceiptOrder(typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {});
 }

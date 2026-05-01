@@ -103,23 +103,7 @@ function ReceiptOrdersListPage() {
     if (!orders?.length) return orders;
 
     return orders.filter((order) => {
-      // CRITICAL: Warehouse managers should ONLY see orders explicitly assigned to their warehouse
-      // NOT orders assigned only to the hub (hub manager handles those first)
-      if (isWarehouseManager && userWarehouseId) {
-        const hasWarehouseAssignment = order.warehouse_id === userWarehouseId || 
-                                       order.destination_warehouse_id === userWarehouseId;
-        
-        // If order is assigned to hub but not to specific warehouse, hide it
-        if (order.hub_id && !hasWarehouseAssignment) {
-          return false;
-        }
-        
-        // If order has no warehouse assignment at all, hide it
-        if (!hasWarehouseAssignment) {
-          return false;
-        }
-      }
-
+      // Backend now handles warehouse filtering, so we only need to filter by search and status
       if (!receiptOrderMatchesSearch(order, search)) return false;
 
       if (statusFilter) {
@@ -140,7 +124,7 @@ function ReceiptOrdersListPage() {
 
       return true;
     });
-  }, [orders, search, statusFilter, warehouseFilter, isWarehouseManager, userWarehouseId]);
+  }, [orders, search, statusFilter, warehouseFilter]);
 
   const statusOptions = [...RECEIPT_ORDER_STATUS_FILTER_OPTIONS];
 

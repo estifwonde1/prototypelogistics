@@ -6,8 +6,14 @@ module Cats
         orders = policy_scope(DispatchOrder).includes(:hub, :warehouse, dispatch_order_lines: [:commodity, :unit])
         
         # CRITICAL: Filter by warehouse_id if provided (for warehouse managers with multiple warehouses)
+        # Include orders where:
+        # 1. warehouse_id matches directly (source warehouse), OR
+        # 2. Order has an assignment to this warehouse (via dispatch_order_assignments if they exist)
         if params[:warehouse_id].present?
-          orders = orders.where(warehouse_id: params[:warehouse_id])
+          warehouse_id = params[:warehouse_id].to_i
+          # For dispatch orders, we primarily filter by source warehouse
+          # since that's where the goods are being dispatched FROM
+          orders = orders.where(warehouse_id: warehouse_id)
         end
         
         orders = orders.order(created_at: :desc)

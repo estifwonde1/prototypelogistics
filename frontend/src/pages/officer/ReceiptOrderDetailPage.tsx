@@ -148,17 +148,21 @@ function ReceiptOrderDetailPage() {
   const [reservedQuantity, setReservedQuantity] = useState<number>(0);
   const [spaceReservationNotes, setSpaceReservationNotes] = useState('');
 
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const userWarehouseId = activeAssignment?.warehouse?.id;
+  const isWarehouseManager = roleSlug === 'warehouse_manager';
+
   const orderQuery = useQuery({
-    queryKey: ['receipt_orders', id],
-    queryFn: () => getReceiptOrder(Number(id)),
+    queryKey: ['receipt_orders', id, { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],
+    queryFn: () => {
+      const params = isWarehouseManager && userWarehouseId ? { warehouse_id: userWarehouseId } : {};
+      return getReceiptOrder(Number(id), params);
+    },
   });
   const order = orderQuery.data as ReceiptOrder | undefined;
   const isLoading = orderQuery.isLoading;
   const error = orderQuery.error;
   const refetch = orderQuery.refetch;
-
-  const activeAssignment = useAuthStore((state) => state.activeAssignment);
-  const userWarehouseId = activeAssignment?.warehouse?.id;
 
   const warehouseIdForStores = useMemo(() => {
     const wid = order?.warehouse_id ?? order?.destination_warehouse_id ?? userWarehouseId;
