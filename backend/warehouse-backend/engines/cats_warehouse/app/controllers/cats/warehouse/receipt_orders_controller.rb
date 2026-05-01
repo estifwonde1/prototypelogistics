@@ -250,13 +250,27 @@ module Cats
         # CRITICAL: Filter by active warehouse context for multi-warehouse managers
         active_warehouse_id = params[:warehouse_id].present? ? params[:warehouse_id].to_i : nil
 
+        Rails.logger.info "=== DEBUG assignable_managers ==="
+        Rails.logger.info "order.id: #{order.id}"
+        Rails.logger.info "order.warehouse_id: #{order.warehouse_id}"
+        Rails.logger.info "order.hub_id: #{order.hub_id}"
+        Rails.logger.info "order.warehouse&.hub_id: #{order.warehouse&.hub_id}"
+        Rails.logger.info "effective_hub_id: #{effective_hub_id}"
+        Rails.logger.info "manager_only: #{manager_only}"
+        Rails.logger.info "active_warehouse_id: #{active_warehouse_id}"
+
         if effective_hub_id.present?
-          managers = manager_only ? receipt_order_managers_for_hub_managers_only(effective_hub_id) : receipt_order_managers_for_hub(effective_hub_id)
-          
-          # CRITICAL: If warehouse_id param is provided, only return stores from that warehouse
+          Rails.logger.info "Taking HUB-SCOPED path"
+          # CRITICAL: If warehouse_id param is provided, filter managers and stores by that warehouse
           if active_warehouse_id.present?
+            Rails.logger.info "  - Using active_warehouse_id: #{active_warehouse_id}"
+            # Get managers for the specific warehouse only
+            managers = manager_only ? receipt_order_managers_for_standalone_warehouse_managers_only(active_warehouse_id) : receipt_order_managers_for_standalone_warehouse(active_warehouse_id)
             stores = manager_only ? [] : available_stores_for_warehouse(active_warehouse_id)
           else
+            Rails.logger.info "  - Using all warehouses in hub: #{effective_hub_id}"
+            # Get managers for all warehouses in the hub
+            managers = manager_only ? receipt_order_managers_for_hub_managers_only(effective_hub_id) : receipt_order_managers_for_hub(effective_hub_id)
             stores = manager_only ? [] : available_stores_for_hub(effective_hub_id)
           end
           
@@ -272,6 +286,7 @@ module Cats
           )
         end
 
+        Rails.logger.info "Taking STANDALONE WAREHOUSE path"
         if order.warehouse_id.present?
           managers = manager_only ? receipt_order_managers_for_standalone_warehouse_managers_only(order.warehouse_id) : receipt_order_managers_for_standalone_warehouse(order.warehouse_id)
           stores = manager_only ? [] : available_stores_for_warehouse(order.warehouse_id)
@@ -533,14 +548,23 @@ module Cats
           .where(warehouse_id: warehouse_ids)
           .distinct
           .pluck(:user_id)
-        storekeeper_ids = UserAssignment
+        
+        # Get storekeepers assigned to specific stores
+        store_storekeeper_ids = UserAssignment
           .where(role_name: "Storekeeper")
           .where(store_id: Store.where(warehouse_id: warehouse_ids).select(:id))
           .distinct
           .pluck(:user_id)
+        
+        # ALSO get storekeepers assigned at warehouse level
+        warehouse_storekeeper_ids = UserAssignment
+          .where(role_name: "Storekeeper")
+          .where(warehouse_id: warehouse_ids)
+          .distinct
+          .pluck(:user_id)
 
-        all_user_ids = hub_manager_ids + warehouse_manager_ids + storekeeper_ids
-        map_users_for_assignable_managers(all_user_ids)
+        all_user_ids = hub_manager_ids + warehouse_manager_ids + store_storekeeper_ids + warehouse_storekeeper_ids
+        map_users_for_assignable_managers(all_user_ids.uniq)
       end
 
       # Hub-scoped: only Hub Managers and Warehouse Managers (for officer assignment)
@@ -561,14 +585,39 @@ module Cats
       def receipt_order_managers_for_standalone_warehouse(warehouse_id)
         warehouse_ids = [ warehouse_id ]
         warehouse_manager_ids = UserAssignment.where(role_name: "Warehouse Manager", warehouse_id: warehouse_id).distinct.pluck(:user_id)
-        storekeeper_ids = UserAssignment
-          .where(role_name: "Storekeeper")
-          .where(store_id: Store.where(warehouse_id: warehouse_ids).select(:id))
-          .distinct
-          .pluck(:user_id)
+        
+        store_ids = Store.where(warehouse_id: warehouse_ids).pluck(:id)
+        Rails.logger.info "=== DEBUG receipt_order_managers_for_standalone_warehouse ==="
+        Rails.logger.info "warehouse_id: #{warehouse_id}"
+        Rails.logger.info "store_ids: #{store_ids.inspect}"
+        
+        # Get storekeepers assigned to specific stores in this warehouse
+        store_storekeeper_assignments = UserAssignment.where(role_name: "Storekeeper", store_id: store_ids)
+        Rails.logger.info "store-level storekeeper_assignments count: #{store_storekeeper_assignments.count}"
+        
+        # ALSO get storekeepers assigned at warehouse level (they can manage all stores in the warehouse)
+        warehouse_storekeeper_assignments = UserAssignment.where(role_name: "Storekeeper", warehouse_id: warehouse_id)
+        Rails.logger.info "warehouse-level storekeeper_assignments count: #{warehouse_storekeeper_assignments.count}"
+        
+        all_storekeeper_assignments = store_storekeeper_assignments + warehouse_storekeeper_assignments
+        all_storekeeper_assignments.each do |sa|
+          Rails.logger.info "  - UserAssignment: user_id=#{sa.user_id}, store_id=#{sa.store_id}, warehouse_id=#{sa.warehouse_id}, role=#{sa.role_name}"
+        end
+        
+        storekeeper_ids = all_storekeeper_assignments.map(&:user_id).uniq
+        Rails.logger.info "storekeeper_ids: #{storekeeper_ids.inspect}"
+        Rails.logger.info "warehouse_manager_ids: #{warehouse_manager_ids.inspect}"
 
         all_user_ids = warehouse_manager_ids + storekeeper_ids
-        map_users_for_assignable_managers(all_user_ids)
+        Rails.logger.info "all_user_ids: #{all_user_ids.inspect}"
+        
+        result = map_users_for_assignable_managers(all_user_ids)
+        Rails.logger.info "final result count: #{result.count}"
+        result.each do |r|
+          Rails.logger.info "  - Result: #{r.inspect}"
+        end
+        
+        result
       end
 
       # Standalone warehouse: only Warehouse Managers (for officer assignment)
@@ -594,14 +643,26 @@ module Cats
         return [] if user_ids.empty?
 
         mod_id = warehouse_module.id
+        Rails.logger.info "=== DEBUG map_users_for_assignable_managers ==="
+        Rails.logger.info "user_ids: #{user_ids.inspect}"
+        Rails.logger.info "warehouse_module.id: #{mod_id}"
+        
         assignments = UserAssignment
           .where(user_id: user_ids)
-          .includes(:user)
+          .includes(:user, :store)
           .distinct
+        
+        Rails.logger.info "assignments count: #{assignments.count}"
 
         result = []
         assignments.each do |assignment|
-          next unless assignment.user&.active? && assignment.user.application_module_id == mod_id
+          user_active = assignment.user&.active?
+          user_module_id = assignment.user&.application_module_id
+          matches_module = user_module_id == mod_id
+          
+          Rails.logger.info "  - Assignment: user_id=#{assignment.user_id}, role=#{assignment.role_name}, store_id=#{assignment.store_id}, warehouse_id=#{assignment.warehouse_id}, active=#{user_active}, module_id=#{user_module_id}, matches_module=#{matches_module}"
+          
+          next unless user_active && matches_module
 
           display = [ assignment.user.first_name, assignment.user.last_name ].compact.join(" ").strip
           display = assignment.user.email if display.blank?
@@ -614,8 +675,10 @@ module Cats
 
           case assignment.role_name
           when "Storekeeper"
+            # Include both store_id and warehouse_id for storekeepers
             user_info[:store_id] = assignment.store_id
             user_info[:store_name] = assignment.store&.name
+            user_info[:warehouse_id] = assignment.warehouse_id if assignment.warehouse_id.present?
           when "Warehouse Manager"
             user_info[:warehouse_id] = assignment.warehouse_id
             user_info[:warehouse_name] = assignment.warehouse&.name
@@ -626,6 +689,8 @@ module Cats
 
           result << user_info
         end
+        
+        Rails.logger.info "final result: #{result.inspect}"
         result.sort_by { |u| [ u[:name], u[:id] ] }
       end
 
