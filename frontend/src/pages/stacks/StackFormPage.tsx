@@ -22,7 +22,7 @@ import { notifications } from '@mantine/notifications';
 import type { AxiosError } from 'axios';
 import { createStack, getStack, updateStack } from '../../api/stacks';
 import { getStores } from '../../api/stores';
-import { getCommodityReferences, getUnitReferences } from '../../api/referenceData';
+import { getCommodityReferences, getUnitReferences, getInventoryLots } from '../../api/referenceData';
 import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import type { Stack as StackType } from '../../types/stack';
@@ -93,6 +93,11 @@ function StackFormPage() {
     queryFn: () => getUnitReferences(),
   });
 
+  const { data: inventoryLots = [] } = useQuery({
+    queryKey: ['inventory-lots'],
+    queryFn: () => getInventoryLots(),
+  });
+
   const form = useForm({
     initialValues: {
       code: '',
@@ -107,6 +112,7 @@ function StackFormPage() {
       stack_status: 'active',
       quantity: 0,
       unit_id: '',
+      reference: '',
     },
     validate: {
       code: (value) => (!value ? 'Code is required' : null),
@@ -137,7 +143,9 @@ function StackFormPage() {
         stack_status: stack.stack_status,
         quantity: stack.quantity,
         unit_id: stack.unit_id.toString(),
+        reference: stack.reference || '',
       });
+      form.setFieldValue('commodity_id', stack.commodity_name || '');
     }
   }, [stack]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -188,11 +196,21 @@ function StackFormPage() {
       label: `${store.name} (${store.code})`,
     })) || [];
 
-  const commodityOptions =
-    commodities?.map((commodity) => ({
-      value: commodity.id.toString(),
-      label: commodity.name,
-    })) || [];
+  const commodityOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return (
+      commodities
+        ?.filter((c) => {
+          if (seen.has(c.name)) return false;
+          seen.add(c.name);
+          return true;
+        })
+        .map((c) => ({
+          value: c.name,
+          label: c.name,
+        })) || []
+    );
+  }, [commodities]);
 
   const unitOptions =
     units?.map((unit) => ({
@@ -200,7 +218,32 @@ function StackFormPage() {
       label: unit.abbreviation || unit.name,
     })) || [];
 
+  const referenceOptions = useMemo(() => {
+    const selectedCommId = Number(form.values.commodity_id);
+    if (!selectedCommId) return [];
+
+    const seen = new Set<string>();
+    const options: { value: string; label: string }[] = [];
+
+    inventoryLots.forEach((lot) => {
+      if (lot.commodity_id === selectedCommId && lot.batch_no && !seen.has(lot.batch_no)) {
+        seen.add(lot.batch_no);
+        options.push({
+          value: lot.batch_no,
+          label: lot.batch_no,
+        });
+      }
+    });
+
+    return options;
+  }, [inventoryLots, form.values.commodity_id]);
+
   const handleSubmit = (values: typeof form.values) => {
+    const selectedLot = inventoryLots.find((l) => l.batch_no === values.reference);
+    const resolvedCommId = selectedLot
+      ? selectedLot.commodity_id
+      : commodities.find((c) => c.name === values.commodity_id)?.id || 0;
+
     const payload: Partial<StackType> = {
       code: values.code,
       length: values.length,
@@ -208,12 +251,13 @@ function StackFormPage() {
       height: values.height,
       start_x: values.start_x,
       start_y: values.start_y,
-      commodity_id: Number(values.commodity_id),
+      commodity_id: resolvedCommId,
       store_id: Number(values.store_id),
       commodity_status: values.commodity_status,
       stack_status: values.stack_status,
       quantity: values.quantity,
       unit_id: Number(values.unit_id),
+      reference: values.reference,
     };
 
     if (isEdit) {
@@ -352,12 +396,24 @@ function StackFormPage() {
                   }}
                 />
 
-                <TextInput
-                  label="Stack Code"
-                  placeholder="STK-015"
-                  styles={inputStyles}
-                  {...form.getInputProps('code')}
-                />
+                <Group grow align="flex-start">
+                  <TextInput
+                    label="Stack Code"
+                    placeholder="STK-015"
+                    styles={inputStyles}
+                    {...form.getInputProps('code')}
+                  />
+                  <Select
+                    key={`ref-select-${form.values.commodity_id}`}
+                    label="Reference"
+                    placeholder="Choose batch"
+                    data={referenceOptions}
+                    searchable
+                    nothingFoundMessage="No batches found for this commodity"
+                    styles={inputStyles}
+                    {...form.getInputProps('reference')}
+                  />
+                </Group>
 
                 <Group grow align="flex-start">
                   <Select
@@ -375,6 +431,13 @@ function StackFormPage() {
                     data={commodityOptions}
                     styles={inputStyles}
                     {...form.getInputProps('commodity_id')}
+                    onChange={(value) => {
+                      form.setValues({
+                        ...form.values,
+                        commodity_id: value || '',
+                        reference: '',
+                      });
+                    }}
                   />
                 </Group>
 

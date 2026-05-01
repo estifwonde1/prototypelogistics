@@ -34,7 +34,7 @@ import { notifications } from '@mantine/notifications';
 import type { AxiosError } from 'axios';
 import { createStack, getStacks, updateStack } from '../../api/stacks';
 import { getStores } from '../../api/stores';
-import { getCommodityReferences } from '../../api/referenceData';
+import { getCommodityReferences, getInventoryLots } from '../../api/referenceData';
 import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import type { Stack as StackType } from '../../types/stack';
@@ -53,6 +53,7 @@ type StackFormValues = {
   quantity: number;
   unit_id: string;
   store_id: string;
+  reference: string;
 };
 
 type DraftArea = {
@@ -171,6 +172,7 @@ function createInitialValues(storeId: string | null): StackFormValues {
     quantity: 0,
     unit_id: '',
     store_id: storeId || '',
+    reference: '',
   };
 }
 
@@ -201,6 +203,11 @@ export default function StackLayoutPage() {
     queryFn: () => getCommodityReferences(),
   });
 
+  const { data: inventoryLots = [] } = useQuery({
+    queryKey: ['inventory-lots'],
+    queryFn: () => getInventoryLots(),
+  });
+
   const resolvedStoreId = storeId || (stores && stores.length > 0 ? String(stores[0].id) : null);
 
   const selectedStore = useMemo(
@@ -213,13 +220,20 @@ export default function StackLayoutPage() {
     [resolvedStoreId, stacks]
   );
 
-  const commodityOptions = useMemo(
-    () => commodities.map((commodity) => ({
-      value: String(commodity.id),
-      label: `${commodity.name} (${commodity.code})`
-    })),
-    [commodities]
-  );
+  const commodityOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return commodities
+      .filter((c) => {
+        if (seen.has(c.name)) return false;
+        seen.add(c.name);
+        return true;
+      })
+      .map((c) => ({
+        value: c.name,
+        label: c.name,
+      }));
+  }, [commodities]);
+
 
   const unitOptions = useMemo(() => buildUnitOptions(storeStacks), [storeStacks]);
 
@@ -242,12 +256,42 @@ export default function StackLayoutPage() {
     },
   });
 
+  const referenceOptions = useMemo(() => {
+    const selectedName = form.values.commodity_id;
+    if (!selectedName) return [];
+
+    const matchingCommIds = commodities
+      .filter((c) => c.name === selectedName)
+      .map((c) => c.id);
+
+    const seen = new Set<string>();
+    const options: { value: string; label: string }[] = [];
+
+    inventoryLots.forEach((lot) => {
+      if (matchingCommIds.includes(lot.commodity_id) && lot.batch_no && !seen.has(lot.batch_no)) {
+        seen.add(lot.batch_no);
+        options.push({
+          value: lot.batch_no,
+          label: lot.batch_no,
+        });
+      }
+    });
+
+    return options;
+  }, [inventoryLots, commodities, form.values.commodity_id]);
+
   const upsertMutation = useMutation({
     mutationFn: async (values: StackFormValues) => {
+      // Resolve the actual commodity_id from the selected batch/reference
+      const selectedLot = inventoryLots.find((l) => l.batch_no === values.reference);
+      const resolvedCommId = selectedLot
+        ? selectedLot.commodity_id
+        : commodities.find((c) => c.name === values.commodity_id)?.id || 0;
+
       const payload: Partial<StackType> = {
         code: values.code,
         stack_status: values.stack_status,
-        commodity_id: Number(values.commodity_id || 0),
+        commodity_id: resolvedCommId,
         length: values.length,
         width: values.width,
         height: values.height,
@@ -256,6 +300,7 @@ export default function StackLayoutPage() {
         quantity: values.quantity,
         unit_id: Number(values.unit_id || 0),
         store_id: Number(values.store_id),
+        reference: values.reference,
       };
 
       if (values.id) {
@@ -326,8 +371,8 @@ export default function StackLayoutPage() {
         id: stack.id,
         code: stack.code,
         stack_status: stack.stack_status,
-        commodity_id: String(stack.commodity_id || ''),
-        commodity_name: stack.commodity_name || stack.commodity_code || '',
+        commodity_id: stack.commodity_name || '',
+        commodity_name: stack.commodity_name || '',
         length: stack.length,
         width: stack.width,
         height: stack.height,
@@ -336,6 +381,7 @@ export default function StackLayoutPage() {
         quantity: stack.quantity,
         unit_id: String(stack.unit_id || ''),
         store_id: String(stack.store_id),
+        reference: stack.reference || '',
       });
     } else {
       setSelectedStack(null);
@@ -955,14 +1001,35 @@ export default function StackLayoutPage() {
               />
             </Group>
 
-            <Select
-              label="Commodity (Conditional For Active/Reserved)"
-              placeholder="Select commodity"
-              data={commodityOptions}
-              searchable
-              styles={baseInputStyles}
-              {...form.getInputProps('commodity_id')}
-            />
+            <Group grow align="flex-start">
+              <Select
+                label="Commodity"
+                placeholder="Select commodity"
+                data={commodityOptions}
+                searchable
+                styles={baseInputStyles}
+                {...form.getInputProps('commodity_id')}
+                onChange={(value) => {
+                  form.setValues({
+                    ...form.values,
+                    commodity_id: value || '',
+                    reference: '',
+                  });
+                }}
+                style={{ flex: 2 }}
+              />
+              <Select
+                key={`ref-select-${form.values.commodity_id}`}
+                label="Reference"
+                placeholder="Choose batch"
+                data={referenceOptions}
+                searchable
+                nothingFoundMessage="No batches found for this commodity"
+                styles={baseInputStyles}
+                {...form.getInputProps('reference')}
+                style={{ flex: 1 }}
+              />
+            </Group>
 
             <Divider
               label="Dimensions"

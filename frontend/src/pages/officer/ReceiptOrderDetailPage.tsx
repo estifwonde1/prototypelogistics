@@ -1367,14 +1367,44 @@ function ReceiptOrderDetailPage() {
             {showAssignmentForm && (
               <Card shadow="sm" padding="lg" radius="md" withBorder>
                 <Stack gap="md">
+                  <Group justify="space-between" align="flex-start" mb="md">
+                    <Stack gap={2} style={{ flex: 1 }}>
+                      {isOfficerRole ? (
+                        <>
+                          <Text fw={600}>Assign Manager</Text>
+                          <Text size="sm" c="dimmed">
+                            {order.hub_id
+                              ? `Assign a Hub Manager for ${assignableManagersPayload?.hub_name || 'this hub'} to handle this receipt order.`
+                              : `Assign a Warehouse Manager for ${assignableManagersPayload?.warehouse_name || 'this warehouse'} to handle this receipt order.`}
+                          </Text>
+                        </>
+                      ) : (
+                        <>
+                          <Text fw={600}>Assign Store for Commodity</Text>
+                          <Text size="sm" c="dimmed">
+                            Select the store where the commodity will be received. The storekeeper assigned to this store will be automatically notified.
+                          </Text>
+                        </>
+                      )}
+                    </Stack>
+                    <Group gap="sm">
+                      <Button
+                        variant="light"
+                        onClick={() => setShowAssignmentForm(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={handleCreateAssignment}
+                        loading={isLoading_}
+                      >
+                        {isOfficerRole ? 'Create Assignment' : 'Create Assignment'}
+                      </Button>
+                    </Group>
+                  </Group>
+
                   {isOfficerRole ? (
-                    <>
-                      <Text fw={600}>Assign Manager</Text>
-                      <Text size="sm" c="dimmed">
-                        {order.hub_id
-                          ? `Assign a Hub Manager for ${assignableManagersPayload?.hub_name || 'this hub'} to handle this receipt order.`
-                          : `Assign a Warehouse Manager for ${assignableManagersPayload?.warehouse_name || 'this warehouse'} to handle this receipt order.`}
-                      </Text>
+                    <Stack gap="md">
                       {assignableManagersError ? (
                         <Text size="sm" c="red">
                           Could not load available managers.
@@ -1404,18 +1434,15 @@ function ReceiptOrderDetailPage() {
                           No managers are assigned to this {order?.hub_id ? 'hub' : 'warehouse'} in admin. Add a user under Hub Manager or Warehouse Manager roles.
                         </Text>
                       ) : null}
-                    </>
+                    </Stack>
                   ) : (
-                    <>
-                      <Text fw={600}>Assign Store for Commodity</Text>
-                      <Text size="sm" c="dimmed">
-                        Select the store where the commodity will be received. The storekeeper assigned to this store will be automatically notified.
-                      </Text>
+                    <Stack gap="md">
                       {assignableManagersError ? (
                         <Text size="sm" c="red">
                           Could not load available stores.
                         </Text>
                       ) : null}
+<<<<<<< Updated upstream
                       <Select
                         label="Store"
                         placeholder={
@@ -1551,6 +1578,74 @@ function ReceiptOrderDetailPage() {
                           return null;
                         })()}
                       />
+=======
+                      
+                      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                        <Stack gap="xs">
+                          <Select
+                            label="Store"
+                            placeholder={
+                              assignableManagersLoading
+                                ? 'Loading stores…'
+                                : 'Select a store'
+                            }
+                            data={assignmentStoreSelectData}
+                            disabled={
+                              assignableManagersLoading ||
+                              (!assignableManagersError && assignmentStoreSelectData.length === 0)
+                            }
+                            value={selectedAssignmentStoreId}
+                            onChange={(val) => {
+                              setSelectedAssignmentStoreId(val);
+                              const store = (assignableManagersPayload?.stores as any[])?.find(
+                                (s: any) => s.id === Number(val)
+                              );
+                              if (store) {
+                                const storekeeper = (assignableManagersPayload?.assignable_managers as any[])?.find(
+                                  (m: any) => m.role === 'Storekeeper' && m.store_id === store.id
+                                );
+                                if (storekeeper) {
+                                  setSelectedUserId(String(storekeeper.id));
+                                } else {
+                                  setSelectedUserId(null);
+                                }
+                              } else {
+                                setSelectedUserId(null);
+                              }
+                            }}
+                            required
+                            searchable
+                          />
+                          {selectedAssignmentStoreId && selectedManager && (
+                            <Text size="xs" c="dimmed">
+                              Storekeeper: <strong>{selectedManager.name}</strong>
+                            </Text>
+                          )}
+                          {selectedAssignmentStoreId && !selectedManager && (
+                            <Text size="xs" c="orange">
+                              No storekeeper is assigned to this store.
+                            </Text>
+                          )}
+                        </Stack>
+
+                        <NumberInput
+                          label="Quantity"
+                          placeholder={`Max: ${lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0).toLocaleString()}`}
+                          value={assignmentQuantity || ''}
+                          onChange={(val) => setAssignmentQuantity(Number(val) || 0)}
+                          min={0}
+                          description={`Ordered: ${lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0).toLocaleString()} — Remaining: ${(lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0) - assignments.filter(a => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0)).toLocaleString()}`}
+                          error={(() => {
+                            const totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
+                            const alreadyAssigned = assignments.filter(a => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+                            const remaining = totalOrdered - alreadyAssigned;
+                            if (assignmentQuantity > remaining) return `Exceeds remaining quantity (${remaining.toLocaleString()} left)`;
+                            return null;
+                          })()}
+                        />
+                      </SimpleGrid>
+
+>>>>>>> Stashed changes
                       {!assignableManagersLoading &&
                       assignmentStoreSelectData.length === 0 &&
                       !assignableManagersError ? (
@@ -1558,28 +1653,17 @@ function ReceiptOrderDetailPage() {
                           No stores are available for this warehouse. Add stores first.
                         </Text>
                       ) : null}
-                    </>
+                    </Stack>
                   )}
+                  
                   <Textarea
                     label="Notes"
                     placeholder="Assignment notes..."
                     value={assignmentNotes}
                     onChange={(e) => setAssignmentNotes(e.target.value)}
+                    rows={2}
                   />
-                  <Group gap="sm">
-                    <Button
-                      onClick={handleCreateAssignment}
-                      loading={isLoading_}
-                    >
-                      Create Assignment
-                    </Button>
-                    <Button
-                      variant="light"
-                      onClick={() => setShowAssignmentForm(false)}
-                    >
-                      Cancel
-                    </Button>
-                  </Group>
+
                 </Stack>
               </Card>
             )}
@@ -1639,17 +1723,45 @@ function ReceiptOrderDetailPage() {
             {showSpaceReservationForm && canReserveSpace && (
               <Card shadow="sm" padding="lg" radius="md" withBorder>
                 <Stack gap="md">
-                  <Select
-                    label="Store"
-                    placeholder={
-                      storesLoading ? 'Loading stores…' : 'Select store'
-                    }
-                    data={storeSelectData}
-                    disabled={storesLoading || !warehouseIdForStores}
-                    value={selectedStoreId}
-                    onChange={setSelectedStoreId}
-                    searchable
-                  />
+                  <Group justify="space-between" align="center" mb="xs">
+                    <Text fw={600}>Reserve Space</Text>
+                    <Group gap="sm">
+                      <Button
+                        variant="light"
+                        onClick={() => setShowSpaceReservationForm(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={handleCreateSpaceReservation}
+                        loading={isLoading_}
+                      >
+                        Reserve Space
+                      </Button>
+                    </Group>
+                  </Group>
+
+                  <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                    <Select
+                      label="Store"
+                      placeholder={
+                        storesLoading ? 'Loading stores…' : 'Select store'
+                      }
+                      data={storeSelectData}
+                      disabled={storesLoading || !warehouseIdForStores}
+                      value={selectedStoreId}
+                      onChange={setSelectedStoreId}
+                      searchable
+                    />
+                    <NumberInput
+                      label="Quantity to Reserve"
+                      placeholder="Enter quantity"
+                      value={reservedQuantity}
+                      onChange={(value) => setReservedQuantity(Number(value))}
+                      min={0}
+                    />
+                  </SimpleGrid>
+
                   {storesError ? (
                     <Text size="sm" c="red">
                       Could not load stores for this warehouse.
@@ -1664,36 +1776,21 @@ function ReceiptOrderDetailPage() {
                       Admin &gt; Stores (or the Stores page).
                     </Text>
                   ) : null}
-                  <NumberInput
-                    label="Quantity to Reserve"
-                    placeholder="Enter quantity"
-                    value={reservedQuantity}
-                    onChange={(value) => setReservedQuantity(Number(value))}
-                    min={0}
-                  />
+
                   <Textarea
                     label="Notes"
                     placeholder="Reservation notes..."
                     value={spaceReservationNotes}
                     onChange={(e) => setSpaceReservationNotes(e.target.value)}
+                    rows={2}
                   />
-                  <Group gap="sm">
-                    <Button
-                      onClick={handleCreateSpaceReservation}
-                      loading={isLoading_}
-                    >
-                      Reserve Space
-                    </Button>
-                    <Button
-                      variant="light"
-                      onClick={() => setShowSpaceReservationForm(false)}
-                    >
-                      Cancel
-                    </Button>
-                  </Group>
+
+                  
                 </Stack>
               </Card>
             )}
+
+
           </Stack>
         </Tabs.Panel>
 

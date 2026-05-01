@@ -4,7 +4,7 @@ module Cats
       attributes :id, :code, :length, :width, :height, :start_x, :start_y, :commodity_id, :store_id,
                  :commodity_name, :commodity_code, :store_name, :store_code, :warehouse_id,
                  :commodity_status, :stack_status, :quantity, :unit_id, :unit_name, :unit_abbreviation,
-                 :base_unit_id, :base_unit_name, :base_quantity,
+                 :base_unit_id, :base_unit_name, :base_quantity, :reference,
                  :created_at, :updated_at
 
       def commodity_name
