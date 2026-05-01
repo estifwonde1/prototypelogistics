@@ -46,7 +46,9 @@ function WarehouseFormPage() {
   const { can } = usePermission();
   const canReadHubs = can('hubs', 'read');
   const role = useAuthStore((state) => state.role);
-  const isHubManager = role === 'hub_manager';
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || role);
+  const isHubManager = roleSlug === 'hub_manager';
   const [rentalAgreementFile, setRentalAgreementFile] = useState<File | null>(null);
 
   const { data: warehouse, isLoading } = useQuery({

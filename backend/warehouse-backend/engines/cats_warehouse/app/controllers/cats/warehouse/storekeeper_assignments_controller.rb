@@ -25,6 +25,9 @@ module Cats
           return
         end
 
+        # Sanitize input to prevent SQL injection
+        sanitized_ref = sanitize_like_input(reference_no)
+
         current_ids = current_store_ids
         
         # Search across different document types
@@ -38,9 +41,9 @@ module Cats
           .includes(:warehouse, :hub, :created_by, :receipt_order_lines)
 
         receipt_orders = if ro_id.present?
-          receipt_order_scope.where("reference_no ILIKE ? OR cats_warehouse_receipt_orders.id = ?", "%#{reference_no}%", ro_id).limit(5)
+          receipt_order_scope.where("reference_no ILIKE ? OR cats_warehouse_receipt_orders.id = ?", "%#{sanitized_ref}%", ro_id).limit(5)
         else
-          receipt_order_scope.where("reference_no ILIKE ?", "%#{reference_no}%").limit(5)
+          receipt_order_scope.where("reference_no ILIKE ?", "%#{sanitized_ref}%").limit(5)
         end
         
         receipt_orders.each do |order|
@@ -71,7 +74,7 @@ module Cats
         
         # Search Dispatch Orders
         dispatch_orders = DispatchOrder
-          .where("reference_no ILIKE ?", "%#{reference_no}%")
+          .where("reference_no ILIKE ?", "%#{sanitized_ref}%")
           .joins(:dispatch_order_assignments)
           .where(dispatch_order_assignments: { store_id: current_ids })
           .includes(:warehouse, :hub, :created_by, :dispatch_order_lines)
@@ -96,7 +99,7 @@ module Cats
         # Search Waybills if they exist
         if defined?(Waybill)
           waybills = Waybill
-            .where("reference_no ILIKE ?", "%#{reference_no}%")
+            .where("reference_no ILIKE ?", "%#{sanitized_ref}%")
             .includes(:dispatch_order, :created_by)
             .limit(5)
           
@@ -232,6 +235,12 @@ module Cats
       def current_store_ids
         access = AccessContext.new(user: current_user)
         access.assigned_store_ids
+      end
+
+      # Sanitize input for LIKE queries to prevent SQL injection
+      def sanitize_like_input(input)
+        # Escape SQL LIKE wildcards and backslashes
+        input.gsub(/[%_\\]/, '\\\\\\&')
       end
     end
   end

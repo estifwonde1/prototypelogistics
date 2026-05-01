@@ -24,6 +24,7 @@ import { EmptyState } from '../../components/common/EmptyState';
 import { notifications } from '@mantine/notifications';
 import { usePermission } from '../../hooks/usePermission';
 import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 
 function WarehouseListPage() {
   const navigate = useNavigate();
@@ -40,9 +41,26 @@ function WarehouseListPage() {
   const canDelete = can('warehouses', 'delete');
   const canReadHubs = can('hubs', 'read');
 
+  // Get active assignment context for filtering
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || useAuthStore((state) => state.role));
+  const userHubId = activeAssignment?.hub?.id;
+  const isHubManager = roleSlug === 'hub_manager';
+
+  // Debug logging
+  console.log('=== WarehouseListPage Debug ===');
+  console.log('Active Assignment:', activeAssignment);
+  console.log('Role Slug:', roleSlug);
+  console.log('User Hub ID:', userHubId);
+  console.log('Is Hub Manager:', isHubManager);
+
   const { data: warehouses = [], isLoading, error, refetch } = useQuery({
-    queryKey: ['warehouses'],
-    queryFn: () => getWarehouses(),
+    queryKey: ['warehouses', { hub_id: isHubManager ? userHubId : undefined }],
+    queryFn: () => {
+      const params = isHubManager && userHubId ? { hub_id: userHubId } : {};
+      console.log('Fetching warehouses with params:', params);
+      return getWarehouses(params);
+    },
   });
 
   const { data: hubs } = useQuery({

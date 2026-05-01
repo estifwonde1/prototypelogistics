@@ -28,6 +28,7 @@ import {
 } from '../../../api/commodityDefinitions';
 import { getCategoryReferences } from '../../../api/referenceData';
 import { LoadingState } from '../../../components/common/LoadingState';
+import { safeTextFilter, sanitizeSearchInput } from '../../../utils/filterUtils';
 import { ErrorState } from '../../../components/common/ErrorState';
 import { EmptyState } from '../../../components/common/EmptyState';
 import type { ApiError } from '../../../types/common';
@@ -249,7 +250,8 @@ export default function CommoditiesSetupPage() {
         </Stack>
         {(() => {
           const filtered = definitions.filter((d) => {
-            const matchesName = !nameFilter.trim() || d.name.toLowerCase().includes(nameFilter.toLowerCase());
+            const sanitizedNameFilter = sanitizeSearchInput(nameFilter);
+            const matchesName = safeTextFilter(d.name, sanitizedNameFilter);
             const matchesCategory = !categoryFilter || d.category_name === categoryFilter;
             return matchesName && matchesCategory;
           });

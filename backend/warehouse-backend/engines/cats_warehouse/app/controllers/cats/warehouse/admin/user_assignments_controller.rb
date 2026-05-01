@@ -6,12 +6,36 @@ module Cats
 
         def index
           scope = Cats::Warehouse::UserAssignment.includes(:user, :hub, :warehouse, :store, :location)
-          scope = scope.where(role_name: params[:role_name]) if params[:role_name].present?
-          scope = scope.where(user_id: params[:user_id]) if params[:user_id].present?
-          scope = scope.where(hub_id: params[:hub_id]) if params[:hub_id].present?
-          scope = scope.where(warehouse_id: params[:warehouse_id]) if params[:warehouse_id].present?
-          scope = scope.where(store_id: params[:store_id]) if params[:store_id].present?
-          scope = scope.where(location_id: params[:location_id]) if params[:location_id].present?
+          
+          # Validate and filter by role_name
+          if params[:role_name].present? && valid_role_name?(params[:role_name])
+            scope = scope.where(role_name: params[:role_name])
+          end
+          
+          # Validate and filter by user_id
+          if params[:user_id].present? && params[:user_id].to_i > 0
+            scope = scope.where(user_id: params[:user_id].to_i)
+          end
+          
+          # Validate and filter by hub_id
+          if params[:hub_id].present? && params[:hub_id].to_i > 0
+            scope = scope.where(hub_id: params[:hub_id].to_i)
+          end
+          
+          # Validate and filter by warehouse_id
+          if params[:warehouse_id].present? && params[:warehouse_id].to_i > 0
+            scope = scope.where(warehouse_id: params[:warehouse_id].to_i)
+          end
+          
+          # Validate and filter by store_id
+          if params[:store_id].present? && params[:store_id].to_i > 0
+            scope = scope.where(store_id: params[:store_id].to_i)
+          end
+          
+          # Validate and filter by location_id
+          if params[:location_id].present? && params[:location_id].to_i > 0
+            scope = scope.where(location_id: params[:location_id].to_i)
+          end
 
           render_success(assignments: scope.map { |a| assignment_payload(a) })
         end

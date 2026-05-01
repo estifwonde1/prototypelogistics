@@ -36,6 +36,7 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useAuthStore } from '../../store/authStore';
 import { usePermission } from '../../hooks/usePermission';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 
 type ApiError = {
   error?: {
@@ -76,14 +77,37 @@ function TransferRequestsPage() {
 
   const isWarehouseManager = role === 'warehouse_manager' || role === 'admin';
 
+  // Get active assignment context for filtering
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || useAuthStore((state) => state.role));
+  const userWarehouseId = activeAssignment?.warehouse?.id;
+  const userStoreId = activeAssignment?.store?.id;
+  const userHubId = activeAssignment?.hub?.id;
+  const isWarehouseManagerByRole = roleSlug === 'warehouse_manager';
+  const isStorekeeper = roleSlug === 'storekeeper';
+  const isHubManager = roleSlug === 'hub_manager';
+
   const { data: requests, isLoading, error, refetch } = useQuery({
     queryKey: ['transfer_requests', statusFilter],
     queryFn: () => getTransferRequests(statusFilter || undefined),
   });
 
   const { data: stacks = [] } = useQuery({
-    queryKey: ['stacks'],
-    queryFn: () => getStacks(),
+    queryKey: ['stacks', { 
+      warehouse_id: isWarehouseManagerByRole ? userWarehouseId : undefined,
+      store_id: isStorekeeper ? userStoreId : undefined,
+      hub_id: isHubManager ? userHubId : undefined 
+    }],
+    queryFn: () => {
+      if (isWarehouseManagerByRole && userWarehouseId) {
+        return getStacks({ warehouse_id: userWarehouseId });
+      } else if (isStorekeeper && userStoreId) {
+        return getStacks({ store_id: userStoreId });
+      } else if (isHubManager && userHubId) {
+        return getStacks(); // Backend should handle hub-level filtering
+      }
+      return getStacks();
+    },
   });
 
   const filteredStacks = useMemo(() => {

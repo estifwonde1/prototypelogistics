@@ -19,6 +19,7 @@ import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
 import { DocumentStatus } from '../../utils/constants';
+import { multiFieldTextFilter, safeStatusFilter, sanitizeSearchInput } from '../../utils/filterUtils';
 
 function WaybillListPage() {
   const navigate = useNavigate();
@@ -31,11 +32,13 @@ function WaybillListPage() {
   });
 
   const filteredWaybills = waybills?.filter((waybill) => {
-    const matchesSearch =
-      waybill.reference_no.toLowerCase().includes(search.toLowerCase()) ||
-      (waybill.source_location_name || '').toLowerCase().includes(search.toLowerCase()) ||
-      (waybill.destination_location_name || '').toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = !statusFilter || waybill.status === statusFilter;
+    const sanitizedSearch = sanitizeSearchInput(search);
+    const matchesSearch = multiFieldTextFilter(
+      waybill,
+      sanitizedSearch,
+      ['reference_no', 'source_location_name', 'destination_location_name']
+    );
+    const matchesStatus = safeStatusFilter(waybill.status, statusFilter);
     return matchesSearch && matchesStatus;
   });
 

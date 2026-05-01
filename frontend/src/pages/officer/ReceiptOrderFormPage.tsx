@@ -32,6 +32,7 @@ import { getWarehouses } from "../../api/warehouses";
 import { getHubs } from "../../api/hubs";
 import { getCommodityReferences, getUnitReferences } from "../../api/referenceData";
 import { useAuthStore } from "../../store/authStore";
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 import type { ReceiptOrderLine } from "../../api/receiptOrders";
 import type { ApiError } from "../../types/common";
 
@@ -112,9 +113,20 @@ function ReceiptOrderFormPage() {
     queryFn: () => getUnitReferences(),
   });
 
+  // Get active assignment context for filtering
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
+  const userHubId = activeAssignment?.hub?.id;
+  const isHubManager = roleSlug === 'hub_manager';
+
   const { data: warehouses = [] } = useQuery({
-    queryKey: ["warehouses"],
-    queryFn: () => getWarehouses(),
+    queryKey: ["warehouses", { hub_id: isHubManager ? userHubId : undefined }],
+    queryFn: () => {
+      if (isHubManager && userHubId) {
+        return getWarehouses({ hub_id: userHubId });
+      }
+      return getWarehouses();
+    },
   });
 
   const { data: hubs } = useQuery({

@@ -7,10 +7,26 @@ module Cats
         
         # CRITICAL: Filter by warehouse_id if provided (for warehouse managers with multiple warehouses)
         if params[:warehouse_id].present?
-          store_ids = Store.where(warehouse_id: params[:warehouse_id]).select(:id)
+          warehouse_id = params[:warehouse_id].to_i
+          
+          # Verify user has access to this warehouse
+          access = AccessContext.new(user: current_user)
+          unless access.accessible_warehouse_ids.include?(warehouse_id)
+            return render_error("Access denied to warehouse #{warehouse_id}", status: :forbidden)
+          end
+          
+          store_ids = Store.where(warehouse_id: warehouse_id).select(:id)
           scope = scope.where(store_id: store_ids)
         elsif params[:store_id].present?
-          scope = scope.where(store_id: params[:store_id])
+          store_id = params[:store_id].to_i
+          
+          # Verify user has access to this store
+          access = AccessContext.new(user: current_user)
+          unless access.assigned_store_ids.include?(store_id)
+            return render_error("Access denied to store #{store_id}", status: :forbidden)
+          end
+          
+          scope = scope.where(store_id: store_id)
         end
         
         render_resource(scope, each_serializer: StackSerializer)

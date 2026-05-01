@@ -11,6 +11,13 @@ module Cats
         # 2. Order has an assignment to this warehouse (via dispatch_order_assignments if they exist)
         if params[:warehouse_id].present?
           warehouse_id = params[:warehouse_id].to_i
+          
+          # Verify user has access to this warehouse
+          access = AccessContext.new(user: current_user)
+          unless access.accessible_warehouse_ids.include?(warehouse_id)
+            return render_error("Access denied to warehouse #{warehouse_id}", status: :forbidden)
+          end
+          
           # For dispatch orders, we primarily filter by source warehouse
           # since that's where the goods are being dispatched FROM
           orders = orders.where(warehouse_id: warehouse_id)
