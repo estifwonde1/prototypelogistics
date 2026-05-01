@@ -100,6 +100,10 @@ module Cats
         current_user&.has_role?("Storekeeper")
       end
 
+      def officer?
+        access_context.officer?
+      end
+
       def assigned_hub_ids
         access_context.assigned_hub_ids
       end
