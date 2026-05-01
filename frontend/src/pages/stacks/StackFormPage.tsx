@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -7,6 +7,7 @@ import {
   Card,
   Divider,
   Group,
+  Loader,
   NumberInput,
   Select,
   SimpleGrid,
@@ -17,12 +18,14 @@ import {
   Title,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { IconArrowLeft, IconBox, IconDeviceFloppy, IconRuler3, IconStack2 } from '@tabler/icons-react';
+import { IconArrowLeft, IconBox, IconDeviceFloppy, IconRuler3, IconSearch, IconStack2 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import type { AxiosError } from 'axios';
 import { createStack, getStack, updateStack } from '../../api/stacks';
 import { getStores } from '../../api/stores';
 import { getCommodityReferences, getUnitReferences, getInventoryLots } from '../../api/referenceData';
+import { searchDeliveryByReference } from '../../api/storekeeperdashboard';
+import type { DeliverySearchResult } from '../../api/storekeeperdashboard';
 import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useAuthStore } from '../../store/authStore';
@@ -118,6 +121,12 @@ function StackFormPage() {
     queryKey: ['inventory-lots'],
     queryFn: () => getInventoryLots(),
   });
+
+  // ── Reference search state for auto-fill ──
+  const [refSearchValue, setRefSearchValue] = useState('');
+  const [refSearchResults, setRefSearchResults] = useState<DeliverySearchResult[]>([]);
+  const [refSearchLoading, setRefSearchLoading] = useState(false);
+  const refSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const form = useForm({
     initialValues: {
@@ -233,11 +242,18 @@ function StackFormPage() {
     );
   }, [commodities]);
 
-  const unitOptions =
-    units?.map((unit) => ({
+  const unitOptions = useMemo(() => {
+    const options = units.map((unit) => ({
       value: unit.id.toString(),
       label: unit.abbreviation || unit.name,
-    })) || [];
+    }));
+    
+    if (form.values.unit_id && !options.some(o => o.value === form.values.unit_id.toString())) {
+      options.unshift({ value: form.values.unit_id.toString(), label: `Unit #${form.values.unit_id}` });
+    }
+    
+    return options;
+  }, [units, form.values.unit_id]);
 
   const referenceOptions = useMemo(() => {
     const selectedCommId = Number(form.values.commodity_id);
@@ -256,8 +272,94 @@ function StackFormPage() {
       }
     });
 
+    // Ensure the auto-filled reference is available in the options
+    if (form.values.reference && !seen.has(form.values.reference)) {
+      options.unshift({
+        value: form.values.reference,
+        label: form.values.reference,
+      });
+    }
+
     return options;
-  }, [inventoryLots, form.values.commodity_id]);
+  }, [inventoryLots, form.values.commodity_id, form.values.reference]);
+
+  // ── Reference Search Options (from search_delivery API) ──
+  const refSearchOptions = useMemo(() => {
+    return refSearchResults.map((r) => {
+      if (r.lines && r.lines.length > 1) {
+        return r.lines.map((line, idx) => ({
+          value: `${r.type}::${r.id}::${idx}::${r.reference_no}`,
+          label: `${r.reference_no} — ${line.commodity_name} (${line.quantity} ${line.unit_abbreviation || line.unit_name || ''})`,
+        }));
+      }
+      return [{
+        value: `${r.type}::${r.id}::0::${r.reference_no}`,
+        label: `${r.reference_no} — ${r.commodity} (${r.quantity} ${r.unit || ''})`,
+      }];
+    }).flat();
+  }, [refSearchResults]);
+
+  // ── Debounced reference search ──
+  const handleRefSearch = useCallback((query: string) => {
+    setRefSearchValue(query);
+    if (refSearchTimer.current) clearTimeout(refSearchTimer.current);
+
+    setRefSearchLoading(true);
+    refSearchTimer.current = setTimeout(async () => {
+      try {
+        // Query can be empty string now to fetch default assignments
+        const response = await searchDeliveryByReference(query);
+        setRefSearchResults(response.results);
+      } catch {
+        setRefSearchResults((prev) => prev.length === 0 ? prev : []);
+      } finally {
+        setRefSearchLoading(false);
+      }
+    }, 400);
+  }, []);
+
+  // Fetch default assignments on mount
+  useEffect(() => {
+    handleRefSearch('');
+  }, [handleRefSearch]);
+
+  // ── Auto-fill handler when a reference is selected ──
+  const handleRefAutoFill = useCallback((value: string | null) => {
+    if (!value) return;
+
+    const parts = value.split('::');
+    if (parts.length < 4) return;
+
+    const [type, idStr, lineIdxStr] = parts;
+    const lineIdx = Number(lineIdxStr);
+    const result = refSearchResults.find(
+      (r) => r.type === type && r.id === Number(idStr)
+    );
+
+    if (!result) return;
+
+    const line = result.lines?.[lineIdx] || result.lines?.[0];
+
+    const newCommodity = line?.commodity_name || result.commodity || '';
+    const newBatch = line?.batch_no || result.batch_no || result.reference_no;
+    const newQuantity = line?.quantity || result.quantity || 0;
+    const newUnitId = line?.unit_id ? String(line.unit_id) : (result.unit_id ? String(result.unit_id) : '');
+
+    form.setValues((prev) => ({
+      ...prev,
+      commodity_id: newCommodity,
+      reference: newBatch || '',
+      quantity: newQuantity,
+      unit_id: newUnitId,
+    }));
+
+    notifications.show({
+      title: 'Auto-filled from ' + result.reference_no,
+      message: `Commodity: ${newCommodity}, Quantity: ${newQuantity}, Batch: ${newBatch || 'N/A'}`,
+      color: 'blue',
+      autoClose: 3000,
+    });
+  }, [refSearchResults]);
 
   const handleSubmit = (values: typeof form.values) => {
     const selectedLot = inventoryLots.find((l) => l.batch_no === values.reference);
@@ -417,6 +519,32 @@ function StackFormPage() {
                   }}
                 />
 
+                {/* ── Reference Search (auto-fill from receipt order) ── */}
+                <Select
+                  label="Search Receipt Order"
+                  placeholder="Type RO-21 or select assigned order..."
+                  data={refSearchOptions}
+                  searchable
+                  clearable
+                  searchValue={refSearchValue}
+                  onSearchChange={handleRefSearch}
+                  nothingFoundMessage={refSearchLoading ? 'Searching...' : 'No deliveries found'}
+                  onChange={handleRefAutoFill}
+                  leftSection={refSearchLoading ? <Loader size={16} /> : <IconSearch size={16} />}
+                  styles={{
+                    ...inputStyles,
+                    label: {
+                      ...inputStyles.label,
+                      color: '#0d6e3f',
+                    },
+                    input: {
+                      ...inputStyles.input,
+                      backgroundColor: '#e8f5e9',
+                      borderColor: '#c8e6c9',
+                    },
+                  }}
+                />
+
                 <Group grow align="flex-start">
                   <TextInput
                     label="Stack Code"
@@ -426,7 +554,7 @@ function StackFormPage() {
                   />
                   <Select
                     key={`ref-select-${form.values.commodity_id}`}
-                    label="Reference"
+                    label="Batch / Reference"
                     placeholder="Choose batch"
                     data={referenceOptions}
                     searchable

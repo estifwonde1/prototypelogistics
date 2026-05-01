@@ -1,11 +1,25 @@
 import apiClient from './client';
 
+export interface DeliverySearchResultLine {
+  commodity_id: number;
+  commodity_name: string;
+  batch_no?: string;
+  quantity: number;
+  unit_id: number;
+  unit_name?: string;
+  unit_abbreviation?: string;
+}
+
 export interface DeliverySearchResult {
   type: string;
   reference_no: string;
   commodity: string;
   quantity: number;
   unit: string;
+  batch_no?: string;
+  commodity_id?: number;
+  unit_id?: number;
+  lines?: DeliverySearchResultLine[];
   source_location: string;
   expected_date: string;
   created_by: string;
