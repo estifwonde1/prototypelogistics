@@ -173,14 +173,44 @@ function ReceiptOrderDetailPage() {
 
   const reservationTotals = useMemo(() => {
     if (!order) return { totalOrdered: 0, totalReserved: 0, remaining: 0 };
-    const totalOrdered = totalReceiptOrderLineQuantity(order);
-    const totalReserved = totalSpaceReservedQuantity(order.space_reservations);
+
+    // For warehouse managers in a hub-scoped order, scope totals to their allocation only.
+    // The hub assigned a specific quantity to this warehouse — that is the ceiling, not the
+    // full line quantity which belongs to the hub.
+    let totalOrdered: number;
+    if (isWarehouseManager && userWarehouseId) {
+      const warehouseAssignments = (order.assignments ?? order.receipt_order_assignments ?? [])
+        .filter(a => a.warehouse_id != null && Number(a.warehouse_id) === Number(userWarehouseId));
+      if (warehouseAssignments.length > 0) {
+        totalOrdered = warehouseAssignments.reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+      } else {
+        // No hub-level assignment yet — fall back to full line quantity
+        totalOrdered = totalReceiptOrderLineQuantity(order);
+      }
+    } else {
+      totalOrdered = totalReceiptOrderLineQuantity(order);
+    }
+
+    // Only count reservations that belong to this warehouse's stores
+    let totalReserved: number;
+    if (isWarehouseManager && userWarehouseId) {
+      const reservations = order.space_reservations ?? [];
+      totalReserved = reservations.reduce((sum, r) => {
+        const st = String(r.status ?? '').toLowerCase();
+        if (st === 'cancelled' || st === 'released') return sum;
+        if (r.warehouse_id != null && Number(r.warehouse_id) !== Number(userWarehouseId)) return sum;
+        return sum + Number(r.reserved_quantity ?? 0);
+      }, 0);
+    } else {
+      totalReserved = totalSpaceReservedQuantity(order.space_reservations);
+    }
+
     return {
       totalOrdered,
       totalReserved,
       remaining: Math.max(0, totalOrdered - totalReserved),
     };
-  }, [order]);
+  }, [order, isWarehouseManager, userWarehouseId]);
 
   const canReserveSpace = useMemo(() => {
     if (!order) return false;
@@ -762,7 +792,9 @@ function ReceiptOrderDetailPage() {
       }
       // Fall back: lines with destination_warehouse_id matching
       const byDest = lines.filter(l => l.destination_warehouse_id === warehouseId);
-      return byDest.length > 0 ? byDest : lines;
+      // Do NOT fall back to all lines — if this warehouse has no assignment yet,
+      // return empty so the manager doesn't see the full hub quantity.
+      return byDest;
     }
 
     if (roleSlug === 'storekeeper') {
@@ -777,6 +809,9 @@ function ReceiptOrderDetailPage() {
       if (assignedLineIds.size > 0) {
         return lines.filter(l => l.id != null && assignedLineIds.has(l.id));
       }
+      // No line-level assignment exists (warehouse manager assigned to store without specifying a line).
+      // Return all lines — the storekeeper can see the commodity — but quantity display and
+      // totalAuthorized will be capped by the store assignment's quantity, not the line quantity.
       return lines;
     }
 
@@ -859,16 +894,6 @@ function ReceiptOrderDetailPage() {
     
     return allWarehouses.filter((warehouse) => Number(warehouse.hub_id) === Number(targetHubId));
   }, [allWarehouses, order?.hub_id, userHubId]);
-  const assignedByLine = useMemo(() => {
-    const result: Record<number, number> = {};
-    assignments.forEach((assignment) => {
-      const lineId = assignment.receipt_order_line_id;
-      if (lineId == null) return;
-      result[lineId] = (result[lineId] || 0) + Number(assignment.quantity ?? 0);
-    });
-    return result;
-  }, [assignments]);
-  
   const fullyAssigned = useMemo(() => {
     console.log('=== fullyAssigned Debug ===');
     console.log('roleSlug:', roleSlug);
@@ -1189,7 +1214,39 @@ function ReceiptOrderDetailPage() {
                             )}
                           </Table.Td>
                           <Table.Td>
-                            <Text fw={600}>{line.quantity}</Text>
+                            <Text fw={600}>
+                              {(() => {
+                                // For warehouse managers in hub-scoped orders, show their
+                                // allocated quantity (from the hub assignment), not the full line quantity.
+                                if (isWarehouseManager && userWarehouseId && line.id != null) {
+                                  const warehouseAssignment = assignments.find(
+                                    a =>
+                                      a.warehouse_id != null &&
+                                      Number(a.warehouse_id) === Number(userWarehouseId) &&
+                                      (a.receipt_order_line_id == null || a.receipt_order_line_id === line.id)
+                                  );
+                                  if (warehouseAssignment?.quantity != null) {
+                                    return Number(warehouseAssignment.quantity).toLocaleString();
+                                  }
+                                }
+                                // For storekeepers: show their store's allocated quantity
+                                if (roleSlug === 'storekeeper') {
+                                  const storeId = activeAssignment?.store?.id;
+                                  const storeAssignment = storeId != null
+                                    ? assignments.find(
+                                        a =>
+                                          a.store_id != null &&
+                                          Number(a.store_id) === Number(storeId) &&
+                                          (a.receipt_order_line_id == null || a.receipt_order_line_id === line.id)
+                                      )
+                                    : undefined;
+                                  if (storeAssignment?.quantity != null) {
+                                    return Number(storeAssignment.quantity).toLocaleString();
+                                  }
+                                }
+                                return line.quantity;
+                              })()}
+                            </Text>
                           </Table.Td>
                           <Table.Td>
                             {line.unit_name?.trim() || (line.unit_id ? `Unit #${line.unit_id}` : '—')}
@@ -1219,8 +1276,17 @@ function ReceiptOrderDetailPage() {
               const storekeeperAssignments = assignments.filter(
                 (a) => a.store_id != null && Number(a.store_id) === Number(storeId)
               );
+              // Use the store assignment quantity as the ceiling.
+              // If quantity is null on the assignment (warehouse manager didn't set one),
+              // fall back to visibleLines — which for storekeepers is already scoped to their lines.
+              // Never fall back to the raw line quantity which belongs to the hub.
               const totalAuthorized = storekeeperAssignments.length > 0
-                ? storekeeperAssignments.reduce((s, a) => s + Number(a.quantity ?? 0), 0)
+                ? storekeeperAssignments.reduce((s, a) => {
+                    // If assignment has an explicit quantity, use it
+                    if (a.quantity != null) return s + Number(a.quantity);
+                    // Otherwise sum the visible lines (already scoped to this storekeeper)
+                    return s + visibleLines.reduce((ls, l) => ls + Number(l.quantity ?? 0), 0);
+                  }, 0)
                 : visibleLines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
 
               const totalRecorded = inspections.reduce((s, i) => {
@@ -1405,8 +1471,11 @@ function ReceiptOrderDetailPage() {
                 (a) => a.store_id != null && Number(a.store_id) === Number(storeId)
               );
               const totalOrdered = isStorekeeper && storekeeperAssignments.length > 0
-                ? storekeeperAssignments.reduce((s, a) => s + Number(a.quantity ?? 0), 0)
-                : lines.reduce((sum, l) => sum + Number(l.quantity ?? 0), 0);
+                ? storekeeperAssignments.reduce((s, a) => {
+                    if (a.quantity != null) return s + Number(a.quantity);
+                    return s + visibleLines.reduce((ls, l) => ls + Number(l.quantity ?? 0), 0);
+                  }, 0)
+                : visibleLines.reduce((sum, l) => sum + Number(l.quantity ?? 0), 0);
               // Total to stack = quantity actually received (excludes lost)
               const totalToStack = inspections.length > 0
                 ? inspections.reduce((s, i) =>

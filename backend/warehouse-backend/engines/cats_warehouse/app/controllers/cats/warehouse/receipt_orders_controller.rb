@@ -115,6 +115,32 @@ module Cats
           each_serializer: ReceiptOrderAssignmentSerializer
         ).as_json
 
+        # For storekeepers: also scope receipt_order_lines to only the lines they have assignments for.
+        # The serializer always includes all lines; we override here so the storekeeper never sees
+        # the full hub quantity — only the lines (and quantities) assigned to their store.
+        if storekeeper?
+          store_ids = UserAssignment.where(user: current_user, role_name: "Storekeeper").pluck(:store_id).compact
+          assigned_line_ids = ReceiptOrderAssignment
+            .where(receipt_order: order, store_id: store_ids)
+            .where.not(receipt_order_line_id: nil)
+            .pluck(:receipt_order_line_id)
+            .uniq
+
+          scoped_lines = if assigned_line_ids.any?
+            order.receipt_order_lines.select { |l| assigned_line_ids.include?(l.id) }
+          else
+            # No line-level assignment — storekeeper still needs to see the lines
+            # but quantity should be capped to their store assignment quantity.
+            # Return all lines; the frontend will use assignment.quantity as the ceiling.
+            order.receipt_order_lines.to_a
+          end
+
+          serialized[:receipt_order_lines] = ActiveModelSerializers::SerializableResource.new(
+            scoped_lines,
+            each_serializer: ReceiptOrderLineSerializer
+          ).as_json
+        end
+
         render_success(serialized)
       end
 

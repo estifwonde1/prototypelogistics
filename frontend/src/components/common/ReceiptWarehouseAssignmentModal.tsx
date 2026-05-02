@@ -122,10 +122,14 @@ function ReceiptWarehouseAssignmentModal({
       // Only count warehouse-level assignments, not hub-level assignments
       // Hub managers need to see the full quantity available to assign to warehouses
       if (lineId == null || assignment.warehouse_id == null) return;
+      // Only count assignments that belong to this hub (if hubId is provided)
+      // This prevents a warehouse's already-assigned quantity from reducing the
+      // remaining quantity shown to the hub manager for other warehouses
+      if (hubId != null && assignment.hub_id != null && assignment.hub_id !== hubId) return;
       result[lineId] = (result[lineId] || 0) + Number(assignment.quantity ?? 0);
     });
     return result;
-  }, [receiptOrder.assignments]);
+  }, [receiptOrder.assignments, hubId]);
 
   const warehouseSpaceByWarehouseId = useMemo(() => {
     const result: Record<number, number> = {};
