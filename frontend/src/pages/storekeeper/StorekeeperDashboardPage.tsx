@@ -57,8 +57,8 @@ export default function StorekeeperDashboardPage() {
   const [showSearchModal, setShowSearchModal] = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['storekeeper_dashboard'],
-    queryFn: () => getStorekeeperDashboardData(),
+    queryKey: ['storekeeper_dashboard', { store_id: storeId }],
+    queryFn: () => getStorekeeperDashboardData(storeId),
   });
 
   // 1. Inventory scoped to store
@@ -69,7 +69,10 @@ export default function StorekeeperDashboardPage() {
   });
 
   const searchMutation = useMutation({
-    mutationFn: searchDeliveryByReference,
+    mutationFn: (refNo: string) => {
+      const warehouseId = activeAssignment?.warehouse?.id;
+      return searchDeliveryByReference(refNo, warehouseId, storeId);
+    },
     onSuccess: (data) => {
       setSearchResults(data.results);
       setSearchMessage(data.message);

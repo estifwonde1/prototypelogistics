@@ -52,7 +52,8 @@ module Cats
       end
 
       def commodity_quantity
-        object.receipt_order_line&.quantity
+        # Return the assigned quantity (specific to this storekeeper), not the full order line quantity
+        object.quantity.presence || object.receipt_order_line&.quantity
       end
 
       def unit_name

@@ -69,7 +69,9 @@ export async function searchDeliveryByReference(
   };
 }
 
-export async function getStorekeeperDashboardData(): Promise<StorekeeperDashboardData> {
-  const response = await apiClient.get('/storekeeper_assignments/dashboard_data');
+export async function getStorekeeperDashboardData(storeId?: number): Promise<StorekeeperDashboardData> {
+  const params: Record<string, unknown> = {};
+  if (storeId) params.store_id = storeId;
+  const response = await apiClient.get('/storekeeper_assignments/dashboard_data', { params });
   return response.data.data || response.data;
 }

@@ -230,7 +230,16 @@ module Cats
       end
 
       def dashboard_data
-        current_ids = current_store_ids
+        all_store_ids = current_store_ids
+
+        # If a specific store_id is provided (e.g. storekeeper selected one store at login),
+        # filter down to only that store — as long as it belongs to the current user's assignments.
+        requested_store_id = params[:store_id]&.to_i.presence
+        current_ids = if requested_store_id && all_store_ids.include?(requested_store_id)
+          [requested_store_id]
+        else
+          all_store_ids
+        end
 
         # CRITICAL: Storekeepers should only see store-level assignments
         # The where(store_id: current_ids) already filters to only assignments
@@ -329,8 +338,15 @@ module Cats
       private
 
       def find_assignment
+        all_store_ids = current_store_ids
+        requested_store_id = params[:store_id]&.to_i.presence
+        store_ids = if requested_store_id && all_store_ids.include?(requested_store_id)
+          [requested_store_id]
+        else
+          all_store_ids
+        end
         ReceiptOrderAssignment
-          .where(store_id: current_store_ids)
+          .where(store_id: store_ids)
           .find(params[:id])
       end
 

@@ -14,7 +14,7 @@ export const getGrn = async (id: number): Promise<Grn> => {
 };
 
 export const createGrn = async (
-  data: CreateGrnRequest | (Partial<Grn> & { items?: GrnItem[] })
+  data: CreateGrnRequest | (Partial<Grn> & { items?: GrnItem[]; receipt_order_id?: number })
 ): Promise<Grn> => {
   const response = await apiClient.post<ApiResponse<Grn>>('/grns', { payload: toCreateGrnRequest(data) });
   return response.data.data;

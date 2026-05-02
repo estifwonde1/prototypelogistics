@@ -33,9 +33,10 @@ import {
   startStacking,
   finishStacking,
 } from '../../api/receiptOrders';
-import { getStores } from '../../api/stores';
+import { getStores, getStore } from '../../api/stores';
 import { getStacks } from '../../api/stacks';
 import { createInspection, getInspections } from '../../api/inspections';
+import { createGrn } from '../../api/grns';
 import { getWarehouses } from '../../api/warehouses';
 import { getUnitReferences, getUomConversions } from '../../api/referenceData';
 import { StatusBadge } from '../../components/common/StatusBadge';
@@ -184,8 +185,10 @@ function ReceiptOrderDetailPage() {
   const canReserveSpace = useMemo(() => {
     if (!order) return false;
     if (isOfficerRole) return false;
+    // Storekeepers should not reserve space — that's the warehouse manager's job
+    if (roleSlug === 'storekeeper') return false;
     if (
-      !['admin', 'superadmin', 'warehouse_manager', 'storekeeper'].includes(roleSlug || '')
+      !['admin', 'superadmin', 'warehouse_manager'].includes(roleSlug || '')
     ) {
       return false;
     }
@@ -217,6 +220,16 @@ function ReceiptOrderDetailPage() {
 
   // Stacks for storekeeper's assigned store
   const stackingStoreId = useAuthStore((state) => state.activeAssignment?.store?.id ?? null);
+
+  // Fetch the storekeeper's store to resolve its warehouse_id (needed for inspection creation
+  // when the receipt order is hub-level and warehouse_id is not set on the order itself)
+  const storekeeperStoreQuery = useQuery({
+    queryKey: ['store', stackingStoreId],
+    queryFn: () => getStore(stackingStoreId!),
+    enabled: roleSlug === 'storekeeper' && !!stackingStoreId,
+    staleTime: 5 * 60 * 1000, // 5 min — store data rarely changes
+  });
+  const storekeeperStoreWarehouseId = storekeeperStoreQuery.data?.warehouse_id ?? null;
 
   const stacksQuery = useQuery({
     queryKey: ['stacks', { store_id: stackingStoreId }],
@@ -421,11 +434,32 @@ function ReceiptOrderDetailPage() {
   const recordReceiptMutation = useMutation({
     mutationFn: () => {
       if (!order) throw new Error('No order');
-      const firstLine = lines[0];
-      // Get warehouse from order or from assignments
-      const warehouseId = order.warehouse_id ??
-        assignments.find(a => a.warehouse_id != null)?.warehouse_id;
-      if (!warehouseId) throw new Error('No warehouse assigned to this order yet. The warehouse manager must assign a warehouse first.');
+      // Use visibleLines (scoped to this storekeeper's store) for commodity/unit context
+      const firstVisibleLine = visibleLines[0] ?? lines[0];
+
+      // Resolve warehouse ID — try multiple sources in priority order:
+      // 1. Order's own warehouse_id (set when order is warehouse-level)
+      // 2. Warehouse-level assignment on the order
+      // 3. The storekeeper's active assignment warehouse (populated by me_controller for store-level assignments)
+      // 4. The storekeeper's store's warehouse_id (fetched separately — most reliable for hub-level orders)
+      // 5. Store-level assignment's warehouse_id (if populated by backend)
+      const storekeeperStoreId = activeAssignment?.store?.id;
+      const storekeeperWarehouseId = activeAssignment?.warehouse?.id;
+
+      const warehouseId =
+        order.warehouse_id ??
+        assignments.find(a => a.warehouse_id != null)?.warehouse_id ??
+        storekeeperWarehouseId ??
+        storekeeperStoreWarehouseId ??
+        assignments.find(a => a.store_id != null && a.store_id === storekeeperStoreId)?.warehouse_id;
+
+      if (!warehouseId) {
+        throw new Error(
+          'Cannot determine warehouse for this receipt. ' +
+          'The warehouse manager must assign a warehouse to this order first.'
+        );
+      }
+
       return createInspection({
         warehouse_id: warehouseId,
         inspected_on: new Date().toISOString().split('T')[0],
@@ -433,8 +467,8 @@ function ReceiptOrderDetailPage() {
         receipt_order_id: order.id,
         status: 'confirmed',
         items: [{
-          commodity_id: firstLine?.commodity_id ?? 0,
-          unit_id: firstLine?.unit_id ?? 0,
+          commodity_id: firstVisibleLine?.commodity_id ?? 0,
+          unit_id: firstVisibleLine?.unit_id ?? 0,
           quantity_received: Number(receiptQty),
           quantity_lost: receiptLostQty ? Number(receiptLostQty) : undefined,
           quality_status: receiptCondition ?? 'Good',
@@ -462,6 +496,87 @@ function ReceiptOrderDetailPage() {
       notifications.show({
         title: 'Error',
         message: (isAxiosError<any>(error) ? error.response?.data?.error?.message : undefined) || 'Failed to record receipt',
+        color: 'red',
+      });
+    },
+  });
+
+  // ── Auto-create GRN from inspection data (storekeeper flow) ─────────────
+  const autoCreateGrnMutation = useMutation({
+    mutationFn: async () => {
+      if (!order) throw new Error('No order');
+
+      // Resolve warehouse — same chain as recordReceiptMutation
+      const storekeeperStoreId = activeAssignment?.store?.id;
+      const storekeeperWarehouseId = activeAssignment?.warehouse?.id;
+      const warehouseId =
+        order.warehouse_id ??
+        assignments.find(a => a.warehouse_id != null)?.warehouse_id ??
+        storekeeperWarehouseId ??
+        storekeeperStoreWarehouseId ??
+        assignments.find(a => a.store_id != null && a.store_id === storekeeperStoreId)?.warehouse_id;
+
+      if (!warehouseId) throw new Error('Cannot determine warehouse for this GRN.');
+
+      // Build GRN items from confirmed inspection items for this order
+      const confirmedInspections = inspections.filter(
+        (i) => String(i.status || '').toLowerCase() === 'confirmed'
+      );
+      if (confirmedInspections.length === 0) throw new Error('No confirmed inspection found.');
+
+      // Find the storekeeper's reserved stack for auto-filling stack_id
+      const storeId = storekeeperStoreId;
+      const reservedStack = storeId
+        ? (stacksQuery.data as import('../../types/stack').Stack[] | undefined)?.find(
+            (s) => s.store_id === storeId
+          )
+        : undefined;
+
+      const today = new Date().toISOString().split('T')[0];
+      const refNo = `GRN-RO${order.id}-${today.replace(/-/g, '')}`;
+
+      const items = confirmedInspections.flatMap((inspection) =>
+        (inspection.inspection_items ?? [])
+          .filter((item) => Number(item.quantity_received) > 0)
+          .map((item) => ({
+            commodity_id: item.commodity_id,
+            quantity: Number(item.quantity_received),
+            unit_id: item.unit_id ?? visibleLines.find(l => l.commodity_id === item.commodity_id)?.unit_id ?? 0,
+            quality_status: item.quality_status || 'good',
+            // Do NOT pass line_reference_no from the inspection — that reference is already
+            // taken by the InspectionItem record. The backend will generate a fresh unique ref.
+            store_id: storeId,
+            stack_id: reservedStack?.id,
+          }))
+      );
+
+      if (items.length === 0) throw new Error('No received items found in inspection.');
+
+      return createGrn({
+        reference_no: refNo,
+        warehouse_id: warehouseId,
+        received_on: today,
+        received_by_id: useAuthStore.getState().userId ?? undefined,
+        receipt_order_id: order.id,
+        status: 'draft',
+        items,
+      });
+    },
+    onSuccess: (grn) => {
+      queryClient.invalidateQueries({ queryKey: ['grns'] });
+      notifications.show({
+        title: 'GRN Created',
+        message: `GRN ${grn.reference_no} created successfully. Review and confirm below.`,
+        color: 'green',
+      });
+      navigate(`/grns/${grn.id}`);
+    },
+    onError: (error: unknown) => {
+      notifications.show({
+        title: 'Error',
+        message:
+          (isAxiosError<any>(error) ? error.response?.data?.error?.message : undefined) ||
+          'Failed to create GRN',
         color: 'red',
       });
     },
@@ -718,7 +833,12 @@ function ReceiptOrderDetailPage() {
     return rows;
   }, [assignments, lines, order]);
   const isDraft = String(order?.status || '').toLowerCase() === 'draft';
-  const canCreateGrn = can('grns', 'create') && !!order && !isDraft;
+  // For storekeepers: GRN can only be created after inspection is completed (has at least one confirmed inspection)
+  const hasCompletedInspection = inspections.some(
+    (i) => String(i.status || '').toLowerCase() === 'confirmed'
+  );
+  const canCreateGrn = can('grns', 'create') && !!order && !isDraft &&
+    (roleSlug !== 'storekeeper' || hasCompletedInspection);
   const canUpdateOrder = can('receipt_orders', 'update');
   const canDeleteOrder = can('receipt_orders', 'delete');
   const canConfirmOrder = can('receipt_orders', 'confirm');
@@ -821,13 +941,24 @@ function ReceiptOrderDetailPage() {
             </Button>
           )}
           {canCreateGrn && (
-            <Button
-              size="sm"
-              variant="light"
-              onClick={() => navigate(`/grns/new?receipt_order_id=${order.id}`)}
-            >
-              Create GRN
-            </Button>
+            roleSlug === 'storekeeper' ? (
+              <Button
+                size="sm"
+                color="green"
+                onClick={() => autoCreateGrnMutation.mutate()}
+                loading={autoCreateGrnMutation.isPending}
+              >
+                Create GRN
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="light"
+                onClick={() => navigate(`/grns/new?receipt_order_id=${order.id}`)}
+              >
+                Create GRN
+              </Button>
+            )
           )}
           {canHubAssignWarehouse ? (
             <Button
@@ -1022,7 +1153,15 @@ function ReceiptOrderDetailPage() {
               if (!isStorekeeper) return null;
               if (!['assigned', 'in_progress'].includes(orderStatus)) return null;
 
-              const totalAuthorized = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
+              // For storekeepers: use their assigned quantity, not the full order quantity
+              const storeId = activeAssignment?.store?.id;
+              const storekeeperAssignments = assignments.filter(
+                (a) => a.store_id != null && Number(a.store_id) === Number(storeId)
+              );
+              const totalAuthorized = storekeeperAssignments.length > 0
+                ? storekeeperAssignments.reduce((s, a) => s + Number(a.quantity ?? 0), 0)
+                : visibleLines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
+
               const totalRecorded = inspections.reduce((s, i) => {
                 return s + (i.inspection_items ?? []).reduce((ss, item) => ss + Number(item.quantity_received ?? 0) + Number(item.quantity_lost ?? 0), 0);
               }, 0);
@@ -1199,7 +1338,14 @@ function ReceiptOrderDetailPage() {
 
               if (!canStartStacking && !isStacking && !isCompleted) return null;
 
-              const totalOrdered = lines.reduce((sum, l) => sum + Number(l.quantity ?? 0), 0);
+              // For storekeepers: use their assigned quantity, not the full order quantity
+              const storeId = activeAssignment?.store?.id;
+              const storekeeperAssignments = assignments.filter(
+                (a) => a.store_id != null && Number(a.store_id) === Number(storeId)
+              );
+              const totalOrdered = isStorekeeper && storekeeperAssignments.length > 0
+                ? storekeeperAssignments.reduce((s, a) => s + Number(a.quantity ?? 0), 0)
+                : lines.reduce((sum, l) => sum + Number(l.quantity ?? 0), 0);
               // Total to stack = quantity actually received (excludes lost)
               const totalToStack = inspections.length > 0
                 ? inspections.reduce((s, i) =>

@@ -10,6 +10,7 @@ export interface CreateGrnRequest {
   received_by_id?: number;
   source_type?: string;
   source_id?: number;
+  receipt_order_id?: number;
   status?: string;
   items: GrnItem[];
 }
@@ -48,7 +49,7 @@ export interface CreateWaybillRequest {
   items: WaybillItem[];
 }
 
-export function toCreateGrnRequest(data: Partial<Grn> & { items?: GrnItem[] }): CreateGrnRequest {
+export function toCreateGrnRequest(data: Partial<Grn> & { items?: GrnItem[]; receipt_order_id?: number }): CreateGrnRequest {
   return {
     reference_no: data.reference_no ?? '',
     warehouse_id: data.warehouse_id ?? 0,
@@ -56,6 +57,7 @@ export function toCreateGrnRequest(data: Partial<Grn> & { items?: GrnItem[] }): 
     received_by_id: data.received_by_id,
     source_type: data.source_type,
     source_id: data.source_id,
+    receipt_order_id: data.receipt_order_id,
     status: data.status,
     items: data.items ?? data.grn_items ?? [],
   };

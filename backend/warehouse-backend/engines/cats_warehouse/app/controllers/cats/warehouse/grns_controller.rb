@@ -18,7 +18,12 @@ module Cats
         authorize Grn
         receipt_order =
           payload[:receipt_order_id].present? ? ReceiptOrder.find(payload[:receipt_order_id]) : nil
-        if receipt_order.present? && payload[:warehouse_id].present? && receipt_order.warehouse_id.to_i != payload[:warehouse_id].to_i
+        # Only validate warehouse match when the receipt order has an explicit warehouse_id set.
+        # Hub-level orders have warehouse_id = nil until a warehouse manager assigns one,
+        # so we skip the check in that case.
+        if receipt_order.present? && payload[:warehouse_id].present? &&
+           receipt_order.warehouse_id.present? &&
+           receipt_order.warehouse_id.to_i != payload[:warehouse_id].to_i
           raise ArgumentError, "receipt order must belong to the selected warehouse"
         end
 

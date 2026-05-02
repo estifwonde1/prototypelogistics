@@ -19,6 +19,7 @@ import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { statusArrayFilter, getPendingAssignmentStatuses, getCompletedAssignmentStatuses } from '../../utils/filterUtils';
 import type { ApiError } from '../../types/common';
+import { useAuthStore } from '../../store/authStore';
 
 interface StoreAssignment {
   id: number;
@@ -47,8 +48,10 @@ interface StoreAssignment {
   batch_no?: string;
 }
 
-async function getStorekeeperAssignments(): Promise<StoreAssignment[]> {
-  const response = await apiClient.get('/storekeeper_assignments');
+async function getStorekeeperAssignments(storeId?: number): Promise<StoreAssignment[]> {
+  const params: Record<string, unknown> = {};
+  if (storeId) params.store_id = storeId;
+  const response = await apiClient.get('/storekeeper_assignments', { params });
   const data = response.data.data || response.data;
   return Array.isArray(data.receipt_assignments) ? data.receipt_assignments : (Array.isArray(data.assignments) ? data.assignments : (Array.isArray(data) ? data : []));
 }
@@ -69,9 +72,13 @@ export default function StorekeeperAssignmentsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  // Use the active store from auth context so filtering respects the store selected at login
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const activeStoreId = activeAssignment?.store?.id;
+
   const { data: assignments = [], isLoading, error } = useQuery({
-    queryKey: ['storekeeper_assignments'],
-    queryFn: () => getStorekeeperAssignments(),
+    queryKey: ['storekeeper_assignments', { store_id: activeStoreId }],
+    queryFn: () => getStorekeeperAssignments(activeStoreId),
   });
 
   const acceptMutation = useMutation({
