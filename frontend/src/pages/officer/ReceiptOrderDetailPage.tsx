@@ -725,7 +725,7 @@ function ReceiptOrderDetailPage() {
       // Filter lines by destination_hub_id matching the user's hub
       const filtered = lines.filter(l => l.destination_hub_id === hubId);
       
-      // If no lines match, check assignments for this hub
+      // If no lines match by destination_hub_id, check assignments
       if (filtered.length === 0) {
         const assignedLineIds = new Set(
           assignments
@@ -734,6 +734,14 @@ function ReceiptOrderDetailPage() {
         );
         if (assignedLineIds.size > 0) {
           return lines.filter(l => l.id != null && assignedLineIds.has(l.id));
+        }
+        
+        // CRITICAL FIX: If no assignments yet, but this hub manager has access to this order,
+        // show all lines that don't have a specific destination_hub_id set (they're pending assignment)
+        // This allows hub managers to see and assign lines in multi-hub orders
+        const linesWithoutDestination = lines.filter(l => !l.destination_hub_id && !l.destination_warehouse_id);
+        if (linesWithoutDestination.length > 0) {
+          return linesWithoutDestination;
         }
       }
       
@@ -847,18 +855,9 @@ function ReceiptOrderDetailPage() {
     // CRITICAL: Use userHubId (the manager's assigned hub), not order.hub_id
     // For multi-hub orders, each hub manager should see their own hub's warehouses
     const targetHubId = userHubId || order?.hub_id;
-    console.log('=== hubScopedWarehouses Debug ===');
-    console.log('userHubId:', userHubId);
-    console.log('order.hub_id:', order?.hub_id);
-    console.log('Using targetHubId:', targetHubId);
-    console.log('All warehouses:', allWarehouses.map(w => ({ id: w.id, name: w.name, hub_id: w.hub_id })));
-    
     if (!targetHubId) return [];
     
-    const filtered = allWarehouses.filter((warehouse) => Number(warehouse.hub_id) === Number(targetHubId));
-    console.log('Filtered warehouses for hub', targetHubId, ':', filtered.map(w => ({ id: w.id, name: w.name })));
-    
-    return filtered;
+    return allWarehouses.filter((warehouse) => Number(warehouse.hub_id) === Number(targetHubId));
   }, [allWarehouses, order?.hub_id, userHubId]);
   const assignedByLine = useMemo(() => {
     const result: Record<number, number> = {};
@@ -871,17 +870,18 @@ function ReceiptOrderDetailPage() {
   }, [assignments]);
   
   const fullyAssigned = useMemo(() => {
-    // For hub managers: check if THEIR hub's lines are fully assigned
+    console.log('=== fullyAssigned Debug ===');
+    console.log('roleSlug:', roleSlug);
+    console.log('userHubId:', userHubId);
+    console.log('All lines:', lines);
+    
+    // For hub managers: check if THEIR hub's lines are fully assigned to warehouses
     // For others: check if ALL lines are fully assigned
     const linesToCheck = roleSlug === 'hub_manager' && userHubId 
       ? lines.filter(l => l.destination_hub_id === userHubId)
       : lines;
     
-    console.log('=== fullyAssigned Debug ===');
-    console.log('roleSlug:', roleSlug);
-    console.log('userHubId:', userHubId);
-    console.log('All lines:', lines.map(l => ({ id: l.id, destination_hub_id: l.destination_hub_id, quantity: l.quantity })));
-    console.log('Lines to check:', linesToCheck.map(l => ({ id: l.id, destination_hub_id: l.destination_hub_id, quantity: l.quantity })));
+    console.log('Lines to check:', linesToCheck);
     
     if (linesToCheck.length === 0) {
       console.log('No lines to check, returning false');
@@ -893,27 +893,23 @@ function ReceiptOrderDetailPage() {
     console.log('Total ordered for these lines:', totalOrdered);
     
     // Calculate total assigned quantity to WAREHOUSES only for these lines
-    // Hub-level assignments don't count as "fully assigned" because the hub manager
-    // still needs to assign them down to warehouses
+    // CRITICAL: Only count assignments that have warehouse_id AND belong to this hub
     const totalAssigned = assignments.reduce((sum, assignment) => {
-      // Only count warehouse assignments for the lines we're checking
-      if (assignment.warehouse_id != null) {
-        // Check if this assignment belongs to one of our lines
-        const belongsToOurLines = assignment.receipt_order_line_id != null
-          ? linesToCheck.some(l => l.id === assignment.receipt_order_line_id)
-          : true; // Order-level assignment counts for all lines
-        
-        console.log('Assignment:', {
-          id: assignment.id,
-          warehouse_id: assignment.warehouse_id,
-          receipt_order_line_id: assignment.receipt_order_line_id,
-          quantity: assignment.quantity,
-          belongsToOurLines
-        });
-        
-        if (belongsToOurLines) {
-          return sum + Number(assignment.quantity ?? 0);
-        }
+      // Must have warehouse_id (not just hub_id)
+      if (!assignment.warehouse_id) return sum;
+      
+      // For hub managers, only count assignments for their hub
+      if (roleSlug === 'hub_manager' && userHubId) {
+        if (assignment.hub_id !== userHubId) return sum;
+      }
+      
+      // Check if this assignment belongs to one of our lines
+      const belongsToOurLines = assignment.receipt_order_line_id != null
+        ? linesToCheck.some(l => l.id === assignment.receipt_order_line_id)
+        : true; // Order-level assignment counts for all lines
+      
+      if (belongsToOurLines) {
+        return sum + Number(assignment.quantity ?? 0);
       }
       return sum;
     }, 0);
@@ -924,7 +920,6 @@ function ReceiptOrderDetailPage() {
     const remaining = totalOrdered - totalAssigned;
     console.log('Remaining:', remaining);
     console.log('Fully assigned?', remaining <= 0.000001);
-    
     return remaining <= 0.000001;
   }, [assignments, lines, roleSlug, userHubId]);
   const canHubAssignWarehouse =
@@ -944,17 +939,20 @@ function ReceiptOrderDetailPage() {
 
   // Lines scoped to this hub manager's hub — used in the Assign Warehouse modal
   const hubScopedLines = useMemo(() => {
+    console.log('=== hubScopedLines Debug ===');
+    console.log('userHubId:', userHubId);
+    console.log('order.hub_id:', order?.hub_id);
+    
     if (roleSlug !== 'hub_manager' || !order) return lines;
     // CRITICAL: Use userHubId (the manager's assigned hub), not order.hub_id
     const hubId = userHubId || order.hub_id;
+    console.log('Using hubId:', hubId);
+    
     if (!hubId) return lines;
     // Filter lines that are destined for this hub
     const filtered = lines.filter(l => l.destination_hub_id === hubId);
-    console.log('=== hubScopedLines Debug ===');
-    console.log('userHubId:', userHubId);
-    console.log('order.hub_id:', order.hub_id);
-    console.log('Using hubId:', hubId);
-    console.log('Filtered lines:', filtered.map(l => ({ id: l.id, destination_hub_id: l.destination_hub_id })));
+    console.log('Filtered lines:', filtered);
+    
     // Fall back to all lines if no lines have destination_hub_id set (old orders)
     return filtered.length > 0 ? filtered : lines.filter(l => !l.destination_warehouse_id);
   }, [lines, order, roleSlug, userHubId]);
@@ -2061,6 +2059,7 @@ function ReceiptOrderDetailPage() {
         uomConversions={uomConversions}
         onSubmit={(payload) => assignMutation.mutate(payload)}
         loading={isLoading_}
+        hubId={userHubId}
       />
     </Stack>
   );

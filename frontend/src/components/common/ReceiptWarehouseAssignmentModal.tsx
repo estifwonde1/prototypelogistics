@@ -21,6 +21,7 @@ import type { UnitReference, UomConversion } from '../../types/referenceData';
 
 interface AssignmentPayloadRow {
   receipt_order_line_id: number;
+  hub_id?: number;
   warehouse_id: number;
   quantity: number;
 }
@@ -36,6 +37,7 @@ interface ReceiptWarehouseAssignmentModalProps {
   uomConversions: UomConversion[];
   onSubmit: (payload: { assignments: AssignmentPayloadRow[] }) => void;
   loading?: boolean;
+  hubId?: number; // The hub manager's assigned hub ID
 }
 
 interface DraftRow {
@@ -109,6 +111,7 @@ function ReceiptWarehouseAssignmentModal({
   uomConversions,
   onSubmit,
   loading = false,
+  hubId,
 }: ReceiptWarehouseAssignmentModalProps) {
   const lines = useMemo(() => filteredLines ?? orderLines(receiptOrder), [filteredLines, receiptOrder]);
 
@@ -338,11 +341,20 @@ function ReceiptWarehouseAssignmentModal({
     if (!canSubmit) return;
 
     onSubmit({
-      assignments: rows.map((row) => ({
-        receipt_order_line_id: Number(row.receipt_order_line_id),
-        warehouse_id: Number(row.warehouse_id),
-        quantity: Number(validations[row.clientId]?.convertedQuantity ?? 0),
-      })),
+      assignments: rows.map((row) => {
+        const assignment: AssignmentPayloadRow = {
+          receipt_order_line_id: Number(row.receipt_order_line_id),
+          warehouse_id: Number(row.warehouse_id),
+          quantity: Number(validations[row.clientId]?.convertedQuantity ?? 0),
+        };
+        
+        // Include hub_id if provided (for multi-hub orders)
+        if (hubId != null) {
+          assignment.hub_id = hubId;
+        }
+        
+        return assignment;
+      }),
     });
   };
 

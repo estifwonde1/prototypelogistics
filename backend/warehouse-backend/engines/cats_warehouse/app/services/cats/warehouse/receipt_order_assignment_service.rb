@@ -16,16 +16,40 @@ module Cats
           @assignments.each do |payload|
             line = find_line(payload[:receipt_order_line_id])
 
+            # CRITICAL: Determine hub_id for the assignment
+            # Priority: 1) Explicit hub_id in payload, 2) Line's destination_hub_id, 3) Order's hub_id
+            assignment_hub_id = payload[:hub_id].presence || 
+                                (line&.destination_hub_id).presence || 
+                                @order.warehouse&.hub_id || 
+                                @order.hub_id
+
+            # CRITICAL: Determine the correct status based on assignment level
+            # Warehouse/store assignments: "assigned" (actual assignment)
+            # Hub-level assignments: "pending" (routing/notification only)
+            assignment_status = if payload[:warehouse_id].present? || payload[:store_id].present?
+                                  ContractConstants::DOCUMENT_STATUSES[:assigned]
+                                else
+                                  'pending'
+                                end
+
+            Rails.logger.info "=== Creating Assignment ==="
+            Rails.logger.info "Line ID: #{payload[:receipt_order_line_id]}"
+            Rails.logger.info "Hub ID: #{assignment_hub_id}"
+            Rails.logger.info "Warehouse ID: #{payload[:warehouse_id]}"
+            Rails.logger.info "Store ID: #{payload[:store_id]}"
+            Rails.logger.info "Quantity: #{payload[:quantity]}"
+            Rails.logger.info "Status: #{assignment_status}"
+
             ReceiptOrderAssignment.create!(
               receipt_order: @order,
               receipt_order_line: line,
-              hub_id: payload[:hub_id] || @order.warehouse&.hub_id || @order.hub_id,
+              hub_id: assignment_hub_id,
               warehouse_id: payload[:warehouse_id] || @order.warehouse_id,
               store_id: payload[:store_id],
               assigned_by: @actor,
               assigned_to_id: assigned_to_id_for(payload),
               quantity: payload[:quantity],
-              status: normalize_assignment_status(payload[:status])
+              status: payload[:status].present? ? normalize_assignment_status(payload[:status]) : assignment_status
             )
           end
 
