@@ -49,6 +49,24 @@ export const getCategoryReferences = async (): Promise<CommodityCategory[]> => {
   return response.data.data.categories;
 };
 
+export interface CreateCategoryPayload {
+  name: string;
+  code?: string;
+  parent_id?: number | null;
+}
+
+export const createCategory = async (payload: CreateCategoryPayload): Promise<CommodityCategory> => {
+  const response = await apiClient.post<ApiResponse<{ category: CommodityCategory }>>(
+    '/reference_data/categories',
+    { category: payload }
+  );
+  return response.data.data.category;
+};
+
+export const deleteCategory = async (id: number): Promise<void> => {
+  await apiClient.delete(`/reference_data/categories/${id}`);
+};
+
 export const getTransporterReferences = async (): Promise<TransporterReference[]> => {
   const response = await apiClient.get<ApiResponse<{ transporters: TransporterReference[] }>>(
     '/reference_data/transporters'
