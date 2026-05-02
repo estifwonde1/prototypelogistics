@@ -71,6 +71,8 @@ module Cats
               attrs[:warehouse_id] = id
             when "Officer"
               attrs[:warehouse_id] = id
+            when "Quality Assurance", "Receipt Authorizer"
+              attrs[:warehouse_id] = id
             when "Regional Officer", "Zonal Officer", "Woreda Officer", "Kebele Officer"
               attrs[:location_id] = id
             end
@@ -135,6 +137,12 @@ module Cats
             delete_ids = existing_ids - ids
             Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name, warehouse_id: delete_ids).delete_all if delete_ids.any?
             create_ids.each { |id| find_or_create_with(Cats::Warehouse::UserAssignment, user: user, role_name: role_name, warehouse_id: id) }
+          when "Quality Assurance", "Receipt Authorizer"
+            existing_ids = Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name).pluck(:warehouse_id).compact
+            create_ids = ids - existing_ids
+            delete_ids = existing_ids - ids
+            Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name, warehouse_id: delete_ids).delete_all if delete_ids.any?
+            create_ids.each { |id| find_or_create_with(Cats::Warehouse::UserAssignment, user: user, role_name: role_name, warehouse_id: id) }
           when "Regional Officer", "Zonal Officer", "Woreda Officer", "Kebele Officer"
             existing_ids = Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name).pluck(:location_id)
             create_ids = ids - existing_ids
@@ -184,6 +192,8 @@ module Cats
             payload[:warehouse_ids].to_a
           when "Officer"
             payload[:warehouse_ids].to_a
+          when "Quality Assurance", "Receipt Authorizer"
+            payload[:warehouse_ids].to_a
           when "Regional Officer", "Zonal Officer", "Woreda Officer", "Kebele Officer"
             payload[:location_ids].to_a
           else
@@ -192,7 +202,9 @@ module Cats
         end
 
         def valid_role_name?(role_name)
-          ["Hub Manager", "Warehouse Manager", "Storekeeper", "Officer", "Federal Officer", "Regional Officer", "Zonal Officer", "Woreda Officer", "Kebele Officer"].include?(role_name)
+          ["Hub Manager", "Warehouse Manager", "Storekeeper", "Officer", "Federal Officer",
+           "Regional Officer", "Zonal Officer", "Woreda Officer", "Kebele Officer",
+           "Quality Assurance", "Receipt Authorizer"].include?(role_name)
         end
 
         def assignment_payload(assignment)

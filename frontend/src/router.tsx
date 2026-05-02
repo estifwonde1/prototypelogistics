@@ -50,6 +50,7 @@ const WaybillCreatePage = lazy(() => import('./pages/waybills/WaybillCreatePage'
 const WaybillDetailPage = lazy(() => import('./pages/waybills/WaybillDetailPage'));
 const AdminUsersPage = lazy(() => import('./pages/admin/users/AdminUsersPage'));
 const UserAssignmentsPage = lazy(() => import('./pages/admin/assignments/UserAssignmentsPage'));
+const RolesManagementPage = lazy(() => import('./pages/admin/roles/RolesManagementPage'));
 const LocationsSetupPage = lazy(() => import('./pages/admin/setup/LocationsSetupPage'));
 const HubSetupPage = lazy(() => import('./pages/admin/setup/HubSetupPage'));
 const WarehouseSetupPage = lazy(() => import('./pages/admin/setup/WarehouseSetupPage'));
@@ -556,6 +557,14 @@ export const router = createBrowserRouter([
         element: (
           <RequireAdmin>
             <AdminUsersPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: 'admin/roles',
+        element: (
+          <RequireAdmin>
+            <RolesManagementPage />
           </RequireAdmin>
         ),
       },

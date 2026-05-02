@@ -19,6 +19,7 @@ import {
   IconClipboardList,
   IconMapPin,
   IconFileArrowRight,
+  IconShield,
 } from "@tabler/icons-react";
 import { useAuthStore } from "../../store/authStore";
 import { usePermission } from "../../hooks/usePermission";
@@ -69,6 +70,11 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
       label: "User Management",
       items: [
         { label: "Users", icon: <IconUsers size={20} />, path: "/admin/users" },
+        {
+          label: "Roles",
+          icon: <IconShield size={20} />,
+          path: "/admin/roles",
+        },
         {
           label: "User Assignments",
           icon: <IconUserCheck size={20} />,

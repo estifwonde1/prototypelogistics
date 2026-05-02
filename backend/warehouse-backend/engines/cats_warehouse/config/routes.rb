@@ -5,7 +5,7 @@ Cats::Warehouse::Engine.routes.draw do
 
     namespace :admin do
       resources :users, only: [ :index, :create, :update, :destroy ]
-      resources :roles, only: [ :index ]
+      resources :roles, only: [ :index, :create, :destroy ]
       resources :user_assignments, only: [ :index, :create, :destroy ]
       patch "user_assignments/bulk", to: "user_assignments#bulk_update"
     end
@@ -23,6 +23,8 @@ Cats::Warehouse::Engine.routes.draw do
     patch "reference_data/commodities/:id", to: "reference_data#update_commodity"
     delete "reference_data/commodities/:id", to: "reference_data#destroy_commodity"
     get "reference_data/categories", to: "reference_data#categories"
+    post "reference_data/categories", to: "reference_data#create_category"
+    delete "reference_data/categories/:id", to: "reference_data#destroy_category"
 
     resources :commodity_definitions, only: [ :index, :create, :update, :destroy ]
     get "reference_data/units", to: "reference_data#units"

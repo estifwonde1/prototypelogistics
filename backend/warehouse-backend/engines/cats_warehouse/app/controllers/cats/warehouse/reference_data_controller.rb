@@ -108,17 +108,113 @@ module Cats
       def categories
         authorize :reference_data, :facility_options?, policy_class: ReferenceDataPolicy
 
-        categories = Cats::Core::CommodityCategory
-          .order(:name, :id)
-          .map do |cat|
-            {
-              id: cat.id,
-              name: cat.name,
-              code: cat.code
-            }
-          end
+        all_categories = Cats::Core::CommodityCategory.order(:name, :id).to_a
+        category_map = all_categories.index_by(&:id)
+
+        categories = all_categories.map do |cat|
+          serialize_category(cat, category_map)
+        end
 
         render_success(categories: categories)
+      end
+
+      # POST /reference_data/categories
+      def create_category
+        authorize :reference_data, :create_category?, policy_class: ReferenceDataPolicy
+
+        payload = params.require(:category).permit(:name, :code, :parent_id)
+
+        name = payload[:name]&.strip
+        if name.blank?
+          return render_error("Category name is required", status: :unprocessable_entity)
+        end
+
+        parent_id = payload[:parent_id].presence
+
+        # Validate parent exists if provided
+        parent = nil
+        if parent_id.present?
+          parent = Cats::Core::CommodityCategory.find_by(id: parent_id)
+          unless parent
+            return render_error("Parent category not found", status: :not_found)
+          end
+          # Only allow one level of nesting (parent must be a root/top-level group)
+          unless parent.is_root?
+            return render_error("Categories can only be nested one level deep", status: :unprocessable_entity)
+          end
+        end
+
+        # Check for duplicate name at the same level using ancestry scoping
+        # (ancestry gem stores hierarchy in the 'ancestry' string column, not parent_id)
+        scope = if parent.present?
+          parent.children.where("LOWER(name) = ?", name.downcase)
+        else
+          Cats::Core::CommodityCategory.roots.where("LOWER(name) = ?", name.downcase)
+        end
+
+        if scope.exists?
+          return render_error("A category with this name already exists at this level", status: :unprocessable_entity)
+        end
+
+        # code is required by the model — generate one if not provided
+        code = payload[:code]&.strip
+        if code.blank?
+          base = name.upcase.gsub(/[^A-Z0-9]/, '').first(6)
+          code = "#{base}-#{SecureRandom.hex(2).upcase}"
+          # Ensure uniqueness
+          while Cats::Core::CommodityCategory.exists?(code: code)
+            code = "#{base}-#{SecureRandom.hex(2).upcase}"
+          end
+        end
+
+        if Cats::Core::CommodityCategory.exists?(code: code)
+          return render_error("A category with code '#{code}' already exists", status: :unprocessable_entity)
+        end
+
+        category = Cats::Core::CommodityCategory.new(name: name, code: code)
+        category.parent = parent if parent.present?
+        category.save!
+
+        all_categories = Cats::Core::CommodityCategory.order(:name, :id).to_a
+        category_map = all_categories.index_by(&:id)
+
+        render_success({ category: serialize_category(category, category_map) }, status: :created)
+      rescue ActiveRecord::RecordInvalid => e
+        render_error(e.record.errors.full_messages.to_sentence, status: :unprocessable_entity)
+      end
+
+      # DELETE /reference_data/categories/:id
+      def destroy_category
+        authorize :reference_data, :destroy_category?, policy_class: ReferenceDataPolicy
+
+        category = Cats::Core::CommodityCategory.find_by(id: params[:id])
+        unless category
+          return render_error("Category not found", status: :not_found)
+        end
+
+        # Prevent deletion if any commodity definitions use this category
+        definition_count = Cats::Warehouse::CommodityDefinition
+          .where(commodity_category_id: category.id)
+          .count
+
+        if definition_count > 0
+          return render_error(
+            "Cannot delete '#{category.name}': #{definition_count} commodity definition(s) are using this category.",
+            status: :unprocessable_entity
+          )
+        end
+
+        # Prevent deletion if it has child categories (ancestry gem)
+        child_count = category.children.count
+        if child_count > 0
+          return render_error(
+            "Cannot delete '#{category.name}': it has #{child_count} sub-categor#{child_count == 1 ? 'y' : 'ies'}. Delete or reassign them first.",
+            status: :unprocessable_entity
+          )
+        end
+
+        category.destroy!
+        render_success({ id: category.id })
       end
 
       def commodities
@@ -229,6 +325,32 @@ module Cats
       end
 
       private
+
+      def serialize_category(cat, category_map)
+        # ancestry gem provides parent_id as a virtual method (derived from the ancestry string)
+        parent_id = cat.respond_to?(:parent_id) ? cat.parent_id : nil
+        parent_name = parent_id.present? ? category_map[parent_id]&.name : nil
+
+        # Walk up to the root ancestor for the group name
+        group_name = if cat.respond_to?(:ancestor_ids) && cat.ancestor_ids.any?
+          root_id = cat.ancestor_ids.first
+          category_map[root_id]&.name
+        else
+          nil # This category IS a top-level group (root)
+        end
+
+        is_group = cat.respond_to?(:is_root?) ? cat.is_root? : parent_id.blank?
+
+        {
+          id: cat.id,
+          name: cat.name,
+          code: cat.respond_to?(:code) ? cat.code : nil,
+          parent_id: parent_id,
+          parent_name: parent_name,
+          group_name: group_name,
+          is_group: is_group
+        }
+      end
 
       def inventory_lot_payload
         InventoryLot

@@ -32,11 +32,14 @@ const ROLE_OPTIONS = [
   'Hub Manager',
   'Warehouse Manager',
   'Storekeeper',
+  'Officer',
   'Federal Officer',
   'Regional Officer',
   'Zonal Officer',
   'Woreda Officer',
   'Kebele Officer',
+  'Quality Assurance',
+  'Receipt Authorizer',
 ];
 
 export default function AdminUsersPage() {

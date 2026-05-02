@@ -72,4 +72,8 @@ export interface CommodityCategory {
   id: number;
   name: string;
   code?: string;
+  parent_id?: number | null;
+  parent_name?: string | null;
+  group_name?: string | null;
+  is_group?: boolean;
 }

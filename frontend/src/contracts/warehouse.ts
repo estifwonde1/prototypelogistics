@@ -12,6 +12,8 @@ export const ROLES = {
   STOREKEEPER: 'storekeeper',
   INSPECTOR: 'inspector',
   DISPATCHER: 'dispatcher',
+  QUALITY_ASSURANCE: 'quality_assurance',
+  RECEIPT_AUTHORIZER: 'receipt_authorizer',
 } as const;
 
 export type RoleSlug = (typeof ROLES)[keyof typeof ROLES];
@@ -39,6 +41,8 @@ export const ROLE_LABELS: Record<RoleSlug, string> = {
   [ROLES.STOREKEEPER]: 'Storekeeper',
   [ROLES.INSPECTOR]: 'Inspector',
   [ROLES.DISPATCHER]: 'Dispatcher',
+  [ROLES.QUALITY_ASSURANCE]: 'Quality Assurance',
+  [ROLES.RECEIPT_AUTHORIZER]: 'Receipt Authorizer',
 };
 
 export type Resource =
@@ -180,6 +184,34 @@ export const ROLE_CAPABILITIES: Record<RoleSlug, PermissionMatrix> = {
   },
   [ROLES.INSPECTOR]: {},
   [ROLES.DISPATCHER]: {},
+  [ROLES.QUALITY_ASSURANCE]: {
+    warehouses: ['read'],
+    stores: ['read'],
+    stacks: ['read'],
+    grns: ['read'],
+    gins: ['read'],
+    inspections: ['read', 'create', 'confirm'],
+    stock_balances: ['read'],
+    receipts: ['read'],
+    dispatches: ['read'],
+    receipt_orders: ['read'],
+    dispatch_orders: ['read'],
+    reports: ['read'],
+  },
+  [ROLES.RECEIPT_AUTHORIZER]: {
+    warehouses: ['read'],
+    stores: ['read'],
+    stacks: ['read'],
+    grns: ['read', 'confirm'],
+    gins: ['read'],
+    inspections: ['read'],
+    stock_balances: ['read'],
+    receipts: ['read'],
+    dispatches: ['read'],
+    receipt_orders: ['read', 'confirm'],
+    dispatch_orders: ['read'],
+    reports: ['read'],
+  },
 };
 
 const DEFAULT_ROUTE_BY_ROLE: Record<RoleSlug, string> = {
@@ -196,6 +228,8 @@ const DEFAULT_ROUTE_BY_ROLE: Record<RoleSlug, string> = {
   [ROLES.STOREKEEPER]: '/storekeeper/dashboard',
   [ROLES.INSPECTOR]: '/',
   [ROLES.DISPATCHER]: '/dispatcher/dashboard',
+  [ROLES.QUALITY_ASSURANCE]: '/warehouse/dashboard',
+  [ROLES.RECEIPT_AUTHORIZER]: '/officer/dashboard',
 };
 
 export function normalizeRoleSlug(roleName: string | null | undefined): RoleSlug | null {

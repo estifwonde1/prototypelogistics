@@ -22,6 +22,7 @@ module Cats
         payload = definition_params
         definition = CommodityDefinition.new(
           name: payload[:name]&.strip,
+          commodity_code: payload[:commodity_code]&.strip,
           commodity_category_id: payload[:commodity_category_id]
         )
 
@@ -42,6 +43,7 @@ module Cats
         payload = definition_params
         definition.assign_attributes(
           name: payload[:name]&.strip,
+          commodity_code: payload[:commodity_code]&.strip,
           commodity_category_id: payload[:commodity_category_id]
         )
 
@@ -66,17 +68,42 @@ module Cats
       private
 
       def definition_params
-        params.require(:commodity_definition).permit(:name, :commodity_category_id)
+        params.require(:commodity_definition).permit(:name, :commodity_code, :commodity_category_id)
       end
 
       def serialize_definition(definition, category_map)
         category = category_map[definition.commodity_category_id]
+        # Determine the commodity group from the category's parent (ancestry gem)
+        group_name = resolve_group_name(category, category_map)
+
         {
           id: definition.id,
           name: definition.name,
+          commodity_code: definition.commodity_code,
           category_id: definition.commodity_category_id,
-          category_name: category&.name
+          category_name: category&.name,
+          group_name: group_name
         }
+      end
+
+      # Resolve the top-level group name for a category.
+      # If the category has a parent (ancestry), walk up to the root.
+      # Otherwise treat the category itself as the group.
+      def resolve_group_name(category, category_map)
+        return nil if category.nil?
+
+        # Support ancestry gem: if the category responds to ancestor_ids, walk up
+        if category.respond_to?(:ancestor_ids) && category.ancestor_ids.any?
+          root_id = category.ancestor_ids.first
+          root = category_map[root_id]
+          root&.name
+        elsif category.respond_to?(:parent_id) && category.parent_id.present?
+          parent = category_map[category.parent_id]
+          parent&.name
+        else
+          # Top-level category is itself the group
+          category.name
+        end
       end
     end
   end

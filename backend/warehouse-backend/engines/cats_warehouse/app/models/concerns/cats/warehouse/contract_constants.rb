@@ -38,6 +38,8 @@ module Cats
         "Storekeeper",
         "Inspector",
         "Dispatcher",
+        "Quality Assurance",
+        "Receipt Authorizer",
         *OFFICER_ROLE_NAMES
       ].freeze
     end
