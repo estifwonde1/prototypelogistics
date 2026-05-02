@@ -17,6 +17,7 @@ module Cats
       has_many :grns, class_name: "Cats::Warehouse::Grn", dependent: :nullify
       has_many :receipt_order_assignments, class_name: "Cats::Warehouse::ReceiptOrderAssignment", dependent: :destroy
       has_many :space_reservations, class_name: "Cats::Warehouse::SpaceReservation", dependent: :destroy
+      has_many :receipt_authorizations, class_name: "Cats::Warehouse::ReceiptAuthorization", dependent: :destroy
       has_many :workflow_events, as: :entity, class_name: "Cats::Warehouse::WorkflowEvent", dependent: :destroy
 
       validates :reference_no, uniqueness: true, allow_blank: true

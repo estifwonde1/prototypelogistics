@@ -6,28 +6,28 @@ Implement the Receipt Authorization (RA) feature as a new per-truck authorizatio
 
 ## Tasks
 
-- [ ] 1. Database migrations
-  - [ ] 1.1 Create migration for `cats_warehouse_receipt_authorizations` table
+- [x] 1. Database migrations
+  - [x] 1.1 Create migration for `cats_warehouse_receipt_authorizations` table
     - Add all columns per the design: `receipt_order_id`, `receipt_order_assignment_id` (nullable), `store_id`, `warehouse_id`, `transporter_id`, `created_by_id`, `driver_confirmed_by_id`, `cancelled_by_id`, `reference_no` (unique), `status` (default `"pending"`), `authorized_quantity`, `driver_name`, `driver_id_number`, `truck_plate_number`, `waybill_number`, `driver_confirmed_at`, `cancelled_at`, timestamps
     - Add composite index on `[receipt_order_id, status]` named `idx_cw_ra_order_status`
     - Add unique index on `reference_no`
     - Add index on `status`
     - _Requirements: 2.2, 2.3, 3.1_
 
-  - [ ] 1.2 Create migration to add `receipt_authorization_id` FK to `cats_warehouse_inspections`
+  - [x] 1.2 Create migration to add `receipt_authorization_id` FK to `cats_warehouse_inspections`
     - `add_reference :cats_warehouse_inspections, :receipt_authorization, foreign_key: { to_table: :cats_warehouse_receipt_authorizations }`
     - _Requirements: 4.1, 4.3_
 
-  - [ ] 1.3 Create migration to add `receipt_authorization_id` FK to `cats_warehouse_grns`
+  - [x] 1.3 Create migration to add `receipt_authorization_id` FK to `cats_warehouse_grns`
     - `add_reference :cats_warehouse_grns, :receipt_authorization, foreign_key: { to_table: :cats_warehouse_receipt_authorizations }`
     - _Requirements: 6.1, 6.2_
 
-  - [ ] 1.4 Create migration to add `receipt_authorization_id` FK to `cats_warehouse_stack_transactions`
+  - [x] 1.4 Create migration to add `receipt_authorization_id` FK to `cats_warehouse_stack_transactions`
     - `add_reference :cats_warehouse_stack_transactions, :receipt_authorization, foreign_key: { to_table: :cats_warehouse_receipt_authorizations }`
     - _Requirements: 7.3_
 
-- [ ] 2. `ReceiptAuthorization` model
-  - [ ] 2.1 Create `app/models/cats/warehouse/receipt_authorization.rb`
+- [x] 2. `ReceiptAuthorization` model
+  - [x] 2.1 Create `app/models/cats/warehouse/receipt_authorization.rb`
     - Define `self.table_name`, all `belongs_to` associations (receipt_order, receipt_order_assignment optional, store, warehouse, transporter, created_by, driver_confirmed_by optional, cancelled_by optional)
     - Add `has_one :inspection` and `has_one :grn`
     - Define status constants: `PENDING`, `ACTIVE`, `CLOSED`, `CANCELLED`
@@ -48,7 +48,7 @@ Implement the Receipt Authorization (RA) feature as a new per-truck authorizatio
     - Test presence validations, `authorized_quantity > 0`, status constants, associations
     - _Requirements: 2.2, 3.1_
 
-- [ ] 3. `Receipt Authorizer` role and `AccessContext` extensions
+- [-] 3. `Receipt Authorizer` role and `AccessContext` extensions
   - [ ] 3.1 Add `"Receipt Authorizer"` to `UserAssignment` role_name inclusion validation
     - Edit `app/models/cats/warehouse/user_assignment.rb` to include `"Receipt Authorizer"` in the allowed role names list
     - _Requirements: 1.1, 1.2_

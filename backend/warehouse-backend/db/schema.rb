@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_05_01_100000) do
+ActiveRecord::Schema[7.0].define(version: 2026_05_03_100003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1208,8 +1208,10 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_01_100000) do
     t.bigint "receipt_order_id"
     t.string "workflow_status"
     t.bigint "generated_from_inspection_id"
+    t.bigint "receipt_authorization_id"
     t.index ["approved_by_id"], name: "index_cats_warehouse_grns_on_approved_by_id"
     t.index ["generated_from_inspection_id"], name: "index_cats_warehouse_grns_on_generated_from_inspection_id"
+    t.index ["receipt_authorization_id"], name: "index_cats_warehouse_grns_on_receipt_authorization_id"
     t.index ["receipt_order_id"], name: "index_cats_warehouse_grns_on_receipt_order_id"
     t.index ["received_by_id"], name: "index_cats_warehouse_grns_on_received_by_id"
     t.index ["source_type", "source_id"], name: "index_cats_warehouse_grns_on_source"
@@ -1321,10 +1323,12 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_01_100000) do
     t.string "result_status"
     t.bigint "auto_generated_grn_id"
     t.bigint "auto_generated_gin_id"
+    t.bigint "receipt_authorization_id"
     t.index ["auto_generated_gin_id"], name: "index_cats_warehouse_inspections_on_auto_generated_gin_id"
     t.index ["auto_generated_grn_id"], name: "index_cats_warehouse_inspections_on_auto_generated_grn_id"
     t.index ["dispatch_order_id"], name: "index_cats_warehouse_inspections_on_dispatch_order_id"
     t.index ["inspector_id"], name: "index_cats_warehouse_inspections_on_inspector_id"
+    t.index ["receipt_authorization_id"], name: "index_cats_warehouse_inspections_on_receipt_authorization_id"
     t.index ["receipt_order_id"], name: "index_cats_warehouse_inspections_on_receipt_order_id"
     t.index ["source_type", "source_id"], name: "index_cats_warehouse_inspections_on_source"
     t.index ["warehouse_id"], name: "index_cats_warehouse_inspections_on_warehouse_id"
@@ -1363,6 +1367,39 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_01_100000) do
     t.index ["source_type", "source_id"], name: "index_cats_warehouse_inventory_lots_on_source"
     t.index ["warehouse_id", "commodity_id", "batch_no", "expiry_date"], name: "idx_lot_warehouse_commodity_batch_expiry", unique: true
     t.index ["warehouse_id"], name: "index_cats_warehouse_inventory_lots_on_warehouse_id"
+  end
+
+  create_table "cats_warehouse_receipt_authorizations", force: :cascade do |t|
+    t.bigint "receipt_order_id", null: false
+    t.bigint "receipt_order_assignment_id"
+    t.bigint "store_id", null: false
+    t.bigint "warehouse_id", null: false
+    t.bigint "transporter_id", null: false
+    t.string "driver_name", null: false
+    t.string "driver_id_number", null: false
+    t.string "truck_plate_number", null: false
+    t.string "waybill_number", null: false
+    t.decimal "authorized_quantity", precision: 15, scale: 3, null: false
+    t.string "reference_no"
+    t.string "status", default: "pending", null: false
+    t.datetime "driver_confirmed_at"
+    t.bigint "driver_confirmed_by_id"
+    t.datetime "cancelled_at"
+    t.bigint "cancelled_by_id"
+    t.bigint "created_by_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["cancelled_by_id"], name: "idx_cw_ra_on_cancelled_by"
+    t.index ["created_by_id"], name: "index_cats_warehouse_receipt_authorizations_on_created_by_id"
+    t.index ["driver_confirmed_by_id"], name: "idx_cw_ra_on_driver_confirmed_by"
+    t.index ["receipt_order_assignment_id"], name: "idx_cw_ra_on_roa_id"
+    t.index ["receipt_order_id", "status"], name: "idx_cw_ra_order_status"
+    t.index ["receipt_order_id"], name: "index_cats_warehouse_receipt_authorizations_on_receipt_order_id"
+    t.index ["reference_no"], name: "index_cats_warehouse_receipt_authorizations_on_reference_no", unique: true
+    t.index ["status"], name: "index_cats_warehouse_receipt_authorizations_on_status"
+    t.index ["store_id"], name: "index_cats_warehouse_receipt_authorizations_on_store_id"
+    t.index ["transporter_id"], name: "index_cats_warehouse_receipt_authorizations_on_transporter_id"
+    t.index ["warehouse_id"], name: "index_cats_warehouse_receipt_authorizations_on_warehouse_id"
   end
 
   create_table "cats_warehouse_receipt_order_assignments", force: :cascade do |t|
@@ -1474,10 +1511,12 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_01_100000) do
     t.bigint "entered_unit_id"
     t.bigint "base_unit_id"
     t.decimal "base_quantity", precision: 15, scale: 3
+    t.bigint "receipt_authorization_id"
     t.index ["base_unit_id"], name: "index_cats_warehouse_stack_transactions_on_base_unit_id"
     t.index ["destination_id"], name: "destination_on_cwst_indx"
     t.index ["entered_unit_id"], name: "index_cats_warehouse_stack_transactions_on_entered_unit_id"
     t.index ["inventory_lot_id"], name: "index_cats_warehouse_stack_transactions_on_inventory_lot_id"
+    t.index ["receipt_authorization_id"], name: "idx_cw_st_on_ra_id"
     t.index ["source_id"], name: "source_on_cwst_indx"
     t.index ["unit_id"], name: "unit_on_cwst_indx"
   end
@@ -2002,6 +2041,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_01_100000) do
   add_foreign_key "cats_warehouse_grns", "cats_core_users", column: "approved_by_id"
   add_foreign_key "cats_warehouse_grns", "cats_core_users", column: "received_by_id"
   add_foreign_key "cats_warehouse_grns", "cats_warehouse_inspections", column: "generated_from_inspection_id"
+  add_foreign_key "cats_warehouse_grns", "cats_warehouse_receipt_authorizations", column: "receipt_authorization_id"
   add_foreign_key "cats_warehouse_grns", "cats_warehouse_receipt_orders", column: "receipt_order_id"
   add_foreign_key "cats_warehouse_grns", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_hub_access", "cats_warehouse_hubs", column: "hub_id"
@@ -2019,12 +2059,21 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_01_100000) do
   add_foreign_key "cats_warehouse_inspections", "cats_warehouse_dispatch_orders", column: "dispatch_order_id"
   add_foreign_key "cats_warehouse_inspections", "cats_warehouse_gins", column: "auto_generated_gin_id"
   add_foreign_key "cats_warehouse_inspections", "cats_warehouse_grns", column: "auto_generated_grn_id"
+  add_foreign_key "cats_warehouse_inspections", "cats_warehouse_receipt_authorizations", column: "receipt_authorization_id"
   add_foreign_key "cats_warehouse_inspections", "cats_warehouse_receipt_orders", column: "receipt_order_id"
   add_foreign_key "cats_warehouse_inspections", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_inventory_adjustments", "cats_core_unit_of_measures", column: "unit_id"
   add_foreign_key "cats_warehouse_inventory_adjustments", "cats_warehouse_stacks", column: "stack_id"
   add_foreign_key "cats_warehouse_inventory_lots", "cats_core_commodities", column: "commodity_id"
   add_foreign_key "cats_warehouse_inventory_lots", "cats_warehouse_warehouses", column: "warehouse_id"
+  add_foreign_key "cats_warehouse_receipt_authorizations", "cats_core_transporters", column: "transporter_id"
+  add_foreign_key "cats_warehouse_receipt_authorizations", "cats_core_users", column: "cancelled_by_id"
+  add_foreign_key "cats_warehouse_receipt_authorizations", "cats_core_users", column: "created_by_id"
+  add_foreign_key "cats_warehouse_receipt_authorizations", "cats_core_users", column: "driver_confirmed_by_id"
+  add_foreign_key "cats_warehouse_receipt_authorizations", "cats_warehouse_receipt_order_assignments", column: "receipt_order_assignment_id"
+  add_foreign_key "cats_warehouse_receipt_authorizations", "cats_warehouse_receipt_orders", column: "receipt_order_id"
+  add_foreign_key "cats_warehouse_receipt_authorizations", "cats_warehouse_stores", column: "store_id"
+  add_foreign_key "cats_warehouse_receipt_authorizations", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_receipt_order_assignments", "cats_core_users", column: "assigned_by_id"
   add_foreign_key "cats_warehouse_receipt_order_assignments", "cats_core_users", column: "assigned_to_id"
   add_foreign_key "cats_warehouse_receipt_order_assignments", "cats_warehouse_hubs", column: "hub_id"
@@ -2051,6 +2100,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_01_100000) do
   add_foreign_key "cats_warehouse_stack_transactions", "cats_core_unit_of_measures", column: "entered_unit_id"
   add_foreign_key "cats_warehouse_stack_transactions", "cats_core_unit_of_measures", column: "unit_id"
   add_foreign_key "cats_warehouse_stack_transactions", "cats_warehouse_inventory_lots", column: "inventory_lot_id"
+  add_foreign_key "cats_warehouse_stack_transactions", "cats_warehouse_receipt_authorizations", column: "receipt_authorization_id"
   add_foreign_key "cats_warehouse_stack_transactions", "cats_warehouse_stacks", column: "destination_id"
   add_foreign_key "cats_warehouse_stack_transactions", "cats_warehouse_stacks", column: "source_id"
   add_foreign_key "cats_warehouse_stacking_rules", "cats_warehouse_warehouses", column: "warehouse_id"
