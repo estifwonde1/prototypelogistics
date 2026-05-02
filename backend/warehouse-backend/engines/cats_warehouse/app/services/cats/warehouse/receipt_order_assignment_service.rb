@@ -45,7 +45,19 @@ module Cats
       private
 
       def update_order_status!
-        # Determine the correct status based on assignment completeness
+        # CRITICAL: For multi-hub/multi-warehouse orders, we should NOT change the order status
+        # based on partial assignments. Each hub's assignment is independent.
+        # Only change order status if this is a single-destination order.
+        
+        # Check if this is a multi-hub order (multiple hub-level assignments)
+        all_assignments = ReceiptOrderAssignment.where(receipt_order: @order)
+        unique_hubs = all_assignments.where.not(hub_id: nil).pluck(:hub_id).uniq
+        
+        # If multiple hubs are involved, don't change order status
+        # Each hub manager works independently
+        return if unique_hubs.size > 1
+        
+        # For single-hub or single-warehouse orders, check if fully assigned
         new_status = if all_lines_assigned_to_warehouses?
                        ContractConstants::DOCUMENT_STATUSES[:assigned]
                      else
