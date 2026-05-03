@@ -275,8 +275,8 @@ export async function startStacking(id: number): Promise<ReceiptOrder> {
   return normalizeReceiptOrder(typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {});
 }
 
-export async function finishStacking(id: number, placements: Array<{ stack_id: number; quantity: number }>): Promise<ReceiptOrder> {
-  const response = await apiClient.post(`/receipt_orders/${id}/finish_stacking`, { placements });
+export async function finishStacking(id: number, placements: Array<{ stack_id: number; quantity: number }>, receipt_authorization_id?: number): Promise<ReceiptOrder> {
+  const response = await apiClient.post(`/receipt_orders/${id}/finish_stacking`, { placements, receipt_authorization_id });
   const raw = response.data.data || response.data;
   return normalizeReceiptOrder(typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {});
 }

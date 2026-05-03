@@ -19,6 +19,7 @@ import {
   IconClipboardList,
   IconMapPin,
   IconFileArrowRight,
+  IconClipboardCheck,
 } from "@tabler/icons-react";
 import { useAuthStore } from "../../store/authStore";
 import { usePermission } from "../../hooks/usePermission";
@@ -244,6 +245,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               icon: <IconInbox size={20} />,
               path: "/receipts",
               resource: "receipts",
+            },
+            {
+              label: "Receipt Authorizations",
+              icon: <IconClipboardCheck size={20} />,
+              path: "/hub/receipt-authorizations",
+              resource: "hubs",
             },
             {
               label: "Dispatches",

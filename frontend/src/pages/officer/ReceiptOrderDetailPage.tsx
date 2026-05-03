@@ -1,4 +1,4 @@
-import { useLocation, useParams, useNavigate } from 'react-router-dom';
+import { useLocation, useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import {
@@ -20,6 +20,7 @@ import {
   Divider,
   Badge,
   Progress,
+  Anchor,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -30,10 +31,10 @@ import {
   getReceiptOrderAssignableManagers,
   reserveSpace,
   getReceiptOrderWorkflow,
-  startStacking,
-  finishStacking,
 } from '../../api/receiptOrders';
 import { getStores, getStore } from '../../api/stores';
+import { getReceiptAuthorizations } from '../../api/receiptAuthorizations';
+import type { ReceiptAuthorization } from '../../api/receiptAuthorizations';
 import { getStacks } from '../../api/stacks';
 import { createInspection, getInspections } from '../../api/inspections';
 import { createGrn } from '../../api/grns';
@@ -54,7 +55,6 @@ import { useAuthStore } from '../../store/authStore';
 import { OFFICER_ROLE_SLUGS, normalizeRoleSlug } from '../../contracts/warehouse';
 import type { Warehouse } from '../../types/warehouse';
 import type { Store } from '../../types/store';
-import type { Stack as StackType } from '../../types/stack';
 import type { Inspection } from '../../types/inspection';
 import type { UnitReference, UomConversion } from '../../types/referenceData';
 import type { WorkflowEvent } from '../../types/assignment';
@@ -122,9 +122,6 @@ function ReceiptOrderDetailPage() {
   const isOfficerRole = roleSlug ? OFFICER_ROLE_SLUGS.includes(roleSlug) : false;
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('details');
-
-  // Stacking state
-  const [stackingItems, setStackingItems] = useState<Array<{ stack_id: string; quantity: number }>>([{ stack_id: '', quantity: 0 }]);
 
   // Receipt recording state
   const [showReceiptForm, setShowReceiptForm] = useState(false);
@@ -264,15 +261,8 @@ function ReceiptOrderDetailPage() {
   const stacksQuery = useQuery({
     queryKey: ['stacks', { store_id: stackingStoreId }],
     queryFn: () => getStacks({ store_id: stackingStoreId ?? undefined }),
-    enabled: !!stackingStoreId && normalizeOrderStatus(order?.status ?? '') === 'in_progress',
+    enabled: !!stackingStoreId,
   });
-  const stackOptions = useMemo(() => {
-    const stacks = (stacksQuery.data as StackType[]) || [];
-    return stacks.map((s) => ({
-      value: String(s.id),
-      label: `${s.code}${s.quantity > 0 ? ` (${s.quantity} ${s.unit_name ?? ''})` : ' (empty)'}`,
-    }));
-  }, [stacksQuery.data]);
 
   // Inspections (receipt recordings) for this order
   const inspectionsQuery = useQuery({
@@ -328,6 +318,13 @@ function ReceiptOrderDetailPage() {
     enabled: !!order && String(order.status).toLowerCase() !== 'draft',
   });
   const workflowEvents = (workflowEventsQuery.data as WorkflowEvent[]) || [];
+
+  const receiptAuthorizationsQuery = useQuery({
+    queryKey: ['receipt_authorizations', { receipt_order_id: id }],
+    queryFn: () => getReceiptAuthorizations({ receipt_order_id: Number(id) }),
+    enabled: !!order && String(order?.status || '').toLowerCase() !== 'draft',
+  });
+  const receiptAuthorizations = (receiptAuthorizationsQuery.data as ReceiptAuthorization[]) || [];
 
   const assignableManagersQuery = useQuery({
     queryKey: ['receipt_orders', id, 'assignable_managers', roleSlug, { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],
@@ -611,42 +608,6 @@ function ReceiptOrderDetailPage() {
       });
     },
   });
-
-  // ── Stacking mutations ──────────────────────────────────────────────────
-  const startStackingMutation = useMutation({
-    mutationFn: () => startStacking(Number(id)),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['receipt_orders', id] });
-      notifications.show({ title: 'Stacking Started', message: 'You can now add stack placements.', color: 'blue' });
-      refetch();
-    },
-    onError: (error: unknown) => {
-      notifications.show({
-        title: 'Error',
-        message: (isAxiosError<any>(error) ? error.response?.data?.error?.message : undefined) || 'Failed to start stacking',
-        color: 'red',
-      });
-    },
-  });
-
-  const finishStackingMutation = useMutation({
-    mutationFn: () => finishStacking(Number(id), stackingItems.map(i => ({ stack_id: Number(i.stack_id), quantity: i.quantity }))),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['receipt_orders', id] });
-      queryClient.invalidateQueries({ queryKey: ['stacks'] });
-      notifications.show({ title: 'Stacking Completed', message: 'GRN has been generated and stacks updated.', color: 'green' });
-      setStackingItems([{ stack_id: '', quantity: 0 }]);
-      refetch();
-    },
-    onError: (error: unknown) => {
-      notifications.show({
-        title: 'Error',
-        message: (isAxiosError<any>(error) ? error.response?.data?.error?.message : undefined) || 'Failed to finish stacking',
-        color: 'red',
-      });
-    },
-  });
-
 
   const handleCreateAssignment = () => {
     if (!selectedAssignmentStoreId) {
@@ -1067,6 +1028,14 @@ function ReceiptOrderDetailPage() {
           {!isDraft && (
             <>
               <Tabs.Tab value="assignments">Assignments</Tabs.Tab>
+              <Tabs.Tab value="receipt-authorizations">
+                Receipt Authorizations
+                {receiptAuthorizations.length > 0 && (
+                  <Badge size="xs" ml={6} variant="light">
+                    {receiptAuthorizations.length}
+                  </Badge>
+                )}
+              </Tabs.Tab>
               <Tabs.Tab value="space-reservations">Space Reservations</Tabs.Tab>
               <Tabs.Tab value="workflow">Workflow Timeline</Tabs.Tab>
             </>
@@ -1454,173 +1423,7 @@ function ReceiptOrderDetailPage() {
               );
             })()}
 
-            {/* ── Stacking Section ── */}
-            {(() => {
-              const orderStatus = normalizeOrderStatus(order.status);
-              const isStorekeeper = roleSlug === 'storekeeper';
-              const canStartStacking = (isStorekeeper || roleSlug === 'warehouse_manager' || roleSlug === 'admin' || roleSlug === 'superadmin') &&
-                ['confirmed', 'assigned', 'reserved'].includes(orderStatus);
-              const isStacking = orderStatus === 'in_progress';
-              const isCompleted = orderStatus === 'completed';
-
-              if (!canStartStacking && !isStacking && !isCompleted) return null;
-
-              // For storekeepers: use their assigned quantity, not the full order quantity
-              const storeId = activeAssignment?.store?.id;
-              const storekeeperAssignments = assignments.filter(
-                (a) => a.store_id != null && Number(a.store_id) === Number(storeId)
-              );
-              const totalOrdered = isStorekeeper && storekeeperAssignments.length > 0
-                ? storekeeperAssignments.reduce((s, a) => {
-                    if (a.quantity != null) return s + Number(a.quantity);
-                    return s + visibleLines.reduce((ls, l) => ls + Number(l.quantity ?? 0), 0);
-                  }, 0)
-                : visibleLines.reduce((sum, l) => sum + Number(l.quantity ?? 0), 0);
-              // Total to stack = quantity actually received (excludes lost)
-              const totalToStack = inspections.length > 0
-                ? inspections.reduce((s, i) =>
-                    s + (i.inspection_items ?? []).reduce((ss, item) => ss + Number(item.quantity_received ?? 0), 0), 0)
-                : totalOrdered;
-              const totalStacked = stackingItems.reduce((sum, i) => sum + i.quantity, 0);
-              const remaining = totalToStack - totalStacked;
-              const progressPct = totalToStack > 0 ? Math.min(100, (totalStacked / totalToStack) * 100) : 0;
-
-              // For storekeepers: require at least one receipt recording before stacking
-              const totalRecorded = inspections.reduce((s, i) =>
-                s + (i.inspection_items ?? []).reduce((ss, item) => ss + Number(item.quantity_received ?? 0) + Number(item.quantity_lost ?? 0), 0), 0);
-              const hasReceiptRecording = roleSlug !== 'storekeeper' || totalRecorded > 0;
-
-              return (
-                <Card withBorder padding="lg" mt="md">
-                  <Stack gap="md">
-                    <Group justify="space-between">
-                      <Text fw={700} size="lg">Stacking</Text>
-                      {isCompleted && <Badge color="green" size="lg">Stacking Completed</Badge>}
-                      {isStacking && <Badge color="blue" size="lg">In Progress</Badge>}
-                    </Group>
-
-                    {canStartStacking && (
-                      <Alert color={hasReceiptRecording ? 'blue' : 'yellow'} variant="light">
-                        {hasReceiptRecording
-                          ? 'Receipt recorded. Click "Start Stacking" to begin placing goods into stacks.'
-                          : 'Record the receipt above (quantity, condition, grade) before you can start stacking.'}
-                      </Alert>
-                    )}
-
-                    {isStacking && (
-                      <>
-                        <Group>
-                          <Text size="sm">Total to stack: <strong>{totalToStack.toLocaleString()}</strong></Text>
-                          <Text size="sm">Stacked so far: <strong>{totalStacked}</strong></Text>
-                          <Text size="sm" c={remaining < 0 ? 'red' : remaining === 0 ? 'green' : 'dimmed'}>
-                            Remaining: <strong>{remaining}</strong>
-                          </Text>
-                        </Group>
-                        <Progress value={progressPct} color={remaining === 0 ? 'green' : 'blue'} size="md" />
-
-                        <Divider label="Add Stack Placement" labelPosition="left" />
-
-                        {stackingItems.map((item, idx) => (
-                          <Group key={idx} gap="sm" align="flex-end">
-                            <Text size="sm" w={24} mb={6}>{idx + 1}.</Text>
-                            <Select
-                              label="Stack"
-                              placeholder={stacksQuery.isLoading ? 'Loading stacks…' : stackOptions.length === 0 ? 'No stacks in your store' : 'Select a stack'}
-                              data={stackOptions}
-                              value={item.stack_id || null}
-                              onChange={(val) => {
-                                const next = [...stackingItems];
-                                next[idx] = { ...next[idx], stack_id: val || '' };
-                                setStackingItems(next);
-                              }}
-                              searchable
-                              style={{ flex: 2 }}
-                            />
-                            <NumberInput
-                              label="Quantity"
-                              placeholder="Qty"
-                              value={item.quantity || ''}
-                              onChange={(val) => {
-                                const next = [...stackingItems];
-                                next[idx] = { ...next[idx], quantity: Number(val) || 0 };
-                                setStackingItems(next);
-                              }}
-                              min={0}
-                              style={{ flex: 1 }}
-                            />
-                            <Button
-                              variant="subtle"
-                              color="red"
-                              size="xs"
-                              mb={2}
-                              onClick={() => {
-                                if (stackingItems.length > 1) {
-                                  setStackingItems(stackingItems.filter((_, i) => i !== idx));
-                                }
-                              }}
-                              disabled={stackingItems.length <= 1}
-                            >
-                              Remove
-                            </Button>
-                          </Group>
-                        ))}
-
-                        <Button
-                          variant="light"
-                          size="xs"
-                          onClick={() => setStackingItems([...stackingItems, { stack_id: '', quantity: 0 }])}
-                        >
-                          + Add Stack Placement
-                        </Button>
-                      </>
-                    )}
-
-                    {isCompleted && (
-                      <Alert color="green" variant="light">
-                        Stacking is complete. GRN has been generated and stack quantities updated.
-                      </Alert>
-                    )}
-                  </Stack>
-                </Card>
-              );
-            })()}
-
             <Group justify="flex-end">
-              {(() => {
-                const orderStatus = normalizeOrderStatus(order.status);
-                const canStartStacking = (roleSlug === 'storekeeper' || roleSlug === 'warehouse_manager' || roleSlug === 'admin' || roleSlug === 'superadmin') &&
-                  ['confirmed', 'assigned', 'reserved'].includes(orderStatus);
-                const isStacking = orderStatus === 'in_progress';
-                const totalRecorded = inspections.reduce((s, i) =>
-                  s + (i.inspection_items ?? []).reduce((ss, item) => ss + Number(item.quantity_received ?? 0) + Number(item.quantity_lost ?? 0), 0), 0);
-                const hasReceiptRecording = roleSlug !== 'storekeeper' || totalRecorded > 0;
-
-                return (
-                  <>
-                    {canStartStacking && (
-                      <Button
-                        color="blue"
-                        onClick={() => startStackingMutation.mutate()}
-                        loading={startStackingMutation.isPending}
-                        disabled={!hasReceiptRecording}
-                        title={!hasReceiptRecording ? 'Record receipt first' : undefined}
-                      >
-                        Start Stacking
-                      </Button>
-                    )}
-                    {isStacking && (
-                      <Button
-                        color="green"
-                        onClick={() => finishStackingMutation.mutate()}
-                        loading={finishStackingMutation.isPending}
-                        disabled={stackingItems.every(i => !i.stack_id || i.quantity <= 0)}
-                      >
-                        Finish Stacking
-                      </Button>
-                    )}
-                  </>
-                );
-              })()}
               {isDraft && (
                 <>
                   {canUpdateOrder ? (
@@ -1967,6 +1770,131 @@ function ReceiptOrderDetailPage() {
               </Card>
             )}
           </Stack>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="receipt-authorizations" pt="md">
+          {(() => {
+            const nonCancelled = receiptAuthorizations.filter(
+              (ra) => ra.status !== 'cancelled'
+            );
+            const closedCount = nonCancelled.filter((ra) => ra.status === 'closed').length;
+            const totalCount = nonCancelled.length;
+
+            return (
+              <Stack gap="md">
+                <Group justify="space-between" align="center">
+                  <Text fw={600}>Receipt Authorizations</Text>
+                  {totalCount > 0 && (
+                    <Badge
+                      size="lg"
+                      color={closedCount === totalCount ? 'green' : 'blue'}
+                      variant="light"
+                    >
+                      {closedCount} of {totalCount} trucks completed
+                    </Badge>
+                  )}
+                </Group>
+
+                {totalCount > 0 && (
+                  <Progress
+                    value={totalCount > 0 ? (closedCount / totalCount) * 100 : 0}
+                    color={closedCount === totalCount ? 'green' : 'blue'}
+                    size="sm"
+                  />
+                )}
+
+                {receiptAuthorizationsQuery.isLoading ? (
+                  <Text c="dimmed" size="sm">Loading receipt authorizations…</Text>
+                ) : receiptAuthorizationsQuery.isError ? (
+                  <Text c="red" size="sm">Failed to load receipt authorizations.</Text>
+                ) : receiptAuthorizations.length === 0 ? (
+                  <Text c="dimmed">No receipt authorizations yet for this order.</Text>
+                ) : (
+                  <Table.ScrollContainer minWidth={800}>
+                    <Table striped highlightOnHover>
+                      <Table.Thead>
+                        <Table.Tr>
+                          <Table.Th>Reference</Table.Th>
+                          <Table.Th>Status</Table.Th>
+                          <Table.Th>Store</Table.Th>
+                          <Table.Th>Warehouse</Table.Th>
+                          <Table.Th>Qty Authorized</Table.Th>
+                          <Table.Th>Driver</Table.Th>
+                          <Table.Th>Plate No.</Table.Th>
+                          <Table.Th>GRN</Table.Th>
+                        </Table.Tr>
+                      </Table.Thead>
+                      <Table.Tbody>
+                        {receiptAuthorizations.map((ra) => (
+                          <Table.Tr key={ra.id}>
+                            <Table.Td>
+                              <Anchor
+                                component={Link}
+                                to={`/hub/receipt-authorizations/${ra.id}`}
+                                size="sm"
+                                fw={600}
+                              >
+                                {ra.reference_no || `RA-${ra.id}`}
+                              </Anchor>
+                            </Table.Td>
+                            <Table.Td>
+                              <Badge
+                                color={
+                                  ra.status === 'closed'
+                                    ? 'green'
+                                    : ra.status === 'active'
+                                      ? 'blue'
+                                      : ra.status === 'cancelled'
+                                        ? 'red'
+                                        : 'yellow'
+                                }
+                                variant="light"
+                                tt="capitalize"
+                              >
+                                {ra.status}
+                              </Badge>
+                            </Table.Td>
+                            <Table.Td>
+                              <Text size="sm">{ra.store_name || `Store #${ra.store_id}`}</Text>
+                            </Table.Td>
+                            <Table.Td>
+                              <Text size="sm">{ra.warehouse_name || `Warehouse #${ra.warehouse_id}`}</Text>
+                            </Table.Td>
+                            <Table.Td>
+                              <Text fw={600} size="sm">
+                                {Number(ra.authorized_quantity).toLocaleString()}
+                              </Text>
+                            </Table.Td>
+                            <Table.Td>
+                              <Text size="sm">{ra.driver_name}</Text>
+                            </Table.Td>
+                            <Table.Td>
+                              <Text size="sm" style={{ fontFamily: 'monospace' }}>
+                                {ra.truck_plate_number}
+                              </Text>
+                            </Table.Td>
+                            <Table.Td>
+                              {ra.grn_reference_no ? (
+                                <Badge
+                                  color={ra.grn_status === 'confirmed' ? 'green' : 'gray'}
+                                  variant="light"
+                                  size="sm"
+                                >
+                                  {ra.grn_reference_no}
+                                </Badge>
+                              ) : (
+                                <Text size="sm" c="dimmed">—</Text>
+                              )}
+                            </Table.Td>
+                          </Table.Tr>
+                        ))}
+                      </Table.Tbody>
+                    </Table>
+                  </Table.ScrollContainer>
+                )}
+              </Stack>
+            );
+          })()}
         </Tabs.Panel>
 
         <Tabs.Panel value="space-reservations" pt="md">

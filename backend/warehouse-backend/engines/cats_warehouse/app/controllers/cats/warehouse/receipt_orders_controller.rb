@@ -449,69 +449,151 @@ module Cats
         placements = Array(params[:placements])
         raise ArgumentError, "Please add at least one stack placement before finishing." if placements.empty?
 
-        # Use quantity_received from inspections if available, otherwise fall back to ordered quantity
-        total_received = Inspection
-          .joins(:inspection_items)
-          .where(receipt_order: order)
-          .sum("cats_warehouse_inspection_items.quantity_received")
-        total_to_stack = total_received > 0 ? total_received : order.receipt_order_lines.sum { |l| l.quantity.to_f }
-        total_stacked = placements.sum { |p| p[:quantity].to_f }
+        # ── RA-based flow (new) ──────────────────────────────────────────────
+        if params[:receipt_authorization_id].present?
+          ra = order.receipt_authorizations.find_by(id: params[:receipt_authorization_id])
+          raise ArgumentError, "Receipt Authorization not found for this order" unless ra
+          raise ArgumentError, "Receipt Authorization must be Active to finish stacking" unless ra.active?
 
-        if (total_stacked - total_to_stack).abs > 0.001
-          raise ArgumentError, "Total stacked (#{total_stacked.round(2)}) does not match total received (#{total_to_stack.round(2)}). Please adjust your stack placements."
-        end
+          grn = ra.grn
+          raise ArgumentError, "No Draft GRN found for this Receipt Authorization. Complete Driver Confirm first." unless grn
+          raise ArgumentError, "GRN must be in Draft status" unless grn.status.to_s.downcase == "draft"
 
-        first_line = order.receipt_order_lines.first
-        warehouse_id = order.warehouse_id || order.receipt_order_assignments
-          .joins(:store)
-          .where.not(store_id: nil)
-          .pick("cats_warehouse_stores.warehouse_id")
+          # Validate total stacked matches inspection quantity
+          inspection = ra.inspection
+          total_to_stack = inspection ? inspection.inspection_items.sum(:quantity_received).to_f : ra.authorized_quantity.to_f
+          total_stacked = placements.sum { |p| p[:quantity].to_f }
 
-        raise ArgumentError, "Cannot determine warehouse for this order. Ensure it is assigned to a store." unless warehouse_id
-
-        ReceiptOrder.transaction do
-          # Auto-create GRN with stack placements
-          grn = Grn.create!(
-            warehouse_id: warehouse_id,
-            received_on: Date.today,
-            received_by: current_user,
-            receipt_order: order,
-            status: "draft"
-          )
-
-          placements.each do |placement|
-            stack = Stack.find(placement[:stack_id].to_i)
-            grn.grn_items.create!(
-              commodity_id: first_line.commodity_id,
-              quantity: placement[:quantity].to_f,
-              unit_id: first_line.unit_id,
-              stack_id: stack.id,
-              store_id: stack.store_id,
-              line_reference_no: SourceDetailReference.generate_unique
-            )
+          if (total_stacked - total_to_stack).abs > 0.001
+            raise ArgumentError, "Total stacked (#{total_stacked.round(2)}) does not match total received (#{total_to_stack.round(2)}). Please adjust your stack placements."
           end
 
-          # Confirm GRN — apply inventory ledger entries and update stack quantities
-          grn.ensure_confirmable!
-          grn.update!(status: :confirmed, approved_by: current_user, workflow_status: "confirmed")
-          grn.grn_items.find_each do |item|
-            InventoryLedger.apply_receipt!(
-              warehouse: grn.warehouse,
-              item: item,
-              transaction_date: grn.received_on,
-              reference: grn
+          first_line = order.receipt_order_lines.first
+
+          ReceiptOrder.transaction do
+            # Add stack placement items to the existing Draft GRN
+            # Clear any existing items first (in case of retry)
+            grn.grn_items.destroy_all
+
+            placements.each do |placement|
+              stack = Stack.find(placement[:stack_id].to_i)
+              commodity_id = stack.commodity_id.presence || first_line&.commodity_id
+              unit_id      = stack.unit_id.presence      || first_line&.unit_id
+
+              grn.grn_items.create!(
+                commodity_id:      commodity_id,
+                quantity:          placement[:quantity].to_f,
+                unit_id:           unit_id,
+                stack_id:          stack.id,
+                store_id:          stack.store_id,
+                line_reference_no: SourceDetailReference.generate_unique
+              )
+            end
+
+            # Confirm GRN — apply inventory ledger entries and update stack quantities
+            grn.ensure_confirmable!
+            grn.update!(status: :confirmed, approved_by: current_user, workflow_status: "confirmed")
+            grn.grn_items.find_each do |item|
+              InventoryLedger.apply_receipt!(
+                warehouse: grn.warehouse,
+                item:      item,
+                transaction_date: grn.received_on,
+                reference: grn
+              )
+            end
+            WorkflowEventRecorder.record!(
+              entity: grn, event_type: "grn.confirmed",
+              actor: current_user, from_status: "draft", to_status: "confirmed"
+            )
+
+            # Notify Hub Manager / Warehouse Manager that GRN is confirmed (Req 12.3)
+            enqueue_notification("receipt_authorization.grn_confirmed",
+                                 receipt_authorization_id: ra.id,
+                                 grn_id: grn.id,
+                                 receipt_order_id: order.id)
+
+            # Close the RA
+            ra.update!(status: ReceiptAuthorization::CLOSED)
+            WorkflowEventRecorder.record!(
+              entity:      order,
+              event_type:  "receipt_authorization.closed",
+              actor:       current_user,
+              from_status: order.status,
+              to_status:   order.status,
+              payload:     { receipt_authorization_id: ra.id, grn_id: grn.id }
+            )
+
+            # Check if all RAs are closed → complete the order
+            ReceiptOrderCompletionChecker.new(receipt_order: order, actor: current_user).call
+          end
+
+        # ── Legacy flow (backward compatible — no RA) ────────────────────────
+        else
+          # Use quantity_received from inspections if available, otherwise fall back to ordered quantity
+          total_received = Inspection
+            .joins(:inspection_items)
+            .where(receipt_order: order)
+            .sum("cats_warehouse_inspection_items.quantity_received")
+          total_to_stack = total_received > 0 ? total_received : order.receipt_order_lines.sum { |l| l.quantity.to_f }
+          total_stacked = placements.sum { |p| p[:quantity].to_f }
+
+          if (total_stacked - total_to_stack).abs > 0.001
+            raise ArgumentError, "Total stacked (#{total_stacked.round(2)}) does not match total received (#{total_to_stack.round(2)}). Please adjust your stack placements."
+          end
+
+          first_line = order.receipt_order_lines.first
+          warehouse_id = order.warehouse_id || order.receipt_order_assignments
+            .joins(:store)
+            .where.not(store_id: nil)
+            .pick("cats_warehouse_stores.warehouse_id")
+
+          raise ArgumentError, "Cannot determine warehouse for this order. Ensure it is assigned to a store." unless warehouse_id
+
+          ReceiptOrder.transaction do
+            grn = Grn.create!(
+              warehouse_id: warehouse_id,
+              received_on:  Date.today,
+              received_by:  current_user,
+              receipt_order: order,
+              status: "draft"
+            )
+
+            placements.each do |placement|
+              stack = Stack.find(placement[:stack_id].to_i)
+              grn.grn_items.create!(
+                commodity_id:      first_line.commodity_id,
+                quantity:          placement[:quantity].to_f,
+                unit_id:           first_line.unit_id,
+                stack_id:          stack.id,
+                store_id:          stack.store_id,
+                line_reference_no: SourceDetailReference.generate_unique
+              )
+            end
+
+            grn.ensure_confirmable!
+            grn.update!(status: :confirmed, approved_by: current_user, workflow_status: "confirmed")
+            grn.grn_items.find_each do |item|
+              InventoryLedger.apply_receipt!(
+                warehouse: grn.warehouse,
+                item:      item,
+                transaction_date: grn.received_on,
+                reference: grn
+              )
+            end
+            WorkflowEventRecorder.record!(
+              entity: grn, event_type: "grn.confirmed",
+              actor: current_user, from_status: "draft", to_status: "confirmed"
+            )
+
+            order.update!(status: "completed")
+            WorkflowEventRecorder.record!(
+              entity:      order,
+              event_type:  "receipt_order.stacking_completed",
+              actor:       current_user,
+              from_status: "in_progress",
+              to_status:   "completed"
             )
           end
-          WorkflowEventRecorder.record!(entity: grn, event_type: "grn.confirmed", actor: current_user, from_status: "draft", to_status: "confirmed")
-
-          order.update!(status: "completed")
-          WorkflowEventRecorder.record!(
-            entity: order,
-            event_type: "receipt_order.stacking_completed",
-            actor: current_user,
-            from_status: "in_progress",
-            to_status: "completed"
-          )
         end
 
         order = ReceiptOrder.includes(*order_detail_includes).find(order.id)
@@ -834,6 +916,12 @@ module Cats
 
           commodity.update_column(:quantity, commodity.quantity.to_f + line.quantity.to_f)
         end
+      end
+
+      def enqueue_notification(event, payload)
+        return unless ENV["ENABLE_WAREHOUSE_JOBS"] == "true"
+
+        NotificationJob.perform_later(event, payload)
       end
     end
   end

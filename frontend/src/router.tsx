@@ -58,6 +58,11 @@ const DispatchListPage = lazy(() => import('./pages/dispatches/DispatchListPage'
 const BinCardReportPage = lazy(() => import('./pages/reports/BinCardReportPage'));
 const StackLayoutPage = lazy(() => import('./pages/stacks/StackLayoutPage'));
 const TransferRequestsPage = lazy(() => import('./pages/stock/TransferRequestsPage'));
+const ReceiptAuthorizationListPage = lazy(() => import('./pages/hub-manager/ReceiptAuthorizationListPage'));
+const ReceiptAuthorizationFormPage = lazy(() => import('./pages/hub-manager/ReceiptAuthorizationFormPage'));
+const ReceiptAuthorizationDetailPage = lazy(() => import('./pages/hub-manager/ReceiptAuthorizationDetailPage'));
+const StorekeeperRAListPage = lazy(() => import('./pages/storekeeper/StorekeeperRAListPage'));
+const StorekeeperRADetailPage = lazy(() => import('./pages/storekeeper/StorekeeperRADetailPage'));
 
 // Loading fallback
 const LoadingFallback = () => (
@@ -164,6 +169,38 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission resource="hubs" action="read">
             <HubManagerDashboardPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'hub/receipt-authorizations',
+        element: (
+          <RequirePermission resource="hubs" action="read">
+            <ReceiptAuthorizationListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'hub/receipt-authorizations/new',
+        element: (
+          <RequirePermission resource="hubs" action="read">
+            <ReceiptAuthorizationFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'hub/receipt-authorizations/:id',
+        element: (
+          <RequirePermission resource="hubs" action="read">
+            <ReceiptAuthorizationDetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'hub/receipt-authorizations/:id/edit',
+        element: (
+          <RequirePermission resource="hubs" action="read">
+            <ReceiptAuthorizationFormPage />
           </RequirePermission>
         ),
       },
@@ -524,6 +561,22 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission resource="receipt_orders" action="read">
             <StorekeeperAssignmentsPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'storekeeper/receipt-authorizations',
+        element: (
+          <RequirePermission resource="receipt_orders" action="read">
+            <StorekeeperRAListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'storekeeper/receipt-authorizations/:id',
+        element: (
+          <RequirePermission resource="receipt_orders" action="read">
+            <StorekeeperRADetailPage />
           </RequirePermission>
         ),
       },

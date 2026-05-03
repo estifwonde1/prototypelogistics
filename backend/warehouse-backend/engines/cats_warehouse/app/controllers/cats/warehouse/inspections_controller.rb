@@ -26,7 +26,8 @@ module Cats
           reference_no: payload[:reference_no],
           status: payload[:status] || "draft",
           receipt_order: payload[:receipt_order_id].present? ? ReceiptOrder.find(payload[:receipt_order_id]) : nil,
-          dispatch_order: payload[:dispatch_order_id].present? ? DispatchOrder.find(payload[:dispatch_order_id]) : nil
+          dispatch_order: payload[:dispatch_order_id].present? ? DispatchOrder.find(payload[:dispatch_order_id]) : nil,
+          receipt_authorization_id: payload[:receipt_authorization_id].presence
         ).call
 
         render_resource(inspection, status: :created, serializer: InspectionSerializer)
@@ -54,6 +55,7 @@ module Cats
           :source_id,
           :receipt_order_id,
           :dispatch_order_id,
+          :receipt_authorization_id,
           items: [
             :commodity_id,
             :unit_id,

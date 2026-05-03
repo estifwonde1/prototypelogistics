@@ -23,6 +23,7 @@ import { getWarehouses } from '../../api/warehouses';
 import { getReceipts } from '../../api/receipts';
 import { getWaybills } from '../../api/waybills';
 import { getGrns } from '../../api/grns';
+import { getReceiptAuthorizations } from '../../api/receiptAuthorizations';
 import { notifications } from '@mantine/notifications';
 import { QualityStatus, PackagingCondition } from '../../utils/constants';
 import { generateSourceDetailReference } from '../../utils/sourceDetailReference';
@@ -86,6 +87,11 @@ function InspectionCreatePage() {
   const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
   const userHubId = activeAssignment?.hub?.id;
   const isHubManager = roleSlug === 'hub_manager';
+  const isStorekeeper = roleSlug === 'storekeeper';
+  const userStoreId = activeAssignment?.store?.id;
+
+  // Receipt Authorization selector state
+  const [receiptAuthorizationId, setReceiptAuthorizationId] = useState<string | null>(null);
 
   const { data: warehouses = [] } = useQuery({
     queryKey: ['warehouses', { hub_id: isHubManager ? userHubId : undefined }],
@@ -110,6 +116,13 @@ function InspectionCreatePage() {
   const { data: grns = [] } = useQuery({
     queryKey: ['grns'],
     queryFn: () => getGrns(),
+  });
+
+  // Fetch pending Receipt Authorizations for the storekeeper's store
+  const { data: pendingRAs = [] } = useQuery({
+    queryKey: ['receipt_authorizations', { store_id: userStoreId, status: 'pending' }],
+    queryFn: () => getReceiptAuthorizations({ store_id: userStoreId, status: 'pending' }),
+    enabled: isStorekeeper && !!userStoreId,
   });
 
   const createMutation = useMutation({
@@ -174,6 +187,15 @@ function InspectionCreatePage() {
       return;
     }
 
+    if (isStorekeeper && !receiptAuthorizationId) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Please select the Receipt Authorization for this truck',
+        color: 'red',
+      });
+      return;
+    }
+
     if (items.length === 0 || items.some((item) => !item.commodity_id || !item.quantity_received)) {
       notifications.show({
         title: 'Validation Error',
@@ -200,12 +222,18 @@ function InspectionCreatePage() {
       source_type: sourceType || undefined,
       source_id: sourceId ? parseInt(sourceId) : undefined,
       items: uniqueLineRefsForInspectionItems(items),
+      receipt_authorization_id: receiptAuthorizationId ? parseInt(receiptAuthorizationId) : undefined,
     });
   };
 
   const warehouseOptions = warehouses?.map((w) => ({
     value: w.id.toString(),
     label: `${w.name} (${w.code})`,
+  }));
+
+  const receiptAuthorizationOptions = pendingRAs.map((ra) => ({
+    value: ra.id.toString(),
+    label: `${ra.reference_no} — ${ra.driver_name} (${ra.truck_plate_number})`,
   }));
 
   const sourceOptions =
@@ -332,6 +360,26 @@ function InspectionCreatePage() {
               disabled={!sourceType}
             />
           </Group>
+
+          {isStorekeeper && (
+            <Select
+              label="Receipt Authorization"
+              description="Select the Receipt Authorization for the arriving truck"
+              placeholder={
+                userStoreId
+                  ? pendingRAs.length === 0
+                    ? 'No pending Receipt Authorizations for your store'
+                    : 'Select Receipt Authorization'
+                  : 'No store assigned to your account'
+              }
+              data={receiptAuthorizationOptions}
+              value={receiptAuthorizationId}
+              onChange={setReceiptAuthorizationId}
+              searchable
+              required
+              disabled={!userStoreId || pendingRAs.length === 0}
+            />
+          )}
         </Stack>
       </Card>
 

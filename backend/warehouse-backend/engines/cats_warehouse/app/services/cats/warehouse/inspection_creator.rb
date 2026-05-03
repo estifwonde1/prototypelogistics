@@ -1,7 +1,7 @@
 module Cats
   module Warehouse
     class InspectionCreator
-      def initialize(warehouse:, inspected_on:, inspector:, items:, source: nil, reference_no: nil, status: "draft", receipt_order: nil, dispatch_order: nil)
+      def initialize(warehouse:, inspected_on:, inspector:, items:, source: nil, reference_no: nil, status: "draft", receipt_order: nil, dispatch_order: nil, receipt_authorization_id: nil)
         @warehouse = warehouse
         @inspected_on = inspected_on
         @inspector = inspector
@@ -11,10 +11,27 @@ module Cats
         @status = status
         @receipt_order = receipt_order
         @dispatch_order = dispatch_order
+        @receipt_authorization_id = receipt_authorization_id
       end
 
       def call
         raise ArgumentError, "items are required" if @items.nil? || @items.empty?
+
+        # ── RA validations (only when an RA is provided) ──────────────────
+        ra = nil
+        if @receipt_authorization_id.present?
+          ra = ReceiptAuthorization.find_by(id: @receipt_authorization_id)
+          raise ArgumentError, "Receipt Authorization not found" unless ra
+          raise ArgumentError, "Receipt Authorization is not Pending" unless ra.pending?
+          raise ArgumentError, "A Receipt Authorization can only have one active Inspection" if ra.inspection.present?
+
+          # Validate total quantity_received does not exceed authorized_quantity
+          total_received = @items.sum { |item| item[:quantity_received].to_f }
+          if total_received > ra.authorized_quantity.to_f + 0.0001
+            raise ArgumentError,
+                  "Quantity received (#{total_received}) exceeds authorized quantity (#{ra.authorized_quantity})"
+          end
+        end
 
         Inspection.transaction do
           inspection = Inspection.create!(
@@ -25,8 +42,22 @@ module Cats
             reference_no: @reference_no,
             status: @status,
             receipt_order: @receipt_order,
-            dispatch_order: @dispatch_order
+            dispatch_order: @dispatch_order,
+            receipt_authorization_id: @receipt_authorization_id
           )
+
+          # Transition RA from Pending → Active now that an inspection is linked
+          if ra
+            ra.update!(status: ReceiptAuthorization::ACTIVE)
+            WorkflowEventRecorder.record!(
+              entity:      ra.receipt_order,
+              event_type:  "receipt_authorization.active",
+              actor:       @inspector,
+              from_status: ra.receipt_order.status,
+              to_status:   ra.receipt_order.status,
+              payload:     { receipt_authorization_id: ra.id, inspection_id: inspection.id }
+            )
+          end
 
           @items.each do |item|
             raise ArgumentError, "quantity_received must be positive" unless item[:quantity_received].to_f.positive?

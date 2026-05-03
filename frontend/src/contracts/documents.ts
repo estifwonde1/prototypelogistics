@@ -34,6 +34,7 @@ export interface CreateInspectionRequest {
   source_type?: string;
   source_id?: number;
   receipt_order_id?: number;
+  receipt_authorization_id?: number;
   status?: string;
   items: InspectionItem[];
 }
@@ -77,7 +78,7 @@ export function toCreateGinRequest(data: Partial<Gin> & { items?: GinItem[] }): 
 }
 
 export function toCreateInspectionRequest(
-  data: Partial<Inspection> & { items?: InspectionItem[]; inspector_id?: number; receipt_order_id?: number }
+  data: Partial<Inspection> & { items?: InspectionItem[]; inspector_id?: number; receipt_order_id?: number; receipt_authorization_id?: number }
 ): CreateInspectionRequest {
   return {
     reference_no: data.reference_no ?? '',
@@ -87,6 +88,7 @@ export function toCreateInspectionRequest(
     source_type: data.source_type,
     source_id: data.source_id,
     receipt_order_id: data.receipt_order_id,
+    receipt_authorization_id: data.receipt_authorization_id,
     status: data.status,
     items: data.items ?? data.inspection_items ?? [],
   };

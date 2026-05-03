@@ -14,6 +14,7 @@ module Cats
         "Hub Manager",
         "Warehouse Manager",
         "Storekeeper",
+        "Receipt Authorizer",
         "Officer",
         "Federal Officer",
         "Regional Officer",
@@ -41,6 +42,9 @@ module Cats
         when "Warehouse Manager"
           errors.add(:warehouse_id, "is required for Warehouse Manager") if warehouse_id.blank?
           errors.add(:base, "Hub/store not allowed for Warehouse Manager") if hub_id.present? || store_id.present?
+        when "Receipt Authorizer"
+          errors.add(:base, "Receipt Authorizer must be assigned to a hub or warehouse") if hub_id.blank? && warehouse_id.blank?
+          errors.add(:base, "Store not allowed for Receipt Authorizer") if store_id.present?
         when "Storekeeper"
           errors.add(:base, "Storekeeper must be assigned to a warehouse or store") if warehouse_id.blank? && store_id.blank?
           errors.add(:base, "Hub not allowed for Storekeeper") if hub_id.present?

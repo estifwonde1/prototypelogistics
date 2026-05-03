@@ -24,6 +24,10 @@ module Cats
         user&.has_role?("Storekeeper")
       end
 
+      def receipt_authorizer?
+        user&.has_role?("Receipt Authorizer")
+      end
+
       def officer?
         OFFICER_ROLE_NAMES.any? { |role| user&.has_role?(role) }
       end
@@ -40,6 +44,26 @@ module Cats
 
       def assigned_warehouse_ids
         UserAssignment.where(user_id: user&.id, role_name: "Warehouse Manager").pluck(:warehouse_id).compact
+      end
+
+      def assigned_receipt_authorizer_hub_ids
+        UserAssignment.where(user_id: user&.id, role_name: "Receipt Authorizer").pluck(:hub_id).compact
+      end
+
+      def assigned_receipt_authorizer_warehouse_ids
+        UserAssignment.where(user_id: user&.id, role_name: "Receipt Authorizer").pluck(:warehouse_id).compact
+      end
+
+      def can_create_receipt_authorization_for_warehouse?(warehouse_id)
+        return true if admin?
+        return true if hub_manager? && Warehouse.where(hub_id: assigned_hub_ids).exists?(id: warehouse_id)
+        return true if warehouse_manager? && assigned_warehouse_ids.include?(warehouse_id.to_i)
+        return true if receipt_authorizer? && (
+          assigned_receipt_authorizer_warehouse_ids.include?(warehouse_id.to_i) ||
+          Warehouse.where(hub_id: assigned_receipt_authorizer_hub_ids).exists?(id: warehouse_id)
+        )
+
+        false
       end
 
       def storekeeper_warehouse_ids

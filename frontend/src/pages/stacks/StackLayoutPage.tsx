@@ -24,6 +24,7 @@ import { useForm } from '@mantine/form';
 import {
   IconBox,
   IconBuildingWarehouse,
+  IconCheck,
   IconDeviceFloppy,
   IconEdit,
   IconInfoCircle,
@@ -39,6 +40,9 @@ import { getStores } from '../../api/stores';
 import { getCommodityReferences, getUnitReferences, getInventoryLots } from '../../api/referenceData';
 import { searchDeliveryByReference } from '../../api/storekeeperdashboard';
 import type { DeliverySearchResult } from '../../api/storekeeperdashboard';
+import { getReceiptAuthorizations } from '../../api/receiptAuthorizations';
+import type { ReceiptAuthorization } from '../../api/receiptAuthorizations';
+import { finishStacking } from '../../api/receiptOrders';
 import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useAuthStore } from '../../store/authStore';
@@ -198,6 +202,12 @@ export default function StackLayoutPage() {
   const [refSearchLoading, setRefSearchLoading] = useState(false);
   const refSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── Receipt Authorization selector state (storekeeper stacking flow) ──
+  const [selectedRAId, setSelectedRAId] = useState<string | null>(
+    searchParams.get('receipt_authorization_id')
+  );
+  const [finishStackingModalOpen, setFinishStackingModalOpen] = useState(false);
+
   const autoPrepare = searchParams.get('auto_prepare') === 'true';
 
   // Get active assignment context for filtering
@@ -258,6 +268,50 @@ export default function StackLayoutPage() {
   const { data: units = [] } = useQuery({
     queryKey: ['unit-references'],
     queryFn: () => getUnitReferences(),
+  });
+
+  // ── Active RAs with Draft GRN for the storekeeper's store (for finish_stacking) ──
+  const { data: activeRAsForStacking = [] } = useQuery({
+    queryKey: ['receipt_authorizations', { store_id: userStoreId, status: 'active' }],
+    queryFn: () => getReceiptAuthorizations({ store_id: userStoreId, status: 'active' }),
+    enabled: isStorekeeper && !!userStoreId,
+    select: (data: ReceiptAuthorization[]) =>
+      data.filter((ra) => ra.driver_confirmed_at && ra.grn_id && ra.grn_status === 'draft'),
+  });
+
+  // ── Finish Stacking mutation ──
+  const finishStackingMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedRAId) throw new Error('No Receipt Authorization selected');
+      const selectedRA = activeRAsForStacking.find((ra) => String(ra.id) === selectedRAId);
+      if (!selectedRA) throw new Error('Receipt Authorization not found');
+
+      // Build placements from the current store's active stacks
+      const placements = storeStacks
+        .filter((s) => s.quantity > 0)
+        .map((s) => ({ stack_id: s.id, quantity: s.quantity }));
+
+      return finishStacking(selectedRA.receipt_order_id, placements, selectedRA.id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stacks'] });
+      queryClient.invalidateQueries({ queryKey: ['receipt_authorizations'] });
+      notifications.show({
+        title: 'Stacking Complete',
+        message: 'Stacking finished. The GRN has been confirmed and the Receipt Authorization is now Closed.',
+        color: 'green',
+      });
+      setFinishStackingModalOpen(false);
+      setSelectedRAId(null);
+    },
+    onError: (mutationError: AxiosError<{ error?: { message?: string } }>) => {
+      notifications.show({
+        title: 'Finish Stacking Failed',
+        message:
+          mutationError.response?.data?.error?.message || 'Failed to finish stacking. Please try again.',
+        color: 'red',
+      });
+    },
   });
 
   const resolvedStoreId = storeId || (isStorekeeper && userStoreId ? String(userStoreId) : (stores && stores.length > 0 ? String(stores[0].id) : null));
@@ -767,6 +821,74 @@ export default function StackLayoutPage() {
               </Badge>
             </Group>
           </Group>
+
+          {/* ── Receipt Authorization selector for storekeeper finish_stacking ── */}
+          {isStorekeeper && (
+            <Card
+              radius="xl"
+              padding="lg"
+              style={{
+                background: '#ffffff',
+                border: '1px solid #dce5f5',
+                boxShadow: '0 8px 20px rgba(56, 84, 128, 0.06)',
+              }}
+            >
+              <Group justify="space-between" align="flex-end" wrap="wrap" gap="md">
+                <Stack gap={4} style={{ flex: 1, minWidth: 280 }}>
+                  <Text size="xs" fw={800} c="#42506a" tt="uppercase" style={{ letterSpacing: '0.12em' }}>
+                    Receipt Authorization
+                  </Text>
+                  <Select
+                    placeholder={
+                      activeRAsForStacking.length === 0
+                        ? 'No active RAs with Draft GRN for your store'
+                        : 'Select the RA you are stacking for'
+                    }
+                    data={activeRAsForStacking.map((ra) => ({
+                      value: String(ra.id),
+                      label: `${ra.reference_no} — ${ra.driver_name} (${ra.truck_plate_number}) · GRN: ${ra.grn_reference_no || `#${ra.grn_id}`}`,
+                    }))}
+                    value={selectedRAId}
+                    onChange={setSelectedRAId}
+                    searchable
+                    clearable
+                    disabled={activeRAsForStacking.length === 0}
+                    styles={{
+                      input: {
+                        backgroundColor: '#eaf0ff',
+                        borderColor: '#d5def2',
+                        color: '#1f2a44',
+                        fontWeight: 700,
+                      },
+                    }}
+                  />
+                  {activeRAsForStacking.length === 0 && (
+                    <Text size="xs" c="dimmed">
+                      Active RAs appear here after Driver Confirmation. Go to{' '}
+                      <Text
+                        component="a"
+                        href="/storekeeper/receipt-authorizations"
+                        size="xs"
+                        c="blue"
+                      >
+                        Receipt Authorizations
+                      </Text>{' '}
+                      to confirm driver delivery first.
+                    </Text>
+                  )}
+                </Stack>
+                <Button
+                  color="green"
+                  leftSection={<IconCheck size={16} />}
+                  disabled={!selectedRAId}
+                  onClick={() => setFinishStackingModalOpen(true)}
+                  radius="md"
+                >
+                  Finish Stacking
+                </Button>
+              </Group>
+            </Card>
+          )}
 
           <Card
             radius="xl"
@@ -1322,6 +1444,54 @@ export default function StackLayoutPage() {
             </Group>
           </Stack>
         </form>
+      </Modal>
+
+      {/* ── Finish Stacking confirmation modal ── */}
+      <Modal
+        opened={finishStackingModalOpen}
+        onClose={() => setFinishStackingModalOpen(false)}
+        title="Finish Stacking"
+        centered
+      >
+        <Stack gap="md">
+          {selectedRAId && (() => {
+            const ra = activeRAsForStacking.find((r) => String(r.id) === selectedRAId);
+            return ra ? (
+              <Alert color="blue" variant="light">
+                <Text size="sm" fw={600}>{ra.reference_no}</Text>
+                <Text size="sm">{ra.driver_name} — {ra.truck_plate_number}</Text>
+                <Text size="sm">Authorized Qty: {Number(ra.authorized_quantity).toLocaleString()}</Text>
+                {ra.grn_reference_no && (
+                  <Text size="sm">GRN: {ra.grn_reference_no}</Text>
+                )}
+              </Alert>
+            ) : null;
+          })()}
+          <Text size="sm">
+            Finishing stacking will confirm the linked GRN (Draft → Confirmed), update stack
+            quantities, and close the Receipt Authorization. This action cannot be undone.
+          </Text>
+          <Text size="sm" c="dimmed">
+            Make sure all goods have been placed into stacks before proceeding.
+          </Text>
+          <Group justify="flex-end">
+            <Button
+              variant="default"
+              onClick={() => setFinishStackingModalOpen(false)}
+              disabled={finishStackingMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              color="green"
+              leftSection={<IconCheck size={16} />}
+              onClick={() => finishStackingMutation.mutate()}
+              loading={finishStackingMutation.isPending}
+            >
+              Confirm — Finish Stacking
+            </Button>
+          </Group>
+        </Stack>
       </Modal>
     </>
   );

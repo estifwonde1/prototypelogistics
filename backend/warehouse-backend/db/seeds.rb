@@ -43,6 +43,7 @@ roles = {
   hub_manager: find_or_create_with(Cats::Core::Role, { name: "Hub Manager", application_module: application_module }),
   warehouse_manager: find_or_create_with(Cats::Core::Role, { name: "Warehouse Manager", application_module: application_module }),
   store_keeper: find_or_create_with(Cats::Core::Role, { name: "Storekeeper", application_module: application_module }),
+  receipt_authorizer: find_or_create_with(Cats::Core::Role, { name: "Receipt Authorizer", application_module: application_module }),
   officer: find_or_create_with(Cats::Core::Role, { name: "Officer", application_module: application_module }),
   federal_officer: find_or_create_with(Cats::Core::Role, { name: "Federal Officer", application_module: application_module }),
   regional_officer: find_or_create_with(Cats::Core::Role, { name: "Regional Officer", application_module: application_module }),
@@ -56,12 +57,14 @@ roles = {
 puts "Creating notification rules..."
 find_or_create_with(Cats::Core::NotificationRule, { code: "allocation" }, { roles: %w[Warehouse\ Manager Hub\ Manager] })
 find_or_create_with(Cats::Core::NotificationRule, { code: "dispatch" }, { roles: %w[Warehouse\ Manager Hub\ Manager] })
-receipt_auth_rule = Cats::Core::NotificationRule.find_or_initialize_by(code: "receipt_authorization")
-receipt_auth_rule.roles = %w[Warehouse\ Manager Hub\ Manager]
-receipt_auth_rule.save! if receipt_auth_rule.new_record? || receipt_auth_rule.changed?
-dispatch_auth_rule = Cats::Core::NotificationRule.find_or_initialize_by(code: "dispatch_authorization")
-dispatch_auth_rule.roles = %w[Warehouse\ Manager Hub\ Manager]
-dispatch_auth_rule.save! if dispatch_auth_rule.new_record? || dispatch_auth_rule.changed?
+# receipt_authorization rule covers all RA lifecycle events:
+#   receipt_authorization.created       → Req 12.1 (notify Storekeeper)
+#   receipt_authorization.driver_confirmed → Req 12.2 (notify Hub/Warehouse Manager)
+#   receipt_authorization.grn_confirmed → Req 12.3 (notify Hub/Warehouse Manager)
+#   receipt_order.completed             → Req 12.4 (notify Officer)
+#   receipt_authorization.cancelled     → Req 12.6 (notify Storekeeper)
+find_or_create_with(Cats::Core::NotificationRule, { code: "receipt_authorization" }, { roles: %w[Warehouse\ Manager Hub\ Manager Storekeeper Officer] })
+find_or_create_with(Cats::Core::NotificationRule, { code: "dispatch_authorization" }, { roles: %w[Warehouse\ Manager Hub\ Manager] })
 
 puts "Creating users..."
 admin_user = find_or_create_with(
