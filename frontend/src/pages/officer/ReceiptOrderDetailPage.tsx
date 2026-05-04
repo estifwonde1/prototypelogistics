@@ -35,6 +35,7 @@ import {
 import { getStores, getStore } from '../../api/stores';
 import { getReceiptAuthorizations } from '../../api/receiptAuthorizations';
 import type { ReceiptAuthorization } from '../../api/receiptAuthorizations';
+import { notificationsQueryKey, notificationsUnreadCountKey } from '../../api/notifications';
 import { getStacks } from '../../api/stacks';
 import { createInspection, getInspections } from '../../api/inspections';
 import { createGrn } from '../../api/grns';
@@ -483,6 +484,8 @@ function ReceiptOrderDetailPage() {
     mutationFn: () => confirmReceiptOrder(Number(id)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['receipt_orders'] });
+      queryClient.invalidateQueries({ queryKey: notificationsQueryKey });
+      queryClient.invalidateQueries({ queryKey: notificationsUnreadCountKey });
       notifications.show({
         title: 'Success',
         message: 'Receipt Order confirmed successfully',
@@ -528,6 +531,8 @@ function ReceiptOrderDetailPage() {
     mutationFn: (payload: any) => assignReceiptOrder(Number(id), payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['receipt_orders', id] });
+      queryClient.invalidateQueries({ queryKey: notificationsQueryKey });
+      queryClient.invalidateQueries({ queryKey: notificationsUnreadCountKey });
       notifications.show({
         title: 'Success',
         message: 'Assignment created successfully',

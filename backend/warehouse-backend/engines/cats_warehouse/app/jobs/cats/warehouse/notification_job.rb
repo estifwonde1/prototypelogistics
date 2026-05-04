@@ -4,7 +4,8 @@ module Cats
       queue_as :default
 
       def perform(event, payload = {})
-        NotificationDelivery.new(event: event, payload: payload).call
+        payload_hash = payload.respond_to?(:deep_symbolize_keys) ? payload.deep_symbolize_keys : payload.to_h.deep_symbolize_keys
+        NotificationDelivery.new(event: event, payload: payload_hash).call
       end
     end
   end

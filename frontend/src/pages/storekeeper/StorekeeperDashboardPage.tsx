@@ -9,7 +9,6 @@ import {
   Divider, 
   Button, 
   TextInput,
-  ActionIcon,
   Paper,
   Box,
   LoadingOverlay,
@@ -30,7 +29,6 @@ import {
   IconClipboardCheck,
   IconArrowRight,
   IconClock,
-  IconBell,
   IconCheck,
   IconAlertCircle,
   IconInfoCircle
@@ -135,23 +133,6 @@ export default function StorekeeperDashboardPage() {
               Manage your daily tasks, incoming trucks, and store inventory.
             </Text>
           </div>
-          <Box pos="relative">
-            <ActionIcon variant="light" color="blue" size="xl" radius="md">
-              <IconBell size={24} />
-            </ActionIcon>
-            {pendingReceipts.length + pendingDispatches.length > 0 && (
-              <Badge 
-                size="xs" 
-                circle 
-                color="red" 
-                pos="absolute" 
-                top={-5} 
-                right={-5}
-              >
-                {pendingReceipts.length + pendingDispatches.length}
-              </Badge>
-            )}
-          </Box>
         </Group>
 
         {/* Quick Search for Driver Arrival */}

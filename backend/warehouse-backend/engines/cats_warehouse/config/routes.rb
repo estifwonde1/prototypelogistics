@@ -3,6 +3,11 @@ Cats::Warehouse::Engine.routes.draw do
     post "auth/login", to: "auth#login"
     get "me/assignments", to: "me#assignments"
 
+    get "notifications", to: "notifications#index"
+    get "notifications/unread_count", to: "notifications#unread_count"
+    patch "notifications/read_all", to: "notifications#read_all"
+    patch "notifications/:id/read", to: "notifications#mark_read"
+
     namespace :admin do
       resources :users, only: [ :index, :create, :update, :destroy ]
       resources :roles, only: [ :index ]

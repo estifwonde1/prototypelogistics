@@ -151,15 +151,11 @@ module Cats
       end
 
       def enqueue_notification(event, payload)
-        return unless ENV["ENABLE_WAREHOUSE_JOBS"] == "true"
-
-        NotificationJob.perform_later(event, payload)
+        NotificationFanout.deliver(event, payload)
       end
 
       def self.enqueue_notification_static(event, payload)
-        return unless ENV["ENABLE_WAREHOUSE_JOBS"] == "true"
-
-        NotificationJob.perform_later(event, payload)
+        NotificationFanout.deliver(event, payload)
       end
     end
   end

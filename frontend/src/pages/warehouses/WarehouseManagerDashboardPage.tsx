@@ -9,8 +9,7 @@ import {
   Divider, 
   Button, 
   Table, 
-  ActionIcon, 
-  Tooltip,
+  ActionIcon,
   Paper,
   Box,
   LoadingOverlay
@@ -23,8 +22,7 @@ import {
   IconArrowRight,
   IconAlertCircle,
   IconFileImport,
-  IconFileExport,
-  IconBell
+  IconFileExport
 } from '@tabler/icons-react';
 import { useAuthStore } from '../../store/authStore';
 import { getRoleLabel } from '../../contracts/warehouse';
@@ -110,11 +108,6 @@ export default function WarehouseManagerDashboardPage() {
               Operational overview and pending actions for your warehouse.
             </Text>
           </div>
-          <Tooltip label="You have 0 unread notifications">
-            <ActionIcon variant="light" color="blue" size="xl" radius="md">
-              <IconBell size={24} />
-            </ActionIcon>
-          </Tooltip>
         </Group>
 
         {/* Action Summary Cards */}
