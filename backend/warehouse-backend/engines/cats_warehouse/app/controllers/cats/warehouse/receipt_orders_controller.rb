@@ -52,7 +52,7 @@ module Cats
         authorize order
 
         assignments = order.receipt_order_assignments
-          .includes(:assigned_to, :assigned_by, :store, :warehouse, :hub)
+          .includes(:assigned_to, :assigned_by, :store, :warehouse, :hub, { receipt_order_line: :unit })
 
         # Debug: Log assignment details and user role
         Rails.logger.info "DEBUG: User #{current_user.id} role check - Hub Manager: #{hub_manager?}, Warehouse Manager: #{warehouse_manager?}, Officer: #{officer?}"
@@ -608,7 +608,7 @@ module Cats
           :warehouse,
           {
             receipt_order_lines: [ :commodity, :unit ],
-            receipt_order_assignments: [ :assigned_to, :assigned_by, :hub, :warehouse, :store ],
+            receipt_order_assignments: [ :assigned_to, :assigned_by, :hub, :warehouse, :store, { receipt_order_line: :unit } ],
             space_reservations: [ :warehouse, :store, :reserved_by ]
           }
         ]
@@ -617,7 +617,7 @@ module Cats
       def render_order_payload(order, status: :ok)
         # Apply role-based filtering to assignments
         assignments = order.receipt_order_assignments
-          .includes(:assigned_to, :assigned_by, :store, :warehouse, :hub)
+          .includes(:assigned_to, :assigned_by, :store, :warehouse, :hub, { receipt_order_line: :unit })
 
         # Only apply role-based filtering for non-officers to maintain visibility of all assignments
         # Officers need to see all assignments to get the complete picture of commodity classification

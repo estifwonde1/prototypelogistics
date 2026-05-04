@@ -322,19 +322,7 @@ export default function StackLayoutPage() {
   );
 
   const storeStacks = useMemo(() => {
-    const filtered = stacks?.filter((stack) => String(stack.store_id) === resolvedStoreId) || [];
-    
-    // Debug logging to help diagnose missing stacks
-    if (resolvedStoreId && stacks && stacks.length > 0) {
-      console.log('=== Stack Filtering Debug ===');
-      console.log('Selected Store ID:', resolvedStoreId);
-      console.log('Total stacks fetched:', stacks.length);
-      console.log('Stacks for this store:', filtered.length);
-      console.log('All stack store_ids:', stacks.map(s => ({ id: s.id, store_id: s.store_id, code: s.code })));
-      console.log('Filtered stacks:', filtered.map(s => ({ id: s.id, code: s.code })));
-    }
-    
-    return filtered;
+    return stacks?.filter((stack) => String(stack.store_id) === resolvedStoreId) || [];
   }, [resolvedStoreId, stacks]);
 
   const commodityOptions = useMemo(() => {
@@ -448,6 +436,19 @@ export default function StackLayoutPage() {
     }, 400);
   }, [userWarehouseId, storeId, isStorekeeper, userStoreId, stores]);
 
+  /** Stable key so we do not re-post search_delivery('') when only `handleRefSearch` identity changes. */
+  const deliverySearchBootstrapKey = useMemo(() => {
+    const currentStoreId =
+      storeId ||
+      (isStorekeeper && userStoreId ? String(userStoreId) : stores?.length ? String(stores[0].id) : null);
+    if (!currentStoreId) return null;
+    const selectedStore = stores?.find((s) => s.id.toString() === currentStoreId);
+    const w = selectedStore?.warehouse_id ?? userWarehouseId;
+    const s = parseInt(currentStoreId, 10);
+    if (w == null && Number.isNaN(s)) return null;
+    return `${w ?? ''}:${s}`;
+  }, [storeId, isStorekeeper, userStoreId, stores, userWarehouseId]);
+
   // Auto-select user's assigned store for storekeepers
   useEffect(() => {
     if (isStorekeeper && userStoreId && !storeId) {
@@ -455,10 +456,13 @@ export default function StackLayoutPage() {
     }
   }, [isStorekeeper, userStoreId, storeId]);
 
-  // Fetch default assignments on mount
+  // Fetch default delivery options once the store/warehouse context is known (blank reference = recent ROs).
   useEffect(() => {
+    if (!deliverySearchBootstrapKey) return;
     handleRefSearch('');
-  }, [handleRefSearch]);
+    // handleRefSearch updates with the same inputs as bootstrapKey; key prevents duplicate POSTs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed by deliverySearchBootstrapKey only
+  }, [deliverySearchBootstrapKey]);
 
   // ── Auto-fill handler when a reference is selected ──
   const handleRefAutoFill = useCallback((value: string | null) => {

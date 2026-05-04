@@ -315,10 +315,22 @@ function StackFormPage() {
     }, 400);
   }, [userWarehouseId, form.values.store_id, stores]);
 
-  // Fetch default assignments on mount
+  const deliverySearchBootstrapKey = useMemo(() => {
+    const selectedStoreId = form.values.store_id;
+    if (!selectedStoreId) return null;
+    const selectedStore = stores?.find((s) => s.id.toString() === selectedStoreId);
+    const w = selectedStore?.warehouse_id ?? userWarehouseId;
+    const s = parseInt(selectedStoreId, 10);
+    if (w == null && Number.isNaN(s)) return null;
+    return `${w ?? ''}:${s}`;
+  }, [form.values.store_id, stores, userWarehouseId]);
+
+  // Fetch default assignments when store context is set (blank reference = recent ROs).
   useEffect(() => {
+    if (!deliverySearchBootstrapKey) return;
     handleRefSearch('');
-  }, [handleRefSearch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed by deliverySearchBootstrapKey only
+  }, [deliverySearchBootstrapKey]);
 
   // ── Auto-fill handler when a reference is selected ──
   const handleRefAutoFill = useCallback((value: string | null) => {

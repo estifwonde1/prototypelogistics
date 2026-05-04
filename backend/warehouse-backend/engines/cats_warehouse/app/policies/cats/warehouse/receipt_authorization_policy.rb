@@ -17,6 +17,10 @@ module Cats
             return scope.where(warehouse_id: access.assigned_warehouse_ids)
           end
 
+          if access.officer?
+            return scope.where(warehouse_id: access.accessible_warehouse_ids)
+          end
+
           if access.receipt_authorizer?
             wh_ids = access.assigned_receipt_authorizer_warehouse_ids
             hub_wh_ids = Warehouse.where(hub_id: access.assigned_receipt_authorizer_hub_ids).pluck(:id)
@@ -33,7 +37,7 @@ module Cats
       end
 
       def index?
-        admin? || hub_manager? || warehouse_manager? || receipt_authorizer? || storekeeper?
+        admin? || hub_manager? || warehouse_manager? || receipt_authorizer? || storekeeper? || officer?
       end
 
       def show?

@@ -383,6 +383,8 @@ puts "Seeding core reference data..."
 units = {
   kg: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "kg" }, { name: "Kilogram", unit_type: Cats::Core::UnitOfMeasure::WEIGHT }),
   mt: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "mt" }, { name: "Metric Ton", unit_type: Cats::Core::UnitOfMeasure::WEIGHT }),
+  kntl: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "kntl" }, { name: "Kuntal (100 kg)", unit_type: Cats::Core::UnitOfMeasure::WEIGHT }),
+  lb: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "lb" }, { name: "Pound", unit_type: Cats::Core::UnitOfMeasure::WEIGHT }),
   l: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "l" }, { name: "Liter", unit_type: Cats::Core::UnitOfMeasure::VOLUME }),
   pcs: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "pcs" }, { name: "Pieces", unit_type: Cats::Core::UnitOfMeasure::ITEM }),
   bag: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "bag" }, { name: "Bag", unit_type: Cats::Core::UnitOfMeasure::ITEM })
@@ -399,6 +401,27 @@ if table_exists?("cats_warehouse_uom_conversions")
     Cats::Warehouse::UomConversion,
     { from_unit: units[:kg], to_unit: units[:mt] },
     { multiplier: 0.001 }
+  )
+  # Metric kuntal (quintal) and pound bridge into kg so any kg→… chain (e.g. to mt) applies automatically.
+  find_or_create_with(
+    Cats::Warehouse::UomConversion,
+    { from_unit: units[:kntl], to_unit: units[:kg] },
+    { multiplier: 100.0 }
+  )
+  find_or_create_with(
+    Cats::Warehouse::UomConversion,
+    { from_unit: units[:lb], to_unit: units[:kg] },
+    { multiplier: 0.45359237 }
+  )
+  find_or_create_with(
+    Cats::Warehouse::UomConversion,
+    { from_unit: units[:kntl], to_unit: units[:mt] },
+    { multiplier: 0.1 }
+  )
+  find_or_create_with(
+    Cats::Warehouse::UomConversion,
+    { from_unit: units[:lb], to_unit: units[:mt] },
+    { multiplier: 0.00045359237 }
   )
 else
   puts "Skipping UOM conversions: table cats_warehouse_uom_conversions is not present in the current database."

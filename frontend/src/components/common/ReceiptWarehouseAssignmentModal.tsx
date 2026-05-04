@@ -18,6 +18,7 @@ import type { ReceiptOrderLine } from '../../api/receiptOrders';
 import type { Store } from '../../types/store';
 import type { Warehouse } from '../../types/warehouse';
 import type { UnitReference, UomConversion } from '../../types/referenceData';
+import { findDirectedMultiplier } from '../../utils/uomConversions';
 
 interface AssignmentPayloadRow {
   receipt_order_line_id: number;
@@ -66,38 +67,6 @@ function makeClientId() {
 
 function orderLines(receiptOrder: ReceiptOrder) {
   return receiptOrder.receipt_order_lines ?? receiptOrder.lines ?? [];
-}
-
-function findDirectedMultiplier(
-  fromUnitId: number,
-  toUnitId: number,
-  commodityId: number,
-  conversions: UomConversion[]
-): number | null {
-  if (fromUnitId === toUnitId) return 1;
-
-  const visited = new Set<number>();
-
-  function dfs(currentUnitId: number): number | null {
-    if (currentUnitId === toUnitId) return 1;
-    if (visited.has(currentUnitId)) return null;
-    visited.add(currentUnitId);
-
-    const outgoing = conversions.filter((conversion) => {
-      if (!conversion.active) return false;
-      if (conversion.from_unit_id !== currentUnitId) return false;
-      return conversion.commodity_id == null || conversion.commodity_id === commodityId;
-    });
-
-    for (const edge of outgoing) {
-      const tail = dfs(edge.to_unit_id);
-      if (tail != null) return Number(edge.multiplier) * tail;
-    }
-
-    return null;
-  }
-
-  return dfs(fromUnitId);
 }
 
 function ReceiptWarehouseAssignmentModal({

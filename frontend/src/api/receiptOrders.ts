@@ -119,6 +119,9 @@ function normalizeReceiptOrderAssignment(raw: Record<string, unknown>): ReceiptO
     assigned_by_id: Number(raw.assigned_by_id),
     assigned_by_name: typeof raw.assigned_by_name === 'string' ? raw.assigned_by_name : undefined,
     quantity: raw.quantity != null ? Number(raw.quantity) : undefined,
+    quantity_unit_id: raw.quantity_unit_id != null ? Number(raw.quantity_unit_id) : undefined,
+    quantity_unit_abbreviation:
+      typeof raw.quantity_unit_abbreviation === 'string' ? raw.quantity_unit_abbreviation : undefined,
     status,
     assigned_at: assignedAt,
     accepted_at: typeof raw.accepted_at === 'string' ? raw.accepted_at : undefined,

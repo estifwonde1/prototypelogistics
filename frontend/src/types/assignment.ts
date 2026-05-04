@@ -17,6 +17,8 @@ export interface ReceiptOrderAssignment {
   assigned_by_id: number;
   assigned_by_name?: string;
   quantity?: number;
+  quantity_unit_id?: number;
+  quantity_unit_abbreviation?: string;
   status: 'pending' | 'assigned' | 'accepted' | 'in_progress' | 'completed' | 'rejected';
   assigned_at: string;
   accepted_at?: string;
