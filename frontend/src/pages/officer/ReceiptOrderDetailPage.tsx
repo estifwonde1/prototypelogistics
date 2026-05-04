@@ -193,6 +193,24 @@ function warehouseOnlyAssignmentsForManager(
   );
 }
 
+function withKntlSuffix(
+  qty: number,
+  baseUnitId: number | undefined,
+  commodityId: number,
+  baseAbbrev: string,
+  units: UnitReference[],
+  conversions: UomConversion[]
+): string {
+  const ab = baseAbbrev.trim() || 'units';
+  const core = `${qty.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${ab}`;
+  if (baseUnitId == null || !conversions.length) return core;
+  const kntl = units.find((u) => (u.abbreviation || '').toLowerCase() === 'kntl');
+  if (!kntl?.id) return core;
+  const m = findDirectedMultiplier(baseUnitId, kntl.id, commodityId, conversions);
+  if (m == null) return core;
+  return `${core} (~${(qty * m).toLocaleString(undefined, { maximumFractionDigits: 2 })} kntl)`;
+}
+
 function computeWarehouseManagerStoreRemaining(
   assignments: ReceiptOrderAssignment[],
   userWarehouseId: number,
@@ -398,14 +416,20 @@ function ReceiptOrderDetailPage() {
   const unitsQuery = useQuery({
     queryKey: ['reference-data', 'units'],
     queryFn: () => getUnitReferences(),
-    enabled: showWarehouseAssignmentModal || showAssignmentForm,
+    enabled:
+      showWarehouseAssignmentModal ||
+      showAssignmentForm ||
+      (!!order && activeTab === 'assignments'),
   });
   const units = (unitsQuery.data as UnitReference[]) || [];
 
   const uomConversionsQuery = useQuery({
     queryKey: ['reference-data', 'uom_conversions'],
     queryFn: () => getUomConversions(),
-    enabled: showWarehouseAssignmentModal || showAssignmentForm,
+    enabled:
+      showWarehouseAssignmentModal ||
+      showAssignmentForm ||
+      (!!order && activeTab === 'assignments'),
   });
   const uomConversions = (uomConversionsQuery.data as UomConversion[]) || [];
 
@@ -1039,6 +1063,118 @@ function ReceiptOrderDetailPage() {
     return rows;
   }, [assignments, lines, order]);
   const isDraft = String(order?.status || '').toLowerCase() === 'draft';
+
+  const assignmentsTabSummary = useMemo(() => {
+    if (!order || isDraft) return null;
+    const linesForScope = visibleLines.length > 0 ? visibleLines : lines;
+    if (linesForScope.length === 0) return null;
+
+    const primaryLine = linesForScope[0];
+    const baseUnitId = primaryLine?.unit_id != null ? Number(primaryLine.unit_id) : undefined;
+    const commodityId = Number(primaryLine?.commodity_id ?? 0);
+    const baseAbbrev = primaryLine?.unit_name?.trim() || '';
+
+    const lineIdSet = new Set(
+      linesForScope
+        .map((l) => (l.id != null ? Number(l.id) : NaN))
+        .filter((id) => !Number.isNaN(id))
+    );
+    const belongsToScope = (a: ReceiptOrderAssignment) => {
+      if (a.receipt_order_line_id == null) return true;
+      return lineIdSet.has(Number(a.receipt_order_line_id));
+    };
+
+    let warehouseReceived = 0;
+    let storeAssigned = 0;
+
+    if ((isWarehouseManager || roleSlug === 'storekeeper') && userWarehouseId != null) {
+      const storesPayload =
+        (assignableManagersPayload?.stores as { id: number; warehouse_id: number }[] | undefined) ?? [];
+      const { pool, assigned } = computeWarehouseManagerStoreRemaining(
+        assignments,
+        userWarehouseId,
+        storesPayload
+      );
+      warehouseReceived = pool;
+      storeAssigned = assigned;
+    } else if (roleSlug === 'hub_manager' && userHubId != null) {
+      const whIds = new Set(
+        allWarehouses.filter((w) => Number(w.hub_id) === Number(userHubId)).map((w) => Number(w.id))
+      );
+      warehouseReceived = assignments
+        .filter(
+          (a) =>
+            a.store_id == null &&
+            a.warehouse_id != null &&
+            belongsToScope(a) &&
+            (Number(a.hub_id) === Number(userHubId) || whIds.has(Number(a.warehouse_id)))
+        )
+        .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+      storeAssigned = assignments
+        .filter(
+          (a) =>
+            a.store_id != null &&
+            belongsToScope(a) &&
+            (Number(a.hub_id) === Number(userHubId) ||
+              (a.warehouse_id != null && whIds.has(Number(a.warehouse_id))))
+        )
+        .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+    } else {
+      warehouseReceived = assignments
+        .filter((a) => a.store_id == null && a.warehouse_id != null)
+        .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+      storeAssigned = assignments
+        .filter((a) => a.store_id != null)
+        .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+    }
+
+    const remaining = Math.max(0, warehouseReceived - storeAssigned);
+
+    return {
+      warehouseReceived,
+      storeAssigned,
+      remaining,
+      warehouseReceivedLabel: withKntlSuffix(
+        warehouseReceived,
+        baseUnitId,
+        commodityId,
+        baseAbbrev,
+        units,
+        uomConversions
+      ),
+      storeAssignedLabel: withKntlSuffix(
+        storeAssigned,
+        baseUnitId,
+        commodityId,
+        baseAbbrev,
+        units,
+        uomConversions
+      ),
+      remainingLabel: withKntlSuffix(
+        remaining,
+        baseUnitId,
+        commodityId,
+        baseAbbrev,
+        units,
+        uomConversions
+      ),
+    };
+  }, [
+    order,
+    isDraft,
+    visibleLines,
+    lines,
+    assignments,
+    roleSlug,
+    userHubId,
+    userWarehouseId,
+    assignableManagersPayload,
+    isWarehouseManager,
+    allWarehouses,
+    units,
+    uomConversions,
+  ]);
+
   // For storekeepers: GRN can only be created after inspection is completed (has at least one confirmed inspection)
   const hasCompletedInspection = inspections.some(
     (i) => String(i.status || '').toLowerCase() === 'confirmed'
@@ -1730,6 +1866,37 @@ function ReceiptOrderDetailPage() {
                 );
               })()}
             </Group>
+
+            {assignmentsTabSummary ? (
+              <Card withBorder padding="sm" radius="md" bg="var(--mantine-color-body)">
+                <Group gap="xl" align="flex-start" wrap="wrap">
+                  <div>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                      Total received at warehouse (from hub)
+                    </Text>
+                    <Text size="sm" fw={700}>
+                      {assignmentsTabSummary.warehouseReceivedLabel}
+                    </Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                      Assigned to stores
+                    </Text>
+                    <Text size="sm" fw={700}>
+                      {assignmentsTabSummary.storeAssignedLabel}
+                    </Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                      Remaining to assign to stores
+                    </Text>
+                    <Text size="sm" fw={700} c={assignmentsTabSummary.remaining > 0.0001 ? undefined : 'green'}>
+                      {assignmentsTabSummary.remainingLabel}
+                    </Text>
+                  </div>
+                </Group>
+              </Card>
+            ) : null}
 
             {assignedLocationRows.length === 0 ? (
               <Text c="dimmed">No assigned locations yet</Text>
