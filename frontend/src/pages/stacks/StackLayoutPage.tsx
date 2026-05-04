@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -8,7 +8,6 @@ import {
   Card,
   Divider,
   Group,
-  Loader,
   Modal,
   NumberInput,
   Select,
@@ -29,7 +28,6 @@ import {
   IconEdit,
   IconInfoCircle,
   IconMapPin,
-  IconSearch,
   IconX,
   IconCalculator,
 } from '@tabler/icons-react';
@@ -37,9 +35,9 @@ import { notifications } from '@mantine/notifications';
 import type { AxiosError } from 'axios';
 import { createStack, getStacks, updateStack } from '../../api/stacks';
 import { getStores } from '../../api/stores';
-import { getCommodityReferences, getUnitReferences, getInventoryLots } from '../../api/referenceData';
-import { searchDeliveryByReference } from '../../api/storekeeperdashboard';
-import type { DeliverySearchResult } from '../../api/storekeeperdashboard';
+import { getCommodityReferences, getUnitReferences } from '../../api/referenceData';
+import { getCommodityDefinitions } from '../../api/commodityDefinitions';
+import type { CommodityDefinition } from '../../api/commodityDefinitions';
 import { getReceiptAuthorizations } from '../../api/receiptAuthorizations';
 import type { ReceiptAuthorization } from '../../api/receiptAuthorizations';
 import { finishStacking } from '../../api/receiptOrders';
@@ -53,6 +51,9 @@ type StackFormValues = {
   id?: number;
   code: string;
   stack_status: string;
+  /** Officer commodity definition id (same list as Officer → Commodities). */
+  commodity_definition_id: string;
+  /** Core commodity row id for the selected batch (cats_core_commodities). */
   commodity_id: string;
   commodity_name: string;
   length: number;
@@ -143,9 +144,67 @@ const numberFormatter = new Intl.NumberFormat('en-US', {
 });
 
 const MIN_DRAW_SIZE_METERS = 0.5;
+/** Meters — treat touching edges as non-overlap */
+const STACK_LAYOUT_EPS = 1e-4;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+/** Axis-aligned footprint overlap in floor (X/Y) plane; length along X, width along Y. */
+function rectanglesOverlap2D(
+  ax: number,
+  ay: number,
+  aLen: number,
+  aWid: number,
+  bx: number,
+  by: number,
+  bLen: number,
+  bWid: number,
+  eps = STACK_LAYOUT_EPS
+): boolean {
+  if (aLen <= 0 || aWid <= 0 || bLen <= 0 || bWid <= 0) return false;
+  return (
+    ax < bx + bLen - eps &&
+    bx < ax + aLen - eps &&
+    ay < by + bWid - eps &&
+    by < ay + aWid - eps
+  );
+}
+
+function isStackPositionedOnFloor(s: StackType): boolean {
+  return (
+    s.start_x != null &&
+    s.start_y != null &&
+    Number(s.length) > STACK_LAYOUT_EPS &&
+    Number(s.width) > STACK_LAYOUT_EPS
+  );
+}
+
+function firstOverlappingStack(
+  stacks: StackType[],
+  footprint: { start_x: number; start_y: number; length: number; width: number },
+  excludeId?: number
+): StackType | null {
+  for (const s of stacks) {
+    if (excludeId != null && Number(s.id) === Number(excludeId)) continue;
+    if (!isStackPositionedOnFloor(s)) continue;
+    if (
+      rectanglesOverlap2D(
+        footprint.start_x,
+        footprint.start_y,
+        footprint.length,
+        footprint.width,
+        Number(s.start_x),
+        Number(s.start_y),
+        Number(s.length),
+        Number(s.width)
+      )
+    ) {
+      return s;
+    }
+  }
+  return null;
 }
 
 function roundToTwo(value: number) {
@@ -156,22 +215,11 @@ function getStatusMeta(status?: string) {
   return STATUS_META[status || 'empty'] || STATUS_META.empty;
 }
 
-function buildUnitOptions(stacks: StackType[] | undefined) {
-  const map = new Map<string, string>();
-
-  stacks?.forEach((stack) => {
-    if (stack.unit_id) {
-      map.set(String(stack.unit_id), stack.unit_name || stack.unit_abbreviation || `Unit ${stack.unit_id}`);
-    }
-  });
-
-  return Array.from(map.entries()).map(([value, label]) => ({ value, label }));
-}
-
 function createInitialValues(storeId: string | null): StackFormValues {
   return {
     code: '',
     stack_status: 'empty',
+    commodity_definition_id: '',
     commodity_id: '',
     commodity_name: '',
     length: 6,
@@ -195,12 +243,6 @@ export default function StackLayoutPage() {
   const [selectedStack, setSelectedStack] = useState<StackType | null>(null);
   const [draftArea, setDraftArea] = useState<DraftArea | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
-
-  // ── Reference search state for auto-fill ──
-  const [refSearchValue, setRefSearchValue] = useState('');
-  const [refSearchResults, setRefSearchResults] = useState<DeliverySearchResult[]>([]);
-  const [refSearchLoading, setRefSearchLoading] = useState(false);
-  const refSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Receipt Authorization selector state (storekeeper stacking flow) ──
   const [selectedRAId, setSelectedRAId] = useState<string | null>(
@@ -255,14 +297,16 @@ export default function StackLayoutPage() {
     },
   });
 
+  /** Same payload as Officer → Commodities (batches / core commodity rows). */
   const { data: commodities = [] } = useQuery({
-    queryKey: ['commodity-references'],
+    queryKey: ['reference-data', 'commodities'],
     queryFn: () => getCommodityReferences(),
   });
 
-  const { data: inventoryLots = [] } = useQuery({
-    queryKey: ['inventory-lots'],
-    queryFn: () => getInventoryLots(),
+  /** Same list as Officer → Commodities dropdown (admin definitions). */
+  const { data: commodityDefinitions = [] } = useQuery({
+    queryKey: ['commodity-definitions'],
+    queryFn: () => getCommodityDefinitions(),
   });
 
   const { data: units = [] } = useQuery({
@@ -325,27 +369,15 @@ export default function StackLayoutPage() {
     return stacks?.filter((stack) => String(stack.store_id) === resolvedStoreId) || [];
   }, [resolvedStoreId, stacks]);
 
-  const commodityOptions = useMemo(() => {
-    const seen = new Set<string>();
-    return commodities
-      .filter((c) => {
-        if (seen.has(c.name)) return false;
-        seen.add(c.name);
-        return true;
-      })
-      .map((c) => ({
-        value: c.name,
-        label: c.name,
-      }));
-  }, [commodities]);
-
   const form = useForm<StackFormValues>({
     initialValues: createInitialValues(storeId),
     validate: {
       code: (value) => (!value ? 'Stack code is required' : null),
       stack_status: (value) => (!value ? 'Stack status is required' : null),
+      commodity_definition_id: (value, values) =>
+        values.stack_status !== 'empty' && !value ? 'Select a commodity' : null,
       commodity_id: (value, values) =>
-        values.stack_status !== 'empty' && !value ? 'Commodity is required' : null,
+        values.stack_status !== 'empty' && !value ? 'Select a batch' : null,
       length: (value) => (value <= 0 ? 'Length must be greater than 0' : null),
       width: (value) => (value <= 0 ? 'Width must be greater than 0' : null),
       height: (value) => (value <= 0 ? 'Height must be greater than 0' : null),
@@ -358,96 +390,79 @@ export default function StackLayoutPage() {
     },
   });
 
-  const unitOptions = useMemo(() => {
-    const options = units.map((unit) => ({
-      value: unit.id.toString(),
-      label: unit.abbreviation || unit.name,
-    }));
-    
-    // Ensure the auto-filled unit is available in options even if not fetched
-    if (form.values.unit_id && !options.some(o => o.value === form.values.unit_id.toString())) {
-      options.unshift({ value: form.values.unit_id.toString(), label: `Unit #${form.values.unit_id}` });
-    }
-    
-    return options;
-  }, [units, form.values.unit_id]);
+  const definitionSelectOptions = useMemo(
+    () =>
+      commodityDefinitions.map((d: CommodityDefinition) => {
+        const name = (d.name || '').trim() || `Commodity #${d.id}`;
+        const cat = (d.category_name || '').trim();
+        const label = cat ? `${name} (${cat})` : name;
+        return { value: String(d.id), label };
+      }),
+    [commodityDefinitions]
+  );
 
-  const referenceOptions = useMemo(() => {
-    const selectedName = form.values.commodity_id;
-    if (!selectedName) return [];
+  const batchSelectOptions = useMemo(() => {
+    const defId = form.values.commodity_definition_id;
+    if (!defId) return [];
 
-    const matchingCommIds = commodities
-      .filter((c) => c.name === selectedName)
-      .map((c) => c.id);
+    const definition = commodityDefinitions.find((d) => String(d.id) === defId);
+    if (!definition?.name) return [];
 
-    const seen = new Set<string>();
-    const options: { value: string; label: string }[] = [];
+    const defName = definition.name.trim().toLowerCase();
+    const batches = commodities
+      .filter((b) => (b.name || '').trim().toLowerCase() === defName)
+      .slice()
+      .sort((a, b) => b.id - a.id);
 
-    inventoryLots.forEach((lot) => {
-      if (matchingCommIds.includes(lot.commodity_id) && lot.batch_no && !seen.has(lot.batch_no)) {
-        seen.add(lot.batch_no);
-        options.push({
-          value: lot.batch_no,
-          label: lot.batch_no,
-        });
-      }
+    const options = batches.map((b) => {
+      const batchLabel = (b.batch_no || '').trim() || `Lot #${b.id}`;
+      const extra = [b.source_name, b.source_type].filter(Boolean).join(' · ');
+      const label = extra ? `${batchLabel} · ${extra}` : batchLabel;
+      return { value: String(b.id), label };
     });
 
-    // Ensure the auto-filled reference is available in the options
-    if (form.values.reference && !seen.has(form.values.reference)) {
+    const sid = form.values.commodity_id;
+    if (
+      sid &&
+      selectedStack &&
+      String(selectedStack.commodity_id) === sid &&
+      !options.some((o) => o.value === sid)
+    ) {
+      const ref = (selectedStack.reference || '').trim() || `Lot #${sid}`;
+      options.unshift({ value: sid, label: ref });
+    }
+
+    return options;
+  }, [
+    commodityDefinitions,
+    commodities,
+    form.values.commodity_definition_id,
+    form.values.commodity_id,
+    selectedStack,
+  ]);
+
+  const unitOptions = useMemo(() => {
+    const options = units.map((unit) => {
+      const name = (unit.name || '').trim();
+      const label = name || `Unit #${unit.id}`;
+      return { value: unit.id.toString(), label };
+    });
+
+    if (form.values.unit_id && !options.some((o) => o.value === form.values.unit_id.toString())) {
+      const fromStack =
+        selectedStack && String(selectedStack.unit_id) === String(form.values.unit_id)
+          ? (selectedStack.unit_name || '').trim()
+          : '';
+      const fromUnits = units.find((u) => String(u.id) === String(form.values.unit_id));
+      const fallbackName = (fromUnits?.name || '').trim();
       options.unshift({
-        value: form.values.reference,
-        label: form.values.reference,
+        value: form.values.unit_id.toString(),
+        label: fromStack || fallbackName || `Unit #${form.values.unit_id}`,
       });
     }
 
     return options;
-  }, [inventoryLots, commodities, form.values.commodity_id, form.values.reference]);
-
-  // ── Reference Search Options (from search_delivery API) ──
-  const refSearchOptions = useMemo(() => {
-    return refSearchResults.map((r) => ({
-      value: `${r.type}::${r.id}::0::${r.reference_no}`,
-      label: r.reference_no, // Only show reference number
-    }));
-  }, [refSearchResults]);
-
-  // ── Debounced reference search ──
-  const handleRefSearch = useCallback((query: string) => {
-    setRefSearchValue(query);
-    if (refSearchTimer.current) clearTimeout(refSearchTimer.current);
-
-    setRefSearchLoading(true);
-    refSearchTimer.current = setTimeout(async () => {
-      try {
-        // Find the resolved store
-        const currentStoreId = storeId || (isStorekeeper && userStoreId ? String(userStoreId) : (stores && stores.length > 0 ? String(stores[0].id) : null));
-        const selectedStore = stores?.find(s => s.id.toString() === currentStoreId);
-        const contextWarehouseId = selectedStore?.warehouse_id || userWarehouseId;
-        const contextStoreId = currentStoreId ? parseInt(currentStoreId, 10) : undefined;
-
-        const response = await searchDeliveryByReference(query, contextWarehouseId ?? undefined, contextStoreId);
-        setRefSearchResults(response.results);
-      } catch {
-        setRefSearchResults((prev) => prev.length === 0 ? prev : []);
-      } finally {
-        setRefSearchLoading(false);
-      }
-    }, 400);
-  }, [userWarehouseId, storeId, isStorekeeper, userStoreId, stores]);
-
-  /** Stable key so we do not re-post search_delivery('') when only `handleRefSearch` identity changes. */
-  const deliverySearchBootstrapKey = useMemo(() => {
-    const currentStoreId =
-      storeId ||
-      (isStorekeeper && userStoreId ? String(userStoreId) : stores?.length ? String(stores[0].id) : null);
-    if (!currentStoreId) return null;
-    const selectedStore = stores?.find((s) => s.id.toString() === currentStoreId);
-    const w = selectedStore?.warehouse_id ?? userWarehouseId;
-    const s = parseInt(currentStoreId, 10);
-    if (w == null && Number.isNaN(s)) return null;
-    return `${w ?? ''}:${s}`;
-  }, [storeId, isStorekeeper, userStoreId, stores, userWarehouseId]);
+  }, [units, form.values.unit_id, selectedStack]);
 
   // Auto-select user's assigned store for storekeepers
   useEffect(() => {
@@ -456,62 +471,20 @@ export default function StackLayoutPage() {
     }
   }, [isStorekeeper, userStoreId, storeId]);
 
-  // Fetch default delivery options once the store/warehouse context is known (blank reference = recent ROs).
+  /** If definitions load after opening edit, attach definition id from stack commodity name. */
   useEffect(() => {
-    if (!deliverySearchBootstrapKey) return;
-    handleRefSearch('');
-    // handleRefSearch updates with the same inputs as bootstrapKey; key prevents duplicate POSTs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed by deliverySearchBootstrapKey only
-  }, [deliverySearchBootstrapKey]);
-
-  // ── Auto-fill handler when a reference is selected ──
-  const handleRefAutoFill = useCallback((value: string | null) => {
-    if (!value) return;
-
-    // Parse composite value: "Receipt Order::5::0::RO-21"
-    const parts = value.split('::');
-    if (parts.length < 4) return;
-
-    const [type, idStr, lineIdxStr] = parts;
-    const lineIdx = Number(lineIdxStr);
-    const result = refSearchResults.find(
-      (r) => r.type === type && r.id === Number(idStr)
+    if (!modalOpened || !selectedStack || form.values.id !== selectedStack.id) return;
+    if (form.values.commodity_definition_id) return;
+    const def = commodityDefinitions.find(
+      (d) => (d.name || '').trim().toLowerCase() === (selectedStack.commodity_name || '').trim().toLowerCase()
     );
-
-    if (!result) return;
-
-    // Get line-level data
-    const line = result.lines?.[lineIdx] || result.lines?.[0];
-
-    const newCommodity = line?.commodity_name || result.commodity || '';
-    const newBatch = line?.batch_no || result.batch_no || result.reference_no;
-    const newQuantity = line?.quantity || result.quantity || 0;
-    const newUnitId = line?.unit_id ? String(line.unit_id) : (result.unit_id ? String(result.unit_id) : '');
-
-    form.setValues((prev) => ({
-      ...prev,
-      commodity_id: newCommodity,
-      commodity_name: newCommodity,
-      reference: newBatch || '',
-      quantity: newQuantity,
-      unit_id: newUnitId,
-    }));
-
-    notifications.show({
-      title: 'Auto-filled from ' + result.reference_no,
-      message: `Commodity: ${newCommodity}, Quantity: ${newQuantity}, Batch: ${newBatch || 'N/A'}`,
-      color: 'blue',
-      autoClose: 3000,
-    });
-  }, [refSearchResults]);
+    if (def) form.setFieldValue('commodity_definition_id', String(def.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run when definitions or modal/stack context changes
+  }, [modalOpened, selectedStack, commodityDefinitions, form.values.id, form.values.commodity_definition_id]);
 
   const upsertMutation = useMutation({
     mutationFn: async (values: StackFormValues) => {
-      // Resolve the actual commodity_id from the selected batch/reference
-      const selectedLot = inventoryLots.find((l) => l.batch_no === values.reference);
-      const resolvedCommId = selectedLot
-        ? selectedLot.commodity_id
-        : commodities.find((c) => c.name === values.commodity_id)?.id || 0;
+      const resolvedCommId = Number(values.commodity_id) || 0;
 
       const payload: Partial<StackType> = {
         code: values.code,
@@ -592,11 +565,15 @@ export default function StackLayoutPage() {
   const openEditor = (stack?: StackType) => {
     if (stack) {
       setSelectedStack(stack);
+      const def = commodityDefinitions.find(
+        (d) => d.name?.trim().toLowerCase() === (stack.commodity_name || '').trim().toLowerCase()
+      );
       form.setValues({
         id: stack.id,
         code: stack.code,
         stack_status: stack.stack_status,
-        commodity_id: stack.commodity_name || '',
+        commodity_definition_id: def ? String(def.id) : '',
+        commodity_id: stack.commodity_id != null ? String(stack.commodity_id) : '',
         commodity_name: stack.commodity_name || '',
         length: stack.length,
         width: stack.width,
@@ -617,6 +594,8 @@ export default function StackLayoutPage() {
   };
 
   const openCreateEditorFromDraw = (area: DraftArea) => {
+    if (!selectedStore) return;
+
     const startX = Math.min(area.startX, area.currentX);
     const startY = Math.min(area.startY, area.currentY);
     const length = Math.abs(area.currentX - area.startX);
@@ -629,6 +608,30 @@ export default function StackLayoutPage() {
         color: 'yellow',
       });
       setDraftArea(null);
+      return;
+    }
+
+    if (
+      startX < -STACK_LAYOUT_EPS ||
+      startY < -STACK_LAYOUT_EPS ||
+      startX + length > selectedStore.length + STACK_LAYOUT_EPS ||
+      startY + width > selectedStore.width + STACK_LAYOUT_EPS
+    ) {
+      notifications.show({
+        title: 'Outside store floor',
+        message: 'Draw only inside the store boundaries. Stacks cannot extend past the floor.',
+        color: 'yellow',
+      });
+      return;
+    }
+
+    const overlap = firstOverlappingStack(storeStacks, { start_x: startX, start_y: startY, length, width });
+    if (overlap) {
+      notifications.show({
+        title: 'Overlaps another stack',
+        message: `This area crosses "${overlap.code}". Use empty floor space, or edit or remove the other stack first.`,
+        color: 'red',
+      });
       return;
     }
 
@@ -729,6 +732,44 @@ export default function StackLayoutPage() {
   };
 
   const handleSubmit = (values: StackFormValues) => {
+    if (!selectedStore) {
+      upsertMutation.mutate(values);
+      return;
+    }
+
+    const sx = Number(values.start_x);
+    const sy = Number(values.start_y);
+    const len = Number(values.length);
+    const wid = Number(values.width);
+
+    if (
+      sx < -STACK_LAYOUT_EPS ||
+      sy < -STACK_LAYOUT_EPS ||
+      sx + len > selectedStore.length + STACK_LAYOUT_EPS ||
+      sy + wid > selectedStore.width + STACK_LAYOUT_EPS
+    ) {
+      notifications.show({
+        title: 'Outside store floor',
+        message: 'Position and size must stay within the store length and width.',
+        color: 'red',
+      });
+      return;
+    }
+
+    const overlap = firstOverlappingStack(
+      storeStacks,
+      { start_x: sx, start_y: sy, length: len, width: wid },
+      values.id
+    );
+    if (overlap) {
+      notifications.show({
+        title: 'Overlaps another stack',
+        message: `Footprint crosses "${overlap.code}". Change position/size or adjust the other stack.`,
+        color: 'red',
+      });
+      return;
+    }
+
     upsertMutation.mutate(values);
   };
 
@@ -928,7 +969,7 @@ export default function StackLayoutPage() {
                   <IconInfoCircle size={15} color="#64748b" />
                   <Text size="sm" c="#64748b" fw={600}>
                     {editMode
-                      ? 'Drag on empty layout space to create a stack, or click an existing tile to edit it'
+                      ? 'Drag on empty floor to draw a new stack (cannot overlap existing tiles); click a tile to edit'
                       : 'Hover or click stacks for details'}
                   </Text>
                 </Group>
@@ -1071,10 +1112,12 @@ export default function StackLayoutPage() {
 
                       {storeStacks.map((stack) => {
                         const statusMeta = getStatusMeta(stack.stack_status);
-                        const left = Math.min(stack.start_x * boardScale, Math.max(boardWidth - stack.length * boardScale, 0));
-                        const top = Math.min(stack.start_y * boardScale, Math.max(boardHeight - stack.width * boardScale, 0));
-                        const width = Math.max(stack.length * boardScale, 56);
-                        const height = Math.max(stack.width * boardScale, 52);
+                        const tileW = Math.max(stack.length * boardScale, 56);
+                        const tileH = Math.max(stack.width * boardScale, 52);
+                        const maxLeft = Math.max(0, boardWidth - tileW);
+                        const maxTop = Math.max(0, boardHeight - tileH);
+                        const left = clamp(Number(stack.start_x ?? 0) * boardScale, 0, maxLeft);
+                        const top = clamp(Number(stack.start_y ?? 0) * boardScale, 0, maxTop);
 
                         return (
                           <Tooltip
@@ -1094,8 +1137,9 @@ export default function StackLayoutPage() {
                                 position: 'absolute',
                                 left,
                                 top,
-                                width,
-                                height,
+                                width: tileW,
+                                height: tileH,
+                                zIndex: stack.id,
                                 borderRadius: 10,
                                 border: `2px solid ${statusMeta.border}`,
                                 background: statusMeta.fill,
@@ -1294,61 +1338,64 @@ export default function StackLayoutPage() {
               />
             </Group>
 
-            {/* ── Reference Search (auto-fill from receipt order) ── */}
-            <Select
-              label="Search Receipt Order"
-              placeholder="Type RO-21 or select assigned order..."
-              data={refSearchOptions}
-              searchable
-              clearable
-              searchValue={refSearchValue}
-              onSearchChange={handleRefSearch}
-              nothingFoundMessage={refSearchLoading ? 'Searching...' : 'No deliveries found'}
-              onChange={handleRefAutoFill}
-              leftSection={refSearchLoading ? <Loader size={16} /> : <IconSearch size={16} />}
-              styles={{
-                ...baseInputStyles,
-                label: {
-                  ...baseInputStyles.label,
-                  color: '#0d6e3f',
-                },
-                input: {
-                  ...baseInputStyles.input,
-                  backgroundColor: '#e8f5e9',
-                  borderColor: '#c8e6c9',
-                },
-              }}
-            />
-
-            <Group grow align="flex-start">
-              <Select
-                label="Commodity"
-                placeholder="Select commodity"
-                data={commodityOptions}
-                searchable
-                styles={baseInputStyles}
-                {...form.getInputProps('commodity_id')}
-                onChange={(value) => {
-                  form.setValues({
-                    ...form.values,
-                    commodity_id: value || '',
-                    reference: '',
-                  });
-                }}
-                style={{ flex: 2 }}
-              />
-              <Select
-                key={`ref-select-${form.values.commodity_id}`}
-                label="Batch / Reference"
-                placeholder="Choose batch"
-                data={referenceOptions}
-                searchable
-                nothingFoundMessage="No batches found for this commodity"
-                styles={baseInputStyles}
-                {...form.getInputProps('reference')}
-                style={{ flex: 1 }}
-              />
-            </Group>
+            <Stack gap={6}>
+              <Group grow align="flex-start">
+                <Select
+                  label="Commodity"
+                  description="Same list as Officer → Commodities (admin definitions)"
+                  placeholder="Select commodity"
+                  data={definitionSelectOptions}
+                  searchable
+                  styles={baseInputStyles}
+                  {...form.getInputProps('commodity_definition_id')}
+                  onChange={(value) => {
+                    form.setValues({
+                      ...form.values,
+                      commodity_definition_id: value || '',
+                      commodity_id: '',
+                      commodity_name: '',
+                      reference: '',
+                      unit_id: '',
+                    });
+                  }}
+                  style={{ flex: 2 }}
+                />
+                <Select
+                  key={`batch-${form.values.commodity_definition_id}-${form.values.commodity_id}`}
+                  label="Batch / Reference"
+                  description="Batches created on Officer → Commodities for this name"
+                  placeholder={
+                    form.values.commodity_definition_id
+                      ? 'Choose batch'
+                      : 'Select a commodity first'
+                  }
+                  data={batchSelectOptions}
+                  searchable
+                  clearable
+                  disabled={!form.values.commodity_definition_id}
+                  nothingFoundMessage={
+                    form.values.commodity_definition_id
+                      ? 'No batches yet — create them under Officer → Commodities'
+                      : 'Select a commodity first'
+                  }
+                  {...form.getInputProps('commodity_id')}
+                  onChange={(value) => {
+                    const row = commodities.find((c) => String(c.id) === value);
+                    form.setValues({
+                      ...form.values,
+                      commodity_id: value || '',
+                      commodity_name: row?.name || form.values.commodity_name,
+                      reference: (row?.batch_no || '').trim(),
+                      unit_id: row?.unit_id != null ? String(row.unit_id) : form.values.unit_id,
+                    });
+                  }}
+                  style={{ flex: 1 }}
+                />
+              </Group>
+              <Text size="xs" c="dimmed">
+                Pick the officer commodity, then the batch row. Quantity, unit, and dimensions stay manual.
+              </Text>
+            </Stack>
 
             <Divider
               label="Dimensions"
