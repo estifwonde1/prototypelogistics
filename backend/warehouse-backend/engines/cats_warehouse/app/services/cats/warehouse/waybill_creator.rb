@@ -1,7 +1,7 @@
 module Cats
   module Warehouse
     class WaybillCreator
-      def initialize(reference_no:, issued_on:, source_location:, destination_location:, items:, transport:, dispatch: nil, status: nil, dispatch_order: nil, prepared_by: nil)
+      def initialize(reference_no:, issued_on:, source_location:, destination_location:, items:, transport:, dispatch: nil, status: nil, dispatch_order: nil, prepared_by: nil, source_context: nil)
         @reference_no = reference_no
         @issued_on = issued_on
         @source_location = source_location
@@ -9,26 +9,39 @@ module Cats
         @items = items
         @transport = transport
         @dispatch = dispatch
-        @status = status
+        @status = normalize_status(status)
         @dispatch_order = dispatch_order
         @prepared_by = prepared_by
+        @source_context = source_context
       end
 
       def call
         raise ArgumentError, "items are required" if @items.nil? || @items.empty?
         raise ArgumentError, "transport is required" if @transport.nil?
 
+        resolved_status = @status.presence || "draft"
+
         Waybill.transaction do
+          destination_location_id = fetch_id(@destination_location)
+          source_location_id = if @source_location.present?
+                                 fetch_id(@source_location)
+                               elsif @source_context.to_s.in?(%w[receipt_order receipt_authorization])
+                                 destination_location_id
+                               else
+                                 raise ArgumentError, "source_location is required"
+                               end
+
           waybill = Waybill.create!(
             reference_no: @reference_no,
             issued_on: @issued_on,
-            source_location_id: fetch_id(@source_location),
-            destination_location_id: fetch_id(@destination_location),
+            source_location_id: source_location_id,
+            destination_location_id: destination_location_id,
             dispatch: @dispatch,
-            status: @status,
+            status: resolved_status,
             dispatch_order: @dispatch_order,
             prepared_by: @prepared_by,
-            workflow_status: @dispatch_order.present? ? "prepared" : @status
+            workflow_status: @dispatch_order.present? ? "prepared" : resolved_status,
+            source_context: @source_context
           )
 
           WaybillTransport.create!(
@@ -86,6 +99,12 @@ module Cats
         return value if value.present?
 
         nil
+      end
+
+      def normalize_status(value)
+        return nil if value.blank?
+
+        value.to_s.strip.downcase.tr(" ", "_")
       end
     end
   end

@@ -44,6 +44,7 @@ export interface CreateWaybillRequest {
   issued_on: string;
   source_location_id: number;
   destination_location_id: number;
+  source_context?: 'manual' | 'receipt_order' | 'receipt_authorization';
   dispatch_id?: number;
   status?: string;
   transport: WaybillTransport;
@@ -102,6 +103,7 @@ export function toCreateWaybillRequest(
     issued_on: data.issued_on ?? '',
     source_location_id: data.source_location_id ?? 0,
     destination_location_id: data.destination_location_id ?? 0,
+    source_context: (data as { source_context?: CreateWaybillRequest['source_context'] }).source_context,
     dispatch_id: data.dispatch_id,
     status: data.status,
     transport: data.transport ?? data.waybill_transport ?? ({} as WaybillTransport),

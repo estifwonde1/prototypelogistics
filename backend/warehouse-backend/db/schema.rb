@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_05_04_180000) do
+ActiveRecord::Schema[7.0].define(version: 2026_05_05_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1372,7 +1372,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_04_180000) do
   create_table "cats_warehouse_receipt_authorizations", force: :cascade do |t|
     t.bigint "receipt_order_id", null: false
     t.bigint "receipt_order_assignment_id"
-    t.bigint "store_id", null: false
+    t.bigint "store_id"
     t.bigint "warehouse_id", null: false
     t.bigint "transporter_id", null: false
     t.string "driver_name", null: false

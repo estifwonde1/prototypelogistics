@@ -27,6 +27,7 @@ export interface WaybillItem {
   commodity_id: number;
   commodity_name?: string;
   commodity_code?: string;
+  batch_no?: string | null;
   quantity: number;
   unit_id: number;
   unit_name?: string;

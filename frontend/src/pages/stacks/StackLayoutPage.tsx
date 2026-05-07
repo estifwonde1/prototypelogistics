@@ -40,7 +40,7 @@ import { getCommodityDefinitions } from '../../api/commodityDefinitions';
 import type { CommodityDefinition } from '../../api/commodityDefinitions';
 import { getReceiptAuthorizations } from '../../api/receiptAuthorizations';
 import type { ReceiptAuthorization } from '../../api/receiptAuthorizations';
-import { finishStacking } from '../../api/receiptOrders';
+import { finishStacking, startStacking } from '../../api/receiptOrders';
 import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useAuthStore } from '../../store/authStore';
@@ -325,10 +325,13 @@ export default function StackLayoutPage() {
 
   // ── Finish Stacking mutation ──
   const finishStackingMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (!selectedRAId) throw new Error('No Receipt Authorization selected');
       const selectedRA = activeRAsForStacking.find((ra) => String(ra.id) === selectedRAId);
       if (!selectedRA) throw new Error('Receipt Authorization not found');
+
+      // Backend requires receipt order status `in_progress` for finish_stacking; no separate UI calls start_stacking today.
+      await startStacking(selectedRA.receipt_order_id);
 
       // Build placements from the current store's active stacks
       const placements = storeStacks

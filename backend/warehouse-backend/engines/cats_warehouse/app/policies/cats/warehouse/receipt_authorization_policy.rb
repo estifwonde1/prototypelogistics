@@ -17,6 +17,28 @@ module Cats
             return scope.where(warehouse_id: access.assigned_warehouse_ids)
           end
 
+          # IMPORTANT: prioritize storekeeper scope before officer/other role scopes.
+          # Some users can carry multiple roles; inspection flow must use the storekeeper
+          # visibility rules when acting as storekeeper.
+          if access.storekeeper?
+            store_ids = access.assigned_store_ids
+            return scope.none if store_ids.blank?
+
+            warehouse_ids =
+              Store.where(id: store_ids).where.not(warehouse_id: nil).distinct.pluck(:warehouse_id)
+            tbl = ReceiptAuthorization.table_name
+
+            if warehouse_ids.blank?
+              return scope.where(store_id: store_ids)
+            end
+
+            return scope.where(
+              "#{tbl}.store_id IN (?) OR (#{tbl}.store_id IS NULL AND #{tbl}.warehouse_id IN (?))",
+              store_ids,
+              warehouse_ids
+            )
+          end
+
           if access.officer?
             return scope.where(warehouse_id: access.accessible_warehouse_ids)
           end
@@ -25,11 +47,6 @@ module Cats
             wh_ids = access.assigned_receipt_authorizer_warehouse_ids
             hub_wh_ids = Warehouse.where(hub_id: access.assigned_receipt_authorizer_hub_ids).pluck(:id)
             return scope.where(warehouse_id: (wh_ids + hub_wh_ids).uniq)
-          end
-
-          if access.storekeeper?
-            store_ids = access.assigned_store_ids
-            return scope.where(store_id: store_ids, status: ReceiptAuthorization::PENDING)
           end
 
           scope.none

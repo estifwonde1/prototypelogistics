@@ -167,7 +167,9 @@ export default function ReceiptAuthorizationListPage() {
                     </Badge>
                   </Table.Td>
                   <Table.Td><Text size="sm">{ra.warehouse_name || `Warehouse #${ra.warehouse_id}`}</Text></Table.Td>
-                  <Table.Td><Text size="sm">{ra.store_name || `Store #${ra.store_id}`}</Text></Table.Td>
+                  <Table.Td>
+                    <Text size="sm">{ra.store_name || (ra.store_id != null ? `Store #${ra.store_id}` : '—')}</Text>
+                  </Table.Td>
                   <Table.Td><Text size="sm" fw={600}>{Number(ra.authorized_quantity).toLocaleString()}</Text></Table.Td>
                   <Table.Td><Text size="sm">{ra.driver_name}</Text></Table.Td>
                   <Table.Td>

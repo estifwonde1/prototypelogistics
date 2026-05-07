@@ -169,7 +169,7 @@ module Cats
 
         def rows_receipt_authorization_facility(event_name)
           ra = ReceiptAuthorization.find_by(id: payload_value(:receipt_authorization_id))
-          return [] unless ra&.store
+          return [] unless ra
 
           wid = ra.warehouse_id
           sid = ra.store_id

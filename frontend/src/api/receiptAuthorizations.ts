@@ -12,8 +12,8 @@ export interface ReceiptAuthorization {
   receipt_order_reference_no?: string;
   receipt_order_assignment_id?: number | null;
 
-  // Destination
-  store_id: number;
+  // Destination (store may be unset until downstream assignment)
+  store_id: number | null;
   store_name?: string;
   warehouse_id: number;
   warehouse_name?: string;
@@ -49,13 +49,15 @@ export interface ReceiptAuthorization {
 export interface CreateReceiptAuthorizationPayload {
   receipt_order_id: number;
   receipt_order_assignment_id?: number | null;
-  store_id: number;
+  /** Omit at creation when authorizing inbound to a warehouse allocation only */
+  store_id?: number | null;
   transporter_id: number;
   authorized_quantity: number;
   driver_name: string;
   driver_id_number: string;
   truck_plate_number: string;
-  waybill_number: string;
+  /** Optional: backend auto-generates when omitted/blank */
+  waybill_number?: string;
 }
 
 export interface UpdateReceiptAuthorizationPayload {
