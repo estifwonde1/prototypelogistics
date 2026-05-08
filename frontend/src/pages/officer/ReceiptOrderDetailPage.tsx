@@ -261,14 +261,14 @@ function ReceiptOrderDetailPage() {
   const stacksQuery = useQuery({
     queryKey: ['stacks', { store_id: stackingStoreId }],
     queryFn: () => getStacks({ store_id: stackingStoreId ?? undefined }),
-    enabled: !!stackingStoreId,
+    enabled: roleSlug === 'storekeeper' && !!stackingStoreId,
   });
 
   // Inspections (receipt recordings) for this order
   const inspectionsQuery = useQuery({
     queryKey: ['inspections', { receipt_order_id: id }],
     queryFn: () => getInspections(),
-    enabled: !!order && ['assigned', 'in_progress', 'completed'].includes(normalizeOrderStatus(order.status)),
+    enabled: !!order && !isOfficerRole && ['confirmed', 'assigned', 'in_progress', 'completed'].includes(normalizeOrderStatus(order.status)),
     select: (data) => (data as Inspection[]).filter((i) => i.receipt_order_id === Number(id)),
   });
   const inspections = (inspectionsQuery.data as Inspection[]) || [];
@@ -322,7 +322,7 @@ function ReceiptOrderDetailPage() {
   const receiptAuthorizationsQuery = useQuery({
     queryKey: ['receipt_authorizations', { receipt_order_id: id }],
     queryFn: () => getReceiptAuthorizations({ receipt_order_id: Number(id) }),
-    enabled: !!order && String(order?.status || '').toLowerCase() !== 'draft',
+    enabled: !!order && !isOfficerRole && String(order?.status || '').toLowerCase() !== 'draft',
   });
   const receiptAuthorizations = (receiptAuthorizationsQuery.data as ReceiptAuthorization[]) || [];
 
@@ -842,7 +842,8 @@ function ReceiptOrderDetailPage() {
     (i) => String(i.status || '').toLowerCase() === 'confirmed'
   );
   const canCreateGrn = can('grns', 'create') && !!order && !isDraft &&
-    (roleSlug !== 'storekeeper' || hasCompletedInspection);
+    // For storekeepers: hide Create GRN when RA flow is active (GRN is auto-created after Driver Confirm)
+    (roleSlug !== 'storekeeper' || (hasCompletedInspection && receiptAuthorizations.length === 0));
   const canUpdateOrder = can('receipt_orders', 'update');
   const canDeleteOrder = can('receipt_orders', 'delete');
   const canConfirmOrder = can('receipt_orders', 'confirm');

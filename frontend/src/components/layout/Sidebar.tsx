@@ -443,6 +443,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               path: "/storekeeper/assignments",
               resource: "receipt_orders",
             },
+            {
+              label: "Receipt Authorizations",
+              icon: <IconClipboardCheck size={20} />,
+              path: "/storekeeper/receipt-authorizations",
+              resource: "receipt_orders",
+            },
           ],
         },
         {

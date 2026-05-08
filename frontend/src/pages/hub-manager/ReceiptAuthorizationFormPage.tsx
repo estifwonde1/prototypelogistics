@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
@@ -12,10 +12,8 @@ import {
   NumberInput,
   TextInput,
   Text,
-  Alert,
   Divider,
 } from '@mantine/core';
-import { IconAlertCircle } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import {
   createReceiptAuthorization,
@@ -43,25 +41,54 @@ export default function ReceiptAuthorizationFormPage() {
   const [truckPlateNumber, setTruckPlateNumber] = useState('');
   const [waybillNumber, setWaybillNumber] = useState('');
 
-  // Load confirmed receipt orders for this hub
+  // Load confirmed receipt orders — filtered to this hub's orders
   const { data: receiptOrders = [] } = useQuery({
-    queryKey: ['receipt_orders', { status: 'confirmed' }],
+    queryKey: ['receipt_orders', { hub_id: userHubId }],
     queryFn: () => getReceiptOrders(),
     select: (orders) =>
       orders.filter((o) => {
         const s = String(o.status || '').toLowerCase();
-        return s === 'confirmed' || s === 'assigned' || s === 'reserved';
+        const validStatus = s === 'confirmed' || s === 'assigned' || s === 'reserved' || s === 'in_progress';
+        const matchesHub = !userHubId || Number(o.hub_id) === Number(userHubId);
+        return validStatus && matchesHub;
       }),
   });
 
-  // Load stores for the selected receipt order's warehouse
   const selectedOrder = receiptOrders.find((o) => String(o.id) === receiptOrderId);
-  const warehouseId = selectedOrder?.warehouse_id;
 
-  const { data: stores = [] } = useQuery({
-    queryKey: ['stores', { warehouse_id: warehouseId }],
-    queryFn: () => getStores({ warehouse_id: warehouseId }),
-    enabled: !!warehouseId,
+  // Warehouse-level assignments on the selected order
+  const assignments = useMemo(() => {
+    const raw = selectedOrder?.receipt_order_assignments ?? selectedOrder?.assignments ?? [];
+    return raw.filter((a: any) => a.warehouse_id != null);
+  }, [selectedOrder]);
+
+  const selectedAssignment = useMemo(
+    () => assignments.find((a: any) => String(a.id) === assignmentId),
+    [assignments, assignmentId]
+  );
+
+  // Resolve warehouse for store loading:
+  // 1. From selected assignment's warehouse_id (hub orders)
+  // 2. From order's direct warehouse_id (standalone warehouse orders)
+  // 3. Auto-use if only one assignment exists
+  const warehouseIdForStores = useMemo(() => {
+    if (selectedAssignment?.warehouse_id) return Number(selectedAssignment.warehouse_id);
+    if (selectedOrder?.warehouse_id) return Number(selectedOrder.warehouse_id);
+    if (assignments.length === 1) return Number((assignments[0] as any).warehouse_id);
+    return null;
+  }, [selectedAssignment, selectedOrder, assignments]);
+
+  // Auto-select assignment when there's only one
+  useEffect(() => {
+    if (assignments.length === 1 && !assignmentId) {
+      setAssignmentId(String((assignments[0] as any).id));
+    }
+  }, [assignments, assignmentId]);
+
+  const { data: stores = [], isFetching: storesLoading } = useQuery({
+    queryKey: ['stores', { warehouse_id: warehouseIdForStores }],
+    queryFn: () => getStores({ warehouse_id: warehouseIdForStores! }),
+    enabled: !!warehouseIdForStores,
   });
 
   // Load transporters
@@ -70,15 +97,26 @@ export default function ReceiptAuthorizationFormPage() {
     queryFn: getTransporterReferences,
   });
 
-  // Reset store when order changes
+  // Reset downstream fields when order changes
   useEffect(() => {
     setStoreId(null);
     setAssignmentId(null);
+    setAuthorizedQuantity('');
   }, [receiptOrderId]);
+
+  // Reset store when assignment changes
+  useEffect(() => {
+    setStoreId(null);
+  }, [assignmentId]);
 
   const receiptOrderOptions = receiptOrders.map((o) => ({
     value: String(o.id),
-    label: `${o.reference_no || `RO-${o.id}`} — ${o.warehouse_name || o.hub_name || 'Unknown destination'}`,
+    label: `${o.reference_no || `RO-${o.id}`} — ${o.hub_name || o.warehouse_name || 'Unknown destination'}`,
+  }));
+
+  const assignmentOptions = assignments.map((a: any) => ({
+    value: String(a.id),
+    label: `${a.warehouse_name || `Warehouse #${a.warehouse_id}`} — ${Number(a.quantity ?? 0).toLocaleString()} units`,
   }));
 
   const storeOptions = stores.map((s) => ({
@@ -90,15 +128,6 @@ export default function ReceiptAuthorizationFormPage() {
     value: String(t.id),
     label: t.name,
   }));
-
-  // Assignments for the selected order (to cap quantity)
-  const assignments = selectedOrder?.receipt_order_assignments ?? selectedOrder?.assignments ?? [];
-  const assignmentOptions = assignments
-    .filter((a) => a.warehouse_id != null)
-    .map((a) => ({
-      value: String(a.id),
-      label: `${a.warehouse_name || `Warehouse #${a.warehouse_id}`} — ${Number(a.quantity ?? 0).toLocaleString()} units`,
-    }));
 
   const createMutation = useMutation({
     mutationFn: () => {
@@ -165,27 +194,45 @@ export default function ReceiptAuthorizationFormPage() {
             description="Only confirmed, assigned, or reserved orders are shown"
           />
 
-          {assignmentOptions.length > 0 && (
+          {/* Warehouse Assignment — required when order has multiple hub assignments */}
+          {receiptOrderId && assignments.length > 1 && (
             <Select
-              label="Warehouse Assignment (optional)"
-              placeholder="Select warehouse allocation"
+              label="Warehouse Assignment"
+              placeholder="Select which warehouse this truck is delivering to"
               data={assignmentOptions}
               value={assignmentId}
               onChange={setAssignmentId}
-              clearable
-              description="Link this RA to a specific warehouse allocation for quantity validation"
+              required
+              description="Select the warehouse allocation for this truck"
             />
+          )}
+
+          {/* Show single assignment as read-only info */}
+          {receiptOrderId && assignments.length === 1 && (
+            <Text size="sm" c="dimmed">
+              Warehouse: <strong>{(assignments[0] as any).warehouse_name || `Warehouse #${(assignments[0] as any).warehouse_id}`}</strong> — {Number((assignments[0] as any).quantity ?? 0).toLocaleString()} units allocated
+            </Text>
           )}
 
           <Select
             label="Destination Store"
-            placeholder={warehouseId ? 'Select store' : 'Select a receipt order first'}
+            placeholder={
+              !receiptOrderId
+                ? 'Select a receipt order first'
+                : assignments.length > 1 && !assignmentId
+                ? 'Select a warehouse assignment first'
+                : storesLoading
+                ? 'Loading stores…'
+                : storeOptions.length === 0 && warehouseIdForStores
+                ? 'No stores found for this warehouse'
+                : 'Select store'
+            }
             data={storeOptions}
             value={storeId}
             onChange={setStoreId}
             searchable
             required
-            disabled={!warehouseId}
+            disabled={!warehouseIdForStores || storesLoading}
           />
 
           <NumberInput

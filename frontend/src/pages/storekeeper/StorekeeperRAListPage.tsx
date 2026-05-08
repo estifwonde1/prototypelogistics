@@ -102,14 +102,23 @@ export default function StorekeeperRAListPage() {
                     {ra.transporter_name ? ` · ${ra.transporter_name}` : ''}
                   </Text>
                 </div>
-                <Button
-                  size="sm"
-                  color="blue"
-                  rightSection={<IconArrowRight size={14} />}
-                  onClick={() => navigate(`/storekeeper/receipt-authorizations/${ra.id}`)}
-                >
-                  Confirm Driver
-                </Button>
+                <Group gap="xs">
+                  <Button
+                    size="sm"
+                    variant="light"
+                    onClick={() => navigate(`/storekeeper/receipt-authorizations/${ra.id}`)}
+                  >
+                    View Details
+                  </Button>
+                  <Button
+                    size="sm"
+                    color="blue"
+                    rightSection={<IconArrowRight size={14} />}
+                    onClick={() => navigate(`/storekeeper/receipt-authorizations/${ra.id}`)}
+                  >
+                    Confirm Driver
+                  </Button>
+                </Group>
               </Group>
             </Card>
           ))}
@@ -140,14 +149,23 @@ export default function StorekeeperRAListPage() {
                     Qty: {Number(ra.authorized_quantity).toLocaleString()}
                   </Text>
                 </div>
-                <Button
-                  size="sm"
-                  color="cyan"
-                  rightSection={<IconArrowRight size={14} />}
-                  onClick={() => navigate(`/stacks/layout`)}
-                >
-                  Go to Stacking
-                </Button>
+                <Group gap="xs">
+                  <Button
+                    size="sm"
+                    variant="light"
+                    onClick={() => navigate(`/storekeeper/receipt-authorizations/${ra.id}`)}
+                  >
+                    View Details
+                  </Button>
+                  <Button
+                    size="sm"
+                    color="cyan"
+                    rightSection={<IconArrowRight size={14} />}
+                    onClick={() => navigate(`/stacks/layout?receipt_authorization_id=${ra.id}&store_id=${ra.store_id}`)}
+                  >
+                    Go to Stacking
+                  </Button>
+                </Group>
               </Group>
             </Card>
           ))}
@@ -157,7 +175,7 @@ export default function StorekeeperRAListPage() {
       {/* Pending RAs */}
       {pendingRAs.length > 0 && (
         <>
-          <Title order={4}>Pending — Awaiting Inspection</Title>
+          <Title order={4}>Pending — Awaiting Receipt Recording</Title>
           {pendingRAs.map((ra) => (
             <Card key={ra.id} shadow="sm" padding="lg" radius="md" withBorder opacity={0.85}>
               <Group justify="space-between" align="flex-start">
@@ -176,11 +194,11 @@ export default function StorekeeperRAListPage() {
                 </div>
                 <Button
                   size="sm"
-                  variant="light"
+                  variant="filled"
                   rightSection={<IconArrowRight size={14} />}
                   onClick={() => navigate(`/storekeeper/receipt-authorizations/${ra.id}`)}
                 >
-                  View
+                  Record Receipt
                 </Button>
               </Group>
             </Card>

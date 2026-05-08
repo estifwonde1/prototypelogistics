@@ -25,6 +25,12 @@ export interface Grn {
     status: string;
   };
   generated_from_inspection_id?: number;
+  // Receipt Authorization linkage (for GRN print)
+  receipt_authorization_id?: number | null;
+  ra_transporter_name?: string | null;
+  ra_driver_name?: string | null;
+  ra_truck_plate_number?: string | null;
+  ra_waybill_number?: string | null;
 }
 
 export interface GrnItem {

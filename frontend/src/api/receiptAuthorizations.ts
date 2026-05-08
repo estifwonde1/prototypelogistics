@@ -39,6 +39,12 @@ export interface ReceiptAuthorization {
   grn_reference_no?: string | null;
   grn_status?: string | null;
 
+  // Commodity info (from receipt order lines — used for receipt recording form)
+  commodity_id?: number | null;
+  commodity_name?: string | null;
+  unit_id?: number | null;
+  unit_name?: string | null;
+
   // Audit
   created_by_name?: string;
   cancelled_at?: string | null;

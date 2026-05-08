@@ -86,25 +86,49 @@ function GrnDetailPage() {
   const handleDownload = () => {
     if (!grn) return;
 
-    // Build a self-contained printable HTML document
     const items = grn.grn_items ?? [];
-    const totalQty = items.reduce((s, i) => s + i.quantity, 0);
+    const receivedDate = grn.received_on ? new Date(grn.received_on).toLocaleDateString('en-GB') : '___________';
 
-    const itemRows = items
-      .map(
-        (item, idx) => `
-        <tr>
-          <td>${idx + 1}</td>
-          <td>${item.commodity_name || item.commodity_code || item.commodity_id}</td>
-          <td>${item.line_reference_no || item.batch_no || '—'}</td>
-          <td style="text-align:right">${item.quantity.toLocaleString()}</td>
-          <td>${item.unit_abbreviation || item.unit_name || ''}</td>
-          <td>${item.quality_status || ''}</td>
-          <td>${item.store_name || item.store_id || '—'}</td>
-          <td>${item.stack_code || item.stack_name || item.stack_id || '—'}</td>
-        </tr>`
-      )
-      .join('');
+    // RA-linked fields (populated when GRN was created via Receipt Authorization flow)
+    const transporterName = grn.ra_transporter_name || grn.source_reference || '___________';
+    const vehicleNo       = grn.ra_truck_plate_number || '___________';
+    const waybillNo       = grn.ra_waybill_number || String(grn.source_reference || '') || '___________';
+    const driverName      = grn.ra_driver_name || '___________';
+    const supplierDonor   = grn.receipt_order?.source_name || grn.source_type || '___________';
+    const warehouseName   = grn.warehouse_name || String(grn.warehouse_id);
+    const warehouseNo     = grn.warehouse_code || String(grn.warehouse_id);
+    const receivedBy      = grn.received_by_name || 'Store Keeper';
+    const approvedBy      = grn.approved_by_name || '___________';
+
+    // Build item rows — 8 empty rows minimum to match the form layout
+    const MIN_ROWS = 8;
+    const filledRows = items.map((item, idx) => `
+      <tr>
+        <td style="text-align:center">${idx + 1}</td>
+        <td></td>
+        <td>${item.commodity_name || item.commodity_code || String(item.commodity_id)}<br/>
+            <span style="font-size:9px;color:#555">${item.line_reference_no || item.batch_no || ''}</span></td>
+        <td style="text-align:center">${item.unit_abbreviation || item.unit_name || ''}</td>
+        <td style="text-align:right">${item.quantity.toLocaleString()}</td>
+        <td style="text-align:right">${item.quantity.toLocaleString()}</td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>`).join('');
+
+    const emptyRows = Array.from({ length: Math.max(0, MIN_ROWS - items.length) })
+      .map(() => `<tr>
+        <td>&nbsp;</td><td></td><td></td><td></td>
+        <td></td><td></td><td></td><td></td>
+        <td></td><td></td><td></td>
+      </tr>`).join('');
+
+    // Quality grade from first item
+    const qualityGrade = items[0]?.quality_status
+      ? items[0].quality_status.charAt(0).toUpperCase() + items[0].quality_status.slice(1)
+      : '___________';
 
     const html = `<!DOCTYPE html>
 <html>
@@ -113,78 +137,254 @@ function GrnDetailPage() {
   <title>GRN ${grn.reference_no}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; font-size: 12px; color: #111; padding: 24px; }
-    h1 { font-size: 20px; margin-bottom: 4px; }
-    h2 { font-size: 14px; margin: 16px 0 8px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
-    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
-    .header-left h1 { font-size: 22px; }
-    .header-left p { color: #555; font-size: 11px; margin-top: 2px; }
-    .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 700;
-             background: ${grn.status === 'confirmed' ? '#d3f9d8' : '#fff3bf'}; 
-             color: ${grn.status === 'confirmed' ? '#2b8a3e' : '#e67700'}; border: 1px solid currentColor; }
-    .meta-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px; }
-    .meta-item label { font-size: 10px; text-transform: uppercase; color: #888; font-weight: 700; }
-    .meta-item p { font-weight: 600; margin-top: 2px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-    th { background: #f1f3f5; text-align: left; padding: 6px 8px; font-size: 11px; text-transform: uppercase; border: 1px solid #dee2e6; }
-    td { padding: 6px 8px; border: 1px solid #dee2e6; vertical-align: top; }
-    tr:nth-child(even) td { background: #f8f9fa; }
-    .total-row td { font-weight: 700; background: #e9ecef; }
-    .footer { margin-top: 32px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; }
-    .sig-box { border-top: 1px solid #333; padding-top: 6px; font-size: 11px; color: #555; }
-    @media print { body { padding: 12px; } }
+    body { font-family: Arial, sans-serif; font-size: 11px; color: #000; padding: 16px 20px; }
+
+    /* ── Page header ── */
+    .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+    .org-am { font-size: 12px; font-weight: bold; }
+    .org-en { font-size: 11px; font-weight: bold; }
+    .doc-no { font-size: 11px; }
+    .doc-no span { font-weight: bold; }
+
+    /* ── Title band ── */
+    .title-band { text-align: center; margin: 8px 0 4px; }
+    .title-am { font-size: 13px; font-weight: bold; }
+    .title-en { font-size: 13px; font-weight: bold; letter-spacing: 0.5px; }
+    .date-line { text-align: right; font-size: 10px; margin-bottom: 6px; }
+
+    /* ── Meta fields ── */
+    .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+    .meta-table td { padding: 2px 4px; font-size: 10px; vertical-align: bottom; }
+    .meta-label-am { color: #333; }
+    .meta-label-en { font-weight: bold; }
+    .meta-value { border-bottom: 1px solid #000; min-width: 120px; display: inline-block; padding: 0 4px; }
+
+    /* ── Source checkboxes ── */
+    .source-row { display: flex; gap: 12px; font-size: 10px; margin: 4px 0 6px; flex-wrap: wrap; }
+    .source-item { display: flex; align-items: center; gap: 3px; }
+    .cb { width: 10px; height: 10px; border: 1px solid #000; display: inline-block; }
+
+    /* ── Items table ── */
+    .items-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+    .items-table th, .items-table td {
+      border: 1px solid #000; padding: 3px 4px; font-size: 10px; text-align: left;
+    }
+    .items-table th { background: #f0f0f0; text-align: center; font-size: 9px; }
+    .items-table .num { text-align: center; }
+    .items-table .right { text-align: right; }
+
+    /* ── Additional explanation ── */
+    .additional { font-size: 10px; margin: 4px 0; }
+
+    /* ── Quality ── */
+    .quality { font-size: 10px; margin: 4px 0; }
+
+    /* ── Signatures ── */
+    .sig-section { margin-top: 16px; }
+    .sig-row { display: flex; justify-content: space-between; margin-top: 12px; }
+    .sig-block { flex: 1; margin: 0 8px; }
+    .sig-block:first-child { margin-left: 0; }
+    .sig-block:last-child { margin-right: 0; }
+    .sig-label-am { font-size: 10px; color: #333; }
+    .sig-label-en { font-size: 10px; font-weight: bold; }
+    .sig-name { font-size: 10px; margin-top: 2px; }
+    .sig-line { border-bottom: 1px solid #000; margin-top: 18px; }
+    .sig-sub { font-size: 9px; color: #555; margin-top: 2px; }
+
+    /* ── Copy footer ── */
+    .copy-footer { margin-top: 14px; font-size: 9px; border-top: 1px solid #ccc; padding-top: 4px;
+                   display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; }
+
+    @media print {
+      body { padding: 8px 12px; }
+      @page { margin: 10mm; }
+    }
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="header-left">
-      <h1>Goods Received Note</h1>
-      <p>CATS Warehouse Management System</p>
-    </div>
+
+  <!-- ── Page header ── -->
+  <div class="page-header">
     <div>
-      <div style="font-size:18px;font-weight:700">${grn.reference_no}</div>
-      <div style="margin-top:4px"><span class="badge">${grn.status.toUpperCase()}</span></div>
+      <div class="org-am">The Federal Democratic Republic of Ethiopia</div>
+      <div class="org-am">DISASTER RISK MANAGEMENT COMMISSION</div>
+      <div style="height:4px"></div>
+      <div class="org-am">በኢትዮጵያ ፌዴራላዊ ዲሞክራሲያዊ ሪፐብሊክ</div>
+      <div class="org-am">የአደጋ ስጋት አመራር ኮሚሽን</div>
+    </div>
+    <div style="text-align:right">
+      <div class="doc-no">No &nbsp;<span>${grn.reference_no}</span></div>
     </div>
   </div>
 
-  <div class="meta-grid">
-    <div class="meta-item"><label>Warehouse</label><p>${grn.warehouse_name || grn.warehouse_id}</p></div>
-    <div class="meta-item"><label>Received On</label><p>${new Date(grn.received_on).toLocaleDateString()}</p></div>
-    <div class="meta-item"><label>Received By</label><p>${grn.received_by_name || '—'}</p></div>
-    <div class="meta-item"><label>Source Type</label><p>${grn.source_type || '—'}</p></div>
-    <div class="meta-item"><label>Source Reference</label><p>${grn.source_reference || grn.source_id || '—'}</p></div>
-    ${grn.receipt_order_id ? `<div class="meta-item"><label>Receipt Order</label><p>RO-${grn.receipt_order_id}</p></div>` : '<div></div>'}
-    ${grn.approved_by_name ? `<div class="meta-item"><label>Approved By</label><p>${grn.approved_by_name}</p></div>` : ''}
+  <!-- ── Title ── -->
+  <div class="title-band">
+    <div class="title-am">የምግብና ምግብ ነክ ያልሆኑ ገቢ ደረሰኝ</div>
+    <div class="title-en">FOOD &amp; NON FOOD ITEMS RECEIVING RECEIPT</div>
+  </div>
+  <div class="date-line">ቀን፡ &nbsp;<span style="font-weight:bold">${receivedDate}</span> &nbsp;&nbsp; Date:</div>
+
+  <!-- ── Meta fields ── -->
+  <table class="meta-table">
+    <tr>
+      <td width="50%">
+        <span class="meta-label-am">የሻጭ ነጋዴ/በጎ አድራጊ ስም፡</span><br/>
+        <span class="meta-label-en">Supplier/Donor</span>
+        &nbsp;<span class="meta-value">${supplierDonor}</span>
+      </td>
+      <td width="50%">
+        <span class="meta-label-am">ላኪው፡</span><br/>
+        <span class="meta-label-en">Shipped by</span>
+        &nbsp;<span class="meta-value">${supplierDonor}</span>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <span class="meta-label-am">ያጓጓዘው ስም፡</span><br/>
+        <span class="meta-label-en">Transported by</span>
+        &nbsp;<span class="meta-value">${transporterName}</span>
+      </td>
+      <td>
+        <span class="meta-label-am">የማጓጓዣው ቁጥር፡</span><br/>
+        <span class="meta-label-en">Vehicle/Wagon/Flight No</span>
+        &nbsp;<span class="meta-value">${vehicleNo}</span>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <span class="meta-label-am">መጋዘኑ የሚገኝበት ስፍራ፡</span><br/>
+        <span class="meta-label-en">Location of Warehouse</span>
+        &nbsp;<span class="meta-value">${warehouseName}</span>
+      </td>
+      <td>
+        <span class="meta-label-am">የመጋዘን ቁጥር፡</span><br/>
+        <span class="meta-label-en">W.H.No</span>
+        &nbsp;<span class="meta-value">${warehouseNo}</span>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <span class="meta-label-am">የመላኪያ ሰ/ቁ፡</span><br/>
+        <span class="meta-label-en">W.Bil/D.O.No.</span>
+        &nbsp;<span class="meta-value">${waybillNo}</span>
+      </td>
+      <td>
+        <span class="meta-label-am">የፋክቱር ቁጥር፡</span><br/>
+        <span class="meta-label-en">Invoice No.</span>
+        &nbsp;<span class="meta-value">___________</span>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <span class="meta-label-am">ያዘዘው ክፍል፡</span><br/>
+        <span class="meta-label-en">Requested by</span>
+        &nbsp;<span class="meta-value">${receivedBy}</span>
+      </td>
+      <td>
+        <span class="meta-label-am">የምድር ሚዛን ቲኬት ቁጥር፡</span><br/>
+        <span class="meta-label-en">Weight Bridge Ticket No.</span>
+        &nbsp;<span class="meta-value">___________</span>
+      </td>
+    </tr>
+  </table>
+
+  <!-- ── Source checkboxes ── -->
+  <div class="source-row">
+    <span style="font-weight:bold;font-size:10px">የገቢው ምንጭ / Source</span>
+    <span class="source-item"><span class="cb"></span> በግዢ / Purchase</span>
+    <span class="source-item"><span class="cb"></span> በብድር / Loan</span>
+    <span class="source-item"><span class="cb"></span> ተመላሽ / Return</span>
+    <span class="source-item"><span class="cb"></span> በአደራ / Custody</span>
+    <span class="source-item"><span class="cb"></span> በዕርዳታ / Aid</span>
+    <span class="source-item"><span class="cb"></span> በሌላ / Other</span>
+    <span class="source-item"><span class="cb"></span> በዝውውር / Transfer</span>
+    <span class="source-item"><span class="cb"></span> ፍሳሽ/ትርፍ / Surplus</span>
+    <span class="source-item"><span class="cb"></span> በልውውጥ / Exchange</span>
   </div>
 
-  <h2>Line Items</h2>
-  <table>
+  <!-- ── Items table ── -->
+  <table class="items-table">
     <thead>
       <tr>
-        <th>#</th><th>Commodity</th><th>Batch / Ref</th>
-        <th style="text-align:right">Quantity</th><th>Unit</th>
-        <th>Quality</th><th>Store</th><th>Stack</th>
+        <th rowspan="2" style="width:28px">ተ.ቁ<br/>Item</th>
+        <th rowspan="2">የመለያ ቁጥር<br/>Part No.</th>
+        <th rowspan="2">የዕቃ ዝርዝር<br/>Commodity Type</th>
+        <th rowspan="2" style="width:36px">መስፈሪያ<br/>Unit</th>
+        <th rowspan="2" style="width:60px">የተላከው<br/>Qty Delivered</th>
+        <th rowspan="2" style="width:60px">የተረከበው<br/>Qty Accepted</th>
+        <th colspan="4">ያንዱ ዋጋ / Unit Price</th>
+        <th rowspan="2">ጠቅላላ ዋጋ<br/>Total Price</th>
+      </tr>
+      <tr>
+        <th>በአሀዝ</th><th>በፊደል</th><th></th><th></th>
       </tr>
     </thead>
     <tbody>
-      ${itemRows}
-      <tr class="total-row">
-        <td colspan="3" style="text-align:right">TOTAL</td>
-        <td style="text-align:right">${totalQty.toLocaleString()}</td>
-        <td colspan="4"></td>
-      </tr>
+      ${filledRows}
+      ${emptyRows}
     </tbody>
   </table>
 
-  <div class="footer">
-    <div class="sig-box">Prepared By<br/><br/><br/>Name &amp; Signature</div>
-    <div class="sig-box">Received By<br/><br/><br/>Name &amp; Signature</div>
-    <div class="sig-box">Approved By<br/><br/><br/>Name &amp; Signature</div>
+  <!-- ── Additional explanation ── -->
+  <div class="additional">
+    <strong>ተጨማሪ መግለጫ፡- Additional Explanation</strong> &nbsp;
+    የመያዣው ዓይነት / Container Type: _____________________ &nbsp;&nbsp;
+    የመያዣው ቁጥር / Number of Containers: _____________________ &nbsp;&nbsp;
+    በግሮስ / Gross: _____________________ &nbsp;&nbsp;
+    በንጥር / Net: _____________________
   </div>
 
-  <p style="margin-top:24px;font-size:10px;color:#aaa">
+  <!-- ── Quality ── -->
+  <div class="quality">
+    <strong>የጥራት ሁኔታ መግለጫ / Quality condition:</strong> &nbsp;
+    <span style="border-bottom:1px solid #000;padding:0 40px">${qualityGrade}</span>
+  </div>
+
+  <!-- ── Signatures ── -->
+  <div class="sig-section">
+    <div class="sig-row">
+      <div class="sig-block">
+        <div class="sig-label-am">ያዘጋጁ ስም</div>
+        <div class="sig-label-en">Prepared by</div>
+        <div class="sig-name">${receivedBy}</div>
+        <div class="sig-line"></div>
+        <div class="sig-sub">ፊርማ / Signature &nbsp;&nbsp;&nbsp; ቀን / Date</div>
+      </div>
+    </div>
+
+    <div class="sig-row" style="margin-top:20px">
+      <div class="sig-block">
+        <div class="sig-label-am">የአስረካቢው ስም</div>
+        <div class="sig-label-en">Delivered by</div>
+        <div class="sig-name">${driverName}</div>
+        <div class="sig-line"></div>
+        <div class="sig-sub">ፊርማ / Signature &nbsp;&nbsp;&nbsp; ቀን / Date</div>
+      </div>
+      <div style="width:40px"></div>
+      <div class="sig-block">
+        <div class="sig-label-am">የተረካቢው ስም</div>
+        <div class="sig-label-en">Recipient</div>
+        <div class="sig-name">${receivedBy}</div>
+        <div class="sig-line"></div>
+        <div class="sig-sub">ፊርማ / Signature &nbsp;&nbsp;&nbsp; ቀን / Date</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Copy footer ── -->
+  <div class="copy-footer">
+    <span>Original: Finance / ዋናው፡ ለሂሳብ ክፍል</span>
+    <span>2nd Copy: Deliverer / 2ኛው: ለአስረካቢ</span>
+    <span>3rd Copy: Procurement / 3ኛው: ለዕቃ ግዢ</span>
+    <span>4th Copy: Registration / 4ኛው: ለክምችት ን/ምዝገባ</span>
+    <span>5th Copy: Store man / 5ኛው: ለመጋዘን ኃላፊው</span>
+    <span>6th Copy: Clerk / 6ኛው: ለፀሐፊ</span>
+  </div>
+
+  <p style="margin-top:8px;font-size:9px;color:#aaa;text-align:right">
     Printed on ${new Date().toLocaleString()} &nbsp;|&nbsp; GRN ID: ${grn.id}
   </p>
+
 </body>
 </html>`;
 
