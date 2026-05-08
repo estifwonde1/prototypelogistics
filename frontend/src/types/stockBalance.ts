@@ -25,4 +25,7 @@ export interface StockBalance {
   base_unit_id?: number | null;
   base_unit_name?: string | null;
   base_quantity?: number | null;
+  // Lot details from serializer
+  lot_batch_no?: string | null;
+  lot_expiry_date?: string | null;
 }

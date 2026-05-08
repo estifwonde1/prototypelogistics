@@ -55,7 +55,9 @@ module Cats
       end
 
       def commodity_name
-        reference_item&.commodity&.[](:name) || reference_item&.commodity&.description || reference_item&.commodity&.batch_no
+        commodity = reference_item&.commodity
+        return nil unless commodity
+        commodity.read_attribute(:name).presence || commodity.batch_no
       end
 
       def unit_name
@@ -71,7 +73,8 @@ module Cats
       end
 
       def expiry_date
-        object.inventory_lot&.expiry_date
+        object.inventory_lot&.expiry_date ||
+          reference_item&.commodity&.best_use_before
       end
 
       def entered_unit_name

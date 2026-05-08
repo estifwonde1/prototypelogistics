@@ -88,7 +88,8 @@ module Cats
                 warehouse: @warehouse,
                 commodity_id: commodity_id,
                 batch_no: line_ref,
-                expiry_date: item[:expiry_date],
+                expiry_date: item[:expiry_date].presence ||
+                             Cats::Core::Commodity.find_by(id: commodity_id)&.best_use_before,
                 source: @source,
                 lot_code: item[:lot_code],
                 received_on: @inspected_on,

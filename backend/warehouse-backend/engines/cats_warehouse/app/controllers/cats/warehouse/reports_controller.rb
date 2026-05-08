@@ -36,7 +36,5 @@ module Cats
 
       # Remove the old date_range method since we're using the one from FilterValidation
     end
-
-    end
   end
 end

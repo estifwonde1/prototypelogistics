@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Stack, Title, Text, Group, Select, Table } from '@mantine/core';
 import { getBinCardReport } from '../../api/reports';
@@ -26,6 +26,13 @@ export default function BinCardReportPage() {
   const isWarehouseManager = roleSlug === 'warehouse_manager';
   const isStorekeeper = roleSlug === 'storekeeper';
   const isHubManager = roleSlug === 'hub_manager';
+
+  // Auto-select storekeeper's store
+  useEffect(() => {
+    if (isStorekeeper && userStoreId && !storeId) {
+      setStoreId(String(userStoreId));
+    }
+  }, [isStorekeeper, userStoreId, storeId]);
 
   const { data: stores = [] } = useQuery({
     queryKey: ['stores', { 
@@ -167,7 +174,10 @@ export default function BinCardReportPage() {
             {filteredEntries?.map((e) => {
               const isIn = e.movement_type === 'inbound' || (!e.movement_type && e.destination_id && !e.source_id);
               const isOut = e.movement_type === 'outbound' || (!e.movement_type && e.source_id && !e.destination_id);
-              const referenceLabel = [e.reference_type, e.reference_no].filter(Boolean).join(' • ') || '-';
+              const referenceLabel = [
+                e.reference_type?.replace('Cats::Warehouse::', ''),
+                e.reference_no
+              ].filter(Boolean).join(' • ') || '-';
               const locationLabel =
                 (isIn
                   ? [e.destination_warehouse_name, e.destination_store_name, e.destination_stack_code]

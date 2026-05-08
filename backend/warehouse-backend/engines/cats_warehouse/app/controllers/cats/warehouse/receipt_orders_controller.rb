@@ -491,10 +491,20 @@ module Cats
             # Clear any existing items first (in case of retry)
             grn.grn_items.destroy_all
 
+            # Build a lookup of commodity_id -> inventory_lot_id from the inspection items
+            # so we can carry the lot (and its expiry date) through to the GRN items and stock balances
+            inspection_lot_by_commodity = {}
+            if inspection
+              inspection.inspection_items.each do |ii|
+                inspection_lot_by_commodity[ii.commodity_id] ||= ii.inventory_lot_id
+              end
+            end
+
             placements.each do |placement|
               stack = Stack.find(placement[:stack_id].to_i)
               commodity_id = stack.commodity_id.presence || first_line&.commodity_id
               unit_id      = stack.unit_id.presence      || first_line&.unit_id
+              lot_id       = inspection_lot_by_commodity[commodity_id]
 
               grn.grn_items.create!(
                 commodity_id:      commodity_id,
@@ -502,11 +512,11 @@ module Cats
                 unit_id:           unit_id,
                 stack_id:          stack.id,
                 store_id:          stack.store_id,
+                inventory_lot_id:  lot_id,
                 line_reference_no: SourceDetailReference.generate_unique
               )
 
               # Assign commodity to the stack if it doesn't have one yet
-              # (stack becomes affiliated with this commodity type)
               if stack.commodity_id.blank?
                 stack.update_columns(commodity_id: commodity_id, unit_id: unit_id)
               end

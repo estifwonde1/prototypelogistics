@@ -6,6 +6,7 @@ import {
   Badge,
   Button,
   Card,
+  Collapse,
   Group,
   Modal,
   Select,
@@ -34,6 +35,7 @@ import type { AxiosError } from 'axios';
 import { deleteStack, getStacks } from '../../api/stacks';
 import { getStores } from '../../api/stores';
 import { getWarehouses } from '../../api/warehouses';
+import { getStockBalances } from '../../api/stockBalances';
 import { EmptyState } from '../../components/common/EmptyState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
@@ -68,6 +70,7 @@ function StackListPage() {
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [transferRequestModalOpen, setTransferRequestModalOpen] = useState(false);
   const [selectedStack, setSelectedStack] = useState<StackType | null>(null);
+  const [expandedStackId, setExpandedStackId] = useState<number | null>(null);
 
   // CRITICAL: Get the active warehouse context
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
@@ -186,6 +189,13 @@ function StackListPage() {
   const reservedStacks = filteredStacks.filter((stack) => stack.stack_status === 'reserved').length;
 
   const canTransfer = can('stacks', 'update'); // storekeeper and warehouse_manager can transfer
+
+  // Fetch batch breakdown for the expanded stack
+  const { data: expandedStackBalances = [], isLoading: balancesLoading } = useQuery({
+    queryKey: ['stock_balances', { stack_id: expandedStackId }],
+    queryFn: () => getStockBalances({ stack_id: expandedStackId! }),
+    enabled: expandedStackId !== null,
+  });
 
   const handleTransferSuccess = () => {
     queryClient.invalidateQueries({ queryKey: ['stacks'] });
@@ -414,18 +424,26 @@ function StackListPage() {
                 </Table.Thead>
                 <Table.Tbody>
                   {filteredStacks.map((stack) => (
-                    <Table.Tr key={stack.id}>
+                    <>
+                      <Table.Tr
+                        key={stack.id}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => setExpandedStackId(expandedStackId === stack.id ? null : stack.id)}
+                      >
                       <Table.Td>
-                        <Text fw={800} c="#1d3354">
-                          {stack.code}
-                        </Text>
+                        <Group gap="xs">
+                          <Text fw={800} c="#1d3354">
+                            {stack.code}
+                          </Text>
+                          <Text size="xs" c="dimmed">{expandedStackId === stack.id ? '▲' : '▼'}</Text>
+                        </Group>
                       </Table.Td>
                       <Table.Td>
                         <Text fw={600}>{stack.store_name || stack.store_code || '-'}</Text>
                       </Table.Td>
                       <Table.Td>
                         <Stack gap={2}>
-                          <Text fw={700}>{stack.commodity_name || stack.commodity_code || '-'}</Text>
+                          <Text fw={700}>{stack.commodity_name || stack.commodity_code || <Text size="sm" c="dimmed">Empty</Text>}</Text>
                           <Text size="xs" c="dimmed">
                             {stack.commodity_status}
                           </Text>
@@ -452,7 +470,7 @@ function StackListPage() {
                         <StatusBadge status={stack.stack_status} />
                       </Table.Td>
                       <Table.Td>
-                        <Group gap={8} wrap="nowrap">
+                        <Group gap={8} wrap="nowrap" onClick={(e) => e.stopPropagation()}>
                           <ActionIcon
                             variant="light"
                             color="blue"
@@ -515,6 +533,63 @@ function StackListPage() {
                         </Group>
                       </Table.Td>
                     </Table.Tr>
+
+                    {/* ── Expanded batch breakdown ── */}
+                    {expandedStackId === stack.id && (
+                      <Table.Tr key={`${stack.id}-detail`} style={{ background: '#f8fbff' }}>
+                        <Table.Td colSpan={8} style={{ padding: '12px 24px' }}>
+                          <Collapse in={expandedStackId === stack.id}>
+                            <Stack gap="sm">
+                              <Text size="sm" fw={700} c="#1d3354">
+                                Batch Breakdown — {stack.code}
+                              </Text>
+                              {balancesLoading ? (
+                                <Text size="sm" c="dimmed">Loading...</Text>
+                              ) : expandedStackBalances.length === 0 ? (
+                                <Text size="sm" c="dimmed">No stock recorded for this stack yet.</Text>
+                              ) : (
+                                <Table striped withTableBorder withColumnBorders style={{ fontSize: 12 }}>
+                                  <Table.Thead>
+                                    <Table.Tr>
+                                      <Table.Th>Commodity</Table.Th>
+                                      <Table.Th>Batch No</Table.Th>
+                                      <Table.Th>Lot / Expiry</Table.Th>
+                                      <Table.Th style={{ textAlign: 'right' }}>Quantity</Table.Th>
+                                      <Table.Th>Unit</Table.Th>
+                                    </Table.Tr>
+                                  </Table.Thead>
+                                  <Table.Tbody>
+                                    {expandedStackBalances.map((bal) => (
+                                      <Table.Tr key={bal.id}>
+                                        <Table.Td fw={600}>{bal.commodity_name || `Commodity #${bal.commodity_id}`}</Table.Td>
+                                        <Table.Td style={{ fontFamily: 'monospace' }}>{bal.commodity_batch_no || '—'}</Table.Td>
+                                        <Table.Td>
+                                          {bal.lot_batch_no || bal.lot_expiry_date ? (
+                                            <Stack gap={0}>
+                                              {bal.lot_batch_no && (
+                                                <Text size="xs" style={{ fontFamily: 'monospace' }}>{bal.lot_batch_no}</Text>
+                                              )}
+                                              {bal.lot_expiry_date && (
+                                                <Text size="xs" c="dimmed">Exp: {new Date(bal.lot_expiry_date).toLocaleDateString()}</Text>
+                                              )}
+                                            </Stack>
+                                          ) : '—'}
+                                        </Table.Td>
+                                        <Table.Td style={{ textAlign: 'right' }} fw={700}>
+                                          {numberFormatter.format(bal.quantity)}
+                                        </Table.Td>
+                                        <Table.Td>{bal.unit_abbreviation || bal.unit_name || ''}</Table.Td>
+                                      </Table.Tr>
+                                    ))}
+                                  </Table.Tbody>
+                                </Table>
+                              )}
+                            </Stack>
+                          </Collapse>
+                        </Table.Td>
+                      </Table.Tr>
+                    )}
+                    </>
                   ))}
                 </Table.Tbody>
               </Table>
