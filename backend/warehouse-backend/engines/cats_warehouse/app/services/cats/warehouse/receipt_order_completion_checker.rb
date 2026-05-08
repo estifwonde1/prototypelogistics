@@ -21,7 +21,7 @@ module Cats
 
         # All trucks received — complete the order
         old_status = @order.status
-        @order.update!(status: "Completed")
+        @order.update!(status: "completed")
 
         WorkflowEventRecorder.record!(
           entity:      @order,
