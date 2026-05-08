@@ -117,7 +117,13 @@ module Cats
           :quantity,
           :unit_id,
           :reference
-        )
+        ).tap do |p|
+          # Strip commodity_id and unit_id if they are 0 or blank
+          # (stack can exist without a commodity — commodity is assigned when goods are placed)
+          p.delete(:commodity_id) if p[:commodity_id].blank? || p[:commodity_id].to_i == 0
+          p.delete(:unit_id)      if p[:unit_id].blank?      || p[:unit_id].to_i == 0
+          p.delete(:reference)    if p[:reference].blank?
+        end
       end
 
     end
