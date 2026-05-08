@@ -504,6 +504,12 @@ module Cats
                 store_id:          stack.store_id,
                 line_reference_no: SourceDetailReference.generate_unique
               )
+
+              # Assign commodity to the stack if it doesn't have one yet
+              # (stack becomes affiliated with this commodity type)
+              if stack.commodity_id.blank?
+                stack.update_columns(commodity_id: commodity_id, unit_id: unit_id)
+              end
             end
 
             # Confirm GRN — apply inventory ledger entries and update stack quantities

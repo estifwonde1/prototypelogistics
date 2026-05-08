@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_05_03_100003) do
+ActiveRecord::Schema[7.0].define(version: 2026_05_08_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1542,12 +1542,12 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_03_100003) do
     t.float "height", null: false
     t.float "start_x"
     t.float "start_y"
-    t.bigint "commodity_id", null: false
+    t.bigint "commodity_id"
     t.bigint "store_id", null: false
     t.string "commodity_status", default: "Good", null: false
     t.string "stack_status", default: "Reserved", null: false
     t.float "quantity", default: 0.0, null: false
-    t.bigint "unit_id", null: false
+    t.bigint "unit_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.bigint "base_unit_id"

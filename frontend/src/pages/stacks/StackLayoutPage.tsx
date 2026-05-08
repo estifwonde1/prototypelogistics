@@ -1290,61 +1290,29 @@ export default function StackLayoutPage() {
               />
             </Group>
 
-            {/* ── Reference Search (auto-fill from receipt order) ── */}
-            <Select
-              label="Search Receipt Order"
-              placeholder="Type RO-21 or select assigned order..."
-              data={refSearchOptions}
-              searchable
-              clearable
-              searchValue={refSearchValue}
-              onSearchChange={handleRefSearch}
-              nothingFoundMessage={refSearchLoading ? 'Searching...' : 'No deliveries found'}
-              onChange={handleRefAutoFill}
-              leftSection={refSearchLoading ? <Loader size={16} /> : <IconSearch size={16} />}
-              styles={{
-                ...baseInputStyles,
-                label: {
-                  ...baseInputStyles.label,
-                  color: '#0d6e3f',
-                },
-                input: {
-                  ...baseInputStyles.input,
-                  backgroundColor: '#e8f5e9',
-                  borderColor: '#c8e6c9',
-                },
-              }}
-            />
+            {/* ── Commodity info — read-only, shown only when stack has goods ── */}
+            {selectedStack && selectedStack.quantity > 0 && (
+              <Alert color="blue" variant="light" title="Current Contents">
+                <Text size="sm">
+                  <strong>Commodity:</strong> {selectedStack.commodity_name || `ID: ${selectedStack.commodity_id}`}
+                </Text>
+                <Text size="sm">
+                  <strong>Quantity:</strong> {selectedStack.quantity.toLocaleString()} {selectedStack.unit_abbreviation || ''}
+                </Text>
+                <Text size="xs" c="dimmed" mt={4}>
+                  A different commodity cannot be placed here until this stack is empty.
+                  The same commodity type can be added.
+                </Text>
+              </Alert>
+            )}
 
-            <Group grow align="flex-start">
-              <Select
-                label="Commodity"
-                placeholder="Select commodity"
-                data={commodityOptions}
-                searchable
-                styles={baseInputStyles}
-                {...form.getInputProps('commodity_id')}
-                onChange={(value) => {
-                  form.setValues({
-                    ...form.values,
-                    commodity_id: value || '',
-                    reference: '',
-                  });
-                }}
-                style={{ flex: 2 }}
-              />
-              <Select
-                key={`ref-select-${form.values.commodity_id}`}
-                label="Batch / Reference"
-                placeholder="Choose batch"
-                data={referenceOptions}
-                searchable
-                nothingFoundMessage="No batches found for this commodity"
-                styles={baseInputStyles}
-                {...form.getInputProps('reference')}
-                style={{ flex: 1 }}
-              />
-            </Group>
+            {selectedStack && selectedStack.quantity === 0 && selectedStack.commodity_id && (
+              <Alert color="green" variant="light" title="Stack is Empty">
+                <Text size="xs" c="dimmed">
+                  This stack is empty. Any commodity can be placed here.
+                </Text>
+              </Alert>
+            )}
 
             <Divider
               label="Dimensions"
@@ -1398,24 +1366,6 @@ export default function StackLayoutPage() {
                 min={0}
                 styles={baseInputStyles}
                 {...form.getInputProps('start_y')}
-              />
-            </Group>
-
-            <Group grow align="flex-start">
-              <NumberInput
-                label="Quantity"
-                decimalScale={2}
-                min={0}
-                styles={baseInputStyles}
-                {...form.getInputProps('quantity')}
-              />
-              <Select
-                label="Unit"
-                placeholder="Select unit"
-                data={unitOptions}
-                searchable
-                styles={baseInputStyles}
-                {...form.getInputProps('unit_id')}
               />
             </Group>
 

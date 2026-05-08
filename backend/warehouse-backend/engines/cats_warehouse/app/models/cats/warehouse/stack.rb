@@ -4,8 +4,8 @@ module Cats
       self.table_name = "cats_warehouse_stacks"
 
       belongs_to :store, class_name: "Cats::Warehouse::Store"
-      belongs_to :commodity, class_name: "Cats::Core::Commodity"
-      belongs_to :unit, class_name: "Cats::Core::UnitOfMeasure"
+      belongs_to :commodity, class_name: "Cats::Core::Commodity", optional: true
+      belongs_to :unit, class_name: "Cats::Core::UnitOfMeasure", optional: true
       belongs_to :base_unit, class_name: "Cats::Core::UnitOfMeasure", optional: true
 
       has_many :outgoing_stack_transactions,
@@ -24,6 +24,7 @@ module Cats
       validates :quantity, numericality: { greater_than_or_equal_to: 0 }
       validates :base_quantity, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
       validate :fits_inside_store
+      validate :commodity_lock_respected, if: :commodity_id_changed?
 
       def footprint_area
         length.to_f * width.to_f
@@ -34,6 +35,30 @@ module Cats
       end
 
       private
+
+      # A stack that already holds goods (quantity > 0) cannot have its commodity
+      # changed to a different commodity type.
+      # Same commodity type (different batch) IS allowed.
+      # A different commodity type is blocked until the stack is empty (quantity == 0).
+      def commodity_lock_respected
+        return unless quantity.to_f > 0
+        return unless commodity_id_was.present?
+        return if commodity_id == commodity_id_was # no change at all
+
+        old_commodity = Cats::Core::Commodity.find_by(id: commodity_id_was)
+        new_commodity = Cats::Core::Commodity.find_by(id: commodity_id)
+        return unless old_commodity && new_commodity
+
+        old_name = old_commodity.read_attribute(:name).to_s.strip.downcase
+        new_name = new_commodity.read_attribute(:name).to_s.strip.downcase
+
+        return if old_name == new_name # same commodity type — allowed
+
+        errors.add(:commodity,
+                   "cannot be changed while the stack holds goods. " \
+                   "Current commodity: #{old_commodity.read_attribute(:name)}. " \
+                   "Remove all goods before placing a different commodity.")
+      end
 
       def fits_inside_store
         return unless store.present?
