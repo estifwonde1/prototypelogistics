@@ -811,20 +811,18 @@ stores.each do |store|
 end
 
 stacks = stores.flat_map.with_index do |store, idx|
-  commodities.sample(3).map.with_index do |commodity, i|
+  (1..3).map do |i|
     find_or_create_with(
       Cats::Warehouse::Stack,
-      { code: "#{store.code}-S#{i + 1}" },
+      { code: "#{store.code}-S#{i}" },
       {
         length: 10,
         width: 10,
         height: 5,
-        start_x: 1,
+        start_x: (i - 1) * 11,
         start_y: 1,
-        commodity: commodity,
         store: store,
-        unit: commodity.unit_of_measure,
-        quantity: 200 + (idx * 10)
+        quantity: 0
       }
     )
   end
@@ -853,7 +851,6 @@ grn_items = commodities.first(3).map.with_index do |commodity, idx|
       unit: commodity.unit_of_measure,
       quality_status: "Good",
       store: stores.first,
-      stack: stacks.first,
       line_reference_no: "SEED-GRN-ADD-001-#{idx}-#{commodity.id}"
     }
   )
@@ -881,8 +878,7 @@ commodities.first(2).each_with_index do |commodity, idx|
     {
       quantity: 30 + idx * 10,
       unit: commodity.unit_of_measure,
-      store: stores.first,
-      stack: stacks.first
+      store: stores.first
     }
   )
 end
