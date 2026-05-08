@@ -25,15 +25,18 @@ module Cats
 
           if access.storekeeper?
             store_ids = access.assigned_store_ids
-            return scope.where(store_id: store_ids, status: ReceiptAuthorization::PENDING)
+            return scope.where(store_id: store_ids, status: [ReceiptAuthorization::PENDING, ReceiptAuthorization::ACTIVE])
           end
+
+          # Officers can read all RAs (read-only, for the Receipt Order detail page)
+          return scope.all if AccessContext.new(user: user).officer?
 
           scope.none
         end
       end
 
       def index?
-        admin? || hub_manager? || warehouse_manager? || receipt_authorizer? || storekeeper?
+        admin? || hub_manager? || warehouse_manager? || receipt_authorizer? || storekeeper? || officer?
       end
 
       def show?
@@ -69,6 +72,10 @@ module Cats
 
       def receipt_authorizer?
         AccessContext.new(user: user).receipt_authorizer?
+      end
+
+      def officer?
+        AccessContext.new(user: user).officer?
       end
     end
   end

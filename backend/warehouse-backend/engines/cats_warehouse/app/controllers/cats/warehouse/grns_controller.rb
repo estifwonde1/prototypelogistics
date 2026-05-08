@@ -57,7 +57,11 @@ module Cats
       private
 
       def render_grn_payload(grn, status: :ok)
-        grn = Grn.includes(:warehouse, :grn_items, receipt_order: [:hub, :warehouse]).find(grn.id)
+        grn = Grn.includes(
+          :warehouse, :grn_items,
+          receipt_order: [:hub, :warehouse],
+          receipt_authorization: :transporter
+        ).find(grn.id)
         payload = ActiveModelSerializers::SerializableResource.new(
           grn,
           serializer: GrnSerializer

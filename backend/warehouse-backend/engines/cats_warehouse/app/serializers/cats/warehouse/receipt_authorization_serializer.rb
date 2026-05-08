@@ -12,12 +12,33 @@ module Cats
                  :driver_confirmed_at, :driver_confirmed_by_name,
                  :inspection_id,
                  :grn_id, :grn_reference_no, :grn_status,
+                 :commodity_id, :commodity_name, :unit_id, :unit_name,
                  :created_by_name,
                  :cancelled_at,
                  :created_at, :updated_at
 
       def receipt_order_reference_no
         object.receipt_order&.reference_no
+      end
+
+      def commodity_id
+        object.receipt_order&.receipt_order_lines&.first&.commodity_id
+      end
+
+      def commodity_name
+        commodity_id_val = object.receipt_order&.receipt_order_lines&.first&.commodity_id
+        return nil unless commodity_id_val
+        commodity = Cats::Core::Commodity.find_by(id: commodity_id_val)
+        return nil unless commodity
+        commodity.read_attribute(:name).presence || commodity.batch_no.presence
+      end
+
+      def unit_id
+        object.receipt_order&.receipt_order_lines&.first&.unit_id
+      end
+
+      def unit_name
+        object.receipt_order&.receipt_order_lines&.first&.unit&.name
       end
 
       def store_name

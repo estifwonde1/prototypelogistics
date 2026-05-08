@@ -4,8 +4,9 @@ module Cats
       def index
         authorize ReceiptAuthorization
         ras = policy_scope(ReceiptAuthorization)
-              .includes(:receipt_order, :store, :warehouse, :transporter,
-                        :created_by, :driver_confirmed_by, :inspection, :grn)
+              .includes(:store, :warehouse, :transporter,
+                        :created_by, :driver_confirmed_by, :inspection, :grn,
+                        receipt_order: { receipt_order_lines: [:commodity, :unit] })
               .order(created_at: :desc)
 
         # Optional filters
@@ -19,8 +20,9 @@ module Cats
 
       def show
         ra = policy_scope(ReceiptAuthorization)
-             .includes(:receipt_order, :store, :warehouse, :transporter,
-                       :created_by, :driver_confirmed_by, :inspection, :grn)
+             .includes(:store, :warehouse, :transporter,
+                       :created_by, :driver_confirmed_by, :inspection, :grn,
+                       receipt_order: { receipt_order_lines: [:commodity, :unit] })
              .find(params[:id])
         authorize ra
         render_resource(ra, serializer: ReceiptAuthorizationSerializer)
