@@ -27,8 +27,6 @@ RUN bundle install
 # Copy the rest of the application
 COPY . .
 
-# Expose port 3000
-EXPOSE 3000
 
 # Create entrypoint script
 COPY docker-entrypoint.sh /usr/bin/
