@@ -20,9 +20,15 @@ import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
 import { DocumentStatus } from '../../utils/constants';
+import { usePermission } from '../../hooks/usePermission';
+import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 
 function GrnListPage() {
   const navigate = useNavigate();
+  const { can } = usePermission();
+  const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
+  const isStorekeeper = roleSlug === 'storekeeper';
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
@@ -38,7 +44,7 @@ function GrnListPage() {
 
   const filteredGrns = grns?.filter((grn) => {
     const matchesSearch =
-      grn.reference_no.toLowerCase().includes(search.toLowerCase()) ||
+      (grn.reference_no || '').toLowerCase().includes(search.toLowerCase()) ||
       grn.warehouse_id.toString().includes(search);
     const matchesStatus = !statusFilter || grn.status === statusFilter;
     return matchesSearch && matchesStatus;
@@ -71,12 +77,15 @@ function GrnListPage() {
             Manage incoming goods and inventory receipts
           </Text>
         </div>
-        <Button
-          leftSection={<IconPlus size={16} />}
-          onClick={() => navigate('/grns/new')}
-        >
-          Create GRN
-        </Button>
+        {/* Storekeepers don't manually create GRNs — they are auto-created via the RA flow */}
+        {!isStorekeeper && can('grns', 'create') && (
+          <Button
+            leftSection={<IconPlus size={16} />}
+            onClick={() => navigate('/grns/new')}
+          >
+            Create GRN
+          </Button>
+        )}
       </Group>
 
       <Group>
@@ -144,7 +153,9 @@ function GrnListPage() {
                     style={{ cursor: 'pointer' }}
                     onClick={() => navigate(`/grns/${grn.id}`)}
                   >
-                    <Table.Td style={{ fontWeight: 600 }}>{grn.reference_no}</Table.Td>
+                    <Table.Td style={{ fontWeight: 600 }}>
+                      {grn.reference_no || <Text size="sm" c="dimmed" style={{ fontFamily: 'monospace' }}>GRN-{grn.id}</Text>}
+                    </Table.Td>
                     <Table.Td>{warehouseLabel}</Table.Td>
                     <Table.Td>
                       {new Date(grn.received_on).toLocaleDateString()}
@@ -154,7 +165,11 @@ function GrnListPage() {
                         ? grn.source_reference
                           ? `${grn.source_type} (${grn.source_reference})`
                           : grn.source_type
-                        : '-'}
+                        : grn.receipt_order?.reference_no
+                          ? `Receipt Order (${grn.receipt_order.reference_no})`
+                          : grn.receipt_order_id
+                            ? `Receipt Order #${grn.receipt_order_id}`
+                            : '-'}
                     </Table.Td>
                     <Table.Td>
                       <StatusBadge status={grn.status} />

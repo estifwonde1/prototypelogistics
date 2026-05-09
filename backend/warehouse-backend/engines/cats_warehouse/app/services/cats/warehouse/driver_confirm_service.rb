@@ -75,6 +75,7 @@ module Cats
           receipt_order:              @ra.receipt_order,
           receipt_authorization:      @ra,
           generated_from_inspection:  inspection,
+          source:                     @ra.receipt_order,
           reference_no:               reference_no,
           status:                     "draft"
         )
