@@ -12,8 +12,8 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconClipboardList, IconBoxMultiple } from '@tabler/icons-react';
-import { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import apiClient from '../../api/client';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
@@ -71,6 +71,9 @@ const statusColors: Record<string, string> = {
 export default function StorekeeperAssignmentsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const focusOrderId = Number(searchParams.get('receipt_order_id') || '') || null;
+  const focusCardRef = useRef<HTMLDivElement | null>(null);
 
   // Use the active store from auth context so filtering respects the store selected at login
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
@@ -121,6 +124,27 @@ export default function StorekeeperAssignmentsPage() {
     [assignments]
   );
 
+  const orderedPendingAssignments = useMemo(() => {
+    if (!focusOrderId) return pendingAssignments;
+    const matches = pendingAssignments.filter((a) => a.receipt_order_id === focusOrderId);
+    const rest = pendingAssignments.filter((a) => a.receipt_order_id !== focusOrderId);
+    return [...matches, ...rest];
+  }, [pendingAssignments, focusOrderId]);
+
+  const firstFocusedPendingId = useMemo(() => {
+    if (!focusOrderId) return null;
+    const hit = orderedPendingAssignments.find((a) => a.receipt_order_id === focusOrderId);
+    return hit?.id ?? null;
+  }, [focusOrderId, orderedPendingAssignments]);
+
+  useEffect(() => {
+    if (!firstFocusedPendingId) return;
+    const t = window.setTimeout(() => {
+      focusCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+    return () => window.clearTimeout(t);
+  }, [firstFocusedPendingId, orderedPendingAssignments]);
+
   if (isLoading) return <LoadingState message="Loading assignments..." />;
   if (error) return <ErrorState message="Failed to load assignments" />;
 
@@ -135,6 +159,25 @@ export default function StorekeeperAssignmentsPage() {
         Receipt orders assigned to your store. Accept to prepare stacking space for the incoming commodities.
       </Text>
 
+      {focusOrderId ? (
+        <Alert color="blue" variant="light">
+          <Group justify="space-between" wrap="wrap" gap="sm">
+            <Text size="sm">
+              Opened from a notification: showing assignments for receipt order #{focusOrderId} first.
+            </Text>
+            <Button
+              size="xs"
+              variant="default"
+              onClick={() => {
+                setSearchParams({});
+              }}
+            >
+              Show all assignments
+            </Button>
+          </Group>
+        </Alert>
+      ) : null}
+
       {pendingAssignments.length === 0 && completedAssignments.length === 0 && (
         <Alert title="No assignments" color="blue">
           You have no pending or completed assignments.
@@ -144,8 +187,20 @@ export default function StorekeeperAssignmentsPage() {
       {pendingAssignments.length > 0 && (
         <>
           <Title order={4}>Pending Orders</Title>
-          {pendingAssignments.map((assignment) => (
-            <Card key={assignment.id} shadow="sm" padding="lg" radius="md" withBorder>
+          {orderedPendingAssignments.map((assignment) => (
+            <Card
+              key={assignment.id}
+              ref={assignment.id === firstFocusedPendingId ? focusCardRef : undefined}
+              shadow="sm"
+              padding="lg"
+              radius="md"
+              withBorder
+              style={
+                focusOrderId && assignment.receipt_order_id === focusOrderId
+                  ? { borderColor: 'var(--mantine-color-blue-5)', boxShadow: 'var(--mantine-shadow-md)' }
+                  : undefined
+              }
+            >
               <Stack gap="md">
                 <Group justify="space-between">
                   <div>

@@ -232,7 +232,10 @@ export default function StorekeeperRADetailPage() {
           <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
             <DetailField label="Receipt Order" value={<Text size="sm" style={{ fontFamily: 'monospace' }}>{ra.receipt_order_reference_no || `Order #${ra.receipt_order_id}`}</Text>} />
             <DetailField label="Warehouse" value={ra.warehouse_name || `Warehouse #${ra.warehouse_id}`} />
-            <DetailField label="Store" value={ra.store_name || `Store #${ra.store_id}`} />
+            <DetailField
+              label="Store"
+              value={ra.store_name || (ra.store_id != null ? `Store #${ra.store_id}` : '—')}
+            />
           </SimpleGrid>
 
           <Divider label="Vehicle & Driver Details" labelPosition="left" />

@@ -1046,7 +1046,9 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_08_120000) do
     t.bigint "commodity_category_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "commodity_code", null: false
     t.index ["commodity_category_id"], name: "idx_comm_defs_on_category_id"
+    t.index ["commodity_code"], name: "idx_comm_defs_on_code", unique: true
     t.index ["name"], name: "index_cats_warehouse_commodity_definitions_on_name", unique: true
   end
 
@@ -1372,7 +1374,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_08_120000) do
   create_table "cats_warehouse_receipt_authorizations", force: :cascade do |t|
     t.bigint "receipt_order_id", null: false
     t.bigint "receipt_order_assignment_id"
-    t.bigint "store_id", null: false
+    t.bigint "store_id"
     t.bigint "warehouse_id", null: false
     t.bigint "transporter_id", null: false
     t.string "driver_name", null: false

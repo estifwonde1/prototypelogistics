@@ -3,6 +3,8 @@ module Cats
     class Stack < ApplicationRecord
       self.table_name = "cats_warehouse_stacks"
 
+      FOOTPRINT_OVERLAP_EPS = 1.0e-4
+
       belongs_to :store, class_name: "Cats::Warehouse::Store"
       belongs_to :commodity, class_name: "Cats::Core::Commodity", optional: true
       belongs_to :unit, class_name: "Cats::Core::UnitOfMeasure", optional: true
@@ -25,6 +27,7 @@ module Cats
       validates :base_quantity, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
       validate :fits_inside_store
       validate :commodity_lock_respected, if: :commodity_id_changed?
+      validate :no_footprint_overlap_with_sibling_stacks
 
       def footprint_area
         length.to_f * width.to_f
@@ -32,6 +35,16 @@ module Cats
 
       def volume
         footprint_area * height.to_f
+      end
+
+      protected
+
+      def layout_positioned_for_overlap?
+        store_id.present? &&
+          start_x.present? &&
+          start_y.present? &&
+          length.to_f > FOOTPRINT_OVERLAP_EPS &&
+          width.to_f > FOOTPRINT_OVERLAP_EPS
       end
 
       private
@@ -58,6 +71,39 @@ module Cats
                    "cannot be changed while the stack holds goods. " \
                    "Current commodity: #{old_commodity.read_attribute(:name)}. " \
                    "Remove all goods before placing a different commodity.")
+      end
+
+      # Axis-aligned rectangles on the store floor (X = length axis, Y = width axis).
+      def axis_aligned_footprints_overlap?(ax, ay, al, aw, bx, by, bl, bw)
+        eps = FOOTPRINT_OVERLAP_EPS
+        ax < bx + bl - eps && bx < ax + al - eps && ay < by + bw - eps && by < ay + aw - eps
+      end
+
+      def no_footprint_overlap_with_sibling_stacks
+        return unless layout_positioned_for_overlap?
+
+        ax = start_x.to_f
+        ay = start_y.to_f
+        al = length.to_f
+        aw = width.to_f
+
+        siblings = self.class.where(store_id: store_id)
+        siblings = siblings.where.not(id: id) if persisted?
+
+        siblings.find_each do |other|
+          next unless other.layout_positioned_for_overlap?
+
+          ox = other.start_x.to_f
+          oy = other.start_y.to_f
+          ol = other.length.to_f
+          ow = other.width.to_f
+
+          next unless axis_aligned_footprints_overlap?(ax, ay, al, aw, ox, oy, ol, ow)
+
+          label = other.code.presence || "stack ##{other.id}"
+          errors.add(:base, "Stack footprint overlaps another stack (#{label}) in this store")
+          break
+        end
       end
 
       def fits_inside_store

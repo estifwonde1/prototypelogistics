@@ -11,7 +11,6 @@ import {
   Badge,
   SimpleGrid,
   Alert,
-  Divider,
 } from '@mantine/core';
 import { IconAlertCircle, IconCheck, IconTruck } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
@@ -164,7 +163,7 @@ export default function ReceiptAuthorizationDetailPage() {
             </div>
             <div>
               <Text size="xs" c="dimmed">Store</Text>
-              <Text fw={600}>{ra.store_name || `Store #${ra.store_id}`}</Text>
+              <Text fw={600}>{ra.store_name || (ra.store_id != null ? `Store #${ra.store_id}` : 'Not set yet')}</Text>
             </div>
             <div>
               <Text size="xs" c="dimmed">Authorized Quantity</Text>

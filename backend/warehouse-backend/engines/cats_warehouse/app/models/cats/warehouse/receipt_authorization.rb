@@ -14,7 +14,7 @@ module Cats
       # ── Associations ──────────────────────────────────────────────────────
       belongs_to :receipt_order,            class_name: "Cats::Warehouse::ReceiptOrder"
       belongs_to :receipt_order_assignment, class_name: "Cats::Warehouse::ReceiptOrderAssignment", optional: true
-      belongs_to :store,                    class_name: "Cats::Warehouse::Store"
+      belongs_to :store,                    class_name: "Cats::Warehouse::Store", optional: true
       belongs_to :warehouse,                class_name: "Cats::Warehouse::Warehouse"
       belongs_to :transporter,              class_name: "Cats::Core::Transporter"
       belongs_to :created_by,               class_name: "Cats::Core::User"

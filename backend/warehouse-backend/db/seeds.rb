@@ -383,6 +383,8 @@ puts "Seeding core reference data..."
 units = {
   kg: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "kg" }, { name: "Kilogram", unit_type: Cats::Core::UnitOfMeasure::WEIGHT }),
   mt: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "mt" }, { name: "Metric Ton", unit_type: Cats::Core::UnitOfMeasure::WEIGHT }),
+  kntl: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "kntl" }, { name: "Kuntal (100 kg)", unit_type: Cats::Core::UnitOfMeasure::WEIGHT }),
+  lb: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "lb" }, { name: "Pound", unit_type: Cats::Core::UnitOfMeasure::WEIGHT }),
   l: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "l" }, { name: "Liter", unit_type: Cats::Core::UnitOfMeasure::VOLUME }),
   pcs: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "pcs" }, { name: "Pieces", unit_type: Cats::Core::UnitOfMeasure::ITEM }),
   bag: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "bag" }, { name: "Bag", unit_type: Cats::Core::UnitOfMeasure::ITEM })
@@ -400,6 +402,27 @@ if table_exists?("cats_warehouse_uom_conversions")
     { from_unit: units[:kg], to_unit: units[:mt] },
     { multiplier: 0.001 }
   )
+  # Metric kuntal (quintal) and pound bridge into kg so any kg→… chain (e.g. to mt) applies automatically.
+  find_or_create_with(
+    Cats::Warehouse::UomConversion,
+    { from_unit: units[:kntl], to_unit: units[:kg] },
+    { multiplier: 100.0 }
+  )
+  find_or_create_with(
+    Cats::Warehouse::UomConversion,
+    { from_unit: units[:lb], to_unit: units[:kg] },
+    { multiplier: 0.45359237 }
+  )
+  find_or_create_with(
+    Cats::Warehouse::UomConversion,
+    { from_unit: units[:kntl], to_unit: units[:mt] },
+    { multiplier: 0.1 }
+  )
+  find_or_create_with(
+    Cats::Warehouse::UomConversion,
+    { from_unit: units[:lb], to_unit: units[:mt] },
+    { multiplier: 0.00045359237 }
+  )
 else
   puts "Skipping UOM conversions: table cats_warehouse_uom_conversions is not present in the current database."
 end
@@ -408,13 +431,19 @@ currencies = {
   etb: find_or_create_with(Cats::Core::Currency, { code: "ETB" }, { name: "Ethiopian Birr" })
 }
 
-# Commodity categories (used by donation + commodities)
-commodity_groups = [
-  { code: "FOOD", name: "Food" },
-  { code: "NONFOOD", name: "Non-Food" }
-].map do |group|
-  find_or_create_with(Cats::Core::CommodityCategory, { code: group[:code] }, { name: group[:name] })
-end
+# Commodity groups (top-level, no parent)
+food_group    = find_or_create_with(Cats::Core::CommodityCategory, { code: "FOOD" },    { name: "Food" })
+nonfood_group = find_or_create_with(Cats::Core::CommodityCategory, { code: "NONFOOD" }, { name: "Non-Food" })
+
+# Commodity categories (children of groups)
+cat_cereals    = find_or_create_with(Cats::Core::CommodityCategory, { code: "FOOD-CRL" },  { name: "Cereals & Grains",     parent: food_group })
+cat_oils       = find_or_create_with(Cats::Core::CommodityCategory, { code: "FOOD-OIL" },  { name: "Oils & Fats",          parent: food_group })
+cat_pulses     = find_or_create_with(Cats::Core::CommodityCategory, { code: "FOOD-PLS" },  { name: "Pulses & Legumes",     parent: food_group })
+cat_hygiene    = find_or_create_with(Cats::Core::CommodityCategory, { code: "NF-HYG" },    { name: "Hygiene & Sanitation", parent: nonfood_group })
+cat_nfis       = find_or_create_with(Cats::Core::CommodityCategory, { code: "NF-NFI" },    { name: "Non-Food Items",       parent: nonfood_group })
+cat_shelter    = find_or_create_with(Cats::Core::CommodityCategory, { code: "NF-SHT" },    { name: "Shelter & Bedding",    parent: nonfood_group })
+
+commodity_groups = [food_group, nonfood_group]
 
 # Ensure donor exists before records that depend on it
 donor = find_or_create_with(
@@ -442,16 +471,16 @@ project = find_or_create_with(
   }
 )
 
-# Step 2: Create commodities
+# Step 2: Create commodities (assigned to leaf categories, not top-level groups)
 commodities = [
-  { batch_no: "ADD-RICE-001", description: "Rice", category: commodity_groups[0], unit: units[:kg] },
-  { batch_no: "ADD-WHEAT-001", description: "Wheat Flour", category: commodity_groups[0], unit: units[:kg] },
-  { batch_no: "ADD-OIL-001", description: "Cooking Oil", category: commodity_groups[0], unit: units[:l] },
-  { batch_no: "ADD-BEAN-001", description: "Beans", category: commodity_groups[0], unit: units[:kg] },
-  { batch_no: "ADD-SOAP-001", description: "Soap Bars", category: commodity_groups[1], unit: units[:pcs] },
-  { batch_no: "ADD-BLANKET-001", description: "Blankets", category: commodity_groups[1], unit: units[:pcs] },
-  { batch_no: "ADD-JERRYCAN-001", description: "Jerry Cans", category: commodity_groups[1], unit: units[:pcs] },
-  { batch_no: "ADD-BAG-001", description: "Storage Bags", category: commodity_groups[1], unit: units[:bag] }
+  { batch_no: "ADD-RICE-001",     description: "Rice",          category: cat_cereals, unit: units[:kg] },
+  { batch_no: "ADD-WHEAT-001",    description: "Wheat Flour",   category: cat_cereals, unit: units[:kg] },
+  { batch_no: "ADD-OIL-001",      description: "Cooking Oil",   category: cat_oils,    unit: units[:l] },
+  { batch_no: "ADD-BEAN-001",     description: "Beans",         category: cat_pulses,  unit: units[:kg] },
+  { batch_no: "ADD-SOAP-001",     description: "Soap Bars",     category: cat_hygiene, unit: units[:pcs] },
+  { batch_no: "ADD-BLANKET-001",  description: "Blankets",      category: cat_shelter, unit: units[:pcs] },
+  { batch_no: "ADD-JERRYCAN-001", description: "Jerry Cans",    category: cat_nfis,    unit: units[:pcs] },
+  { batch_no: "ADD-BAG-001",      description: "Storage Bags",  category: cat_nfis,    unit: units[:bag] }
 ].map do |c|
   # Create a Commodity Definition so it's available in the frontend dropdown
   if Object.const_defined?("Cats::Warehouse::CommodityDefinition")
@@ -811,6 +840,23 @@ stores.each do |store|
 end
 
 stacks = stores.flat_map.with_index do |store, idx|
+  # Move ALL existing stacks in this store out of the way before creating/updating
+  # seed stacks. This prevents footprint overlap errors from stacks created by
+  # previous seed runs with different code patterns (e.g. stk-kemis101).
+  # We use update_columns to skip validations, then place seed stacks at known
+  # non-overlapping positions.
+  seed_codes = (1..3).map { |n| "#{store.code}-S#{n}" }
+  non_seed_stacks = Cats::Warehouse::Stack.where(store: store).where.not(code: seed_codes)
+  non_seed_stacks.each_with_index do |stk, i|
+    stk.update_columns(start_x: 1 + ((i + 3) * 11), start_y: 21) # park far away, different row
+  end
+
+  # Reposition seed stacks to their correct non-overlapping positions
+  seed_codes.each_with_index do |code, i|
+    existing = Cats::Warehouse::Stack.find_by(code: code)
+    existing&.update_columns(start_x: 1 + (i * 11), start_y: 1)
+  end
+
   (1..3).map do |i|
     find_or_create_with(
       Cats::Warehouse::Stack,
@@ -819,7 +865,7 @@ stacks = stores.flat_map.with_index do |store, idx|
         length: 10,
         width: 10,
         height: 5,
-        start_x: (i - 1) * 11,
+        start_x: 1 + ((i - 1) * 11), # S1@x=1, S2@x=12, S3@x=23 — no overlap
         start_y: 1,
         store: store,
         quantity: 0

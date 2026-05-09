@@ -12,7 +12,21 @@ module Cats
         # Optional filters
         ras = ras.where(receipt_order_id: params[:receipt_order_id]) if params[:receipt_order_id].present?
         ras = ras.where(warehouse_id: params[:warehouse_id])         if params[:warehouse_id].present?
-        ras = ras.where(store_id: params[:store_id])                 if params[:store_id].present?
+        if params[:store_id].present?
+          sid = params[:store_id].to_i
+          wh_id = Store.find_by(id: sid)&.warehouse_id
+          tbl = ReceiptAuthorization.table_name
+          ras =
+            if wh_id.present?
+              ras.where(
+                "#{tbl}.store_id = ? OR (#{tbl}.store_id IS NULL AND #{tbl}.warehouse_id = ?)",
+                sid,
+                wh_id
+              )
+            else
+              ras.where(store_id: sid)
+            end
+        end
         ras = ras.where(status: params[:status])                     if params[:status].present?
 
         render_resource(ras, each_serializer: ReceiptAuthorizationSerializer)
@@ -33,8 +47,11 @@ module Cats
         payload = ra_params
 
         receipt_order = policy_scope(ReceiptOrder).find(payload[:receipt_order_id])
-        store         = Store.find(payload[:store_id])
-        transporter   = Cats::Core::Transporter.find(payload[:transporter_id])
+        store =
+          if payload[:store_id].present?
+            Store.find(payload[:store_id])
+          end
+        transporter = Cats::Core::Transporter.find(payload[:transporter_id])
 
         assignment = nil
         if payload[:receipt_order_assignment_id].present?

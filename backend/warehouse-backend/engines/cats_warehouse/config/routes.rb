@@ -3,9 +3,14 @@ Cats::Warehouse::Engine.routes.draw do
     post "auth/login", to: "auth#login"
     get "me/assignments", to: "me#assignments"
 
+    get "notifications", to: "notifications#index"
+    get "notifications/unread_count", to: "notifications#unread_count"
+    patch "notifications/read_all", to: "notifications#read_all"
+    patch "notifications/:id/read", to: "notifications#mark_read"
+
     namespace :admin do
       resources :users, only: [ :index, :create, :update, :destroy ]
-      resources :roles, only: [ :index ]
+      resources :roles, only: [ :index, :create, :destroy ]
       resources :user_assignments, only: [ :index, :create, :destroy ]
       patch "user_assignments/bulk", to: "user_assignments#bulk_update"
     end
@@ -23,6 +28,8 @@ Cats::Warehouse::Engine.routes.draw do
     patch "reference_data/commodities/:id", to: "reference_data#update_commodity"
     delete "reference_data/commodities/:id", to: "reference_data#destroy_commodity"
     get "reference_data/categories", to: "reference_data#categories"
+    post "reference_data/categories", to: "reference_data#create_category"
+    delete "reference_data/categories/:id", to: "reference_data#destroy_category"
 
     resources :commodity_definitions, only: [ :index, :create, :update, :destroy ]
     get "reference_data/units", to: "reference_data#units"

@@ -13,43 +13,54 @@ import {
   TextInput,
   Text,
   Divider,
+  Checkbox,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
   createReceiptAuthorization,
+  getReceiptAuthorizations,
 } from '../../api/receiptAuthorizations';
-import { getReceiptOrders } from '../../api/receiptOrders';
-import { getStores } from '../../api/stores';
-import { getTransporterReferences } from '../../api/referenceData';
+import { getReceiptOrders, type ReceiptOrderLine } from '../../api/receiptOrders';
+import { getTransporterReferences, getUnitReferences, getUomConversions } from '../../api/referenceData';
 import { useAuthStore } from '../../store/authStore';
+import { findDirectedMultiplier } from '../../utils/uomConversions';
 import type { ApiError } from '../../types/common';
+
+function lineForAssignment(assignmentLineId: number | undefined, lines: ReceiptOrderLine[]): ReceiptOrderLine | undefined {
+  if (assignmentLineId != null) {
+    return lines.find((ln) => ln.id != null && Number(ln.id) === Number(assignmentLineId));
+  }
+  return lines[0];
+}
 
 export default function ReceiptAuthorizationFormPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
-  const userHubId = activeAssignment?.hub?.id;
+  const scopedHubId = activeAssignment?.hub?.id;
+  const scopedWarehouseId = activeAssignment?.warehouse?.id;
 
   // Form state
   const [receiptOrderId, setReceiptOrderId] = useState<string | null>(null);
   const [assignmentId, setAssignmentId] = useState<string | null>(null);
-  const [storeId, setStoreId] = useState<string | null>(null);
   const [transporterId, setTransporterId] = useState<string | null>(null);
+  const [authorizedUnitId, setAuthorizedUnitId] = useState<string | null>(null);
   const [authorizedQuantity, setAuthorizedQuantity] = useState<number | string>('');
   const [driverName, setDriverName] = useState('');
   const [driverIdNumber, setDriverIdNumber] = useState('');
   const [truckPlateNumber, setTruckPlateNumber] = useState('');
   const [waybillNumber, setWaybillNumber] = useState('');
+  const [autoGenerateWaybill, setAutoGenerateWaybill] = useState(true);
 
   // Load confirmed receipt orders — filtered to this hub's orders
   const { data: receiptOrders = [] } = useQuery({
-    queryKey: ['receipt_orders', { hub_id: userHubId }],
+    queryKey: ['receipt_orders', { hub_id: scopedHubId, warehouse_id: scopedWarehouseId }],
     queryFn: () => getReceiptOrders(),
     select: (orders) =>
       orders.filter((o) => {
         const s = String(o.status || '').toLowerCase();
         const validStatus = s === 'confirmed' || s === 'assigned' || s === 'reserved' || s === 'in_progress';
-        const matchesHub = !userHubId || Number(o.hub_id) === Number(userHubId);
+        const matchesHub = !scopedHubId || Number(o.hub_id) === Number(scopedHubId);
         return validStatus && matchesHub;
       }),
   });
@@ -96,10 +107,17 @@ export default function ReceiptAuthorizationFormPage() {
     queryKey: ['reference-data', 'transporters'],
     queryFn: getTransporterReferences,
   });
+  const { data: units = [] } = useQuery({
+    queryKey: ['reference-data', 'units'],
+    queryFn: getUnitReferences,
+  });
+  const { data: uomConversions = [] } = useQuery({
+    queryKey: ['reference-data', 'uom_conversions'],
+    queryFn: getUomConversions,
+  });
 
   // Reset downstream fields when order changes
   useEffect(() => {
-    setStoreId(null);
     setAssignmentId(null);
     setAuthorizedQuantity('');
   }, [receiptOrderId]);
@@ -129,28 +147,140 @@ export default function ReceiptAuthorizationFormPage() {
     label: t.name,
   }));
 
+  const warehouseAssignments = assignments.filter((a: any) => a.warehouse_id != null);
+  const requiresAssignmentPick = warehouseAssignments.length > 0;
+  const selectedLine = lineForAssignment(
+    selectedAssignment?.receipt_order_line_id != null ? Number(selectedAssignment.receipt_order_line_id) : undefined,
+    selectedOrder?.receipt_order_lines ?? selectedOrder?.lines ?? []
+  );
+  const assignmentUnitId =
+    selectedAssignment?.quantity_unit_id != null
+      ? Number(selectedAssignment.quantity_unit_id)
+      : selectedLine?.unit_id != null
+        ? Number(selectedLine.unit_id)
+        : undefined;
+  const assignmentCommodityId =
+    selectedLine?.commodity_id != null ? Number(selectedLine.commodity_id) : undefined;
+  const assignmentUnitLabel = useMemo(() => {
+    if (selectedAssignment?.quantity_unit_abbreviation) return selectedAssignment.quantity_unit_abbreviation;
+    if (selectedLine?.unit_name) return selectedLine.unit_name;
+    if (assignmentUnitId == null) return 'units';
+    const unit = units.find((u) => u.id === assignmentUnitId);
+    return unit?.abbreviation || unit?.name || 'units';
+  }, [selectedAssignment?.quantity_unit_abbreviation, selectedLine?.unit_name, assignmentUnitId, units]);
+
+  useEffect(() => {
+    if (assignmentUnitId == null) {
+      setAuthorizedUnitId(null);
+      return;
+    }
+    setAuthorizedUnitId(String(assignmentUnitId));
+  }, [assignmentUnitId]);
+
+  const { data: relatedRAs = [] } = useQuery({
+    queryKey: ['receipt_authorizations', { receipt_order_id: selectedOrder?.id, warehouse_id: selectedAssignment?.warehouse_id }],
+    queryFn: () =>
+      getReceiptAuthorizations({
+        receipt_order_id: selectedOrder?.id,
+        warehouse_id: selectedAssignment?.warehouse_id,
+      }),
+    enabled: !!selectedOrder?.id && !!selectedAssignment?.warehouse_id,
+  });
+  const usedOnAssignment = relatedRAs
+    .filter(
+      (ra) =>
+        selectedAssignment != null &&
+        ra.status !== 'cancelled' &&
+        Number(ra.receipt_order_assignment_id) === Number(selectedAssignment.id)
+    )
+    .reduce((sum, ra) => sum + Number(ra.authorized_quantity || 0), 0);
+  const allocatedOnAssignment = Number(selectedAssignment?.quantity ?? 0);
+  const remainingOnAssignment = Math.max(0, allocatedOnAssignment - usedOnAssignment);
+  const allowedUnitOptions =
+    assignmentUnitId != null && assignmentCommodityId != null
+      ? units
+          .filter((unit) => findDirectedMultiplier(unit.id, assignmentUnitId, assignmentCommodityId, uomConversions) != null)
+          .map((unit) => ({
+            value: String(unit.id),
+            label: unit.abbreviation ? `${unit.name} (${unit.abbreviation})` : unit.name,
+          }))
+      : [];
+  const enteredQty = Number(authorizedQuantity);
+  const previewMultiplier =
+    selectedAssignment && authorizedUnitId && assignmentUnitId != null && assignmentCommodityId != null
+      ? findDirectedMultiplier(Number(authorizedUnitId), assignmentUnitId, assignmentCommodityId, uomConversions)
+      : null;
+  const previewNormalizedQty =
+    Number.isFinite(enteredQty) && enteredQty > 0 && previewMultiplier != null
+      ? Number((enteredQty * previewMultiplier).toFixed(6))
+      : null;
+  const exceedsRemaining =
+    previewNormalizedQty != null && previewNormalizedQty - remainingOnAssignment > 0.0001;
+  const remainingAfterThisTruck =
+    previewNormalizedQty != null ? Math.max(0, Number((remainingOnAssignment - previewNormalizedQty).toFixed(6))) : null;
+  const selectedInputUnit = authorizedUnitId ? units.find((u) => u.id === Number(authorizedUnitId)) : undefined;
+  const selectedInputUnitLabel = selectedInputUnit
+    ? selectedInputUnit.abbreviation || selectedInputUnit.name
+    : '';
   const createMutation = useMutation({
     mutationFn: () => {
-      if (!receiptOrderId || !storeId || !transporterId || !authorizedQuantity || !driverName || !driverIdNumber || !truckPlateNumber || !waybillNumber) {
+      if (
+        !receiptOrderId ||
+        !transporterId ||
+        !authorizedUnitId ||
+        !authorizedQuantity ||
+        !driverName ||
+        !driverIdNumber ||
+        !truckPlateNumber
+      ) {
         throw new Error('Please fill in all required fields');
       }
+      if (!autoGenerateWaybill && !waybillNumber.trim()) {
+        throw new Error('Enter waybill number or enable auto-generate');
+      }
+      if (requiresAssignmentPick && !assignmentId) {
+        throw new Error('Select a warehouse assignment for this receipt order');
+      }
+
+      const enteredQty = Number(authorizedQuantity);
+      if (!Number.isFinite(enteredQty) || enteredQty <= 0) {
+        throw new Error('Enter a quantity greater than zero');
+      }
+      if (assignmentUnitId == null || assignmentCommodityId == null) {
+        throw new Error('Unable to resolve assignment unit/commodity. Please check receipt order assignment setup.');
+      }
+      const unitMultiplier = findDirectedMultiplier(
+        Number(authorizedUnitId),
+        assignmentUnitId,
+        assignmentCommodityId,
+        uomConversions
+      );
+      if (unitMultiplier == null) {
+        throw new Error('Selected unit cannot be converted to the warehouse assignment unit');
+      }
+      const normalizedQty = Number((enteredQty * unitMultiplier).toFixed(6));
+      if (normalizedQty - remainingOnAssignment > 0.0001) {
+        throw new Error(
+          `Cannot authorize ${normalizedQty.toLocaleString()} ${assignmentUnitLabel}; only ${remainingOnAssignment.toLocaleString()} ${assignmentUnitLabel} remains for this warehouse`
+        );
+      }
+
       return createReceiptAuthorization({
         receipt_order_id: Number(receiptOrderId),
         receipt_order_assignment_id: assignmentId ? Number(assignmentId) : null,
-        store_id: Number(storeId),
         transporter_id: Number(transporterId),
-        authorized_quantity: Number(authorizedQuantity),
+        authorized_quantity: normalizedQty,
         driver_name: driverName.trim(),
         driver_id_number: driverIdNumber.trim(),
         truck_plate_number: truckPlateNumber.trim(),
-        waybill_number: waybillNumber.trim(),
+        waybill_number: autoGenerateWaybill ? undefined : waybillNumber.trim(),
       });
     },
     onSuccess: (ra) => {
       queryClient.invalidateQueries({ queryKey: ['receipt_authorizations'] });
       notifications.show({
         title: 'Receipt Authorization Created',
-        message: `${ra.reference_no} created. Storekeeper has been notified.`,
+        message: `${ra.reference_no} created. Warehouse staff will be notified.`,
         color: 'green',
       });
       navigate(`/hub/receipt-authorizations/${ra.id}`);
@@ -178,7 +308,9 @@ export default function ReceiptAuthorizationFormPage() {
       <Card shadow="sm" padding="lg" radius="md" withBorder>
         <Stack gap="md">
           <Text size="sm" c="dimmed">
-            Create one Receipt Authorization per truck. The Storekeeper of the destination store will be notified automatically.
+            Create one Receipt Authorization per truck against a warehouse allocation on the receipt order. Store-level
+            assignment is handled separately on the Receipt Order — this step authorizes inbound transport to the hub
+            warehouse only.
           </Text>
 
           <Divider label="Receipt Order" labelPosition="left" />
@@ -205,6 +337,27 @@ export default function ReceiptAuthorizationFormPage() {
               required
               description="Select the warehouse allocation for this truck"
             />
+          ) : receiptOrderId ? (
+            <Alert icon={<IconAlertCircle size={16} />} title="Warehouse allocation missing" color="yellow">
+              This receipt order has no hub→warehouse assignment yet. Assign warehouses on the Receipt Order detail page
+              before creating an authorization.
+            </Alert>
+          ) : null}
+
+          {selectedAssignment && (
+            <Alert color="blue" variant="light" title="Selected Warehouse Allocation">
+              {`Warehouse: ${selectedAssignment.warehouse_name || `Warehouse #${selectedAssignment.warehouse_id}`}. Assigned: ${allocatedOnAssignment.toLocaleString()} ${assignmentUnitLabel}. Used in RAs: ${usedOnAssignment.toLocaleString()} ${assignmentUnitLabel}. Remaining: ${remainingOnAssignment.toLocaleString()} ${assignmentUnitLabel}.`}
+            </Alert>
+          )}
+          {selectedAssignment && exceedsRemaining && previewNormalizedQty != null && (
+            <Alert color="red" title="Quantity exceeds allocation">
+              {`This truck quantity converts to ${previewNormalizedQty.toLocaleString()} ${assignmentUnitLabel}, but only ${remainingOnAssignment.toLocaleString()} ${assignmentUnitLabel} remains for this warehouse assignment.`}
+            </Alert>
+          )}
+          {selectedAssignment && previewNormalizedQty != null && (
+            <Alert color={exceedsRemaining ? 'red' : 'teal'} variant="light" title="Unit Conversion Preview">
+              {`${enteredQty.toLocaleString()} ${selectedInputUnitLabel} = ${previewNormalizedQty.toLocaleString()} ${assignmentUnitLabel}. Remaining after this truck: ${remainingAfterThisTruck?.toLocaleString()} ${assignmentUnitLabel}.`}
+            </Alert>
           )}
 
           {/* Show single assignment as read-only info */}
@@ -284,13 +437,21 @@ export default function ReceiptAuthorizationFormPage() {
               required
               style={{ fontFamily: 'monospace' }}
             />
-            <TextInput
-              label="Waybill Number"
-              placeholder="Transport waybill reference"
-              value={waybillNumber}
-              onChange={(e) => setWaybillNumber(e.target.value)}
-              required
-            />
+            <Stack gap={6}>
+              <Checkbox
+                label="Auto-generate Waybill Number"
+                checked={autoGenerateWaybill}
+                onChange={(e) => setAutoGenerateWaybill(e.currentTarget.checked)}
+              />
+              <TextInput
+                label="Waybill Number"
+                placeholder={autoGenerateWaybill ? 'Will be auto-generated on create' : 'Transport waybill reference'}
+                value={waybillNumber}
+                onChange={(e) => setWaybillNumber(e.target.value)}
+                disabled={autoGenerateWaybill}
+                required={!autoGenerateWaybill}
+              />
+            </Stack>
           </Group>
 
           <Group justify="flex-end" mt="md">
@@ -300,6 +461,10 @@ export default function ReceiptAuthorizationFormPage() {
             <Button
               onClick={() => createMutation.mutate()}
               loading={createMutation.isPending}
+              disabled={
+                (requiresAssignmentPick && !assignmentId) ||
+                !!selectedAssignment && (!authorizedUnitId || remainingOnAssignment <= 0 || exceedsRemaining)
+              }
             >
               Create Receipt Authorization
             </Button>

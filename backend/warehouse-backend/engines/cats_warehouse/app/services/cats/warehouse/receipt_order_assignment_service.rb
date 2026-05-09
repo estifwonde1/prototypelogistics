@@ -13,6 +13,8 @@ module Cats
         raise ArgumentError, "assignments are required" if @assignments.empty?
 
         ReceiptOrder.transaction do
+          created_assignments = []
+
           @assignments.each do |payload|
             line = find_line(payload[:receipt_order_line_id])
 
@@ -40,7 +42,7 @@ module Cats
             Rails.logger.info "Quantity: #{payload[:quantity]}"
             Rails.logger.info "Status: #{assignment_status}"
 
-            ReceiptOrderAssignment.create!(
+            created_assignments << ReceiptOrderAssignment.create!(
               receipt_order: @order,
               receipt_order_line: line,
               hub_id: assignment_hub_id,
@@ -56,10 +58,11 @@ module Cats
           # Recalculate and update order status based on assignment completeness
           update_order_status!
 
+          assignee_ids = notification_recipient_user_ids(created_assignments)
           enqueue_notification(
             "receipt_order.assigned",
             receipt_order_id: @order.id,
-            assigned_to_ids: @assignments.map { |p| p[:assigned_to_id] }.compact
+            assigned_to_ids: assignee_ids
           )
 
           @order
@@ -67,6 +70,22 @@ module Cats
       end
 
       private
+
+      # In-app + webhook notifications: include the assignment's assignee plus every active
+      # Storekeeper with a UserAssignment on that store (storekeepers see work by store_id even
+      # when assigned_to_id was left blank or still points at a warehouse manager).
+      def notification_recipient_user_ids(assignments)
+        ids = []
+        assignments.each do |a|
+          ids << a.assigned_to_id if a.assigned_to_id.present?
+          next if a.store_id.blank?
+
+          UserAssignment.includes(:user).where(role_name: "Storekeeper", store_id: a.store_id).each do |ua|
+            ids << ua.user_id if ua.user&.active?
+          end
+        end
+        ids.compact.uniq
+      end
 
       def update_order_status!
         # CRITICAL: For multi-hub/multi-warehouse orders, we should NOT change the order status
@@ -121,9 +140,7 @@ module Cats
       end
 
       def enqueue_notification(event, payload)
-        return unless ENV["ENABLE_WAREHOUSE_JOBS"] == "true"
-
-        NotificationJob.perform_later(event, payload)
+        NotificationFanout.deliver(event, payload)
       end
 
       def normalize_assignment_status(raw)

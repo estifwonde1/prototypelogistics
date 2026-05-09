@@ -29,6 +29,14 @@ module Cats
         facility_options?
       end
 
+      def create_category?
+        admin?
+      end
+
+      def destroy_category?
+        admin?
+      end
+
       private
 
       def officer?

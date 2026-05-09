@@ -35,6 +35,7 @@ import {
 import { getStores, getStore } from '../../api/stores';
 import { getReceiptAuthorizations } from '../../api/receiptAuthorizations';
 import type { ReceiptAuthorization } from '../../api/receiptAuthorizations';
+import { notificationsQueryKey, notificationsUnreadCountKey } from '../../api/notifications';
 import { getStacks } from '../../api/stacks';
 import { createInspection, getInspections } from '../../api/inspections';
 import { createGrn } from '../../api/grns';
@@ -48,8 +49,9 @@ import { ReservationCard } from '../../components/common/ReservationCard';
 import { WorkflowTimeline } from '../../components/common/WorkflowTimeline';
 import ReceiptWarehouseAssignmentModal from '../../components/common/ReceiptWarehouseAssignmentModal';
 import type { ApiError } from '../../types/common';
-import { useMemo, useState } from 'react';
-import type { ReceiptOrder } from '../../api/receiptOrders';
+import { useEffect, useMemo, useState } from 'react';
+import type { ReceiptOrder, ReceiptOrderLine } from '../../api/receiptOrders';
+import type { ReceiptOrderAssignment } from '../../types/assignment';
 import { usePermission } from '../../hooks/usePermission';
 import { useAuthStore } from '../../store/authStore';
 import { OFFICER_ROLE_SLUGS, normalizeRoleSlug } from '../../contracts/warehouse';
@@ -58,6 +60,7 @@ import type { Store } from '../../types/store';
 import type { Inspection } from '../../types/inspection';
 import type { UnitReference, UomConversion } from '../../types/referenceData';
 import type { WorkflowEvent } from '../../types/assignment';
+import { findDirectedMultiplier } from '../../utils/uomConversions';
 
 function formatReceiptDate(order: ReceiptOrder): string {
   const raw = order.received_date || order.expected_delivery_date;
@@ -112,6 +115,124 @@ function lineQuantityForReservation(order: ReceiptOrder, reservation: { receipt_
   return totalReceiptOrderLineQuantity(order);
 }
 
+/** Hub → warehouse allocations: assignments with a warehouse that apply to this line (and optional hub). */
+function warehouseAssignmentsForHubDestLine(
+  assignments: ReceiptOrderAssignment[],
+  line: Pick<ReceiptOrderLine, 'id' | 'quantity' | 'destination_hub_id'>,
+  opts: { scopeHubId: number | undefined; visibleLineCount: number }
+): ReceiptOrderAssignment[] {
+  const lineId = line.id;
+  return assignments.filter((a) => {
+    if (a.warehouse_id == null) return false;
+    if (
+      opts.scopeHubId != null &&
+      a.hub_id != null &&
+      Number(a.hub_id) !== Number(opts.scopeHubId)
+    ) {
+      return false;
+    }
+    if (a.receipt_order_line_id != null) {
+      return lineId != null && Number(a.receipt_order_line_id) === Number(lineId);
+    }
+    return opts.visibleLineCount <= 1;
+  });
+}
+
+function sumWarehouseAssignedQty(rows: ReceiptOrderAssignment[]): number {
+  return rows.reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+}
+
+function lineForAssignment(a: ReceiptOrderAssignment, lines: ReceiptOrderLine[]): ReceiptOrderLine | undefined {
+  if (a.receipt_order_line_id != null) {
+    return lines.find((ln) => ln.id != null && Number(ln.id) === Number(a.receipt_order_line_id));
+  }
+  return lines[0];
+}
+
+function assignmentMeasureUnitId(a: ReceiptOrderAssignment, lines: ReceiptOrderLine[]): number | undefined {
+  if (a.quantity_unit_id != null) return a.quantity_unit_id;
+  const ln = lineForAssignment(a, lines);
+  return ln?.unit_id != null ? Number(ln.unit_id) : undefined;
+}
+
+/** Sum quantities for matching rows, each converted to `targetUnitId` when possible. */
+function sumAssignmentsInUnit(
+  rows: ReceiptOrderAssignment[],
+  predicate: (a: ReceiptOrderAssignment) => boolean,
+  targetUnitId: number,
+  lines: ReceiptOrderLine[],
+  conversions: UomConversion[]
+): number | null {
+  let total = 0;
+  for (const a of rows) {
+    if (!predicate(a) || a.quantity == null) continue;
+    const line = lineForAssignment(a, lines);
+    const commodityId = Number(line?.commodity_id ?? lines[0]?.commodity_id ?? 0);
+    const fromId = assignmentMeasureUnitId(a, lines);
+    if (fromId == null) return null;
+    if (fromId === targetUnitId) {
+      total += Number(a.quantity);
+      continue;
+    }
+    const m = findDirectedMultiplier(fromId, targetUnitId, commodityId, conversions);
+    if (m == null) return null;
+    total += Number(a.quantity) * m;
+  }
+  return total;
+}
+
+/** All hub→warehouse chunks for this warehouse (store not set yet). */
+function warehouseOnlyAssignmentsForManager(
+  assignments: ReceiptOrderAssignment[],
+  userWarehouseId: number
+): ReceiptOrderAssignment[] {
+  return assignments.filter(
+    (a) =>
+      a.warehouse_id != null &&
+      Number(a.warehouse_id) === Number(userWarehouseId) &&
+      a.store_id == null
+  );
+}
+
+function withKntlSuffix(
+  qty: number,
+  baseUnitId: number | undefined,
+  commodityId: number,
+  baseAbbrev: string,
+  units: UnitReference[],
+  conversions: UomConversion[]
+): string {
+  const ab = baseAbbrev.trim() || 'units';
+  const core = `${qty.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${ab}`;
+  if (baseUnitId == null || !conversions.length) return core;
+  const kntl = units.find((u) => (u.abbreviation || '').toLowerCase() === 'kntl');
+  if (!kntl?.id) return core;
+  const m = findDirectedMultiplier(baseUnitId, kntl.id, commodityId, conversions);
+  if (m == null) return core;
+  return `${core} (~${(qty * m).toLocaleString(undefined, { maximumFractionDigits: 2 })} kntl)`;
+}
+
+function computeWarehouseManagerStoreRemaining(
+  assignments: ReceiptOrderAssignment[],
+  userWarehouseId: number,
+  storesPayload: { id: number; warehouse_id: number }[] | undefined
+): { pool: number; assigned: number; remaining: number } {
+  const pool = warehouseOnlyAssignmentsForManager(assignments, userWarehouseId).reduce(
+    (s, a) => s + Number(a.quantity ?? 0),
+    0
+  );
+  const stores = storesPayload ?? [];
+  const assigned = assignments
+    .filter((a) => {
+      if (a.store_id == null) return false;
+      if (a.warehouse_id != null && Number(a.warehouse_id) === Number(userWarehouseId)) return true;
+      const store = stores.find((s) => Number(s.id) === Number(a.store_id));
+      return !!store && Number(store.warehouse_id) === Number(userWarehouseId);
+    })
+    .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+  return { pool, assigned, remaining: pool - assigned };
+}
+
 function ReceiptOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -139,7 +260,9 @@ function ReceiptOrderDetailPage() {
   const [selectedAssignmentStoreId, setSelectedAssignmentStoreId] = useState<string | null>(null);
   const [assignmentNotes, setAssignmentNotes] = useState('');
   const [assignmentQuantity, setAssignmentQuantity] = useState<number>(0);
-  
+  /** Unit for the quantity typed in the store-assignment form (converted to order line unit on submit). */
+  const [assignmentEntryUnitId, setAssignmentEntryUnitId] = useState<number | null>(null);
+
   // Space reservation form state
   const [showSpaceReservationForm, setShowSpaceReservationForm] = useState(false);
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
@@ -294,14 +417,20 @@ function ReceiptOrderDetailPage() {
   const unitsQuery = useQuery({
     queryKey: ['reference-data', 'units'],
     queryFn: () => getUnitReferences(),
-    enabled: showWarehouseAssignmentModal,
+    enabled:
+      showWarehouseAssignmentModal ||
+      showAssignmentForm ||
+      (!!order && activeTab === 'assignments'),
   });
   const units = (unitsQuery.data as UnitReference[]) || [];
 
   const uomConversionsQuery = useQuery({
     queryKey: ['reference-data', 'uom_conversions'],
     queryFn: () => getUomConversions(),
-    enabled: showWarehouseAssignmentModal,
+    enabled:
+      showWarehouseAssignmentModal ||
+      showAssignmentForm ||
+      (!!order && activeTab === 'assignments'),
   });
   const uomConversions = (uomConversionsQuery.data as UomConversion[]) || [];
 
@@ -330,11 +459,6 @@ function ReceiptOrderDetailPage() {
     queryKey: ['receipt_orders', id, 'assignable_managers', roleSlug, { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],
     queryFn: () => {
       const params = isWarehouseManager && userWarehouseId ? { warehouse_id: userWarehouseId } : {};
-      console.log('=== Fetching Assignable Managers ===');
-      console.log('isWarehouseManager:', isWarehouseManager);
-      console.log('userWarehouseId:', userWarehouseId);
-      console.log('isOfficerRole:', isOfficerRole);
-      console.log('params:', params);
       return getReceiptOrderAssignableManagers(Number(id), isOfficerRole, params);
     },
     enabled:
@@ -360,6 +484,8 @@ function ReceiptOrderDetailPage() {
     mutationFn: () => confirmReceiptOrder(Number(id)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['receipt_orders'] });
+      queryClient.invalidateQueries({ queryKey: notificationsQueryKey });
+      queryClient.invalidateQueries({ queryKey: notificationsUnreadCountKey });
       notifications.show({
         title: 'Success',
         message: 'Receipt Order confirmed successfully',
@@ -405,6 +531,8 @@ function ReceiptOrderDetailPage() {
     mutationFn: (payload: any) => assignReceiptOrder(Number(id), payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['receipt_orders', id] });
+      queryClient.invalidateQueries({ queryKey: notificationsQueryKey });
+      queryClient.invalidateQueries({ queryKey: notificationsUnreadCountKey });
       notifications.show({
         title: 'Success',
         message: 'Assignment created successfully',
@@ -619,46 +747,67 @@ function ReceiptOrderDetailPage() {
       return;
     }
 
-    // For warehouse managers, calculate based on their warehouse's allocation only
+    const primaryLine = visibleLines[0] ?? lines[0];
+    const baseUnitId = primaryLine?.unit_id != null ? Number(primaryLine.unit_id) : undefined;
+    const commodityId = Number(primaryLine?.commodity_id ?? 0);
+
+    let qtyInOrderUnit = assignmentQuantity;
+    const entryUnit = assignmentEntryUnitId ?? baseUnitId;
+    if (
+      assignmentQuantity > 0 &&
+      entryUnit != null &&
+      baseUnitId != null &&
+      entryUnit !== baseUnitId
+    ) {
+      const m = findDirectedMultiplier(entryUnit, baseUnitId, commodityId, uomConversions);
+      if (m == null) {
+        notifications.show({
+          title: 'Validation Error',
+          message: 'Cannot convert the selected unit to the order unit. Pick another unit or quantity.',
+          color: 'red',
+        });
+        return;
+      }
+      qtyInOrderUnit = Number((assignmentQuantity * m).toFixed(6));
+    }
+
+    // For warehouse managers, cap by sum of all hub→warehouse allocations (not only the first row).
     let totalOrdered: number;
     let alreadyAssigned: number;
-    
+
     if (isWarehouseManager && userWarehouseId) {
-      // Find the warehouse-level assignment for this warehouse
-      const warehouseAssignment = assignments.find(
-        a => a.warehouse_id != null && Number(a.warehouse_id) === Number(userWarehouseId)
+      const whOnly = warehouseOnlyAssignmentsForManager(assignments, userWarehouseId);
+      const { pool, assigned } = computeWarehouseManagerStoreRemaining(
+        assignments,
+        userWarehouseId,
+        (assignableManagersPayload?.stores as { id: number; warehouse_id: number }[] | undefined) ?? []
       );
-      
-      if (warehouseAssignment && warehouseAssignment.quantity != null) {
-        // Use the warehouse's assigned quantity as the limit
-        totalOrdered = Number(warehouseAssignment.quantity);
+      if (whOnly.length > 0) {
+        totalOrdered = pool;
+        alreadyAssigned = assigned;
       } else {
-        // Fallback: use total from lines (shouldn't happen in hub-scoped orders)
         totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
+        alreadyAssigned = assignments
+          .filter((a) => {
+            if (a.store_id == null) return false;
+            if (a.warehouse_id != null && Number(a.warehouse_id) === Number(userWarehouseId)) return true;
+            const store = (assignableManagersPayload?.stores as any[])?.find(
+              (s: any) => Number(s.id) === Number(a.store_id)
+            );
+            return store && Number(store.warehouse_id) === Number(userWarehouseId);
+          })
+          .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
       }
-      
-      // Count only store assignments within this warehouse
-      alreadyAssigned = assignments
-        .filter(a => {
-          if (a.store_id == null) return false;
-          // Check if this store belongs to the current warehouse
-          const store = (assignableManagersPayload?.stores as any[])?.find(
-            (s: any) => Number(s.id) === Number(a.store_id)
-          );
-          return store && Number(store.warehouse_id) === Number(userWarehouseId);
-        })
-        .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
     } else {
-      // For non-warehouse managers (officers, admins), use total from lines
       totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
-      alreadyAssigned = assignments.filter(a => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+      alreadyAssigned = assignments.filter((a) => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
     }
-    
+
     const remaining = totalOrdered - alreadyAssigned;
-    if (assignmentQuantity > remaining) {
+    if (qtyInOrderUnit > remaining + 0.000001) {
       notifications.show({
         title: 'Validation Error',
-        message: `Quantity exceeds remaining (${remaining.toLocaleString()} left)`,
+        message: `Quantity exceeds remaining (${remaining.toLocaleString()} ${primaryLine?.unit_name || ''} left)`,
         color: 'red',
       });
       return;
@@ -667,7 +816,7 @@ function ReceiptOrderDetailPage() {
     const payload: any = {
       assignments: [{
         store_id: Number(selectedAssignmentStoreId),
-        quantity: assignmentQuantity > 0 ? assignmentQuantity : undefined,
+        quantity: qtyInOrderUnit > 0 ? qtyInOrderUnit : undefined,
         notes: assignmentNotes,
         // Include line ID so storekeeper sees only their line
         receipt_order_line_id: visibleLines.length === 1 ? visibleLines[0].id : undefined,
@@ -778,6 +927,78 @@ function ReceiptOrderDetailPage() {
 
     return lines;
   }, [lines, order, roleSlug, assignments, activeAssignment, userHubId]);
+
+  const warehouseManagerStoreAssignHints = useMemo(() => {
+    if (!isWarehouseManager || userWarehouseId == null) return null;
+    const storesPayload =
+      (assignableManagersPayload?.stores as { id: number; warehouse_id: number }[] | undefined) ?? [];
+    const { pool, assigned, remaining } = computeWarehouseManagerStoreRemaining(
+      assignments,
+      userWarehouseId,
+      storesPayload
+    );
+    const primaryLine = visibleLines[0] ?? lines[0];
+    const baseUnitId = primaryLine?.unit_id != null ? Number(primaryLine.unit_id) : undefined;
+    const commodityId = Number(primaryLine?.commodity_id ?? 0);
+    const baseAbbrev = primaryLine?.unit_name?.trim() || '';
+
+    let poolKntl = '';
+    let assignedKntl = '';
+    let remainingKntl = '';
+    if (baseUnitId != null && uomConversions.length > 0) {
+      const kntl = units.find((u) => (u.abbreviation || '').toLowerCase() === 'kntl');
+      if (kntl?.id != null) {
+        const toKntl = findDirectedMultiplier(baseUnitId, kntl.id, commodityId, uomConversions);
+        if (toKntl != null) {
+          poolKntl = ` (~${(pool * toKntl).toLocaleString(undefined, { maximumFractionDigits: 2 })} kntl)`;
+          assignedKntl = ` (~${(assigned * toKntl).toLocaleString(undefined, { maximumFractionDigits: 2 })} kntl)`;
+          remainingKntl = ` (~${(remaining * toKntl).toLocaleString(undefined, { maximumFractionDigits: 2 })} kntl)`;
+        }
+      }
+    }
+
+    const u = baseAbbrev || 'order unit';
+    const detailLines = [
+      `Warehouse allocation (all hub→warehouse rows for you): ${pool.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${u}${poolKntl}`,
+      `Already assigned to stores here: ${assigned.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${u}${assignedKntl}`,
+      `Remaining for stores: ${remaining.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${u}${remainingKntl}`,
+    ];
+    return { pool, assigned, remaining, detailLines, baseAbbrev: u, baseUnitId, commodityId };
+  }, [
+    isWarehouseManager,
+    userWarehouseId,
+    assignments,
+    assignableManagersPayload,
+    visibleLines,
+    lines,
+    uomConversions,
+    units,
+  ]);
+
+  const storeAssignUnitOptions = useMemo(() => {
+    if (!showAssignmentForm) return [];
+    const baseLine = visibleLines[0] ?? lines[0];
+    const baseId = baseLine?.unit_id != null ? Number(baseLine.unit_id) : undefined;
+    const cid = Number(baseLine?.commodity_id ?? 0);
+    if (baseId == null) return [];
+    return units
+      .filter(
+        (unit) =>
+          Number(unit.id) === baseId ||
+          findDirectedMultiplier(Number(unit.id), baseId, cid, uomConversions) != null
+      )
+      .map((unit) => ({
+        value: String(unit.id),
+        label: unit.abbreviation ? `${unit.name} (${unit.abbreviation})` : unit.name,
+      }));
+  }, [showAssignmentForm, units, uomConversions, visibleLines, lines]);
+
+  useEffect(() => {
+    if (!showAssignmentForm) return;
+    const ln = visibleLines[0] ?? lines[0];
+    if (ln?.unit_id != null) setAssignmentEntryUnitId(Number(ln.unit_id));
+  }, [showAssignmentForm, visibleLines, lines]);
+
   const assignedLocationRows = useMemo(() => {
     const lineById = new Map(lines.map((line) => [Number(line.id), line]));
     const rows = assignments.map((assignment) => {
@@ -797,6 +1018,11 @@ function ReceiptOrderDetailPage() {
         assignment.hub_name ||
         'Assigned location';
 
+      const unitAbbrev =
+        assignment.quantity_unit_abbreviation?.trim() ||
+        line?.unit_name?.trim() ||
+        (line?.unit_id != null ? `unit #${line.unit_id}` : undefined);
+
       return {
         id: assignment.id,
         type,
@@ -804,11 +1030,14 @@ function ReceiptOrderDetailPage() {
         managerName: assignment.assigned_to_name || 'Assigned by facility setup',
         commodityName: line?.commodity_name || (line?.commodity_id ? `Commodity #${line.commodity_id}` : 'Order level'),
         quantity: assignment.quantity,
+        unitAbbrev,
         status: assignment.status,
       };
     });
 
     if (rows.length > 0 || !order) return rows;
+
+    const fallbackUnit = lines[0]?.unit_name?.trim() || (lines[0]?.unit_id != null ? `unit #${lines[0].unit_id}` : undefined);
 
     if (order.warehouse_id) {
       return [{
@@ -818,6 +1047,7 @@ function ReceiptOrderDetailPage() {
         managerName: 'Manager from facility setup',
         commodityName: 'Order destination',
         quantity: undefined,
+        unitAbbrev: fallbackUnit,
         status: order.status,
       }];
     }
@@ -830,6 +1060,7 @@ function ReceiptOrderDetailPage() {
         managerName: 'Manager from facility setup',
         commodityName: 'Order destination',
         quantity: undefined,
+        unitAbbrev: fallbackUnit,
         status: order.status,
       }];
     }
@@ -837,6 +1068,118 @@ function ReceiptOrderDetailPage() {
     return rows;
   }, [assignments, lines, order]);
   const isDraft = String(order?.status || '').toLowerCase() === 'draft';
+
+  const assignmentsTabSummary = useMemo(() => {
+    if (!order || isDraft) return null;
+    const linesForScope = visibleLines.length > 0 ? visibleLines : lines;
+    if (linesForScope.length === 0) return null;
+
+    const primaryLine = linesForScope[0];
+    const baseUnitId = primaryLine?.unit_id != null ? Number(primaryLine.unit_id) : undefined;
+    const commodityId = Number(primaryLine?.commodity_id ?? 0);
+    const baseAbbrev = primaryLine?.unit_name?.trim() || '';
+
+    const lineIdSet = new Set(
+      linesForScope
+        .map((l) => (l.id != null ? Number(l.id) : NaN))
+        .filter((id) => !Number.isNaN(id))
+    );
+    const belongsToScope = (a: ReceiptOrderAssignment) => {
+      if (a.receipt_order_line_id == null) return true;
+      return lineIdSet.has(Number(a.receipt_order_line_id));
+    };
+
+    let warehouseReceived = 0;
+    let storeAssigned = 0;
+
+    if ((isWarehouseManager || roleSlug === 'storekeeper') && userWarehouseId != null) {
+      const storesPayload =
+        (assignableManagersPayload?.stores as { id: number; warehouse_id: number }[] | undefined) ?? [];
+      const { pool, assigned } = computeWarehouseManagerStoreRemaining(
+        assignments,
+        userWarehouseId,
+        storesPayload
+      );
+      warehouseReceived = pool;
+      storeAssigned = assigned;
+    } else if (roleSlug === 'hub_manager' && userHubId != null) {
+      const whIds = new Set(
+        allWarehouses.filter((w) => Number(w.hub_id) === Number(userHubId)).map((w) => Number(w.id))
+      );
+      warehouseReceived = assignments
+        .filter(
+          (a) =>
+            a.store_id == null &&
+            a.warehouse_id != null &&
+            belongsToScope(a) &&
+            (Number(a.hub_id) === Number(userHubId) || whIds.has(Number(a.warehouse_id)))
+        )
+        .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+      storeAssigned = assignments
+        .filter(
+          (a) =>
+            a.store_id != null &&
+            belongsToScope(a) &&
+            (Number(a.hub_id) === Number(userHubId) ||
+              (a.warehouse_id != null && whIds.has(Number(a.warehouse_id))))
+        )
+        .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+    } else {
+      warehouseReceived = assignments
+        .filter((a) => a.store_id == null && a.warehouse_id != null)
+        .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+      storeAssigned = assignments
+        .filter((a) => a.store_id != null)
+        .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+    }
+
+    const remaining = Math.max(0, warehouseReceived - storeAssigned);
+
+    return {
+      warehouseReceived,
+      storeAssigned,
+      remaining,
+      warehouseReceivedLabel: withKntlSuffix(
+        warehouseReceived,
+        baseUnitId,
+        commodityId,
+        baseAbbrev,
+        units,
+        uomConversions
+      ),
+      storeAssignedLabel: withKntlSuffix(
+        storeAssigned,
+        baseUnitId,
+        commodityId,
+        baseAbbrev,
+        units,
+        uomConversions
+      ),
+      remainingLabel: withKntlSuffix(
+        remaining,
+        baseUnitId,
+        commodityId,
+        baseAbbrev,
+        units,
+        uomConversions
+      ),
+    };
+  }, [
+    order,
+    isDraft,
+    visibleLines,
+    lines,
+    assignments,
+    roleSlug,
+    userHubId,
+    userWarehouseId,
+    assignableManagersPayload,
+    isWarehouseManager,
+    allWarehouses,
+    units,
+    uomConversions,
+  ]);
+
   // For storekeepers: GRN can only be created after inspection is completed (has at least one confirmed inspection)
   const hasCompletedInspection = inspections.some(
     (i) => String(i.status || '').toLowerCase() === 'confirmed'
@@ -857,27 +1200,18 @@ function ReceiptOrderDetailPage() {
     return allWarehouses.filter((warehouse) => Number(warehouse.hub_id) === Number(targetHubId));
   }, [allWarehouses, order?.hub_id, userHubId]);
   const fullyAssigned = useMemo(() => {
-    console.log('=== fullyAssigned Debug ===');
-    console.log('roleSlug:', roleSlug);
-    console.log('userHubId:', userHubId);
-    console.log('All lines:', lines);
-    
     // For hub managers: check if THEIR hub's lines are fully assigned to warehouses
     // For others: check if ALL lines are fully assigned
     const linesToCheck = roleSlug === 'hub_manager' && userHubId 
       ? lines.filter(l => l.destination_hub_id === userHubId)
       : lines;
     
-    console.log('Lines to check:', linesToCheck);
-    
     if (linesToCheck.length === 0) {
-      console.log('No lines to check, returning false');
       return false;
     }
     
     // Calculate total ordered quantity for the lines we're checking
     const totalOrdered = linesToCheck.reduce((sum, line) => sum + Number(line.quantity ?? 0), 0);
-    console.log('Total ordered for these lines:', totalOrdered);
     
     // Calculate total assigned quantity to WAREHOUSES only for these lines
     // CRITICAL: Only count assignments that have warehouse_id AND belong to this hub
@@ -901,12 +1235,8 @@ function ReceiptOrderDetailPage() {
       return sum;
     }, 0);
     
-    console.log('Total assigned to warehouses:', totalAssigned);
-    
     // Check if fully assigned (with small tolerance for floating point)
     const remaining = totalOrdered - totalAssigned;
-    console.log('Remaining:', remaining);
-    console.log('Fully assigned?', remaining <= 0.000001);
     return remaining <= 0.000001;
   }, [assignments, lines, roleSlug, userHubId]);
   const canHubAssignWarehouse =
@@ -915,30 +1245,16 @@ function ReceiptOrderDetailPage() {
     normalizeOrderStatus(order?.status) !== 'completed' &&
     !fullyAssigned &&
     hubScopedWarehouses.length > 0;
-  
-  console.log('=== canHubAssignWarehouse Debug ===');
-  console.log('roleSlug === hub_manager:', roleSlug === 'hub_manager');
-  console.log('!isDraft:', !isDraft);
-  console.log('status !== completed:', normalizeOrderStatus(order?.status) !== 'completed');
-  console.log('!fullyAssigned:', !fullyAssigned);
-  console.log('hubScopedWarehouses.length > 0:', hubScopedWarehouses.length > 0);
-  console.log('canHubAssignWarehouse:', canHubAssignWarehouse);
 
   // Lines scoped to this hub manager's hub — used in the Assign Warehouse modal
   const hubScopedLines = useMemo(() => {
-    console.log('=== hubScopedLines Debug ===');
-    console.log('userHubId:', userHubId);
-    console.log('order.hub_id:', order?.hub_id);
-    
     if (roleSlug !== 'hub_manager' || !order) return lines;
     // CRITICAL: Use userHubId (the manager's assigned hub), not order.hub_id
     const hubId = userHubId || order.hub_id;
-    console.log('Using hubId:', hubId);
     
     if (!hubId) return lines;
     // Filter lines that are destined for this hub
     const filtered = lines.filter(l => l.destination_hub_id === hubId);
-    console.log('Filtered lines:', filtered);
     
     // Fall back to all lines if no lines have destination_hub_id set (old orders)
     return filtered.length > 0 ? filtered : lines.filter(l => !l.destination_warehouse_id);
@@ -1140,12 +1456,26 @@ function ReceiptOrderDetailPage() {
                           ? destinationPart.replace('Warehouse:', '').trim()
                           : destinationPart || '—';
 
-                      // Find assigned warehouse from assignments for this line (or order-level)
-                      const assignedWarehouse = assignments.find(a =>
-                        a.warehouse_id != null &&
-                        (a.receipt_order_line_id == null || a.receipt_order_line_id === line.id)
-                      );
-                      const assignedWarehouseName = assignedWarehouse?.warehouse_name?.trim() || null;
+                      const scopeHubId: number | undefined =
+                        roleSlug === 'hub_manager'
+                          ? (userHubId != null
+                              ? Number(userHubId)
+                              : line.destination_hub_id != null
+                                ? Number(line.destination_hub_id)
+                                : undefined)
+                          : line.destination_hub_id != null
+                            ? Number(line.destination_hub_id)
+                            : undefined;
+
+                      const whRowsForLine = isHub
+                        ? warehouseAssignmentsForHubDestLine(assignments, line, {
+                            scopeHubId,
+                            visibleLineCount: visibleLines.length,
+                          })
+                        : [];
+                      const hubAssignedTotal = sumWarehouseAssignedQty(whRowsForLine);
+                      const hubOrderedTotal = Number(line.quantity ?? 0);
+                      const hubRemaining = Math.max(0, hubOrderedTotal - hubAssignedTotal);
 
                       return (
                         <Table.Tr key={line.id ?? index}>
@@ -1172,10 +1502,24 @@ function ReceiptOrderDetailPage() {
                           </Table.Td>
                           <Table.Td>
                             {isHub ? (
-                              assignedWarehouseName ? (
-                                <Text size="sm" fw={500}>{assignedWarehouseName}</Text>
+                              whRowsForLine.length === 0 ? (
+                                <Text size="sm" c="dimmed">Not yet assigned to a warehouse</Text>
                               ) : (
-                                <Text size="sm" c="dimmed">Not yet assigned</Text>
+                                <Stack gap={6}>
+                                  {whRowsForLine.map((a) => (
+                                    <div key={a.id}>
+                                      <Text size="sm" fw={500}>
+                                        {a.warehouse_name?.trim() || `Warehouse #${a.warehouse_id}`}
+                                      </Text>
+                                      {a.quantity != null && (
+                                        <Text size="xs" c="dimmed">
+                                          {Number(a.quantity).toLocaleString()}{' '}
+                                          {line.unit_name?.trim() || (line.unit_id ? `unit #${line.unit_id}` : '')}
+                                        </Text>
+                                      )}
+                                    </div>
+                                  ))}
+                                </Stack>
                               )
                             ) : isWarehouse ? (
                               <Text size="sm" fw={500}>{destinationLabel}</Text>
@@ -1184,39 +1528,80 @@ function ReceiptOrderDetailPage() {
                             )}
                           </Table.Td>
                           <Table.Td>
-                            <Text fw={600}>
-                              {(() => {
-                                // For warehouse managers in hub-scoped orders, show their
-                                // allocated quantity (from the hub assignment), not the full line quantity.
-                                if (isWarehouseManager && userWarehouseId && line.id != null) {
-                                  const warehouseAssignment = assignments.find(
-                                    a =>
-                                      a.warehouse_id != null &&
-                                      Number(a.warehouse_id) === Number(userWarehouseId) &&
-                                      (a.receipt_order_line_id == null || a.receipt_order_line_id === line.id)
+                            {(() => {
+                              // For warehouse managers in hub-scoped orders, show their
+                              // allocated quantity (from the hub assignment), not the full line quantity.
+                              if (isWarehouseManager && userWarehouseId && line.id != null) {
+                                const warehouseAssignment = assignments.find(
+                                  (a) =>
+                                    a.warehouse_id != null &&
+                                    Number(a.warehouse_id) === Number(userWarehouseId) &&
+                                    (a.receipt_order_line_id == null || a.receipt_order_line_id === line.id)
+                                );
+                                if (warehouseAssignment?.quantity != null) {
+                                  return (
+                                    <Text fw={600}>
+                                      {Number(warehouseAssignment.quantity).toLocaleString()}
+                                    </Text>
                                   );
-                                  if (warehouseAssignment?.quantity != null) {
-                                    return Number(warehouseAssignment.quantity).toLocaleString();
-                                  }
                                 }
-                                // For storekeepers: show their store's allocated quantity
-                                if (roleSlug === 'storekeeper') {
-                                  const storeId = activeAssignment?.store?.id;
-                                  const storeAssignment = storeId != null
+                              }
+                              // For storekeepers: show their store's allocated quantity
+                              if (roleSlug === 'storekeeper') {
+                                const storeId = activeAssignment?.store?.id;
+                                const storeAssignment =
+                                  storeId != null
                                     ? assignments.find(
-                                        a =>
+                                        (a) =>
                                           a.store_id != null &&
                                           Number(a.store_id) === Number(storeId) &&
                                           (a.receipt_order_line_id == null || a.receipt_order_line_id === line.id)
                                       )
                                     : undefined;
-                                  if (storeAssignment?.quantity != null) {
-                                    return Number(storeAssignment.quantity).toLocaleString();
-                                  }
+                                if (storeAssignment?.quantity != null) {
+                                  return (
+                                    <Text fw={600}>
+                                      {Number(storeAssignment.quantity).toLocaleString()}
+                                    </Text>
+                                  );
                                 }
-                                return line.quantity;
-                              })()}
-                            </Text>
+                              }
+                              if (isHub) {
+                                const unit =
+                                  line.unit_name?.trim() ||
+                                  (line.unit_id ? `unit #${line.unit_id}` : '');
+                                return (
+                                  <Stack gap={4}>
+                                    <Group gap={6} wrap="nowrap" align="baseline">
+                                      <Text fw={700} component="span">
+                                        {hubAssignedTotal.toLocaleString()}
+                                      </Text>
+                                      <Text size="sm" c="dimmed" component="span">
+                                        of
+                                      </Text>
+                                      <Text fw={600} component="span">
+                                        {hubOrderedTotal.toLocaleString()}
+                                      </Text>
+                                      {unit ? (
+                                        <Text size="xs" c="dimmed" component="span">
+                                          {unit}
+                                        </Text>
+                                      ) : null}
+                                    </Group>
+                                    {hubRemaining > 1e-6 ? (
+                                      <Text size="xs" c="dimmed">
+                                        {hubRemaining.toLocaleString()} still to assign to a warehouse
+                                      </Text>
+                                    ) : hubOrderedTotal > 0 ? (
+                                      <Text size="xs" c="green.7">
+                                        Fully assigned to warehouses
+                                      </Text>
+                                    ) : null}
+                                  </Stack>
+                                );
+                              }
+                              return <Text fw={600}>{line.quantity}</Text>;
+                            })()}
                           </Table.Td>
                           <Table.Td>
                             {line.unit_name?.trim() || (line.unit_id ? `Unit #${line.unit_id}` : '—')}
@@ -1488,6 +1873,37 @@ function ReceiptOrderDetailPage() {
               })()}
             </Group>
 
+            {assignmentsTabSummary ? (
+              <Card withBorder padding="sm" radius="md" bg="var(--mantine-color-body)">
+                <Group gap="xl" align="flex-start" wrap="wrap">
+                  <div>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                      Total received at warehouse (from hub)
+                    </Text>
+                    <Text size="sm" fw={700}>
+                      {assignmentsTabSummary.warehouseReceivedLabel}
+                    </Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                      Assigned to stores
+                    </Text>
+                    <Text size="sm" fw={700}>
+                      {assignmentsTabSummary.storeAssignedLabel}
+                    </Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                      Remaining to assign to stores
+                    </Text>
+                    <Text size="sm" fw={700} c={assignmentsTabSummary.remaining > 0.0001 ? undefined : 'green'}>
+                      {assignmentsTabSummary.remainingLabel}
+                    </Text>
+                  </div>
+                </Group>
+              </Card>
+            ) : null}
+
             {assignedLocationRows.length === 0 ? (
               <Text c="dimmed">No assigned locations yet</Text>
             ) : (
@@ -1499,7 +1915,7 @@ function ReceiptOrderDetailPage() {
                       <Table.Th>Assigned Location</Table.Th>
                       <Table.Th>Manager</Table.Th>
                       <Table.Th>Commodity / Scope</Table.Th>
-                      <Table.Th>Quantity</Table.Th>
+                      <Table.Th>Quantity (UOM)</Table.Th>
                       <Table.Th>Status</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
@@ -1520,9 +1936,26 @@ function ReceiptOrderDetailPage() {
                         </Table.Td>
                         <Table.Td>
                           {row.quantity != null ? (
-                            <Text fw={600}>{Number(row.quantity).toLocaleString()}</Text>
+                            <Group gap={6} wrap="nowrap">
+                              <Text fw={600}>{Number(row.quantity).toLocaleString()}</Text>
+                              {row.unitAbbrev ? (
+                                <Text size="sm" c="dimmed">
+                                  {row.unitAbbrev}
+                                </Text>
+                              ) : null}
+                            </Group>
                           ) : (
-                            <Text size="sm" c="dimmed">All order lines</Text>
+                            <Text size="sm" c="dimmed">
+                              All order lines
+                              {row.unitAbbrev ? (
+                                <>
+                                  {' '}
+                                  <Text component="span" size="sm" c="dimmed">
+                                    ({row.unitAbbrev})
+                                  </Text>
+                                </>
+                              ) : null}
+                            </Text>
                           )}
                         </Table.Td>
                         <Table.Td>
@@ -1614,7 +2047,17 @@ function ReceiptOrderDetailPage() {
                         </Text>
                       ) : null}
                       
-                      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                      {warehouseManagerStoreAssignHints ? (
+                        <Stack gap={4}>
+                          {warehouseManagerStoreAssignHints.detailLines.map((hintLine, idx) => (
+                            <Text key={idx} size="xs" c="dimmed">
+                              {hintLine}
+                            </Text>
+                          ))}
+                        </Stack>
+                      ) : null}
+
+                      <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
                         <Stack gap="xs">
                           <Select
                             label="Store"
@@ -1634,21 +2077,18 @@ function ReceiptOrderDetailPage() {
                               const store = (assignableManagersPayload?.stores as any[])?.find(
                                 (s: any) => Number(s.id) === Number(val)
                               );
-                              
+
                               if (store) {
                                 const managers = assignableManagersPayload?.assignable_managers as any[] || [];
-                                
-                                // Find storekeeper for this store
-                                // A storekeeper matches if:
-                                // 1. They have a store_id that matches this store, OR
-                                // 2. They have a warehouse_id that matches this store's warehouse (warehouse-level storekeeper)
+
                                 const storekeeper = managers.find((m: any) => {
                                   const isStorekeeper = m.role === 'Storekeeper';
                                   const matchesStore = Number(m.store_id) === Number(store.id);
-                                  const matchesWarehouse = m.warehouse_id && Number(m.warehouse_id) === Number(store.warehouse_id);
+                                  const matchesWarehouse =
+                                    m.warehouse_id && Number(m.warehouse_id) === Number(store.warehouse_id);
                                   return isStorekeeper && (matchesStore || matchesWarehouse);
                                 });
-                                
+
                                 if (storekeeper) {
                                   setSelectedUserId(String(storekeeper.id));
                                 } else {
@@ -1678,73 +2118,66 @@ function ReceiptOrderDetailPage() {
                           )}
                         </Stack>
 
+                        <Select
+                          label="Quantity unit"
+                          description="Saved in the receipt line unit (e.g. mt)."
+                          placeholder="Unit"
+                          data={storeAssignUnitOptions}
+                          value={assignmentEntryUnitId != null ? String(assignmentEntryUnitId) : undefined}
+                          onChange={(v) => setAssignmentEntryUnitId(v != null ? Number(v) : null)}
+                          disabled={storeAssignUnitOptions.length <= 1}
+                          searchable
+                        />
+
                         <NumberInput
-                          label="Quantity to assign to this store"
-                          placeholder={(() => {
-                            if (isWarehouseManager && userWarehouseId) {
-                              const warehouseAssignment = assignments.find(
-                                a => a.warehouse_id != null && Number(a.warehouse_id) === Number(userWarehouseId)
-                              );
-                              const warehouseTotal = warehouseAssignment?.quantity 
-                                ? Number(warehouseAssignment.quantity) 
-                                : lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
-                              return `Max: ${warehouseTotal.toLocaleString()}`;
-                            }
-                            return `Max: ${lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0).toLocaleString()}`;
-                          })()}
+                          label="Quantity to assign"
+                          placeholder={
+                            warehouseManagerStoreAssignHints
+                              ? `≤ ${warehouseManagerStoreAssignHints.remaining.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${warehouseManagerStoreAssignHints.baseAbbrev}`
+                              : `Max: ${lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0).toLocaleString()}`
+                          }
                           value={assignmentQuantity || ''}
                           onChange={(val) => setAssignmentQuantity(Number(val) || 0)}
                           min={0}
-                          description={(() => {
-                            if (isWarehouseManager && userWarehouseId) {
-                              const warehouseAssignment = assignments.find(
-                                a => a.warehouse_id != null && Number(a.warehouse_id) === Number(userWarehouseId)
-                              );
-                              const warehouseTotal = warehouseAssignment?.quantity 
-                                ? Number(warehouseAssignment.quantity) 
-                                : lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
-                              const alreadyAssigned = assignments
-                                .filter(a => {
-                                  if (a.store_id == null) return false;
-                                  const store = (assignableManagersPayload?.stores as any[])?.find(
-                                    (s: any) => Number(s.id) === Number(a.store_id)
-                                  );
-                                  return store && Number(store.warehouse_id) === Number(userWarehouseId);
-                                })
-                                .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
-                              return `Your warehouse allocation: ${warehouseTotal.toLocaleString()} — already store-assigned: ${alreadyAssigned.toLocaleString()}`;
-                            }
-                            const totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
-                            const alreadyAssigned = assignments.filter(a => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
-                            return `Total ordered: ${totalOrdered.toLocaleString()} — already store-assigned: ${alreadyAssigned.toLocaleString()}`;
-                          })()}
+                          description={
+                            isWarehouseManager && userWarehouseId
+                              ? undefined
+                              : (() => {
+                                  const totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
+                                  const alreadyAssigned = assignments
+                                    .filter((a) => a.store_id != null)
+                                    .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+                                  return `Total ordered: ${totalOrdered.toLocaleString()} — already store-assigned: ${alreadyAssigned.toLocaleString()}`;
+                                })()
+                          }
                           error={(() => {
-                            let totalOrdered: number;
-                            let alreadyAssigned: number;
-                            
-                            if (isWarehouseManager && userWarehouseId) {
-                              const warehouseAssignment = assignments.find(
-                                a => a.warehouse_id != null && Number(a.warehouse_id) === Number(userWarehouseId)
-                              );
-                              totalOrdered = warehouseAssignment?.quantity 
-                                ? Number(warehouseAssignment.quantity) 
-                                : lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
-                              alreadyAssigned = assignments
-                                .filter(a => {
-                                  if (a.store_id == null) return false;
-                                  const store = (assignableManagersPayload?.stores as any[])?.find(
-                                    (s: any) => Number(s.id) === Number(a.store_id)
-                                  );
-                                  return store && Number(store.warehouse_id) === Number(userWarehouseId);
-                                })
-                                .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
-                            } else {
-                              totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
-                              alreadyAssigned = assignments.filter(a => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+                            if (isWarehouseManager && userWarehouseId && warehouseManagerStoreAssignHints) {
+                              const rem = warehouseManagerStoreAssignHints.remaining;
+                              const baseId = warehouseManagerStoreAssignHints.baseUnitId;
+                              const cid = warehouseManagerStoreAssignHints.commodityId;
+                              const entry = assignmentEntryUnitId ?? baseId;
+                              if (assignmentQuantity <= 0) return null;
+                              if (entry == null || baseId == null) return null;
+                              let qtyBase = assignmentQuantity;
+                              if (entry !== baseId) {
+                                const m = findDirectedMultiplier(entry, baseId, cid, uomConversions);
+                                if (m == null) return 'No conversion from selected unit to order unit';
+                                qtyBase = assignmentQuantity * m;
+                              }
+                              if (qtyBase > rem + 0.000001) {
+                                return `Exceeds remaining (${rem.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${warehouseManagerStoreAssignHints.baseAbbrev} left)`;
+                              }
+                              return null;
                             }
-                            
+
+                            const totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
+                            const alreadyAssigned = assignments
+                              .filter((a) => a.store_id != null)
+                              .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
                             const remaining = totalOrdered - alreadyAssigned;
-                            if (assignmentQuantity > remaining) return `Exceeds remaining quantity (${remaining.toLocaleString()} left)`;
+                            if (assignmentQuantity > remaining) {
+                              return `Exceeds remaining quantity (${remaining.toLocaleString()} left)`;
+                            }
                             return null;
                           })()}
                         />
@@ -1856,7 +2289,9 @@ function ReceiptOrderDetailPage() {
                               </Badge>
                             </Table.Td>
                             <Table.Td>
-                              <Text size="sm">{ra.store_name || `Store #${ra.store_id}`}</Text>
+                              <Text size="sm">
+                                {ra.store_name || (ra.store_id != null ? `Store #${ra.store_id}` : '—')}
+                              </Text>
                             </Table.Td>
                             <Table.Td>
                               <Text size="sm">{ra.warehouse_name || `Warehouse #${ra.warehouse_id}`}</Text>
