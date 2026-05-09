@@ -36,4 +36,4 @@ RUN chmod +x /usr/bin/docker-entrypoint.sh && \
 ENTRYPOINT ["docker-entrypoint.sh"]
 
 # Start the Rails server
-CMD ["rails", "server", "-b", "0.0.0.0"]
+CMD ["rails", "server"]
