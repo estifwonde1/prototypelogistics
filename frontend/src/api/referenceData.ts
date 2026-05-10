@@ -19,6 +19,7 @@ export interface CreateCommodityPayload {
   best_use_before?: string;
   package_unit_id?: number;
   package_size?: number;
+  package_unit_per_package_id?: number;
   source_type?: string;
   source_name?: string;
 }

@@ -18,6 +18,7 @@ module Cats
           :quantity,
           :package_unit_id,
           :package_size,
+          :package_unit_per_package_id,
           :source_type,
           :source_name
         )
@@ -47,6 +48,7 @@ module Cats
           unit_of_measure_id: unit_id,
           package_unit_id: payload[:package_unit_id],
           package_size: payload[:package_size].present? ? payload[:package_size].to_f : nil,
+          package_unit_per_package_id: payload[:package_unit_per_package_id],
           commodity_category_id: payload[:commodity_category_id],
           source_type: payload[:source_type],
           source_name: payload[:source_name]
@@ -55,6 +57,7 @@ module Cats
         commodity = Cats::Core::Commodity.create!(attrs)
 
         package_unit = Cats::Core::UnitOfMeasure.find_by(id: commodity.package_unit_id)
+        package_unit_per_package = Cats::Core::UnitOfMeasure.find_by(id: commodity.respond_to?(:package_unit_per_package_id) ? commodity.package_unit_per_package_id : nil)
         category = Cats::Core::CommodityCategory.find_by(id: commodity.commodity_category_id)
 
         render_success({
@@ -64,9 +67,12 @@ module Cats
           quantity: commodity.quantity,
           unit_id: commodity.unit_of_measure_id,
           unit_name: commodity.unit_of_measure&.name,
+          unit_abbreviation: commodity.unit_of_measure&.abbreviation,
           package_unit_id: commodity.package_unit_id,
           package_unit_name: package_unit&.abbreviation || package_unit&.name,
           package_size: commodity.respond_to?(:package_size) ? commodity.package_size : nil,
+          package_unit_per_package_id: commodity.respond_to?(:package_unit_per_package_id) ? commodity.package_unit_per_package_id : nil,
+          package_unit_per_package_name: package_unit_per_package&.abbreviation || package_unit_per_package&.name,
           source_type: commodity.source_type,
           source_name: commodity.source_name,
           category_id: commodity.commodity_category_id,
@@ -229,6 +235,7 @@ module Cats
           .map do |commodity|
             commodity_name = commodity[:name].presence || commodity[:batch_no].presence
             package_unit = Cats::Core::UnitOfMeasure.find_by(id: commodity.package_unit_id)
+            package_unit_per_package = Cats::Core::UnitOfMeasure.find_by(id: commodity.respond_to?(:package_unit_per_package_id) ? commodity.package_unit_per_package_id : nil)
             category = category_map[commodity.commodity_category_id]
 
             {
@@ -242,6 +249,8 @@ module Cats
               package_unit_id: commodity.package_unit_id,
               package_unit_name: package_unit&.abbreviation || package_unit&.name,
               package_size: commodity.respond_to?(:package_size) ? commodity.package_size : nil,
+              package_unit_per_package_id: commodity.respond_to?(:package_unit_per_package_id) ? commodity.package_unit_per_package_id : nil,
+              package_unit_per_package_name: package_unit_per_package&.abbreviation || package_unit_per_package&.name,
               source_type: commodity.source_type,
               source_name: commodity.source_name,
               category_id: commodity.commodity_category_id,

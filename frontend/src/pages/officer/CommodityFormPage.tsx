@@ -11,7 +11,7 @@ import {
   NumberInput,
   Select,
   Card,
-  Text,  
+  Text,
   Table,
   Switch,
   Badge,
@@ -41,6 +41,121 @@ import {
 import { getCommodityDefinitions } from "../../api/commodityDefinitions";
 import type { ApiError } from "../../types/common";
 import type { CreateCommodityPayload } from "../../api/referenceData";
+import type { UnitReference } from "../../types/referenceData";
+
+// Fixed packaging container options — these are the physical containers/packaging types.
+// They are stored as UnitOfMeasure records on the backend (package_unit_id).
+// The label is what the officer sees; the value is the abbreviation used to match
+// against the unit abbreviation returned from the server.
+const PACKAGING_UNIT_OPTIONS = [
+  { value: "BAG", label: "BAG – Bag/Sack" },
+  { value: "CTN", label: "CTN – Carton" },
+  { value: "BDL", label: "BDL – Bundle/Bale" },
+  { value: "PLT", label: "PLT – Pallet" },
+  { value: "CRT", label: "CRT – Crate" },
+  { value: "DRM", label: "DRM – Drum" },
+  { value: "PKG", label: "PKG – Package" },
+  { value: "UNT", label: "UNT – Unit/Each" },
+  { value: "ROL", label: "ROL – Roll" },
+];
+
+/**
+ * Resolve a packaging unit abbreviation to a UnitOfMeasure id.
+ * Falls back to creating a virtual match by abbreviation.
+ */
+function resolvePackagingUnitId(
+  abbreviation: string,
+  units: UnitReference[]
+): number | undefined {
+  const match = units.find(
+    (u) =>
+      (u.abbreviation ?? "").toUpperCase() === abbreviation.toUpperCase() ||
+      (u.name ?? "").toUpperCase() === abbreviation.toUpperCase()
+  );
+  return match?.id;
+}
+
+/**
+ * Format a packaging description like "50 kg per BAG".
+ */
+function formatPackaging(
+  packageSize: number | null | undefined,
+  unitPerPackageName: string | null | undefined,
+  packageUnitName: string | null | undefined
+): string {
+  if (!packageSize && !packageUnitName) return "—";
+  const size = packageSize != null ? packageSize : "";
+  const unit = unitPerPackageName ?? "";
+  const container = packageUnitName ?? "";
+  if (size && unit && container) return `${size} ${unit} per ${container}`;
+  if (size && container) return `${size} per ${container}`;
+  if (container) return container;
+  return "—";
+}
+
+/**
+ * Calculate packaged quantity: how many packages make up the total commodity quantity.
+ *
+ * quantity    — total amount in the commodity's default unit (e.g. 1 MT)
+ * unitAbbr    — abbreviation of the commodity's default unit (e.g. "MT")
+ * packageSize — numeric size per package (e.g. 50)
+ * pkgUnitName — unit of the package size (e.g. "KG")
+ *
+ * When the commodity unit and the package unit match, divide directly.
+ * When they differ, attempt well-known conversions first; if no conversion is
+ * found, fall back to dividing quantity / packageSize directly using the
+ * package unit as the reference (per user requirement: "on unit mismatch take
+ * the unit of package").
+ *
+ * Returns { count, unitLabel } so the caller can format the label.
+ */
+function calcPackagedQty(
+  quantity: number | null | undefined,
+  unitAbbreviation: string | null | undefined,
+  packageSize: number | null | undefined,
+  unitPerPackageName: string | null | undefined
+): { count: string; fallback: boolean } {
+  if (!quantity || !packageSize || packageSize <= 0)
+    return { count: "—", fallback: false };
+
+  const qtyUnit = (unitAbbreviation ?? "").toUpperCase();
+  const pkgUnit = (unitPerPackageName ?? "").toUpperCase();
+
+  let qtyInPkgUnit = quantity;
+  let fallback = false;
+
+  if (qtyUnit !== pkgUnit && qtyUnit !== "" && pkgUnit !== "") {
+    const conversionKey = `${qtyUnit}→${pkgUnit}`;
+    const knownConversions: Record<string, number> = {
+      "MT→KG": 1000,
+      "MT→G": 1000000,
+      "KG→G": 1000,
+      "KG→MT": 0.001,
+      "G→KG": 0.001,
+      "G→MT": 0.000001,
+      "TON→KG": 1000,
+      "KG→TON": 0.001,
+      "LB→KG": 0.453592,
+      "KG→LB": 2.20462,
+      "QTL→KG": 100,
+      "KG→QTL": 0.01,
+    };
+    const factor = knownConversions[conversionKey];
+    if (factor != null) {
+      qtyInPkgUnit = quantity * factor;
+    } else {
+      // No known conversion — divide directly using the package unit as reference
+      qtyInPkgUnit = quantity;
+      fallback = true;
+    }
+  }
+
+  const bags = qtyInPkgUnit / packageSize;
+  return {
+    count: bags.toLocaleString(undefined, { maximumFractionDigits: 2 }),
+    fallback,
+  };
+}
 
 function CommodityFormPage() {
   const navigate = useNavigate();
@@ -53,26 +168,33 @@ function CommodityFormPage() {
   const [batchNo, setBatchNo] = useState("");
   const [autoGenBatch, setAutoGenBatch] = useState(true);
   const [quantity, setQuantity] = useState<number | string>(1);
-  const [packageUnitId, setPackageUnitId] = useState<string | null>(null);
+  // packageUnitAbbr holds the abbreviation string (e.g. "BAG") for the packaging container
+  const [packageUnitAbbr, setPackageUnitAbbr] = useState<string | null>(null);
   const [packageSize, setPackageSize] = useState<number | string>("");
+  // packageUnitPerPackageId holds the UoM id for the measurement unit inside the package (e.g. kg)
+  const [packageUnitPerPackageId, setPackageUnitPerPackageId] = useState<string | null>(null);
   const [sourceType, setSourceType] = useState("");
   const [sourceName, setSourceName] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [expandedCommodities, setExpandedCommodities] = useState<Set<string>>(
-    new Set(),
+    new Set()
   );
 
   const generateBatchNo = () =>
-    `BATCH-${dayjs().format("YYYYMMDD")}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
+    `BATCH-${dayjs().format("YYYYMMDD")}-${Math.random()
+      .toString(36)
+      .slice(2, 5)
+      .toUpperCase()}`;
 
   const [previewBatch, setPreviewBatch] = useState(() => generateBatchNo());
 
   // Commodity definitions created by admin — used for the dropdown
-  const { data: commodityDefinitions = [], isLoading: definitionsLoading } = useQuery({
-    queryKey: ["commodity-definitions"],
-    queryFn: () => getCommodityDefinitions(),
-  });
+  const { data: commodityDefinitions = [], isLoading: definitionsLoading } =
+    useQuery({
+      queryKey: ["commodity-definitions"],
+      queryFn: () => getCommodityDefinitions(),
+    });
 
   // Actual batches created by officers — used for the list below
   const { data: commodityBatches = [], isLoading: batchesLoading } = useQuery({
@@ -86,7 +208,9 @@ function CommodityFormPage() {
   const commodities = commodityBatches;
 
   // Track which definition the officer selected so we can auto-fill category
-  const [selectedDefinitionId, setSelectedDefinitionId] = useState<string | null>(null);
+  const [selectedDefinitionId, setSelectedDefinitionId] = useState<
+    string | null
+  >(null);
 
   const { data: units = [] } = useQuery({
     queryKey: ["reference-data", "units"],
@@ -100,18 +224,7 @@ function CommodityFormPage() {
 
   const createMutation = useMutation({
     mutationFn: async (payload: CreateCommodityPayload) => {
-      return createCommodity({
-        name: payload.name,
-        batch_no: payload.batch_no,
-        quantity: payload.quantity,
-        unit_id: payload.unit_id || undefined,
-        commodity_category_id: payload.commodity_category_id || undefined,
-        best_use_before: payload.best_use_before,
-        package_unit_id: payload.package_unit_id,
-        package_size: payload.package_size,
-        source_type: payload.source_type,
-        source_name: payload.source_name,
-      });
+      return createCommodity(payload);
     },
     onSuccess: (newCommodity) => {
       queryClient.invalidateQueries({
@@ -126,8 +239,9 @@ function CommodityFormPage() {
       setPreviewBatch(generateBatchNo());
       setQuantity(1);
       setUnitId(null);
-      setPackageUnitId(null);
+      setPackageUnitAbbr(null);
       setPackageSize("");
+      setPackageUnitPerPackageId(null);
       setCategory(null);
       setExpiryDate(null);
       setSourceType("");
@@ -153,46 +267,34 @@ function CommodityFormPage() {
 
   const handleSubmit = () => {
     if (!name.trim()) {
-      notifications.show({
-        title: "Error",
-        message: "Commodity name is required",
-        color: "red",
-      });
+      notifications.show({ title: "Error", message: "Commodity name is required", color: "red" });
       return;
     }
     if (!sourceType.trim()) {
-      notifications.show({
-        title: "Error",
-        message: "Source type is required",
-        color: "red",
-      });
+      notifications.show({ title: "Error", message: "Source type is required", color: "red" });
       return;
     }
     if (!sourceName.trim()) {
-      notifications.show({
-        title: "Error",
-        message: "Source name is required",
-        color: "red",
-      });
+      notifications.show({ title: "Error", message: "Source name is required", color: "red" });
       return;
     }
     if (!unitId) {
-      notifications.show({
-        title: "Error",
-        message: "Default unit is required",
-        color: "red",
-      });
+      notifications.show({ title: "Error", message: "Default unit is required", color: "red" });
       return;
     }
-    if (!packageUnitId) {
-      notifications.show({
-        title: "Error",
-        message: "Packaging unit is required",
-        color: "red",
-      });
+    if (!packageUnitAbbr) {
+      notifications.show({ title: "Error", message: "Packaging unit is required", color: "red" });
       return;
     }
-    if (packageSize === "" || packageSize === null || (typeof packageSize === 'number' && packageSize <= 0)) {
+    if (!packageUnitPerPackageId) {
+      notifications.show({ title: "Error", message: "Unit per package is required", color: "red" });
+      return;
+    }
+    if (
+      packageSize === "" ||
+      packageSize === null ||
+      (typeof packageSize === "number" && packageSize <= 0)
+    ) {
       notifications.show({
         title: "Error",
         message: "Size per package is required and must be greater than 0",
@@ -201,11 +303,7 @@ function CommodityFormPage() {
       return;
     }
     if (!expiryDate) {
-      notifications.show({
-        title: "Error",
-        message: "Expiry date is required",
-        color: "red",
-      });
+      notifications.show({ title: "Error", message: "Expiry date is required", color: "red" });
       return;
     }
     const qty =
@@ -213,11 +311,7 @@ function CommodityFormPage() {
         ? quantity
         : parseFloat(quantity as string) || 0;
     if (qty <= 0) {
-      notifications.show({
-        title: "Error",
-        message: "Quantity must be greater than 0",
-        color: "red",
-      });
+      notifications.show({ title: "Error", message: "Quantity must be greater than 0", color: "red" });
       return;
     }
     if (!autoGenBatch && !batchNo.trim()) {
@@ -228,6 +322,12 @@ function CommodityFormPage() {
       });
       return;
     }
+
+    // Resolve packaging container abbreviation to a UnitOfMeasure id
+    const resolvedPackageUnitId = packageUnitAbbr
+      ? resolvePackagingUnitId(packageUnitAbbr, units)
+      : undefined;
+
     createMutation.mutate({
       name: name.trim(),
       batch_no: autoGenBatch ? undefined : batchNo.trim(),
@@ -235,21 +335,25 @@ function CommodityFormPage() {
       unit_id: unitId ? parseInt(unitId) : undefined,
       commodity_category_id: category ? parseInt(category) : undefined,
       best_use_before: expiryDate ? dayjs(expiryDate).toISOString() : undefined,
-      package_unit_id: packageUnitId ? parseInt(packageUnitId) : undefined,
+      package_unit_id: resolvedPackageUnitId,
       package_size:
         packageSize !== ""
           ? typeof packageSize === "number"
             ? packageSize
             : parseFloat(packageSize as string) || undefined
           : undefined,
+      package_unit_per_package_id: packageUnitPerPackageId
+        ? parseInt(packageUnitPerPackageId)
+        : undefined,
       source_type: sourceType.trim(),
       source_name: sourceName.trim(),
     });
   };
 
+  // Unit options for the commodity's default unit and unit-per-package
   const unitOptions = units.map((u) => ({
     value: String(u.id),
-    label: u.name,
+    label: u.abbreviation ? `${u.name} (${u.abbreviation})` : u.name,
   }));
 
   const categoryOptions = categories.map((c) => ({
@@ -303,18 +407,21 @@ function CommodityFormPage() {
     () =>
       Boolean(normalizedName) &&
       commodityNameOptions.some((n) => n.toLowerCase() === normalizedName),
-    [commodityNameOptions, normalizedName],
+    [commodityNameOptions, normalizedName]
   );
 
   // Group: one entry per commodity definition, batches from cats_core_commodities matched by name
   const groupedCommodities = useMemo(() => {
-    return commodityDefinitions.map((definition) => {
-      const batches = commodityBatches.filter(
-        (b) => (b.name || "").toLowerCase() === definition.name.toLowerCase()
-      );
-      batches.sort((a, b) => b.id - a.id);
-      return { name: definition.name, batches };
-    }).sort((a, b) => a.name.localeCompare(b.name));
+    return commodityDefinitions
+      .map((definition) => {
+        const batches = commodityBatches.filter(
+          (b) =>
+            (b.name || "").toLowerCase() === definition.name.toLowerCase()
+        );
+        batches.sort((a, b) => b.id - a.id);
+        return { name: definition.name, batches };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [commodityDefinitions, commodityBatches]);
 
   // Filter commodities based on search query and category
@@ -339,7 +446,7 @@ function CommodityFormPage() {
             group.name.toLowerCase().includes(query) ||
             batch.batch_no?.toLowerCase().includes(query) ||
             batch.source_type?.toLowerCase().includes(query) ||
-            batch.source_name?.toLowerCase().includes(query),
+            batch.source_name?.toLowerCase().includes(query)
         ),
       }))
       .filter((group) => group.batches.length > 0);
@@ -473,29 +580,62 @@ function CommodityFormPage() {
             onChange={setUnitId}
             clearable
             required
-            description="Unit of measurement for this commodity"
+            description="Unit of measurement for this commodity (e.g. MT, KG)"
           />
+
+          {/* Packaging section */}
+          <Divider label="Packaging" labelPosition="left" />
 
           <Select
             label="Packaging Unit"
             placeholder="Select packaging unit"
-            data={unitOptions}
-            value={packageUnitId}
-            onChange={setPackageUnitId}
+            data={PACKAGING_UNIT_OPTIONS}
+            value={packageUnitAbbr}
+            onChange={setPackageUnitAbbr}
             clearable
             required
-            description="Unit used for packaging"
+            description="Physical container used for packaging (e.g. BAG, CTN)"
           />
 
-          <NumberInput
-            label="Size per Package"
-            placeholder="e.g. 25"
-            min={0}
-            value={packageSize}
-            onChange={setPackageSize}
-            required
-            description="Number of units per package"
-          />
+          <Group grow align="flex-start">
+            <NumberInput
+              label="Size per Package"
+              placeholder="e.g. 50"
+              min={0}
+              value={packageSize}
+              onChange={setPackageSize}
+              required
+              description="Numeric amount per package"
+            />
+
+            <Select
+              label="Unit per Package"
+              placeholder="Select unit"
+              data={unitOptions}
+              value={packageUnitPerPackageId}
+              onChange={setPackageUnitPerPackageId}
+              clearable
+              required
+              description="Measurement unit for the size (e.g. KG, G)"
+            />
+          </Group>
+
+          {/* Live preview of packaging description */}
+          {packageSize !== "" && packageUnitPerPackageId && packageUnitAbbr && (
+            <Text size="sm" c="dimmed">
+              Packaging:{" "}
+              <strong>
+                {packageSize}{" "}
+                {units.find((u) => String(u.id) === packageUnitPerPackageId)
+                  ?.abbreviation ??
+                  units.find((u) => String(u.id) === packageUnitPerPackageId)
+                    ?.name}{" "}
+                per {packageUnitAbbr}
+              </strong>
+            </Text>
+          )}
+
+          <Divider />
 
           <Select
             label="Category"
@@ -503,7 +643,9 @@ function CommodityFormPage() {
             data={categoryOptions}
             value={category}
             readOnly
-            description={category ? "Fetched from the selected commodity" : undefined}
+            description={
+              category ? "Fetched from the selected commodity" : undefined
+            }
           />
 
           <DateInput
@@ -534,7 +676,7 @@ function CommodityFormPage() {
             <Title order={3}>Existing Commodities</Title>
             <Badge size="lg" variant="light">
               {filteredGroups.length} Commodit
-{filteredGroups.length === 1 ? "y" : "ies"}
+              {filteredGroups.length === 1 ? "y" : "ies"}
             </Badge>
           </Group>
 
@@ -599,11 +741,7 @@ function CommodityFormPage() {
                     >
                       <Group justify="space-between" wrap="nowrap">
                         <Group gap="xs">
-                          <ActionIcon
-                            variant="subtle"
-                            size="sm"
-                            color="gray"
-                          >
+                          <ActionIcon variant="subtle" size="sm" color="gray">
                             {isExpanded ? (
                               <IconChevronDown size={16} />
                             ) : (
@@ -631,7 +769,11 @@ function CommodityFormPage() {
                           <Text size="sm" c="dimmed">
                             Latest Batch
                           </Text>
-                          <Text size="sm" fw={500} style={{ fontFamily: "monospace" }}>
+                          <Text
+                            size="sm"
+                            fw={500}
+                            style={{ fontFamily: "monospace" }}
+                          >
                             {latestBatch?.batch_no || "—"}
                           </Text>
                         </Box>
@@ -649,57 +791,87 @@ function CommodityFormPage() {
                             <Table.Th>Quantity</Table.Th>
                             <Table.Th>Unit</Table.Th>
                             <Table.Th>Packaging</Table.Th>
+                            <Table.Th>Packaged Qty</Table.Th>
                           </Table.Tr>
                         </Table.Thead>
                         <Table.Tbody>
-                          {group.batches.map((batch) => (
-                            <Table.Tr key={batch.id}>
-                              <Table.Td>
-                                <Text
-                                  size="sm"
-                                  fw={500}
-                                  style={{ fontFamily: "monospace" }}
-                                >
-                                  {batch.batch_no || "—"}
-                                </Text>
-                              </Table.Td>
-                              <Table.Td>
-                                {batch.source_type ? (
-                                  <Badge size="sm" variant="light" color="green">
-                                    {batch.source_type}
-                                  </Badge>
-                                ) : (
-                                  "—"
-                                )}
-                              </Table.Td>
-                              <Table.Td>
-                                <Text size="sm">
-                                  {batch.source_name || "—"}
-                                </Text>
-                              </Table.Td>
-                              <Table.Td>
-                                <Text size="sm" fw={500}>
-                                  {batch.quantity?.toLocaleString() ?? "—"}
-                                </Text>
-                              </Table.Td>
-                              <Table.Td>
-                                <Text size="sm">
-                                  {batch.unit_abbreviation ||
-                                    batch.unit_name ||
-                                    "—"}
-                                </Text>
-                              </Table.Td>
-                              <Table.Td>
-                                {batch.package_size && batch.package_unit_name ? (
-                                  <Text size="sm">
-                                    {batch.package_size} {batch.package_unit_name}
+                          {group.batches.map((batch) => {
+                            const packagingLabel = formatPackaging(
+                              batch.package_size,
+                              batch.package_unit_per_package_name,
+                              batch.package_unit_name
+                            );
+
+                            const { count: packagedCount, fallback } = calcPackagedQty(
+                              batch.quantity,
+                              batch.unit_abbreviation,
+                              batch.package_size,
+                              batch.package_unit_per_package_name
+                            );
+
+                            const containerLabel = batch.package_unit_name ?? "pkg";
+                            const packagedQtyLabel =
+                              packagedCount !== "—"
+                                ? `${packagedCount} ${containerLabel}`
+                                : "—";
+
+                            return (
+                              <Table.Tr key={batch.id}>
+                                <Table.Td>
+                                  <Text
+                                    size="sm"
+                                    fw={500}
+                                    style={{ fontFamily: "monospace" }}
+                                  >
+                                    {batch.batch_no || "—"}
                                   </Text>
-                                ) : (
-                                  "—"
-                                )}
-                              </Table.Td>
-                            </Table.Tr>
-                          ))}
+                                </Table.Td>
+                                <Table.Td>
+                                  {batch.source_type ? (
+                                    <Badge
+                                      size="sm"
+                                      variant="light"
+                                      color="green"
+                                    >
+                                      {batch.source_type}
+                                    </Badge>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </Table.Td>
+                                <Table.Td>
+                                  <Text size="sm">
+                                    {batch.source_name || "—"}
+                                  </Text>
+                                </Table.Td>
+                                <Table.Td>
+                                  <Text size="sm" fw={500}>
+                                    {batch.quantity?.toLocaleString() ?? "—"}
+                                  </Text>
+                                </Table.Td>
+                                <Table.Td>
+                                  <Text size="sm">
+                                    {batch.unit_abbreviation ||
+                                      batch.unit_name ||
+                                      "—"}
+                                  </Text>
+                                </Table.Td>
+                                <Table.Td>
+                                  <Text size="sm">{packagingLabel}</Text>
+                                </Table.Td>
+                                <Table.Td>
+                                  <Text size="sm" fw={500}>
+                                    {packagedQtyLabel}
+                                  </Text>
+                                  {fallback && packagedCount !== "—" && (
+                                    <Text size="xs" c="dimmed">
+                                      (qty unit differs)
+                                    </Text>
+                                  )}
+                                </Table.Td>
+                              </Table.Tr>
+                            );
+                          })}
                         </Table.Tbody>
                       </Table>
                     </Collapse>
@@ -715,5 +887,3 @@ function CommodityFormPage() {
 }
 
 export default CommodityFormPage;
-
-

@@ -22,6 +22,8 @@ export interface CommodityReference {
   package_unit_id?: number | null;
   package_unit_name?: string | null;
   package_size?: number | null;
+  package_unit_per_package_id?: number | null;
+  package_unit_per_package_name?: string | null;
   source_type?: string | null;
   source_name?: string | null;
   category_id?: number | null;
