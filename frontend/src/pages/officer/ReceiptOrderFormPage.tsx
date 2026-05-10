@@ -18,10 +18,11 @@ import {
   Badge,
   TextInput,
   Alert,
+  ThemeIcon,
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
-import { IconPlus, IconTrash, IconAlertCircle } from "@tabler/icons-react";
+import { IconPlus, IconTrash, IconAlertCircle, IconInfoCircle } from "@tabler/icons-react";
 import {
   createReceiptOrder,
   getReceiptOrder,
@@ -30,11 +31,13 @@ import {
 } from "../../api/receiptOrders";
 import { getWarehouses } from "../../api/warehouses";
 import { getHubs } from "../../api/hubs";
-import { getCommodityReferences, getUnitReferences } from "../../api/referenceData";
+import { getCommodityReferences, getUnitReferences, getUomConversions } from "../../api/referenceData";
 import { useAuthStore } from "../../store/authStore";
 import { normalizeRoleSlug } from '../../contracts/warehouse';
+import { findDirectedMultiplier } from '../../utils/uomConversions';
 import type { ReceiptOrderLine } from "../../api/receiptOrders";
 import type { ApiError } from "../../types/common";
+import type { UomConversion } from "../../types/referenceData";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -46,6 +49,7 @@ interface DestinationRow {
   hubId: string | null;
   warehouseId: string | null;
   quantity: number | string;
+  unitId: string | null;
   notes: string;
 }
 
@@ -56,6 +60,7 @@ function newDestinationRow(): DestinationRow {
     hubId: null,
     warehouseId: null,
     quantity: "",
+    unitId: null,
     notes: "",
   };
 }
@@ -85,11 +90,16 @@ function ReceiptOrderFormPage() {
   // ── Commodity & batch selection ──
   const [selectedCommodityId, setSelectedCommodityId] = useState<string | null>(null);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+  // The numeric commodity id used for UoM conversion lookups
+  const [commodityNumericId, setCommodityNumericId] = useState<number | null>(null);
 
   // ── Auto-filled from batch ──
   const [unitId, setUnitId] = useState<string | null>(null);
   const [packagingUnitId, setPackagingUnitId] = useState<string | null>(null);
+  const [packagingUnitName, setPackagingUnitName] = useState<string | null>(null);
   const [packagingSize, setPackagingSize] = useState<number | null>(null);
+  const [packageUnitPerPackageName, setPackageUnitPerPackageName] = useState<string | null>(null);
+  const [packageUnitPerPackageNumericId, setPackageUnitPerPackageNumericId] = useState<number | null>(null);
   const [batchQuantity, setBatchQuantity] = useState<number>(0);
 
   // ── Order header ──
@@ -111,6 +121,11 @@ function ReceiptOrderFormPage() {
   const { data: units = [] } = useQuery({
     queryKey: ["reference-data", "units"],
     queryFn: () => getUnitReferences(),
+  });
+
+  const { data: uomConversions = [] } = useQuery({
+    queryKey: ["reference-data", "uom_conversions"],
+    queryFn: () => getUomConversions(),
   });
 
   // Get active assignment context for filtering
@@ -190,17 +205,35 @@ function ReceiptOrderFormPage() {
     [warehouses]
   );
 
-  // ── Derived: total quantity assigned across all destinations ──
-  const totalAssigned = useMemo(
-    () =>
-      destinations.reduce((sum, d) => {
+  // ── Derived: total quantity assigned — converted to batch unit ──
+  const batchUnitNumericId = unitId ? parseInt(unitId) : null;
+
+  const totalAssignedInBatchUnit = useMemo(() => {
+    if (!batchUnitNumericId || !commodityNumericId) {
+      // No batch unit known yet — fall back to raw sum
+      return destinations.reduce((sum, d) => {
         const q = Number(d.quantity);
         return sum + (isNaN(q) ? 0 : q);
-      }, 0),
-    [destinations]
-  );
+      }, 0);
+    }
+    return destinations.reduce((sum, d) => {
+      const q = Number(d.quantity);
+      if (isNaN(q) || q <= 0) return sum;
+      const destUnitId = d.unitId ? parseInt(d.unitId) : batchUnitNumericId;
+      if (destUnitId === batchUnitNumericId) return sum + q;
+      let factor = findDirectedMultiplier(destUnitId, batchUnitNumericId, commodityNumericId, uomConversions);
+      if (factor == null) {
+        const reverse = findDirectedMultiplier(batchUnitNumericId, destUnitId, commodityNumericId, uomConversions);
+        if (reverse != null && reverse !== 0) factor = 1 / reverse;
+      }
+      if (factor == null) return sum; // incompatible unit — excluded from total
+      return sum + q * factor;
+    }, 0);
+  }, [destinations, batchUnitNumericId, commodityNumericId, uomConversions]);
 
-  const remaining = batchQuantity - totalAssigned;
+  // Keep a plain alias used in validation
+  const totalAssigned = totalAssignedInBatchUnit;
+  const remaining = batchQuantity - totalAssignedInBatchUnit;
 
   // ── Handlers: commodity selection ──
   const handleCommoditySelect = useCallback(
@@ -209,8 +242,12 @@ function ReceiptOrderFormPage() {
       setSelectedBatchId(null);
       setUnitId(null);
       setPackagingUnitId(null);
+      setPackagingUnitName(null);
       setPackagingSize(null);
+      setPackageUnitPerPackageName(null);
+      setPackageUnitPerPackageNumericId(null);
       setBatchQuantity(0);
+      setCommodityNumericId(null);
     },
     []
   );
@@ -222,16 +259,28 @@ function ReceiptOrderFormPage() {
       if (!val) {
         setUnitId(null);
         setPackagingUnitId(null);
+        setPackagingUnitName(null);
         setPackagingSize(null);
+        setPackageUnitPerPackageName(null);
+        setPackageUnitPerPackageNumericId(null);
         setBatchQuantity(0);
         return;
       }
       const batch = commodities.find((c) => String(c.id) === val);
       if (batch) {
-        setUnitId(batch.unit_id ? String(batch.unit_id) : null);
+        const batchUnitId = batch.unit_id ? String(batch.unit_id) : null;
+        setUnitId(batchUnitId);
         setPackagingUnitId(batch.package_unit_id ? String(batch.package_unit_id) : null);
+        setPackagingUnitName(batch.package_unit_name ?? null);
         setPackagingSize(batch.package_size ?? null);
+        setPackageUnitPerPackageName(batch.package_unit_per_package_name ?? null);
+        setPackageUnitPerPackageNumericId(batch.package_unit_per_package_id ?? null);
         setBatchQuantity(batch.quantity ?? 0);
+        setCommodityNumericId(batch.id);
+        // Seed unitId into all existing destination rows
+        setDestinations((prev) =>
+          prev.map((d) => ({ ...d, unitId: batchUnitId }))
+        );
       }
     },
     [commodities]
@@ -248,8 +297,8 @@ function ReceiptOrderFormPage() {
   );
 
   const addDestination = useCallback(() => {
-    setDestinations((prev) => [...prev, newDestinationRow()]);
-  }, []);
+    setDestinations((prev) => [...prev, { ...newDestinationRow(), unitId }]);
+  }, [unitId]);
 
   const removeDestination = useCallback((rowId: string) => {
     setDestinations((prev) => {
@@ -280,16 +329,33 @@ function ReceiptOrderFormPage() {
 
       const batch = commodities.find((c) => c.id === first.commodity_id);
       setBatchQuantity(batch?.quantity ?? 0);
+      setCommodityNumericId(batch?.id ?? null);
 
       // Build destination rows from lines
-      const rows: DestinationRow[] = rawLines.map((line) => ({
-        id: Math.random().toString(36).slice(2),
-        kind: existingOrder.hub_id ? "hub" : "warehouse",
-        hubId: existingOrder.hub_id ? String(existingOrder.hub_id) : null,
-        warehouseId: existingOrder.warehouse_id ? String(existingOrder.warehouse_id) : null,
-        quantity: line.quantity ?? "",
-        notes: line.notes ?? "",
-      }));
+      const rows: DestinationRow[] = rawLines.map((line) => {
+        // Prefer per-line destination fields; fall back to order-level for legacy data
+        const lineHubId = line.destination_hub_id
+          ? String(line.destination_hub_id)
+          : existingOrder.hub_id
+          ? String(existingOrder.hub_id)
+          : null;
+        const lineWarehouseId = line.destination_warehouse_id
+          ? String(line.destination_warehouse_id)
+          : existingOrder.warehouse_id
+          ? String(existingOrder.warehouse_id)
+          : null;
+        const kind: DestinationKind | "" = lineHubId ? "hub" : lineWarehouseId ? "warehouse" : "";
+
+        return {
+          id: Math.random().toString(36).slice(2),
+          kind,
+          hubId: lineHubId,
+          warehouseId: lineWarehouseId,
+          quantity: line.quantity ?? "",
+          unitId: line.unit_id ? String(line.unit_id) : (first.unit_id ? String(first.unit_id) : null),
+          notes: line.notes ?? "",
+        };
+      });
       setDestinations(rows.length > 0 ? rows : [newDestinationRow()]);
     }
   }, [isEdit, existingOrder, id, commodities]);
@@ -397,18 +463,15 @@ function ReceiptOrderFormPage() {
 
     // Build one line per destination
     const lines: ReceiptOrderLine[] = destinations.map((dest) => {
-      const facilityLabel =
-        dest.kind === "hub"
-          ? hubs?.find((h) => String(h.id) === dest.hubId)?.name ?? dest.hubId ?? ""
-          : warehouses?.find((w) => String(w.id) === dest.warehouseId)?.name ?? dest.warehouseId ?? "";
+      const lineUnitId = dest.unitId ? parseInt(dest.unitId) : parseInt(unitId!);
 
       return {
         commodity_id: parseInt(selectedBatchId!),
         quantity: Number(dest.quantity),
-        unit_id: parseInt(unitId!),
+        unit_id: lineUnitId,
         packaging_unit_id: packagingUnitId ? parseInt(packagingUnitId) : undefined,
         packaging_size: packagingSize ?? undefined,
-        notes: `${dest.kind === "hub" ? "Hub" : "Warehouse"}: ${facilityLabel}${dest.notes ? ` | ${dest.notes}` : ""}`,
+        notes: dest.notes,
         destination_hub_id: dest.kind === "hub" && dest.hubId ? parseInt(dest.hubId) : null,
         destination_warehouse_id: dest.kind === "warehouse" && dest.warehouseId ? parseInt(dest.warehouseId) : null,
       };
@@ -610,10 +673,11 @@ function ReceiptOrderFormPage() {
             </Group>
 
             {/* Column headers */}
-            <SimpleGrid cols={{ base: 1, sm: 4 }} spacing="sm" mb={4}>
+            <SimpleGrid cols={{ base: 1, sm: 5 }} spacing="sm" mb={4}>
               <Text size="xs" c="dimmed" fw={600} tt="uppercase">Destination Type</Text>
               <Text size="xs" c="dimmed" fw={600} tt="uppercase">Hub / Warehouse</Text>
               <Text size="xs" c="dimmed" fw={600} tt="uppercase">Quantity</Text>
+              <Text size="xs" c="dimmed" fw={600} tt="uppercase">Unit</Text>
               <Text size="xs" c="dimmed" fw={600} tt="uppercase">Notes</Text>
             </SimpleGrid>
 
@@ -626,8 +690,18 @@ function ReceiptOrderFormPage() {
                   fieldsEditable={fieldsEditable}
                   hubOptions={hubOptions}
                   warehouseOptions={standaloneWarehouseOptions}
-                  batchQuantity={batchQuantity}
-                  unitLabel={unitLabel}
+                  batchUnitNumericId={batchUnitNumericId}
+                  commodityNumericId={commodityNumericId}
+                  uomConversions={uomConversions}
+                  unitOptions={units.map((u) => ({
+                    value: String(u.id),
+                    label: u.abbreviation ? `${u.abbreviation}` : u.name,
+                  }))}
+                  allUnits={units}
+                  packagingSize={packagingSize}
+                  packagingUnitName={packagingUnitName}
+                  packageUnitPerPackageNumericId={packageUnitPerPackageNumericId}
+                  packageUnitPerPackageName={packageUnitPerPackageName}
                   canRemove={destinations.length > 1}
                   onUpdate={(patch) => updateDestination(dest.id, patch)}
                   onRemove={() => removeDestination(dest.id)}
@@ -639,12 +713,12 @@ function ReceiptOrderFormPage() {
             {selectedBatchId && batchQuantity > 0 && (
               <Group justify="flex-end" mt="xs">
                 <Badge
-                  color={totalAssigned > batchQuantity ? "red" : "blue"}
+                  color={totalAssignedInBatchUnit > batchQuantity ? "red" : "blue"}
                   variant="light"
                   size="md"
                   tt="uppercase"
                 >
-                  {totalAssigned.toLocaleString()} / {batchQuantity.toLocaleString()} {unitLabel} assigned
+                  {totalAssignedInBatchUnit.toLocaleString(undefined, { maximumFractionDigits: 4 })} / {batchQuantity.toLocaleString()} {unitLabel} assigned
                 </Badge>
               </Group>
             )}
@@ -686,8 +760,15 @@ interface DestinationRowItemProps {
   fieldsEditable: boolean;
   hubOptions: { value: string; label: string }[];
   warehouseOptions: { value: string; label: string }[];
-  batchQuantity: number;
-  unitLabel: string;
+  batchUnitNumericId: number | null;
+  commodityNumericId: number | null;
+  uomConversions: UomConversion[];
+  unitOptions: { value: string; label: string }[];
+  allUnits: { id: number; name: string; abbreviation?: string | null }[];
+  packagingSize: number | null;
+  packagingUnitName: string | null;
+  packageUnitPerPackageNumericId: number | null;
+  packageUnitPerPackageName: string | null;
   canRemove: boolean;
   onUpdate: (patch: Partial<DestinationRow>) => void;
   onRemove: () => void;
@@ -698,8 +779,15 @@ function DestinationRowItem({
   fieldsEditable,
   hubOptions,
   warehouseOptions,
-  batchQuantity,
-  unitLabel,
+  batchUnitNumericId,
+  commodityNumericId,
+  uomConversions,
+  unitOptions,
+  allUnits,
+  packagingSize,
+  packagingUnitName,
+  packageUnitPerPackageNumericId,
+  packageUnitPerPackageName,
   canRemove,
   onUpdate,
   onRemove,
@@ -720,8 +808,75 @@ function DestinationRowItem({
     else onUpdate({ warehouseId: val });
   };
 
+  // ── Unit compatibility check (for remaining/total) ──
+  // Tells us whether the selected unit can be converted to the batch unit
+  const unitCompatible = useMemo(() => {
+    if (!dest.unitId || !batchUnitNumericId || !commodityNumericId) return true;
+    const destUnitId = parseInt(dest.unitId);
+    if (destUnitId === batchUnitNumericId) return true;
+    const forward = findDirectedMultiplier(destUnitId, batchUnitNumericId, commodityNumericId, uomConversions);
+    if (forward != null) return true;
+    const reverse = findDirectedMultiplier(batchUnitNumericId, destUnitId, commodityNumericId, uomConversions);
+    return reverse != null;
+  }, [dest.unitId, batchUnitNumericId, commodityNumericId, uomConversions]);
+
+  // ── Packaging hint calculation ──
+  const packagingHint = useMemo(() => {
+    const qty = Number(dest.quantity);
+    if (!qty || qty <= 0 || !packagingSize || packagingSize <= 0 || !packagingUnitName) {
+      return null;
+    }
+    if (!unitCompatible) return null;
+
+    const destUnitId = dest.unitId ? parseInt(dest.unitId) : null;
+
+    // Resolve the package-per-unit numeric ID:
+    // 1. Use stored numeric ID if available
+    // 2. Fall back to matching by name or abbreviation
+    // 3. If still null (old batch without this field), assume package size is
+    //    in the same unit as the batch's default unit (batchUnitNumericId)
+    let resolvedPkgUnitId = packageUnitPerPackageNumericId;
+    if (!resolvedPkgUnitId && packageUnitPerPackageName) {
+      const nameUpper = packageUnitPerPackageName.toUpperCase();
+      const match = allUnits.find(
+        (u) =>
+          (u.abbreviation ?? "").toUpperCase() === nameUpper ||
+          u.name.toUpperCase() === nameUpper
+      );
+      resolvedPkgUnitId = match?.id ?? null;
+    }
+    if (!resolvedPkgUnitId) {
+      // No per-package unit info — assume same unit as the destination quantity
+      resolvedPkgUnitId = destUnitId;
+    }
+
+    let qtyInPkgUnit = qty;
+
+    if (destUnitId && resolvedPkgUnitId && destUnitId !== resolvedPkgUnitId && commodityNumericId) {
+      let factor = findDirectedMultiplier(destUnitId, resolvedPkgUnitId, commodityNumericId, uomConversions);
+      if (factor == null) {
+        const reverse = findDirectedMultiplier(resolvedPkgUnitId, destUnitId, commodityNumericId, uomConversions);
+        if (reverse != null && reverse !== 0) factor = 1 / reverse;
+      }
+      if (factor != null) {
+        qtyInPkgUnit = qty * factor;
+      }
+    }
+
+    const packages = qtyInPkgUnit / packagingSize;
+    const isWholeNumber = Number.isInteger(packages) || Math.abs(packages - Math.round(packages)) < 0.0001;
+
+    return {
+      packagesFormatted: packages.toLocaleString(undefined, { maximumFractionDigits: 4 }),
+      containerLabel: packagingUnitName,
+      isWholeNumber,
+    };
+  }, [dest.quantity, dest.unitId, packagingSize, packagingUnitName,
+      packageUnitPerPackageNumericId, packageUnitPerPackageName, allUnits,
+      unitCompatible, commodityNumericId, uomConversions]);
+
   return (
-    <Group gap="sm" align="flex-end" wrap="nowrap">
+    <Group gap="sm" align="flex-start" wrap="nowrap">
       {/* Destination Type */}
       <Select
         placeholder="Select type"
@@ -746,18 +901,63 @@ function DestinationRowItem({
         style={{ flex: 1 }}
       />
 
-      {/* Quantity */}
-      <div style={{ flex: "0 0 160px" }}>
-        <NumberInput
-          placeholder="Quantity"
-          value={dest.quantity === "" ? undefined : Number(dest.quantity)}
-          onChange={(val) => onUpdate({ quantity: val ?? "" })}
-          min={0}
-          max={batchQuantity > 0 ? batchQuantity : undefined}
-          disabled={!fieldsEditable}
-          description={batchQuantity > 0 ? `Max: ${batchQuantity.toLocaleString()} ${unitLabel}` : undefined}
-        />
-      </div>
+      {/* Quantity + Unit + packaging hint stacked together */}
+      <Stack gap={4} style={{ flex: "0 0 250px" }}>
+        <Group gap="xs" align="flex-end" wrap="nowrap">
+          <div style={{ flex: 1 }}>
+            <NumberInput
+              placeholder="Quantity"
+              value={dest.quantity === "" ? undefined : Number(dest.quantity)}
+              onChange={(val) => onUpdate({ quantity: val ?? "" })}
+              min={0}
+              disabled={!fieldsEditable}
+            />
+          </div>
+          <div style={{ flex: "0 0 100px" }}>
+            <Select
+              placeholder="Unit"
+              data={unitOptions}
+              value={dest.unitId}
+              onChange={(val) => onUpdate({ unitId: val })}
+              disabled={!fieldsEditable}
+              searchable
+              clearable
+            />
+          </div>
+        </Group>
+
+        {/* Packaging hint — sits directly under Quantity + Unit */}
+        {!unitCompatible && dest.unitId && (
+          <Group gap={4} align="center">
+            <ThemeIcon size="xs" variant="transparent" color="red">
+              <IconAlertCircle size={13} />
+            </ThemeIcon>
+            <Text size="xs" c="red.7">Can't use this unit for this commodity</Text>
+          </Group>
+        )}
+        {packagingHint && (
+          packagingHint.isWholeNumber ? (
+            <Group gap={4} align="center">
+              <ThemeIcon size="xs" variant="transparent" color="teal">
+                <IconInfoCircle size={13} />
+              </ThemeIcon>
+              <Text size="xs" c="teal.7">
+                = <strong>{packagingHint.packagesFormatted} {packagingHint.containerLabel}</strong>
+              </Text>
+            </Group>
+          ) : (
+            <Group gap={4} align="center">
+              <ThemeIcon size="xs" variant="transparent" color="orange">
+                <IconAlertCircle size={13} />
+              </ThemeIcon>
+              <Text size="xs" c="orange.7">
+                = <strong>{packagingHint.packagesFormatted} {packagingHint.containerLabel}</strong>
+                {" "}— not a whole number of packages
+              </Text>
+            </Group>
+          )
+        )}
+      </Stack>
 
       {/* Notes */}
       <div style={{ flex: 1 }}>
@@ -787,7 +987,6 @@ function DestinationRowItem({
           onClick={onRemove}
           disabled={!canRemove}
           title="Remove destination"
-          mb={20}
         >
           <IconTrash size={16} />
         </ActionIcon>

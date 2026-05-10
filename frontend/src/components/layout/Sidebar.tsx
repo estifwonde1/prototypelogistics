@@ -235,12 +235,6 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               resource: "stores",
             },
             {
-              label: "Stacks",
-              icon: <IconStack2 size={20} />,
-              path: "/stacks",
-              resource: "stacks",
-            },
-            {
               label: "Receipts",
               icon: <IconInbox size={20} />,
               path: "/receipts",
@@ -276,28 +270,10 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               resource: "gins",
             },
             {
-              label: "Inspections",
-              icon: <IconUserCheck size={20} />,
-              path: "/inspections",
-              resource: "inspections",
-            },
-            {
               label: "Waybills",
               icon: <IconTruck size={20} />,
               path: "/waybills",
               resource: "waybills",
-            },
-            {
-              label: "Stock Balances",
-              icon: <IconChartBar size={20} />,
-              path: "/stock-balances",
-              resource: "stock_balances",
-            },
-            {
-              label: "Bin Card",
-              icon: <IconReportAnalytics size={20} />,
-              path: "/reports/bin-card",
-              resource: "reports",
             },
           ],
         },

@@ -40,6 +40,7 @@ import { getStacks } from '../../api/stacks';
 import { createInspection, getInspections } from '../../api/inspections';
 import { createGrn } from '../../api/grns';
 import { getWarehouses } from '../../api/warehouses';
+import { getHubs } from '../../api/hubs';
 import { getUnitReferences, getUomConversions } from '../../api/referenceData';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { ScopeBadge } from '../../components/common/ScopeBadge';
@@ -399,9 +400,16 @@ function ReceiptOrderDetailPage() {
   const allWarehousesQuery = useQuery({
     queryKey: ['warehouses'],
     queryFn: () => getWarehouses({}),
-    enabled: roleSlug === 'hub_manager' || showWarehouseAssignmentModal,
+    enabled: roleSlug === 'hub_manager' || showWarehouseAssignmentModal || !!order,
   });
   const allWarehouses = (allWarehousesQuery.data as Warehouse[]) || [];
+
+  const allHubsQuery = useQuery({
+    queryKey: ['hubs'],
+    queryFn: () => getHubs(),
+    enabled: !!order,
+  });
+  const allHubs = (allHubsQuery.data as { id: number; name: string }[]) || [];
 
   const allStoresQuery = useQuery({
     queryKey: ['stores', { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],
@@ -1434,8 +1442,8 @@ function ReceiptOrderDetailPage() {
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Commodity</Table.Th>
-                      <Table.Th>Destination</Table.Th>
-                      <Table.Th>Warehouse</Table.Th>
+                      <Table.Th>Destination Type</Table.Th>
+                      <Table.Th>Hub / Warehouse</Table.Th>
                       <Table.Th>Quantity</Table.Th>
                       <Table.Th>Unit</Table.Th>
                       <Table.Th>Notes</Table.Th>
@@ -1443,17 +1451,23 @@ function ReceiptOrderDetailPage() {
                   </Table.Thead>
                   <Table.Tbody>
                     {visibleLines.map((line, index) => {
-                      const noteText = line.notes?.trim() || '';
-                      const pipeIndex = noteText.indexOf(' | ');
-                      const destinationPart = pipeIndex >= 0 ? noteText.slice(0, pipeIndex) : noteText;
-                      const officerNotes = pipeIndex >= 0 ? noteText.slice(pipeIndex + 3) : '';
-                      const isHub = destinationPart.startsWith('Hub:');
-                      const isWarehouse = destinationPart.startsWith('Warehouse:');
-                      const destinationLabel = isHub
-                        ? destinationPart.replace('Hub:', '').trim()
-                        : isWarehouse
-                          ? destinationPart.replace('Warehouse:', '').trim()
-                          : destinationPart || '—';
+                      // Resolve destination type and name from IDs (not from notes string)
+                      const isHub = line.destination_hub_id != null;
+                      const isWarehouse = !isHub && line.destination_warehouse_id != null;
+
+                      const hubName = isHub
+                        ? (allHubs.find((h) => Number(h.id) === Number(line.destination_hub_id))?.name
+                            ?? `Hub #${line.destination_hub_id}`)
+                        : null;
+
+                      const warehouseName = isWarehouse
+                        ? (allWarehouses.find((w) => Number(w.id) === Number(line.destination_warehouse_id))?.name
+                            ?? `Warehouse #${line.destination_warehouse_id}`)
+                        : null;
+
+                      const destinationName = hubName ?? warehouseName ?? '—';
+
+                      const officerNotes = line.notes?.trim() || '';
 
                       const scopeHubId: number | undefined =
                         roleSlug === 'hub_manager'
@@ -1486,42 +1500,34 @@ function ReceiptOrderDetailPage() {
                           </Table.Td>
                           <Table.Td>
                             {isHub ? (
-                              <div>
-                                <Text size="sm" fw={600}>{destinationLabel}</Text>
-                                <Text size="xs" c="dimmed">Hub</Text>
-                              </div>
+                              <Badge variant="light" color="blue" size="sm">Hub</Badge>
                             ) : isWarehouse ? (
-                              <div>
-                                <Text size="sm" fw={600}>{destinationLabel}</Text>
-                                <Text size="xs" c="dimmed">Warehouse</Text>
-                              </div>
+                              <Badge variant="light" color="teal" size="sm">Warehouse</Badge>
                             ) : (
                               <Text size="sm" c="dimmed">—</Text>
                             )}
                           </Table.Td>
                           <Table.Td>
                             {isHub ? (
-                              whRowsForLine.length === 0 ? (
-                                <Text size="sm" c="dimmed">Not yet assigned to a warehouse</Text>
-                              ) : (
-                                <Stack gap={6}>
-                                  {whRowsForLine.map((a) => (
-                                    <div key={a.id}>
-                                      <Text size="sm" fw={500}>
-                                        {a.warehouse_name?.trim() || `Warehouse #${a.warehouse_id}`}
-                                      </Text>
-                                      {a.quantity != null && (
+                              <div>
+                                <Text size="sm" fw={600}>{destinationName}</Text>
+                                {whRowsForLine.length > 0 && (
+                                  <Stack gap={4} mt={4}>
+                                    {whRowsForLine.map((a) => (
+                                      <div key={a.id}>
                                         <Text size="xs" c="dimmed">
-                                          {Number(a.quantity).toLocaleString()}{' '}
-                                          {line.unit_name?.trim() || (line.unit_id ? `unit #${line.unit_id}` : '')}
+                                          → {a.warehouse_name?.trim() || `Warehouse #${a.warehouse_id}`}
+                                          {a.quantity != null && (
+                                            <> ({Number(a.quantity).toLocaleString()} {line.unit_name?.trim() || ''})</>
+                                          )}
                                         </Text>
-                                      )}
-                                    </div>
-                                  ))}
-                                </Stack>
-                              )
+                                      </div>
+                                    ))}
+                                  </Stack>
+                                )}
+                              </div>
                             ) : isWarehouse ? (
-                              <Text size="sm" fw={500}>{destinationLabel}</Text>
+                              <Text size="sm" fw={600}>{destinationName}</Text>
                             ) : (
                               <Text size="sm" c="dimmed">—</Text>
                             )}
