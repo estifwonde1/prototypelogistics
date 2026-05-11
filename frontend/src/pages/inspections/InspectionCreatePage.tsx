@@ -578,12 +578,13 @@ function InspectionCreatePage() {
               />
               {selectedRA && (
                 <Alert color="blue" variant="light" title="Receipt Authorization Details">
-                  {`Expected quantity: ${Number(selectedRA.authorized_quantity).toLocaleString()} units. Waybill number on RA: ${selectedRA.waybill_number}. Truck: ${selectedRA.truck_plate_number}.`}
+                  {`Expected quantity (line unit): ${Number(selectedRA.authorized_quantity).toLocaleString()}. Truck plate: ${selectedRA.truck_plate_number}.`}
                 </Alert>
               )}
               {selectedRA && sourceType === 'Waybill' && matchingWaybills.length === 0 && (
                 <Alert color="yellow" variant="light" title="Waybill record not found">
-                  {`No Waybill document with reference ${selectedRA.waybill_number} was found. RA stores the waybill number, but a Waybill document is a separate record. You can continue with RA-only inspection, or create a Waybill document in Waybills module and use the same reference.`}
+                  No Waybill document matched this Receipt Authorization&apos;s transport reference. Inspection can
+                  proceed from the RA only, or pick a Waybill explicitly if one exists under Waybills.
                 </Alert>
               )}
               {!selectedRA && pendingRAs.length === 0 && (

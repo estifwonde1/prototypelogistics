@@ -74,6 +74,8 @@ module Cats
             rows_receipt_order_assigned
           when "receipt_order.completed"
             rows_receipt_order_completed
+          when "receipt_authorization.plan_deviated"
+            rows_receipt_authorization_plan_deviated
           when "receipt_authorization.created", "receipt_authorization.cancelled"
             rows_receipt_authorization_facility(@event)
           when "receipt_authorization.driver_confirmed"
@@ -166,6 +168,24 @@ module Cats
         end
 
         # --- Phase 2: receipt authorizations ----------------------------------------
+
+        def rows_receipt_authorization_plan_deviated
+          order = ReceiptOrder.find_by(id: payload_value(:receipt_order_id))
+          return [] unless order
+
+          ids = Array(@payload[:notify_user_ids] || @payload["notify_user_ids"]).flatten.map(&:presence).compact.map(&:to_i).uniq
+          base_params = receipt_order_base_params(order).merge(
+            "receipt_authorization_id" => payload_value(:receipt_authorization_id),
+            "advisory_only" => @payload[:advisory_only] || @payload["advisory_only"]
+          )
+
+          ids.filter_map do |uid|
+            u = Cats::Core::User.find_by(id: uid)
+            next unless u&.active?
+
+            { user: u, params: base_params.merge("path" => Paths.receipt_order(u, order.id)) }
+          end
+        end
 
         def rows_receipt_authorization_facility(event_name)
           ra = ReceiptAuthorization.find_by(id: payload_value(:receipt_authorization_id))

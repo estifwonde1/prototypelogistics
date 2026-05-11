@@ -38,6 +38,16 @@ module Cats
         return scoped_relation.where(id: access.assigned_hub_ids) if access.hub_manager?
         return scoped_relation.where(id: access.accessible_hub_ids) if access.officer?
 
+        if access.warehouse_manager?
+          warehouse_hub_ids =
+            Cats::Warehouse::Warehouse
+              .where(id: access.assigned_warehouse_ids)
+              .where.not(hub_id: nil)
+              .distinct
+              .pluck(:hub_id)
+          return scoped_relation.where(id: warehouse_hub_ids) if warehouse_hub_ids.any?
+        end
+
         scoped_relation.none
       end
 

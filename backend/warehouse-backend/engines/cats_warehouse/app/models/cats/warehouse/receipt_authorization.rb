@@ -13,6 +13,7 @@ module Cats
 
       # ── Associations ──────────────────────────────────────────────────────
       belongs_to :receipt_order,            class_name: "Cats::Warehouse::ReceiptOrder"
+      belongs_to :receipt_order_line,       class_name: "Cats::Warehouse::ReceiptOrderLine", optional: true
       belongs_to :receipt_order_assignment, class_name: "Cats::Warehouse::ReceiptOrderAssignment", optional: true
       belongs_to :store,                    class_name: "Cats::Warehouse::Store", optional: true
       belongs_to :warehouse,                class_name: "Cats::Warehouse::Warehouse"

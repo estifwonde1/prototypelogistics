@@ -4,7 +4,7 @@ module Cats
       def index
         authorize ReceiptAuthorization
         ras = policy_scope(ReceiptAuthorization)
-              .includes(:receipt_order, :store, :warehouse, :transporter,
+              .includes(:receipt_order, :receipt_order_line, :store, :warehouse, :transporter,
                         :created_by, :driver_confirmed_by, :inspection, :grn)
               .order(created_at: :desc)
 
@@ -33,7 +33,7 @@ module Cats
 
       def show
         ra = policy_scope(ReceiptAuthorization)
-             .includes(:receipt_order, :store, :warehouse, :transporter,
+             .includes(:receipt_order, :receipt_order_line, :store, :warehouse, :transporter,
                        :created_by, :driver_confirmed_by, :inspection, :grn)
              .find(params[:id])
         authorize ra
@@ -49,24 +49,37 @@ module Cats
           if payload[:store_id].present?
             Store.find(payload[:store_id])
           end
-        transporter = Cats::Core::Transporter.find(payload[:transporter_id])
+        transporter = resolve_transporter_for_payload!(payload)
 
         assignment = nil
         if payload[:receipt_order_assignment_id].present?
           assignment = receipt_order.receipt_order_assignments.find(payload[:receipt_order_assignment_id])
         end
 
+        explicit_wh = nil
+        if payload[:warehouse_id].present?
+          explicit_wh = policy_scope(Warehouse).find(payload[:warehouse_id])
+        end
+
+        ro_line = nil
+        if payload[:receipt_order_line_id].present?
+          ro_line = receipt_order.receipt_order_lines.find(payload[:receipt_order_line_id])
+        end
+
         ra = ReceiptAuthorizationService.new(
-          receipt_order:            receipt_order,
-          actor:                    current_user,
-          store:                    store,
-          authorized_quantity:      payload[:authorized_quantity],
-          driver_name:              payload[:driver_name],
-          driver_id_number:         payload[:driver_id_number],
-          truck_plate_number:       payload[:truck_plate_number],
-          transporter:              transporter,
-          waybill_number:           payload[:waybill_number],
-          receipt_order_assignment: assignment
+          receipt_order:                    receipt_order,
+          actor:                            current_user,
+          store:                            store,
+          authorized_quantity:               payload[:authorized_quantity],
+          driver_name:                       payload[:driver_name],
+          driver_id_number:                  payload[:driver_id_number],
+          truck_plate_number:                payload[:truck_plate_number],
+          transporter:                         transporter,
+          waybill_number:                    payload[:waybill_number],
+          receipt_order_assignment:          assignment,
+          explicit_warehouse:                explicit_wh,
+          receipt_order_line:                ro_line,
+          force_plan_change_notification:    payload[:notify_planned_facilities]
         ).call
 
         render_resource(ra, serializer: ReceiptAuthorizationSerializer, status: :created)
@@ -78,12 +91,11 @@ module Cats
 
         payload = ra_update_params
 
-        if payload[:transporter_id].present?
-          transporter = Cats::Core::Transporter.find(payload[:transporter_id])
-          ra.transporter = transporter
+        if payload[:transporter_id].present? || payload[:transporter_name].present?
+          ra.transporter = resolve_transporter_for_payload!(payload)
         end
 
-        ra.assign_attributes(payload.except(:transporter_id))
+        ra.assign_attributes(payload.except(:transporter_id, :transporter_name))
         ra.save!
 
         render_resource(ra, serializer: ReceiptAuthorizationSerializer)
@@ -107,23 +119,59 @@ module Cats
 
       private
 
+      # Resolves a Transporter row: prefers +transporter_id+ when sent (legacy/API), otherwise finds or creates by +transporter_name+.
+      def resolve_transporter_for_payload!(payload)
+        if payload[:transporter_id].present?
+          return Cats::Core::Transporter.find(payload[:transporter_id])
+        end
+
+        name = payload[:transporter_name].to_s.strip
+        raise ArgumentError, "Transporter name is required" if name.blank?
+
+        normalized = name.downcase
+        existing = Cats::Core::Transporter.where("LOWER(TRIM(name)) = ?", normalized).first
+        return existing if existing
+
+        Cats::Core::Transporter.create!(
+          name: name,
+          code: unique_ad_hoc_transporter_code,
+          address: "Not provided",
+          contact_phone: "Not provided"
+        )
+      rescue ActiveRecord::RecordInvalid => e
+        raise ArgumentError, e.record.errors.full_messages.to_sentence
+      end
+
+      # Cats::Core::Transporter validates +code+; free-text RA entry has no canonical code — generate one.
+      def unique_ad_hoc_transporter_code
+        loop do
+          candidate = "RA-T-#{SecureRandom.hex(4).upcase}"
+          break candidate unless Cats::Core::Transporter.exists?(code: candidate)
+        end
+      end
+
       def ra_params
         params.require(:payload).permit(
           :receipt_order_id,
           :receipt_order_assignment_id,
+          :receipt_order_line_id,
+          :warehouse_id,
           :store_id,
           :transporter_id,
+          :transporter_name,
           :authorized_quantity,
           :driver_name,
           :driver_id_number,
           :truck_plate_number,
-          :waybill_number
+          :waybill_number,
+          :notify_planned_facilities
         )
       end
 
       def ra_update_params
         params.require(:payload).permit(
           :transporter_id,
+          :transporter_name,
           :authorized_quantity,
           :driver_name,
           :driver_id_number,

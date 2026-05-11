@@ -117,10 +117,13 @@ module Cats
         
         rel = hub_ids.blank? ? by_warehouse : by_warehouse.or(scoped_relation.where(hub_id: hub_ids))
 
-        # Warehouse managers also see hub-based orders where they have a warehouse assignment
+        # Warehouse managers also see hub-based orders where they have a warehouse assignment,
+        # or trucks were authorized directly to their warehouse via Receipt Authorization (routing override).
         if access.warehouse_manager?
-          assigned_order_ids = ReceiptOrderAssignment.where(warehouse_id: wh_ids).pluck(:receipt_order_id).uniq
-          return rel.or(scoped_relation.where(id: assigned_order_ids))
+          assigned_order_ids = receipt_order_ids_for_warehouse_manager_assignments(wh_ids)
+          ra_order_ids = receipt_order_ids_for_warehouse_manager_receipt_authorizations(wh_ids)
+          combined_ids = (assigned_order_ids + ra_order_ids).uniq
+          return rel.or(scoped_relation.where(id: combined_ids))
         end
 
         # Storekeepers see orders assigned to their store
@@ -142,6 +145,28 @@ module Cats
         end
 
         scoped_relation.where(warehouse_id: access.accessible_warehouse_ids)
+      end
+
+      # Orders linked by assignment row: same facility warehouse(s) OR personally assigned (covers
+      # multi-warehouse managers who only have one UserAssignment row but are assigned_to on other WH rows).
+      def receipt_order_ids_for_warehouse_manager_assignments(wh_ids)
+        t  = ReceiptOrderAssignment.table_name
+        nr = ReceiptOrderAssignment.where.not("LOWER(TRIM(#{t}.status)) = ?", "rejected")
+        uid = access.user&.id
+        by_wh = nr.where(warehouse_id: wh_ids)
+        by_me = uid.present? ? nr.where(assigned_to_id: uid) : nr.none
+        by_wh.or(by_me).distinct.pluck(:receipt_order_id)
+      end
+
+      def receipt_order_ids_for_warehouse_manager_receipt_authorizations(wh_ids)
+        return [] if wh_ids.blank?
+
+        ra_t = ReceiptAuthorization.table_name
+        ReceiptAuthorization
+          .where(warehouse_id: wh_ids)
+          .where.not("LOWER(TRIM(#{ra_t}.status)) = ?", "cancelled")
+          .distinct
+          .pluck(:receipt_order_id)
       end
 
       def receipt_order_visible_hub_ids

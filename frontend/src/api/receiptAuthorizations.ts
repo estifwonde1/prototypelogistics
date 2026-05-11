@@ -11,6 +11,7 @@ export interface ReceiptAuthorization {
   receipt_order_id: number;
   receipt_order_reference_no?: string;
   receipt_order_assignment_id?: number | null;
+  receipt_order_line_id?: number | null;
 
   // Destination (store may be unset until downstream assignment)
   store_id: number | null;
@@ -49,19 +50,28 @@ export interface ReceiptAuthorization {
 export interface CreateReceiptAuthorizationPayload {
   receipt_order_id: number;
   receipt_order_assignment_id?: number | null;
+  /** Required for multi-line orders when not using a warehouse assignment row */
+  receipt_order_line_id?: number | null;
+  /** Hub direct routing when bypassing planned allocation (no assignment id) */
+  warehouse_id?: number | null;
   /** Omit at creation when authorizing inbound to a warehouse allocation only */
   store_id?: number | null;
-  transporter_id: number;
+  /** Prefer with hub UI free-text entry; alternatively send transporter_id for master-list clients */
+  transporter_id?: number;
+  transporter_name?: string;
   authorized_quantity: number;
   driver_name: string;
   driver_id_number: string;
   truck_plate_number: string;
   /** Optional: backend auto-generates when omitted/blank */
   waybill_number?: string;
+  /** When routing via warehouse_id: notify staff on planned warehouse rows (advisory) */
+  notify_planned_facilities?: boolean;
 }
 
 export interface UpdateReceiptAuthorizationPayload {
   transporter_id?: number;
+  transporter_name?: string;
   authorized_quantity?: number;
   driver_name?: string;
   driver_id_number?: string;

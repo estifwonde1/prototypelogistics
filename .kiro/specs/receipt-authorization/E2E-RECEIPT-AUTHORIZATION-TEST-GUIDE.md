@@ -81,14 +81,18 @@ Assignment UI lives on the **Receipt Order detail** page (`ReceiptOrderDetailPag
 | Step | Action | Route | Expected |
 |------|--------|-------|----------|
 | C1 | Open RA list (optional) | `/hub/receipt-authorizations` | Lists RAs; counts if implemented. |
-| C2 | Create RA | `/hub/receipt-authorizations/new` | Form: RO, **Warehouse Assignment** (required when the RO has warehouse allocation rows), authorized quantity, transporter, driver name/ID, plate, waybill. **There is no “Destination Store” field** — hubs authorize against the warehouse allocation only. |
-| C3 | Submit | — | RA **Pending**; reference like **RA-…**; **`store_id`** may be **null** (warehouse-level inbound). |
+| C2 | Create RA | `/hub/receipt-authorizations/new` | Form: RO, routing mode, authorized quantity (in **Receipt Order line units** after conversion), transporter, driver name/ID, plate, waybill. **There is no “Destination Store” field** here — store assignment stays on the Receipt Order. |
+| C3 | Planned path (default when RO has hub→warehouse assignment rows) | Leave **Use planned warehouse allocation** checked | Pick a **Warehouse Assignment** row; **`receipt_order_assignment_id`** sent; remaining quantity per allocation enforced server-side (unchanged). |
+| C4 | Direct hub routing (bypass assignment row) | Uncheck planned allocation **or** RO has no warehouse assignment rows | Pick **Destination warehouse** under the RO’s hub; multi-line ROs require **Receipt order line**. **`warehouse_id`** sent, no assignment id. **Total authorized per line** cannot exceed that line’s quantity on the RO. |
+| C5 | Routing impact / notifications | — | If the chosen warehouse is **not** on planned assignment rows for that line, affected planned facilities get **`receipt_authorization.plan_deviated`** (in-app); an optional checkbox can **notify planned contacts anyway** when still on-plan. **`receipt_authorization.routing_override`** is always recorded on the RO workflow. |
+| C6 | Submit | — | RA **Pending**; reference like **RA-…**; **`store_id`** may be **null** (warehouse-level inbound). |
 
 **Checks:**
 
-- **Authorized quantity** should align with what you will receive in inspection (cannot exceed authorization on inspection create).
-- **Warehouse Assignment** chosen matches the hub→warehouse allocation you intend to consume (remaining quantity per allocation is enforced server-side).
-- If the RO has **no** warehouse allocations yet, the hub form warns you to assign warehouses on the RO first.
+- **Authorized quantity** should align with inspection (cannot exceed authorization on inspection create) and **must not exceed the Receipt Order line total** (all RAs on that line, normalized to the line’s unit).
+- **Planned path:** assignment row matches intent; server enforces remaining allocation.
+- **Tracing:** Receipt Order **Workflow** tab lists **Receipt authorization routing overrides** plus the full timeline (`receipt_authorization.routing_override` events).
+- If the RO has **no hub**, you cannot use direct hub routing until the order has hub context; fix the Receipt Order if stuck.
 
 ---
 

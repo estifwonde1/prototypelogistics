@@ -14,7 +14,20 @@ module Cats
           end
 
           if access.warehouse_manager?
-            return scope.where(warehouse_id: access.assigned_warehouse_ids)
+            role_wh_ids = Array(access.assigned_warehouse_ids).map(&:to_i).uniq
+            roa_t       = ReceiptOrderAssignment.table_name
+            assignee_wh_ids =
+              ReceiptOrderAssignment
+                .where(assigned_to_id: user.id)
+                .where.not(warehouse_id: nil)
+                .where.not("LOWER(TRIM(#{roa_t}.status)) = ?", "rejected")
+                .distinct
+                .pluck(:warehouse_id)
+                .map(&:to_i)
+            visible_wh_ids = (role_wh_ids + assignee_wh_ids).uniq
+            return scope.none if visible_wh_ids.empty?
+
+            return scope.where(warehouse_id: visible_wh_ids)
           end
 
           # IMPORTANT: prioritize storekeeper scope before officer/other role scopes.

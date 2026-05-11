@@ -18,17 +18,32 @@ module Cats
           # Get store IDs for this warehouse
           store_ids = Store.where(warehouse_id: warehouse_id).pluck(:id)
           
-          # Find receipt order IDs that are assigned to this warehouse or its stores
-          assigned_order_ids = ReceiptOrderAssignment
-            .where(warehouse_id: warehouse_id)
-            .or(ReceiptOrderAssignment.where(store_id: store_ids))
-            .where.not(status: 'rejected')
-            .distinct
-            .pluck(:receipt_order_id)
-          
+          roa_t = ReceiptOrderAssignment.table_name
+          # Assignments for this warehouse/stores (exclude rejected; match assignment service normalization)
+          assignment_order_ids =
+            ReceiptOrderAssignment
+              .where(warehouse_id: warehouse_id)
+              .or(ReceiptOrderAssignment.where(store_id: store_ids))
+              .where.not("LOWER(TRIM(#{roa_t}.status)) = ?", "rejected")
+              .distinct
+              .pluck(:receipt_order_id)
+
+          # Orders with an active Receipt Authorization routed to this warehouse (covers plan-change
+          # handoffs if assignment rows were missing or out of sync).
+          ra_t = ReceiptAuthorization.table_name
+          ra_order_ids =
+            ReceiptAuthorization
+              .where(warehouse_id: warehouse_id)
+              .where.not("LOWER(TRIM(#{ra_t}.status)) = ?", ReceiptAuthorization::CANCELLED)
+              .distinct
+              .pluck(:receipt_order_id)
+
+          assigned_order_ids = (assignment_order_ids + ra_order_ids).uniq
+
           # Get orders where:
           # 1. Main warehouse_id matches, OR
-          # 2. Order has an assignment to this warehouse/stores
+          # 2. Order has an assignment to this warehouse/stores, OR
+          # 3. Order has a non-cancelled RA for this warehouse
           orders = ReceiptOrder
             .where(warehouse_id: warehouse_id)
             .or(ReceiptOrder.where(id: assigned_order_ids))

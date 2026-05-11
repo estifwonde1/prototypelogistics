@@ -8,7 +8,7 @@ module Cats
       end
 
       def index?
-        admin? || hub_manager? || officer?
+        admin? || hub_manager? || officer? || warehouse_manager?
       end
 
       def show?

@@ -3,7 +3,7 @@ module Cats
     class ReceiptAuthorizationSerializer < ApplicationSerializer
       attributes :id, :reference_no, :status,
                  :receipt_order_id, :receipt_order_reference_no,
-                 :receipt_order_assignment_id,
+                 :receipt_order_assignment_id, :receipt_order_line_id,
                  :store_id, :store_name,
                  :warehouse_id, :warehouse_name,
                  :transporter_id, :transporter_name,

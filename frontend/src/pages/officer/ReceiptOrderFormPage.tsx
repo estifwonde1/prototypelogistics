@@ -35,6 +35,7 @@ import { getCommodityReferences, getUnitReferences, getUomConversions } from "..
 import { useAuthStore } from "../../store/authStore";
 import { normalizeRoleSlug } from '../../contracts/warehouse';
 import { findDirectedMultiplier } from '../../utils/uomConversions';
+import { computePackagingPackagesHint } from '../../utils/packagingQuantityHint';
 import type { ReceiptOrderLine } from "../../api/receiptOrders";
 import type { ApiError } from "../../types/common";
 import type { UomConversion } from "../../types/referenceData";
@@ -820,60 +821,36 @@ function DestinationRowItem({
     return reverse != null;
   }, [dest.unitId, batchUnitNumericId, commodityNumericId, uomConversions]);
 
-  // ── Packaging hint calculation ──
   const packagingHint = useMemo(() => {
     const qty = Number(dest.quantity);
-    if (!qty || qty <= 0 || !packagingSize || packagingSize <= 0 || !packagingUnitName) {
-      return null;
-    }
-    if (!unitCompatible) return null;
+    if (!unitCompatible || !qty || qty <= 0) return null;
 
     const destUnitId = dest.unitId ? parseInt(dest.unitId) : null;
-
-    // Resolve the package-per-unit numeric ID:
-    // 1. Use stored numeric ID if available
-    // 2. Fall back to matching by name or abbreviation
-    // 3. If still null (old batch without this field), assume package size is
-    //    in the same unit as the batch's default unit (batchUnitNumericId)
-    let resolvedPkgUnitId = packageUnitPerPackageNumericId;
-    if (!resolvedPkgUnitId && packageUnitPerPackageName) {
-      const nameUpper = packageUnitPerPackageName.toUpperCase();
-      const match = allUnits.find(
-        (u) =>
-          (u.abbreviation ?? "").toUpperCase() === nameUpper ||
-          u.name.toUpperCase() === nameUpper
-      );
-      resolvedPkgUnitId = match?.id ?? null;
-    }
-    if (!resolvedPkgUnitId) {
-      // No per-package unit info — assume same unit as the destination quantity
-      resolvedPkgUnitId = destUnitId;
-    }
-
-    let qtyInPkgUnit = qty;
-
-    if (destUnitId && resolvedPkgUnitId && destUnitId !== resolvedPkgUnitId && commodityNumericId) {
-      let factor = findDirectedMultiplier(destUnitId, resolvedPkgUnitId, commodityNumericId, uomConversions);
-      if (factor == null) {
-        const reverse = findDirectedMultiplier(resolvedPkgUnitId, destUnitId, commodityNumericId, uomConversions);
-        if (reverse != null && reverse !== 0) factor = 1 / reverse;
-      }
-      if (factor != null) {
-        qtyInPkgUnit = qty * factor;
-      }
-    }
-
-    const packages = qtyInPkgUnit / packagingSize;
-    const isWholeNumber = Number.isInteger(packages) || Math.abs(packages - Math.round(packages)) < 0.0001;
-
-    return {
-      packagesFormatted: packages.toLocaleString(undefined, { maximumFractionDigits: 4 }),
-      containerLabel: packagingUnitName,
-      isWholeNumber,
-    };
-  }, [dest.quantity, dest.unitId, packagingSize, packagingUnitName,
-      packageUnitPerPackageNumericId, packageUnitPerPackageName, allUnits,
-      unitCompatible, commodityNumericId, uomConversions]);
+    return computePackagingPackagesHint({
+      qty,
+      destUnitId,
+      commodityId: commodityNumericId,
+      packagingSize,
+      packagingUnitLabel: packagingUnitName,
+      packageUnitPerPackageNumericId,
+      packageUnitPerPackageName,
+      fallbackBatchUnitNumericId: batchUnitNumericId,
+      units: allUnits,
+      uomConversions,
+    });
+  }, [
+    dest.quantity,
+    dest.unitId,
+    packagingSize,
+    packagingUnitName,
+    packageUnitPerPackageNumericId,
+    packageUnitPerPackageName,
+    allUnits,
+    unitCompatible,
+    commodityNumericId,
+    uomConversions,
+    batchUnitNumericId,
+  ]);
 
   return (
     <Group gap="sm" align="flex-start" wrap="nowrap">
@@ -942,7 +919,9 @@ function DestinationRowItem({
                 <IconInfoCircle size={13} />
               </ThemeIcon>
               <Text size="xs" c="teal.7">
-                = <strong>{packagingHint.packagesFormatted} {packagingHint.containerLabel}</strong>
+                {packagingHint.packageSpec ? <><strong>{packagingHint.packageSpec}</strong>; </> : null}
+                ≈{' '}
+                <strong>{packagingHint.packagesFormatted} {packagingHint.containerLabel}</strong>
               </Text>
             </Group>
           ) : (
@@ -951,7 +930,9 @@ function DestinationRowItem({
                 <IconAlertCircle size={13} />
               </ThemeIcon>
               <Text size="xs" c="orange.7">
-                = <strong>{packagingHint.packagesFormatted} {packagingHint.containerLabel}</strong>
+                {packagingHint.packageSpec ? <><strong>{packagingHint.packageSpec}</strong>; </> : null}
+                ≈{' '}
+                <strong>{packagingHint.packagesFormatted} {packagingHint.containerLabel}</strong>
                 {" "}— not a whole number of packages
               </Text>
             </Group>

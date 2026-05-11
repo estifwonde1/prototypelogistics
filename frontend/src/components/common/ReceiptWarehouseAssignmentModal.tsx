@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Alert,
   Badge,
@@ -12,13 +13,15 @@ import {
   Text,
   ThemeIcon,
 } from '@mantine/core';
-import { IconAlertCircle, IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconAlertCircle, IconInfoCircle, IconPlus, IconTrash } from '@tabler/icons-react';
 import type { ReceiptOrder } from '../../api/receiptOrders';
 import type { ReceiptOrderLine } from '../../api/receiptOrders';
+import { getCommodityReferences } from '../../api/referenceData';
 import type { Store } from '../../types/store';
 import type { Warehouse } from '../../types/warehouse';
 import type { UnitReference, UomConversion } from '../../types/referenceData';
 import { findDirectedMultiplier } from '../../utils/uomConversions';
+import { computePackagingPackagesHint } from '../../utils/packagingQuantityHint';
 
 interface AssignmentPayloadRow {
   receipt_order_line_id: number;
@@ -82,6 +85,12 @@ function ReceiptWarehouseAssignmentModal({
   loading = false,
   hubId,
 }: ReceiptWarehouseAssignmentModalProps) {
+  const { data: commodityRefs = [] } = useQuery({
+    queryKey: ['reference-data', 'commodities'],
+    queryFn: getCommodityReferences,
+    enabled: opened,
+  });
+
   const lines = useMemo(() => filteredLines ?? orderLines(receiptOrder), [filteredLines, receiptOrder]);
 
   const assignedByLine = useMemo(() => {
@@ -123,6 +132,8 @@ function ReceiptWarehouseAssignmentModal({
         ordered,
         assigned,
         remaining,
+        packagingSize: line.packaging_size != null ? Number(line.packaging_size) : null,
+        packagingUnitName: line.packaging_unit_name ?? null,
       };
     });
   }, [assignedByLine, lines]);
@@ -430,6 +441,27 @@ function ReceiptWarehouseAssignmentModal({
               };
             });
 
+            const commodityMatch =
+              line != null ? commodityRefs.find((c) => c.id === line.commodityId) : undefined;
+            const packagingRowHint =
+              line != null &&
+              row.unit_id != null &&
+              validation?.error == null &&
+              validation?.convertedQuantity != null
+                ? computePackagingPackagesHint({
+                    qty: Number(row.quantity || 0),
+                    destUnitId: row.unit_id,
+                    commodityId: line.commodityId,
+                    packagingSize: line.packagingSize ?? commodityMatch?.package_size ?? null,
+                    packagingUnitLabel: line.packagingUnitName ?? commodityMatch?.package_unit_name ?? null,
+                    packageUnitPerPackageNumericId: commodityMatch?.package_unit_per_package_id ?? null,
+                    packageUnitPerPackageName: commodityMatch?.package_unit_per_package_name ?? null,
+                    fallbackBatchUnitNumericId: commodityMatch?.unit_id ?? line.unitId,
+                    units,
+                    uomConversions,
+                  })
+                : null;
+
             return (
               <Stack key={row.clientId} gap="xs" p="sm" style={{ border: '1px solid var(--mantine-color-gray-3)', borderRadius: 8 }}>
                 <Group justify="space-between">
@@ -522,6 +554,21 @@ function ReceiptWarehouseAssignmentModal({
                       {Number(row.quantity || 0).toLocaleString()} {selectedUnit?.abbreviation || selectedUnit?.name || 'units'} ={' '}
                       {validation.convertedQuantity.toLocaleString()} {line.unitName}
                       {rowRemainingPreview != null ? `, remaining after this row: ${rowRemainingPreview.toLocaleString()} ${line.unitName}` : ''}
+                    </Text>
+                  </Group>
+                ) : null}
+
+                {packagingRowHint ? (
+                  <Group gap="xs" wrap="nowrap" align="flex-start">
+                    <ThemeIcon variant="light" size="sm" color="teal">
+                      <IconInfoCircle size={14} />
+                    </ThemeIcon>
+                    <Text size="sm" c="dimmed">
+                      {packagingRowHint.packageSpec}; ≈{' '}
+                      <strong>
+                        {packagingRowHint.packagesFormatted} {packagingRowHint.containerLabel}
+                      </strong>
+                      {!packagingRowHint.isWholeNumber ? ' — not a whole number of packages' : ''}
                     </Text>
                   </Group>
                 ) : null}

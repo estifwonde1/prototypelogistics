@@ -215,9 +215,6 @@ export default function StorekeeperRADetailPage() {
               <Text size="sm" style={{ fontFamily: 'monospace' }}>{ra.truck_plate_number}</Text>
             } />
             <DetailField label="Transporter" value={ra.transporter_name || `Transporter #${ra.transporter_id}`} />
-            <DetailField label="Waybill Number" value={
-              <Text size="sm" style={{ fontFamily: 'monospace' }}>{ra.waybill_number}</Text>
-            } />
           </SimpleGrid>
         </Stack>
       </Card>

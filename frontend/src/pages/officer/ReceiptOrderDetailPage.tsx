@@ -41,7 +41,7 @@ import { createInspection, getInspections } from '../../api/inspections';
 import { createGrn } from '../../api/grns';
 import { getWarehouses } from '../../api/warehouses';
 import { getHubs } from '../../api/hubs';
-import { getUnitReferences, getUomConversions } from '../../api/referenceData';
+import { getCommodityReferences, getUnitReferences, getUomConversions } from '../../api/referenceData';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { ScopeBadge } from '../../components/common/ScopeBadge';
 import { LoadingState } from '../../components/common/LoadingState';
@@ -59,9 +59,10 @@ import { OFFICER_ROLE_SLUGS, normalizeRoleSlug } from '../../contracts/warehouse
 import type { Warehouse } from '../../types/warehouse';
 import type { Store } from '../../types/store';
 import type { Inspection } from '../../types/inspection';
-import type { UnitReference, UomConversion } from '../../types/referenceData';
+import type { CommodityReference, UnitReference, UomConversion } from '../../types/referenceData';
 import type { WorkflowEvent } from '../../types/assignment';
 import { findDirectedMultiplier } from '../../utils/uomConversions';
+import { computePackagingPackagesHint } from '../../utils/packagingQuantityHint';
 
 function formatReceiptDate(order: ReceiptOrder): string {
   const raw = order.received_date || order.expected_delivery_date;
@@ -103,6 +104,40 @@ function totalSpaceReservedQuantity(
     if (st === 'cancelled' || st === 'released') return sum;
     return sum + Number(r.reserved_quantity ?? 0);
   }, 0);
+}
+
+function workflowEventPayloadRecord(ev: WorkflowEvent): Record<string, unknown> {
+  const raw = ev.payload ?? ev.metadata;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  return raw as Record<string, unknown>;
+}
+
+function payloadFlagTrue(p: Record<string, unknown>, key: string): boolean {
+  const v = p[key];
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'string') return v.toLowerCase().trim() === 'true';
+  return false;
+}
+
+function isPlanDeviatedWorkflowEvent(e: WorkflowEvent): boolean {
+  const p = workflowEventPayloadRecord(e);
+  return payloadFlagTrue(p, 'plan_deviated') || payloadFlagTrue(p, 'planDeviated');
+}
+
+/** Warehouses that were on the planned assignment path before a deviation (routing_override payloads). */
+function plannedWarehouseIdsFromDeviationEvents(events: WorkflowEvent[]): number[] {
+  const ids: number[] = [];
+  for (const e of events) {
+    if (!isPlanDeviatedWorkflowEvent(e)) continue;
+    const p = workflowEventPayloadRecord(e);
+    const raw = p.planned_warehouse_ids ?? p.plannedWarehouseIds;
+    if (!Array.isArray(raw)) continue;
+    for (const x of raw) {
+      const n = Number(x);
+      if (!Number.isNaN(n)) ids.push(n);
+    }
+  }
+  return ids;
 }
 
 /** Line quantity for progress / context when a reservation targets a specific line (or single-line order). */
@@ -213,15 +248,84 @@ function withKntlSuffix(
   return `${core} (~${(qty * m).toLocaleString(undefined, { maximumFractionDigits: 2 })} kntl)`;
 }
 
+function isReceiptAuthorizationWarehouseActive(ra: ReceiptAuthorization): boolean {
+  return String(ra.status ?? '').toLowerCase() !== 'cancelled';
+}
+
+/** Sum authorized_quantity on non-cancelled RAs for this warehouse (order line units). */
+function warehouseAuthorizedQtyFromReceiptAuthorizations(
+  ras: ReceiptAuthorization[],
+  userWarehouseId: number,
+  restrictToLineIds: Set<number> | null
+): number {
+  let sum = 0;
+  const restrict =
+    restrictToLineIds &&
+    [...restrictToLineIds].every((id) => !Number.isNaN(Number(id))) &&
+    restrictToLineIds.size > 0
+      ? restrictToLineIds
+      : null;
+
+  for (const ra of ras) {
+    if (!isReceiptAuthorizationWarehouseActive(ra)) continue;
+    if (ra.warehouse_id == null || Number(ra.warehouse_id) !== Number(userWarehouseId)) continue;
+    if (restrict) {
+      if (ra.receipt_order_line_id == null) {
+        if (restrict.size > 1) continue;
+      } else if (!restrict.has(Number(ra.receipt_order_line_id))) {
+        continue;
+      }
+    }
+    sum += Number(ra.authorized_quantity ?? 0);
+  }
+  return sum;
+}
+
+/** Active RAs on this order that apply to the given line (quantities in receipt line UOM). */
+function receiptAuthorizationsForReceiptLineOnOrder(
+  ras: ReceiptAuthorization[],
+  lineId: number | null | undefined,
+  orderLineCount: number
+): ReceiptAuthorization[] {
+  return ras.filter((ra) => {
+    if (!isReceiptAuthorizationWarehouseActive(ra)) return false;
+    if (lineId == null) return orderLineCount <= 1;
+    if (ra.receipt_order_line_id != null) {
+      return Number(ra.receipt_order_line_id) === Number(lineId);
+    }
+    return orderLineCount <= 1;
+  });
+}
+
 function computeWarehouseManagerStoreRemaining(
   assignments: ReceiptOrderAssignment[],
   userWarehouseId: number,
-  storesPayload: { id: number; warehouse_id: number }[] | undefined
+  storesPayload: { id: number; warehouse_id: number }[] | undefined,
+  opts?: {
+    receiptAuthorizations?: ReceiptAuthorization[];
+    restrictWarehouseRowsToLineIds?: Set<number> | null;
+  }
 ): { pool: number; assigned: number; remaining: number } {
-  const pool = warehouseOnlyAssignmentsForManager(assignments, userWarehouseId).reduce(
-    (s, a) => s + Number(a.quantity ?? 0),
-    0
-  );
+  let whRows = warehouseOnlyAssignmentsForManager(assignments, userWarehouseId);
+  const restrict = opts?.restrictWarehouseRowsToLineIds;
+  if (restrict && restrict.size > 0) {
+    whRows = whRows.filter((a) => {
+      if (a.receipt_order_line_id == null) return restrict.size <= 1;
+      return restrict.has(Number(a.receipt_order_line_id));
+    });
+  }
+
+  const assignmentPool = whRows.reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+
+  let pool = assignmentPool;
+  if (assignmentPool <= 1e-6 && opts?.receiptAuthorizations?.length) {
+    pool = warehouseAuthorizedQtyFromReceiptAuthorizations(
+      opts.receiptAuthorizations,
+      userWarehouseId,
+      restrict && restrict.size > 0 ? restrict : null
+    );
+  }
+
   const stores = storesPayload ?? [];
   const assigned = assignments
     .filter((a) => {
@@ -287,6 +391,76 @@ function ReceiptOrderDetailPage() {
   const error = orderQuery.error;
   const refetch = orderQuery.refetch;
 
+  const workflowEventsQuery = useQuery({
+    queryKey: ['receipt_orders', id, 'workflow'],
+    queryFn: () => getReceiptOrderWorkflow(Number(id)),
+    enabled: !!order && String(order.status).toLowerCase() !== 'draft',
+  });
+  const workflowEvents = (workflowEventsQuery.data as WorkflowEvent[]) || [];
+
+  const routingOverrideEvents = useMemo(
+    () =>
+      workflowEvents.filter(
+        (e: WorkflowEvent) => String(e.event_type ?? '') === 'receipt_authorization.routing_override'
+      ),
+    [workflowEvents]
+  );
+
+  const changedPlan = useMemo(
+    () => routingOverrideEvents.some((e) => isPlanDeviatedWorkflowEvent(e)),
+    [routingOverrideEvents]
+  );
+
+  const showChangedPlanIndicator = workflowEventsQuery.isSuccess && changedPlan;
+
+  const plannedDeviationWarehouseIdSet = useMemo(() => {
+    const ids = plannedWarehouseIdsFromDeviationEvents(routingOverrideEvents);
+    return new Set(ids.map((id) => Number(id)));
+  }, [routingOverrideEvents]);
+
+  const receiptAuthorizationsQuery = useQuery({
+    queryKey: ['receipt_authorizations', { receipt_order_id: id }],
+    queryFn: () => getReceiptAuthorizations({ receipt_order_id: Number(id) }),
+    enabled: !!order && String(order.status || '').toLowerCase() !== 'draft',
+  });
+  const receiptAuthorizations = (receiptAuthorizationsQuery.data as ReceiptAuthorization[]) || [];
+
+  /**
+   * Hide Assignments/RAs/reservations mainly for warehouse managers stuck on superseded hub plan rows —
+   * but keep them visible when inbound trucks actually target this user's warehouse via Receipt Authorization.
+   */
+  const legacyPlanHiddenForViewer = useMemo(() => {
+    if (!workflowEventsQuery.isSuccess || !changedPlan) return false;
+    if (!isWarehouseManager || userWarehouseId == null) return false;
+    if (!plannedDeviationWarehouseIdSet.has(Number(userWarehouseId))) return false;
+    if (!receiptAuthorizationsQuery.isSuccess) return false;
+
+    const hasActiveRaHere = receiptAuthorizations.some(
+      (ra) =>
+        isReceiptAuthorizationWarehouseActive(ra) &&
+        ra.warehouse_id != null &&
+        Number(ra.warehouse_id) === Number(userWarehouseId)
+    );
+    if (hasActiveRaHere) return false;
+
+    return true;
+  }, [
+    workflowEventsQuery.isSuccess,
+    changedPlan,
+    isWarehouseManager,
+    userWarehouseId,
+    plannedDeviationWarehouseIdSet,
+    receiptAuthorizationsQuery.isSuccess,
+    receiptAuthorizations,
+  ]);
+
+  useEffect(() => {
+    if (!legacyPlanHiddenForViewer) return;
+    if (['assignments', 'receipt-authorizations', 'space-reservations'].includes(activeTab)) {
+      setActiveTab('details');
+    }
+  }, [legacyPlanHiddenForViewer, activeTab]);
+
   const warehouseIdForStores = useMemo(() => {
     const wid = order?.warehouse_id ?? order?.destination_warehouse_id ?? userWarehouseId;
     return wid != null ? Number(wid) : null;
@@ -296,16 +470,20 @@ function ReceiptOrderDetailPage() {
     if (!order) return { totalOrdered: 0, totalReserved: 0, remaining: 0 };
 
     // For warehouse managers in a hub-scoped order, scope totals to their allocation only.
-    // The hub assigned a specific quantity to this warehouse — that is the ceiling, not the
-    // full line quantity which belongs to the hub.
     let totalOrdered: number;
     if (isWarehouseManager && userWarehouseId) {
       const warehouseAssignments = (order.assignments ?? order.receipt_order_assignments ?? [])
-        .filter(a => a.warehouse_id != null && Number(a.warehouse_id) === Number(userWarehouseId));
-      if (warehouseAssignments.length > 0) {
-        totalOrdered = warehouseAssignments.reduce((s, a) => s + Number(a.quantity ?? 0), 0);
-      } else {
-        // No hub-level assignment yet — fall back to full line quantity
+        .filter((a) => a.warehouse_id != null && Number(a.warehouse_id) === Number(userWarehouseId));
+      totalOrdered = warehouseAssignments.reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+      // Hub-only assignment rows omit quantity until WM gets a Receipt Authorization allocation.
+      if (totalOrdered <= 1e-6 && receiptAuthorizations.length > 0) {
+        totalOrdered = warehouseAuthorizedQtyFromReceiptAuthorizations(
+          receiptAuthorizations,
+          userWarehouseId,
+          null
+        );
+      }
+      if (totalOrdered <= 1e-6 && warehouseAssignments.length === 0) {
         totalOrdered = totalReceiptOrderLineQuantity(order);
       }
     } else {
@@ -331,10 +509,11 @@ function ReceiptOrderDetailPage() {
       totalReserved,
       remaining: Math.max(0, totalOrdered - totalReserved),
     };
-  }, [order, isWarehouseManager, userWarehouseId]);
+  }, [order, isWarehouseManager, userWarehouseId, receiptAuthorizations]);
 
   const canReserveSpace = useMemo(() => {
     if (!order) return false;
+    if (legacyPlanHiddenForViewer) return false;
     if (isOfficerRole) return false;
     // Storekeepers should not reserve space — that's the warehouse manager's job
     if (roleSlug === 'storekeeper') return false;
@@ -350,7 +529,7 @@ function ReceiptOrderDetailPage() {
     const { totalOrdered, remaining } = reservationTotals;
     if (totalOrdered <= 0) return false;
     return remaining > 1e-6;
-  }, [order, isOfficerRole, roleSlug, reservationTotals]);
+  }, [order, isOfficerRole, roleSlug, reservationTotals, legacyPlanHiddenForViewer]);
 
   const showOfficerSpaceReservationHint = useMemo(() => {
     if (!order) return false;
@@ -442,26 +621,19 @@ function ReceiptOrderDetailPage() {
   });
   const uomConversions = (uomConversionsQuery.data as UomConversion[]) || [];
 
+  const commoditiesPackagingQuery = useQuery({
+    queryKey: ['reference-data', 'commodities'],
+    queryFn: getCommodityReferences,
+    enabled: showAssignmentForm && !isOfficerRole,
+  });
+  const commodityReferences: CommodityReference[] = commoditiesPackagingQuery.data ?? [];
+
   const storeSelectData = useMemo(() => {
     if (!warehouseIdForStores) return [];
     return stores
       .filter((s) => s.warehouse_id != null && Number(s.warehouse_id) === warehouseIdForStores)
       .map((s) => ({ value: String(s.id), label: s.name }));
   }, [stores, warehouseIdForStores]);
-
-  const workflowEventsQuery = useQuery({
-    queryKey: ['receipt_orders', id, 'workflow'],
-    queryFn: () => getReceiptOrderWorkflow(Number(id)),
-    enabled: !!order && String(order.status).toLowerCase() !== 'draft',
-  });
-  const workflowEvents = (workflowEventsQuery.data as WorkflowEvent[]) || [];
-
-  const receiptAuthorizationsQuery = useQuery({
-    queryKey: ['receipt_authorizations', { receipt_order_id: id }],
-    queryFn: () => getReceiptAuthorizations({ receipt_order_id: Number(id) }),
-    enabled: !!order && String(order?.status || '').toLowerCase() !== 'draft',
-  });
-  const receiptAuthorizations = (receiptAuthorizationsQuery.data as ReceiptAuthorization[]) || [];
 
   const assignableManagersQuery = useQuery({
     queryKey: ['receipt_orders', id, 'assignable_managers', roleSlug, { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],
@@ -784,13 +956,28 @@ function ReceiptOrderDetailPage() {
     let alreadyAssigned: number;
 
     if (isWarehouseManager && userWarehouseId) {
-      const whOnly = warehouseOnlyAssignmentsForManager(assignments, userWarehouseId);
+      const restrictLines = new Set(
+        visibleLines
+          .map((l) => (l.id != null ? Number(l.id) : NaN))
+          .filter((id) => !Number.isNaN(id))
+      );
+      const storesPayload =
+        (assignableManagersPayload?.stores as { id: number; warehouse_id: number }[] | undefined) ?? [];
       const { pool, assigned } = computeWarehouseManagerStoreRemaining(
         assignments,
         userWarehouseId,
-        (assignableManagersPayload?.stores as { id: number; warehouse_id: number }[] | undefined) ?? []
+        storesPayload,
+        {
+          receiptAuthorizations,
+          restrictWarehouseRowsToLineIds: restrictLines.size > 0 ? restrictLines : null,
+        }
       );
-      if (whOnly.length > 0) {
+      const whOnly = warehouseOnlyAssignmentsForManager(assignments, userWarehouseId).filter((a) => {
+        if (restrictLines.size === 0) return true;
+        if (a.receipt_order_line_id == null) return restrictLines.size <= 1;
+        return restrictLines.has(Number(a.receipt_order_line_id));
+      });
+      if (whOnly.length > 0 || pool > 1e-6 || (receiptAuthorizations?.length ?? 0) > 0) {
         totalOrdered = pool;
         alreadyAssigned = assigned;
       } else {
@@ -940,10 +1127,19 @@ function ReceiptOrderDetailPage() {
     if (!isWarehouseManager || userWarehouseId == null) return null;
     const storesPayload =
       (assignableManagersPayload?.stores as { id: number; warehouse_id: number }[] | undefined) ?? [];
+    const lineRestrict = new Set(
+      visibleLines
+        .map((l) => (l.id != null ? Number(l.id) : NaN))
+        .filter((id) => !Number.isNaN(id))
+    );
     const { pool, assigned, remaining } = computeWarehouseManagerStoreRemaining(
       assignments,
       userWarehouseId,
-      storesPayload
+      storesPayload,
+      {
+        receiptAuthorizations,
+        restrictWarehouseRowsToLineIds: lineRestrict.size > 0 ? lineRestrict : null,
+      }
     );
     const primaryLine = visibleLines[0] ?? lines[0];
     const baseUnitId = primaryLine?.unit_id != null ? Number(primaryLine.unit_id) : undefined;
@@ -981,6 +1177,44 @@ function ReceiptOrderDetailPage() {
     lines,
     uomConversions,
     units,
+    receiptAuthorizations,
+  ]);
+
+  const storeAssignmentPackagingHint = useMemo(() => {
+    if (isOfficerRole || !showAssignmentForm) return null;
+    if (!Number.isFinite(assignmentQuantity) || assignmentQuantity <= 0) return null;
+    const pl = visibleLines[0] ?? lines[0];
+    if (!pl?.commodity_id) return null;
+    const cid = Number(pl.commodity_id);
+    const cref = commodityReferences.find((c) => c.id === cid);
+    const entry =
+      assignmentEntryUnitId ??
+      warehouseManagerStoreAssignHints?.baseUnitId ??
+      (pl.unit_id != null ? Number(pl.unit_id) : null);
+    return computePackagingPackagesHint({
+      qty: assignmentQuantity,
+      destUnitId: entry,
+      commodityId: cid,
+      packagingSize: pl.packaging_size != null ? Number(pl.packaging_size) : cref?.package_size ?? null,
+      packagingUnitLabel: pl.packaging_unit_name ?? cref?.package_unit_name ?? null,
+      packageUnitPerPackageNumericId: cref?.package_unit_per_package_id ?? null,
+      packageUnitPerPackageName: cref?.package_unit_per_package_name ?? null,
+      fallbackBatchUnitNumericId:
+        cref?.unit_id != null ? Number(cref.unit_id) : pl.unit_id != null ? Number(pl.unit_id) : null,
+      units,
+      uomConversions,
+    });
+  }, [
+    isOfficerRole,
+    showAssignmentForm,
+    assignmentQuantity,
+    assignmentEntryUnitId,
+    visibleLines,
+    lines,
+    commodityReferences,
+    warehouseManagerStoreAssignHints?.baseUnitId,
+    units,
+    uomConversions,
   ]);
 
   const storeAssignUnitOptions = useMemo(() => {
@@ -1106,7 +1340,11 @@ function ReceiptOrderDetailPage() {
       const { pool, assigned } = computeWarehouseManagerStoreRemaining(
         assignments,
         userWarehouseId,
-        storesPayload
+        storesPayload,
+        {
+          receiptAuthorizations,
+          restrictWarehouseRowsToLineIds: lineIdSet.size > 0 ? lineIdSet : null,
+        }
       );
       warehouseReceived = pool;
       storeAssigned = assigned;
@@ -1186,6 +1424,7 @@ function ReceiptOrderDetailPage() {
     allWarehouses,
     units,
     uomConversions,
+    receiptAuthorizations,
   ]);
 
   // For storekeepers: GRN can only be created after inspection is completed (has at least one confirmed inspection)
@@ -1251,7 +1490,8 @@ function ReceiptOrderDetailPage() {
     !isDraft &&
     normalizeOrderStatus(order?.status) !== 'completed' &&
     !fullyAssigned &&
-    hubScopedWarehouses.length > 0;
+    hubScopedWarehouses.length > 0 &&
+    !legacyPlanHiddenForViewer;
 
   // Lines scoped to this hub manager's hub — used in the Assign Warehouse modal
   const hubScopedLines = useMemo(() => {
@@ -1343,6 +1583,11 @@ function ReceiptOrderDetailPage() {
             </Button>
           ) : null}
           <StatusBadge status={order.status} />
+          {showChangedPlanIndicator ? (
+            <Badge size="sm" variant="light" color="orange" title="Goods were authorized to a warehouse outside the original hub plan">
+              Changed plan
+            </Badge>
+          ) : null}
         </Group>
       </Group>
 
@@ -1351,16 +1596,20 @@ function ReceiptOrderDetailPage() {
           <Tabs.Tab value="details">Details</Tabs.Tab>
           {!isDraft && (
             <>
-              <Tabs.Tab value="assignments">Assignments</Tabs.Tab>
-              <Tabs.Tab value="receipt-authorizations">
-                Receipt Authorizations
-                {receiptAuthorizations.length > 0 && (
-                  <Badge size="xs" ml={6} variant="light">
-                    {receiptAuthorizations.length}
-                  </Badge>
-                )}
-              </Tabs.Tab>
-              <Tabs.Tab value="space-reservations">Space Reservations</Tabs.Tab>
+              {!legacyPlanHiddenForViewer ? (
+                <>
+                  <Tabs.Tab value="assignments">Assignments</Tabs.Tab>
+                  <Tabs.Tab value="receipt-authorizations">
+                    Receipt Authorizations
+                    {receiptAuthorizations.length > 0 && (
+                      <Badge size="xs" ml={6} variant="light">
+                        {receiptAuthorizations.length}
+                      </Badge>
+                    )}
+                  </Tabs.Tab>
+                  <Tabs.Tab value="space-reservations">Space Reservations</Tabs.Tab>
+                </>
+              ) : null}
               <Tabs.Tab value="workflow">Workflow Timeline</Tabs.Tab>
             </>
           )}
@@ -1415,11 +1664,24 @@ function ReceiptOrderDetailPage() {
                     <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
                       Status
                     </Text>
-                    <Text size="sm" fw={600} mt="xs">
-                      {order.status}
-                    </Text>
+                    <Group gap="xs" mt="xs" align="center" wrap="wrap">
+                      <Text size="sm" fw={600} component="span">
+                        {order.status}
+                      </Text>
+                      {showChangedPlanIndicator ? (
+                        <Badge size="sm" variant="light" color="orange">
+                          Changed plan
+                        </Badge>
+                      ) : null}
+                    </Group>
                   </div>
                 </SimpleGrid>
+                {legacyPlanHiddenForViewer ? (
+                  <Alert color="orange" title="Receipt plan was updated">
+                    Assignments, receipt authorizations, and space reservations for this order are hidden because routing
+                    diverged from the original plan. Use the workflow timeline for the audit trail.
+                  </Alert>
+                ) : null}
                 {(order.notes || order.description) && (
                   <div>
                     <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
@@ -1490,6 +1752,14 @@ function ReceiptOrderDetailPage() {
                       const hubOrderedTotal = Number(line.quantity ?? 0);
                       const hubRemaining = Math.max(0, hubOrderedTotal - hubAssignedTotal);
 
+                      const rasForLine = receiptAuthorizationsForReceiptLineOnOrder(
+                        receiptAuthorizations,
+                        line.id ?? null,
+                        lines.length
+                      );
+                      const showReceiptAuthRoutingHint =
+                        rasForLine.length > 0 && (!legacyPlanHiddenForViewer || !isWarehouseManager);
+
                       return (
                         <Table.Tr key={line.id ?? index}>
                           <Table.Td>
@@ -1511,7 +1781,7 @@ function ReceiptOrderDetailPage() {
                             {isHub ? (
                               <div>
                                 <Text size="sm" fw={600}>{destinationName}</Text>
-                                {whRowsForLine.length > 0 && (
+                                {!legacyPlanHiddenForViewer && whRowsForLine.length > 0 && (
                                   <Stack gap={4} mt={4}>
                                     {whRowsForLine.map((a) => (
                                       <div key={a.id}>
@@ -1525,6 +1795,36 @@ function ReceiptOrderDetailPage() {
                                     ))}
                                   </Stack>
                                 )}
+                                {legacyPlanHiddenForViewer ? (
+                                  <Text size="xs" c="dimmed" mt={4}>
+                                    Warehouse allocations from the prior plan are not shown.
+                                  </Text>
+                                ) : null}
+                                {showReceiptAuthRoutingHint ? (
+                                  <Stack gap={4} mt={6}>
+                                    <Text size="xs" fw={600} c="dimmed">
+                                      Inbound trucks (Receipt Authorizations){' '}
+                                      {showChangedPlanIndicator ? '— routed after plan updates' : ''}
+                                    </Text>
+                                    {rasForLine.map((ra) => {
+                                      const u = line.unit_name?.trim() || '';
+                                      return (
+                                        <Text key={ra.id} size="xs" c="violet.8">
+                                          →{' '}
+                                          <strong>{ra.warehouse_name?.trim() || `Warehouse #${ra.warehouse_id}`}</strong>
+                                          {ra.authorized_quantity != null ? (
+                                            <>
+                                              {' '}
+                                              ({Number(ra.authorized_quantity).toLocaleString()}
+                                              {u ? ` ${u}` : ''}
+                                              ){ra.reference_no ? ` — ${ra.reference_no}` : ''}
+                                            </>
+                                          ) : null}
+                                        </Text>
+                                      );
+                                    })}
+                                  </Stack>
+                                ) : null}
                               </div>
                             ) : isWarehouse ? (
                               <Text size="sm" fw={600}>{destinationName}</Text>
@@ -1536,7 +1836,12 @@ function ReceiptOrderDetailPage() {
                             {(() => {
                               // For warehouse managers in hub-scoped orders, show their
                               // allocated quantity (from the hub assignment), not the full line quantity.
-                              if (isWarehouseManager && userWarehouseId && line.id != null) {
+                              if (
+                                isWarehouseManager &&
+                                userWarehouseId &&
+                                line.id != null &&
+                                !legacyPlanHiddenForViewer
+                              ) {
                                 const warehouseAssignment = assignments.find(
                                   (a) =>
                                     a.warehouse_id != null &&
@@ -1570,6 +1875,17 @@ function ReceiptOrderDetailPage() {
                                     </Text>
                                   );
                                 }
+                              }
+                              if (isHub && legacyPlanHiddenForViewer) {
+                                const unit =
+                                  line.unit_name?.trim() ||
+                                  (line.unit_id ? `unit #${line.unit_id}` : '');
+                                return (
+                                  <Text fw={600}>
+                                    {hubOrderedTotal.toLocaleString()}
+                                    {unit ? ` ${unit}` : ''}
+                                  </Text>
+                                );
                               }
                               if (isHub) {
                                 const unit =
@@ -1854,6 +2170,8 @@ function ReceiptOrderDetailPage() {
           </Stack>
         </Tabs.Panel>
 
+        {!legacyPlanHiddenForViewer ? (
+        <>
         <Tabs.Panel value="assignments" pt="md">
           <Stack gap="md">
             <Group justify="space-between">
@@ -2187,6 +2505,19 @@ function ReceiptOrderDetailPage() {
                           })()}
                         />
                       </SimpleGrid>
+                      {storeAssignmentPackagingHint ? (
+                        <Text size="xs" c={storeAssignmentPackagingHint.isWholeNumber ? 'teal' : 'orange'}>
+                          Package spec: <strong>{storeAssignmentPackagingHint.packageSpec}</strong>
+                          {' — approx. '}
+                          <strong>
+                            {storeAssignmentPackagingHint.packagesFormatted}{' '}
+                            {storeAssignmentPackagingHint.containerLabel}
+                          </strong>
+                          {!storeAssignmentPackagingHint.isWholeNumber
+                            ? ' (not a whole number of packages)'
+                            : ''}
+                        </Text>
+                      ) : null}
                       {!assignableManagersLoading &&
                       assignmentStoreSelectData.length === 0 &&
                       !assignableManagersError ? (
@@ -2461,9 +2792,26 @@ function ReceiptOrderDetailPage() {
 
           </Stack>
         </Tabs.Panel>
+        </>
+        ) : null}
 
         <Tabs.Panel value="workflow" pt="md">
-          <WorkflowTimeline events={workflowEvents} />
+          <Stack gap="md">
+            {routingOverrideEvents.length > 0 ? (
+              <Card withBorder padding="md" radius="md">
+                <Stack gap="sm">
+                  <Title order={5}>Receipt authorization routing overrides</Title>
+                  <Text size="sm" c="dimmed">
+                    Hub created a Receipt Authorization choosing a warehouse without consuming a planned assignment row,
+                    or diverging from warehouses listed on assignments for this line (see payloads for warehouse ids).
+                  </Text>
+                  <WorkflowTimeline events={routingOverrideEvents} />
+                </Stack>
+              </Card>
+            ) : null}
+            <Title order={5}>Full timeline</Title>
+            <WorkflowTimeline events={workflowEvents} />
+          </Stack>
         </Tabs.Panel>
       </Tabs>
 
