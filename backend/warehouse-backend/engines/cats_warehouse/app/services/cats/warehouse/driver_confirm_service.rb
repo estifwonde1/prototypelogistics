@@ -63,9 +63,9 @@ module Cats
         end
 
         # Fallback: use the most recent inspection that doesn't have a GRN yet
+        # auto_generated_grn_id is on the inspection record itself
         insp = @ra.inspections
-                   .left_joins(:auto_generated_grn)
-                   .where(cats_warehouse_grns: { id: nil })
+                   .where(auto_generated_grn_id: nil)
                    .order(created_at: :desc)
                    .first
 
@@ -75,7 +75,7 @@ module Cats
 
       def validate!(inspection)
         raise ArgumentError, "Receipt Authorization must be Active" unless @ra.active?
-        raise ArgumentError, "This inspection already has a GRN" if inspection.auto_generated_grn.present?
+        raise ArgumentError, "This inspection already has a GRN" if inspection.auto_generated_grn_id.present?
       end
 
       def create_draft_grn!(inspection)
@@ -103,7 +103,6 @@ module Cats
           receipt_order:              @ra.receipt_order,
           receipt_authorization:      @ra,
           generated_from_inspection:  inspection,
-          source:                     @ra.receipt_order,
           reference_no:               reference_no,
           status:                     "draft"
         )
@@ -111,6 +110,9 @@ module Cats
         grn_item_attrs.each do |attrs|
           grn.grn_items.create!(attrs)
         end
+
+        # Link the GRN back to the inspection so we can find it later
+        inspection.update_columns(auto_generated_grn_id: grn.id)
 
         grn
       end

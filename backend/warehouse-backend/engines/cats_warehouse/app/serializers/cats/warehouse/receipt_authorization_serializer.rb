@@ -96,7 +96,8 @@ module Cats
         return nil unless current_user
         insp = object.inspections.find_by(inspector_id: current_user.id)
         return nil unless insp
-        grn = insp.auto_generated_grn
+        return nil unless insp.auto_generated_grn_id.present?
+        grn = Grn.find_by(id: insp.auto_generated_grn_id)
         return nil unless grn
         {
           id: grn.id,
