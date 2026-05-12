@@ -11,7 +11,7 @@ module Cats
           
           # Verify user has access to this warehouse
           access = AccessContext.new(user: current_user)
-          unless access.accessible_warehouse_ids.include?(warehouse_id)
+          unless access.admin? || Warehouse.where(id: access.accessible_warehouse_ids).exists?(warehouse_id)
             return render_error("Access denied to warehouse #{warehouse_id}", status: :forbidden)
           end
           
@@ -117,7 +117,13 @@ module Cats
           :quantity,
           :unit_id,
           :reference
-        )
+        ).tap do |p|
+          # Strip commodity_id and unit_id if 0 or blank — stacks are physical spaces,
+          # commodity is assigned when goods arrive, not when the stack is created.
+          p.delete(:commodity_id) if p[:commodity_id].blank? || p[:commodity_id].to_i == 0
+          p.delete(:unit_id)      if p[:unit_id].blank?      || p[:unit_id].to_i == 0
+          p.delete(:reference)    if p[:reference].blank?
+        end
       end
 
     end

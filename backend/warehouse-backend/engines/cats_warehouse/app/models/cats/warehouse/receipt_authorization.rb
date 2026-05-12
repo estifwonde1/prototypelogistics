@@ -24,10 +24,10 @@ module Cats
       belongs_to :cancelled_by,             class_name: "Cats::Core::User", optional: true,
                                             foreign_key: :cancelled_by_id
 
-      has_one :inspection, class_name: "Cats::Warehouse::Inspection",
-              foreign_key: :receipt_authorization_id, dependent: :nullify
-      has_one :grn, class_name: "Cats::Warehouse::Grn",
-              foreign_key: :receipt_authorization_id, dependent: :nullify
+      has_many :inspections, class_name: "Cats::Warehouse::Inspection",
+               foreign_key: :receipt_authorization_id, dependent: :nullify
+      has_many :grns, class_name: "Cats::Warehouse::Grn",
+               foreign_key: :receipt_authorization_id, dependent: :nullify
 
       # ── Validations ───────────────────────────────────────────────────────
       validates :status,              presence: true, inclusion: { in: STATUSES }

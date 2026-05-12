@@ -117,7 +117,7 @@ module Cats
         ra = receipt_authorization
 
         raise ArgumentError, "Cannot cancel — Receipt Authorization is not Pending" unless ra.pending?
-        raise ArgumentError, "Cannot cancel — an Inspection has already been recorded against this Receipt Authorization" if ra.inspection.present?
+        raise ArgumentError, "Cannot cancel — an Inspection has already been recorded against this Receipt Authorization" if ra.inspections.any?
 
         ReceiptAuthorization.transaction do
           ra.update!(

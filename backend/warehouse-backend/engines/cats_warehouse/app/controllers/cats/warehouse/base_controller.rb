@@ -27,7 +27,9 @@ module Cats
         payload = ActiveModelSerializers::SerializableResource.new(
           resource,
           serializer: serializer,
-          each_serializer: each_serializer
+          each_serializer: each_serializer,
+          scope: current_user,
+          scope_name: :current_user
         ).as_json
         render_success(payload, status: status)
       end

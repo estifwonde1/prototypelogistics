@@ -5,7 +5,7 @@ module Cats
         authorize ReceiptAuthorization
         ras = policy_scope(ReceiptAuthorization)
               .includes(:receipt_order, :receipt_order_line, :store, :warehouse, :transporter,
-                        :created_by, :driver_confirmed_by, :inspection, :grn)
+                        :created_by, :driver_confirmed_by, :inspections, :grns)
               .order(created_at: :desc)
 
         # Optional filters
@@ -34,7 +34,7 @@ module Cats
       def show
         ra = policy_scope(ReceiptAuthorization)
              .includes(:receipt_order, :receipt_order_line, :store, :warehouse, :transporter,
-                       :created_by, :driver_confirmed_by, :inspection, :grn)
+                       :created_by, :driver_confirmed_by, :inspections, :grns)
              .find(params[:id])
         authorize ra
         render_resource(ra, serializer: ReceiptAuthorizationSerializer)
@@ -113,7 +113,11 @@ module Cats
         ra = policy_scope(ReceiptAuthorization).find(params[:id])
         authorize ra, :driver_confirm?
 
-        DriverConfirmService.new(receipt_authorization: ra, actor: current_user).call
+        DriverConfirmService.new(
+          receipt_authorization: ra,
+          actor: current_user,
+          inspection_id: params[:inspection_id].presence
+        ).call
         render_resource(ra.reload, serializer: ReceiptAuthorizationSerializer)
       end
 

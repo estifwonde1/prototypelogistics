@@ -470,12 +470,14 @@ module Cats
           raise ArgumentError, "Receipt Authorization not found for this order" unless ra
           raise ArgumentError, "Receipt Authorization must be Active to finish stacking" unless ra.active?
 
-          grn = ra.grn
+          grn = ra.grns.where(status: "draft").order(created_at: :desc).first
           raise ArgumentError, "No Draft GRN found for this Receipt Authorization. Complete Driver Confirm first." unless grn
           raise ArgumentError, "GRN must be in Draft status" unless grn.status.to_s.downcase == "draft"
 
-          # Validate total stacked matches inspection quantity
-          inspection = ra.inspection
+          # Find the inspection linked to this specific GRN (each storekeeper has their own)
+          inspection = grn.generated_from_inspection
+          # Fall back to any inspection on the RA if the GRN link is missing
+          inspection ||= ra.inspections.order(created_at: :desc).first
           total_to_stack = inspection ? inspection.inspection_items.sum(:quantity_received).to_f : ra.authorized_quantity.to_f
           total_stacked = placements.sum { |p| p[:quantity].to_f }
 

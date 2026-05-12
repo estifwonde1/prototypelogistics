@@ -10,7 +10,8 @@ module Cats
                  :authorized_quantity,
                  :driver_name, :driver_id_number, :truck_plate_number, :waybill_number,
                  :driver_confirmed_at, :driver_confirmed_by_name,
-                 :inspection_id,
+                 :inspection_id, :total_received, :inspections_count,
+                 :my_inspection, :my_grn,
                  :grn_id, :grn_reference_no, :grn_status,
                  :created_by_name,
                  :cancelled_at,
@@ -40,19 +41,55 @@ module Cats
       end
 
       def inspection_id
-        object.inspection&.id
+        # Return the most recent inspection for backward compatibility
+        object.inspections.order(created_at: :desc).first&.id
+      end
+
+      def total_received
+        object.inspections.joins(:inspection_items).sum("cats_warehouse_inspection_items.quantity_received").to_f
+      end
+
+      def inspections_count
+        object.inspections.count
+      end
+
+      # The current user's own inspection for this RA (nil if they haven't recorded yet)
+      def my_inspection
+        return nil unless current_user
+        insp = object.inspections.find_by(inspector_id: current_user.id)
+        return nil unless insp
+        {
+          id: insp.id,
+          total_received: insp.inspection_items.sum(:quantity_received).to_f,
+          quality_status: insp.inspection_items.first&.quality_status,
+          created_at: insp.created_at
+        }
+      end
+
+      # The GRN generated from the current user's inspection
+      def my_grn
+        return nil unless current_user
+        insp = object.inspections.find_by(inspector_id: current_user.id)
+        return nil unless insp
+        grn = insp.auto_generated_grn
+        return nil unless grn
+        {
+          id: grn.id,
+          reference_no: grn.reference_no,
+          status: grn.status
+        }
       end
 
       def grn_id
-        object.grn&.id
+        object.grns.order(created_at: :desc).first&.id
       end
 
       def grn_reference_no
-        object.grn&.reference_no
+        object.grns.order(created_at: :desc).first&.reference_no
       end
 
       def grn_status
-        object.grn&.status
+        object.grns.order(created_at: :desc).first&.status
       end
 
       def created_by_name

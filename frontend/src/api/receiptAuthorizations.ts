@@ -36,6 +36,10 @@ export interface ReceiptAuthorization {
 
   // Linked documents
   inspection_id?: number | null;
+  total_received?: number;
+  inspections_count?: number;
+  my_inspection?: { id: number; total_received: number; quality_status?: string; created_at: string } | null;
+  my_grn?: { id: number; reference_no?: string; status: string } | null;
   grn_id?: number | null;
   grn_reference_no?: string | null;
   grn_status?: string | null;
@@ -121,7 +125,8 @@ export async function cancelReceiptAuthorization(id: number): Promise<ReceiptAut
   return (response.data.data || response.data) as ReceiptAuthorization;
 }
 
-export async function driverConfirm(id: number): Promise<ReceiptAuthorization> {
-  const response = await apiClient.post(`/receipt_authorizations/${id}/driver_confirm`);
+export async function driverConfirm(id: number, inspectionId?: number): Promise<ReceiptAuthorization> {
+  const body = inspectionId ? { inspection_id: inspectionId } : {};
+  const response = await apiClient.post(`/receipt_authorizations/${id}/driver_confirm`, body);
   return (response.data.data || response.data) as ReceiptAuthorization;
 }

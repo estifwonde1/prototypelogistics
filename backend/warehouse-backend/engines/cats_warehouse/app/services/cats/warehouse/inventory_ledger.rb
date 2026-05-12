@@ -61,6 +61,12 @@ module Cats
         ensure_non_negative!(stack.base_quantity, "stack quantity")
         stack.save!
 
+        # When a stack is emptied (quantity reaches 0), clear its commodity affiliation
+        # so a different commodity can be placed in it next time.
+        if stack.quantity.to_f <= 0.0001 && stack.commodity_id.present?
+          stack.update_columns(commodity_id: nil, unit_id: nil, base_unit_id: nil)
+        end
+
         StackTransaction.create!(
           source_id: quantity_delta.negative? ? item.stack_id : nil,
           destination_id: quantity_delta.positive? ? item.stack_id : nil,

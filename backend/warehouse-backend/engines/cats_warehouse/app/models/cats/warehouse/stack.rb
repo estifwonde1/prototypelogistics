@@ -6,8 +6,11 @@ module Cats
       FOOTPRINT_OVERLAP_EPS = 1.0e-4
 
       belongs_to :store, class_name: "Cats::Warehouse::Store"
-      belongs_to :commodity, class_name: "Cats::Core::Commodity"
-      belongs_to :unit, class_name: "Cats::Core::UnitOfMeasure"
+      # commodity and unit are optional — a stack is a physical space.
+      # Commodity is assigned when the first batch of goods is placed in it.
+      # When all goods leave, commodity is cleared and the stack is available again.
+      belongs_to :commodity, class_name: "Cats::Core::Commodity", optional: true
+      belongs_to :unit, class_name: "Cats::Core::UnitOfMeasure", optional: true
       belongs_to :base_unit, class_name: "Cats::Core::UnitOfMeasure", optional: true
 
       has_many :outgoing_stack_transactions,
@@ -27,6 +30,7 @@ module Cats
       validates :base_quantity, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
       validate :fits_inside_store
       validate :no_footprint_overlap_with_sibling_stacks
+      validate :commodity_lock_respected, if: :commodity_id_changed?
 
       def footprint_area
         length.to_f * width.to_f
@@ -47,6 +51,29 @@ module Cats
       end
 
       private
+
+      # A stack that holds goods (quantity > 0) cannot have its commodity changed
+      # to a DIFFERENT commodity type. Same commodity (different batch) is allowed.
+      # A different commodity type is only allowed once the stack is empty (quantity == 0).
+      def commodity_lock_respected
+        return unless quantity.to_f > 0
+        return unless commodity_id_was.present?
+        return if commodity_id == commodity_id_was # no change
+
+        old_commodity = Cats::Core::Commodity.find_by(id: commodity_id_was)
+        new_commodity = Cats::Core::Commodity.find_by(id: commodity_id)
+        return unless old_commodity && new_commodity
+
+        old_name = old_commodity.read_attribute(:name).to_s.strip.downcase
+        new_name = new_commodity.read_attribute(:name).to_s.strip.downcase
+
+        return if old_name == new_name # same commodity type — allowed
+
+        errors.add(:commodity,
+                   "cannot be changed while the stack holds goods. " \
+                   "Current commodity: #{old_commodity.read_attribute(:name)}. " \
+                   "Remove all goods before placing a different commodity.")
+      end
 
       # Axis-aligned rectangles on the store floor (X = length axis, Y = width axis).
       def axis_aligned_footprints_overlap?(ax, ay, al, aw, bx, by, bl, bw)

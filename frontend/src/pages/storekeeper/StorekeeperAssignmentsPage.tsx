@@ -156,7 +156,7 @@ export default function StorekeeperAssignmentsPage() {
       </Group>
 
       <Text c="dimmed">
-        Receipt orders assigned to your store. Accept to prepare stacking space for the incoming commodities.
+        Receipt orders assigned to your store. These show what's coming — use Receipt Authorizations to record each truck delivery.
       </Text>
 
       {focusOrderId ? (
@@ -247,15 +247,11 @@ export default function StorekeeperAssignmentsPage() {
                 <Group gap="sm">
                   <Button
                     size="sm"
-                    color="green"
+                    variant="light"
                     leftSection={<IconBoxMultiple size={16} />}
-                    onClick={() => acceptMutation.mutate({
-                      id: assignment.id,
-                      storeId: assignment.store_id || 0,
-                    })}
-                    loading={acceptMutation.isPending}
+                    onClick={() => navigate(`/storekeeper/receipt-authorizations`)}
                   >
-                    Accept &amp; Prepare Stack
+                    View Receipt Authorizations
                   </Button>
                 </Group>
               </Stack>

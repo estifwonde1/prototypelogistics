@@ -22,14 +22,17 @@ module Cats
         if @receipt_authorization_id.present?
           ra = ReceiptAuthorization.find_by(id: @receipt_authorization_id)
           raise ArgumentError, "Receipt Authorization not found" unless ra
-          raise ArgumentError, "Receipt Authorization is not Pending" unless ra.pending?
-          raise ArgumentError, "A Receipt Authorization can only have one active Inspection" if ra.inspection.present?
+          raise ArgumentError, "Receipt Authorization must be Pending or Active to record a receipt" unless ra.pending? || ra.active?
 
-          # Validate total quantity_received does not exceed authorized_quantity
-          total_received = @items.sum { |item| item[:quantity_received].to_f }
-          if total_received > ra.authorized_quantity.to_f + 0.0001
+          # Validate that adding this receipt does not exceed the RA's authorized quantity.
+          # Multiple storekeepers can record against the same RA (one per store portion).
+          new_qty = @items.sum { |item| item[:quantity_received].to_f }
+          already_received = ra.inspections.joins(:inspection_items).sum("cats_warehouse_inspection_items.quantity_received").to_f
+
+          if already_received + new_qty > ra.authorized_quantity.to_f + 0.0001
+            remaining = (ra.authorized_quantity.to_f - already_received).round(4)
             raise ArgumentError,
-                  "Quantity received (#{total_received}) exceeds authorized quantity (#{ra.authorized_quantity})"
+                  "Quantity received (#{new_qty}) exceeds remaining authorized quantity (#{remaining})"
           end
         end
 
@@ -46,8 +49,9 @@ module Cats
             receipt_authorization_id: @receipt_authorization_id
           )
 
-          # Transition RA from Pending → Active now that an inspection is linked
-          if ra
+          # Transition RA from Pending → Active on the first inspection.
+          # Subsequent inspections (from other storekeepers) keep it Active.
+          if ra && ra.pending?
             ra.update!(status: ReceiptAuthorization::ACTIVE)
             WorkflowEventRecorder.record!(
               entity:      ra.receipt_order,

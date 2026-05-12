@@ -857,7 +857,7 @@ stacks = stores.flat_map.with_index do |store, idx|
     existing&.update_columns(start_x: 1 + (i * 11), start_y: 1)
   end
 
-  commodities.sample(3).map.with_index do |commodity, i|
+  commodities.sample(3).map.with_index do |_commodity, i|
     find_or_create_with(
       Cats::Warehouse::Stack,
       { code: "#{store.code}-S#{i + 1}" },
@@ -867,10 +867,9 @@ stacks = stores.flat_map.with_index do |store, idx|
         height: 5,
         start_x: 1 + (i * 11), # S1@x=1, S2@x=12, S3@x=23 — no overlap
         start_y: 1,
-        commodity: commodity,
         store: store,
-        unit: commodity.unit_of_measure,
-        quantity: 200 + (idx * 10)
+        quantity: 0
+        # No commodity or unit — stacks are physical spaces, commodity assigned when goods arrive
       }
     )
   end

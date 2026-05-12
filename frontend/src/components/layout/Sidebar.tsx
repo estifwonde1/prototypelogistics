@@ -419,6 +419,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               path: "/storekeeper/assignments",
               resource: "receipt_orders",
             },
+            {
+              label: "Driver Arrivals",
+              icon: <IconTruck size={20} />,
+              path: "/storekeeper/receipt-authorizations",
+              resource: "receipt_orders",
+            },
           ],
         },
         {
@@ -435,18 +441,6 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               icon: <IconFileExport size={20} />,
               path: "/gins",
               resource: "gins",
-            },
-            {
-              label: "Inspections",
-              icon: <IconUserCheck size={20} />,
-              path: "/inspections",
-              resource: "inspections",
-            },
-            {
-              label: "Receipts",
-              icon: <IconInbox size={20} />,
-              path: "/receipts",
-              resource: "receipts",
             },
             {
               label: "Dispatches",

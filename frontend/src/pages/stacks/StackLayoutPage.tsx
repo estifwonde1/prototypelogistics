@@ -377,18 +377,11 @@ export default function StackLayoutPage() {
     validate: {
       code: (value) => (!value ? 'Stack code is required' : null),
       stack_status: (value) => (!value ? 'Stack status is required' : null),
-      commodity_definition_id: (value, values) =>
-        values.stack_status !== 'empty' && !value ? 'Select a commodity' : null,
-      commodity_id: (value, values) =>
-        values.stack_status !== 'empty' && !value ? 'Select a batch' : null,
       length: (value) => (value <= 0 ? 'Length must be greater than 0' : null),
       width: (value) => (value <= 0 ? 'Width must be greater than 0' : null),
       height: (value) => (value <= 0 ? 'Height must be greater than 0' : null),
       start_x: (value) => (value < 0 ? 'X position cannot be negative' : null),
       start_y: (value) => (value < 0 ? 'Y position cannot be negative' : null),
-      quantity: (value) => (value < 0 ? 'Quantity cannot be negative' : null),
-      unit_id: (value, values) =>
-        values.stack_status !== 'empty' && !value ? 'Unit is required' : null,
       store_id: (value) => (!value ? 'Store is required' : null),
     },
   });
@@ -487,21 +480,17 @@ export default function StackLayoutPage() {
 
   const upsertMutation = useMutation({
     mutationFn: async (values: StackFormValues) => {
-      const resolvedCommId = Number(values.commodity_id) || 0;
-
+      // Stack is a physical space — do NOT send commodity/unit/quantity when creating.
+      // Commodity gets assigned automatically when goods are placed via the stacking flow.
       const payload: Partial<StackType> = {
         code: values.code,
         stack_status: values.stack_status,
-        commodity_id: resolvedCommId,
         length: values.length,
         width: values.width,
         height: values.height,
         start_x: values.start_x,
         start_y: values.start_y,
-        quantity: values.quantity,
-        unit_id: Number(values.unit_id || 0),
         store_id: Number(values.store_id),
-        reference: values.reference,
       };
 
       if (values.id) {
@@ -1342,62 +1331,28 @@ export default function StackLayoutPage() {
             </Group>
 
             <Stack gap={6}>
-              <Group grow align="flex-start">
-                <Select
-                  label="Commodity"
-                  description="Same list as Officer → Commodities (admin definitions)"
-                  placeholder="Select commodity"
-                  data={definitionSelectOptions}
-                  searchable
-                  styles={baseInputStyles}
-                  {...form.getInputProps('commodity_definition_id')}
-                  onChange={(value) => {
-                    form.setValues({
-                      ...form.values,
-                      commodity_definition_id: value || '',
-                      commodity_id: '',
-                      commodity_name: '',
-                      reference: '',
-                      unit_id: '',
-                    });
-                  }}
-                  style={{ flex: 2 }}
-                />
-                <Select
-                  key={`batch-${form.values.commodity_definition_id}-${form.values.commodity_id}`}
-                  label="Batch / Reference"
-                  description="Batches created on Officer → Commodities for this name"
-                  placeholder={
-                    form.values.commodity_definition_id
-                      ? 'Choose batch'
-                      : 'Select a commodity first'
-                  }
-                  data={batchSelectOptions}
-                  searchable
-                  clearable
-                  disabled={!form.values.commodity_definition_id}
-                  nothingFoundMessage={
-                    form.values.commodity_definition_id
-                      ? 'No batches yet — create them under Officer → Commodities'
-                      : 'Select a commodity first'
-                  }
-                  {...form.getInputProps('commodity_id')}
-                  onChange={(value) => {
-                    const row = commodities.find((c) => String(c.id) === value);
-                    form.setValues({
-                      ...form.values,
-                      commodity_id: value || '',
-                      commodity_name: row?.name || form.values.commodity_name,
-                      reference: (row?.batch_no || '').trim(),
-                      unit_id: row?.unit_id != null ? String(row.unit_id) : form.values.unit_id,
-                    });
-                  }}
-                  style={{ flex: 1 }}
-                />
-              </Group>
-              <Text size="xs" c="dimmed">
-                Pick the officer commodity, then the batch row. Quantity, unit, and dimensions stay manual.
-              </Text>
+              {/* Stack is a physical space — commodity is assigned when goods arrive.
+                  Show read-only info if the stack currently holds goods. */}
+              {selectedStack && selectedStack.quantity > 0 && selectedStack.commodity_id ? (
+                <Alert color="blue" variant="light" title="Current Contents">
+                  <Text size="sm">
+                    <strong>Commodity:</strong> {selectedStack.commodity_name || `ID: ${selectedStack.commodity_id}`}
+                  </Text>
+                  <Text size="sm">
+                    <strong>Quantity:</strong> {selectedStack.quantity.toLocaleString()} {selectedStack.unit_abbreviation || ''}
+                  </Text>
+                  <Text size="xs" c="dimmed" mt={4}>
+                    A different commodity cannot be placed here until this stack is empty.
+                    The same commodity type can be added.
+                  </Text>
+                </Alert>
+              ) : selectedStack && selectedStack.quantity === 0 ? (
+                <Alert color="green" variant="light" title="Stack is Empty">
+                  <Text size="xs" c="dimmed">
+                    This stack is empty. Any commodity can be placed here when goods arrive.
+                  </Text>
+                </Alert>
+              ) : null}
             </Stack>
 
             <Divider
@@ -1452,24 +1407,6 @@ export default function StackLayoutPage() {
                 min={0}
                 styles={baseInputStyles}
                 {...form.getInputProps('start_y')}
-              />
-            </Group>
-
-            <Group grow align="flex-start">
-              <NumberInput
-                label="Quantity"
-                decimalScale={2}
-                min={0}
-                styles={baseInputStyles}
-                {...form.getInputProps('quantity')}
-              />
-              <Select
-                label="Unit"
-                placeholder="Select unit"
-                data={unitOptions}
-                searchable
-                styles={baseInputStyles}
-                {...form.getInputProps('unit_id')}
               />
             </Group>
 
