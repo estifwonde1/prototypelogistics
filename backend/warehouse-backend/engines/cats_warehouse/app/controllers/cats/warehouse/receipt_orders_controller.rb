@@ -529,19 +529,23 @@ module Cats
                                  grn_id: grn.id,
                                  receipt_order_id: order.id)
 
-            # Close the RA
-            ra.update!(status: ReceiptAuthorization::CLOSED)
-            WorkflowEventRecorder.record!(
-              entity:      order,
-              event_type:  "receipt_authorization.closed",
-              actor:       current_user,
-              from_status: order.status,
-              to_status:   order.status,
-              payload:     { receipt_authorization_id: ra.id, grn_id: grn.id }
-            )
+            # Close the RA only when ALL its GRNs are confirmed
+            # (all storekeepers have finished stacking their portion)
+            all_grns_confirmed = ra.grns.all? { |g| g.status.to_s.downcase == "confirmed" }
+            if all_grns_confirmed
+              ra.update!(status: ReceiptAuthorization::CLOSED)
+              WorkflowEventRecorder.record!(
+                entity:      order,
+                event_type:  "receipt_authorization.closed",
+                actor:       current_user,
+                from_status: order.status,
+                to_status:   order.status,
+                payload:     { receipt_authorization_id: ra.id }
+              )
 
-            # Check if all RAs are closed → complete the order
-            ReceiptOrderCompletionChecker.new(receipt_order: order, actor: current_user).call
+              # Check if all RAs are closed → complete the order
+              ReceiptOrderCompletionChecker.new(receipt_order: order, actor: current_user).call
+            end
           end
 
         # ── Legacy flow (backward compatible — no RA) ────────────────────────

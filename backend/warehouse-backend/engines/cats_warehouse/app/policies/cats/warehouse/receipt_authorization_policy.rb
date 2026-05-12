@@ -88,7 +88,7 @@ module Cats
       def cancel?
         return false unless record.is_a?(ReceiptAuthorization)
         return false unless record.pending?
-        return false if record.inspection.present?
+        return false if record.inspections.any?
 
         create?
       end

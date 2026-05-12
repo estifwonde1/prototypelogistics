@@ -350,8 +350,9 @@ export default function StorekeeperRADetailPage() {
                     max={maxCanRecord}
                     decimalScale={3}
                     required
+                    error={received > maxCanRecord + 0.001 ? `Cannot exceed ${maxCanRecord.toLocaleString()} ${ra.unit_name || ''}` : null}
                   />
-                  {received > 0 && (
+                  {received > 0 && received <= maxCanRecord && (
                     <Progress
                       value={receivedPct}
                       color={receivedPct < 100 ? 'orange' : 'green'}
@@ -370,14 +371,21 @@ export default function StorekeeperRADetailPage() {
                 />
               </SimpleGrid>
 
-              {received > 0 && lostPreview > 0 && (
+              {received > maxCanRecord + 0.001 && (
+                <Alert color="red" variant="light" title="Quantity too high">
+                  You cannot record more than {maxCanRecord.toLocaleString()} {ra.unit_name || ''}.
+                  Your store was assigned {maxCanRecord.toLocaleString()} and that is the maximum you can record.
+                </Alert>
+              )}
+
+              {received > 0 && received <= maxCanRecord && lostPreview > 0 && (
                 <Alert color="orange" variant="light" title={`Loss: ${lostPreview.toLocaleString()} ${ra.unit_name || ''} will be recorded as lost`}>
                   You received {received.toLocaleString()} but your store was assigned {maxCanRecord.toLocaleString()}.
                   The difference ({lostPreview.toLocaleString()}) will be automatically recorded as lost.
                 </Alert>
               )}
 
-              {received > 0 && lostPreview === 0 && (
+              {received > 0 && received <= maxCanRecord && lostPreview === 0 && (
                 <Alert color="green" variant="light" title="Full quantity received">
                   All {maxCanRecord.toLocaleString()} {ra.unit_name || ''} accounted for.
                 </Alert>
@@ -396,7 +404,7 @@ export default function StorekeeperRADetailPage() {
                 <Button
                   onClick={() => recordReceiptMutation.mutate()}
                   loading={recordReceiptMutation.isPending}
-                  disabled={!qtyReceived || Number(qtyReceived) <= 0}
+                  disabled={!qtyReceived || Number(qtyReceived) <= 0 || Number(qtyReceived) > maxCanRecord + 0.001}
                 >
                   Save Receipt
                 </Button>

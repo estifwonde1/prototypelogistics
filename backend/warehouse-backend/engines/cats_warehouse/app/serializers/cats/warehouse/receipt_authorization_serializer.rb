@@ -8,6 +8,7 @@ module Cats
                  :warehouse_id, :warehouse_name,
                  :transporter_id, :transporter_name,
                  :authorized_quantity,
+                 :commodity_id, :commodity_name, :unit_id, :unit_name,
                  :driver_name, :driver_id_number, :truck_plate_number, :waybill_number,
                  :driver_confirmed_at, :driver_confirmed_by_name,
                  :inspection_id, :total_received, :inspections_count,
@@ -19,6 +20,30 @@ module Cats
 
       def receipt_order_reference_no
         object.receipt_order&.reference_no
+      end
+
+      def commodity_id
+        object.receipt_order_line&.commodity_id ||
+          object.receipt_order&.receipt_order_lines&.first&.commodity_id
+      end
+
+      def commodity_name
+        cid = commodity_id
+        return nil unless cid
+        commodity = Cats::Core::Commodity.find_by(id: cid)
+        return nil unless commodity
+        commodity.read_attribute(:name).presence || commodity.batch_no
+      end
+
+      def unit_id
+        object.receipt_order_line&.unit_id ||
+          object.receipt_order&.receipt_order_lines&.first&.unit_id
+      end
+
+      def unit_name
+        uid = unit_id
+        return nil unless uid
+        Cats::Core::UnitOfMeasure.find_by(id: uid)&.abbreviation
       end
 
       def store_name

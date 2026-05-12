@@ -9,8 +9,9 @@ import {
   Button,
   Alert,
   SimpleGrid,
+  Progress,
 } from '@mantine/core';
-import { IconTruckDelivery, IconArrowRight } from '@tabler/icons-react';
+import { IconTruck, IconArrowRight, IconCheck } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { getReceiptAuthorizations } from '../../api/receiptAuthorizations';
 import type { ReceiptAuthorization } from '../../api/receiptAuthorizations';
@@ -18,166 +19,209 @@ import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { useAuthStore } from '../../store/authStore';
 
-function statusColor(status: ReceiptAuthorization['status']) {
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+function getMyStatus(ra: ReceiptAuthorization): 'not_recorded' | 'recorded' | 'driver_confirmed' | 'stacking' | 'done' {
+  if (!ra.my_inspection) return 'not_recorded';
+  if (!ra.my_grn) return 'recorded';
+  if (ra.my_grn.status === 'draft') return 'driver_confirmed';
+  if (ra.my_grn.status === 'confirmed') return 'done';
+  return 'driver_confirmed';
+}
+
+function myStatusLabel(status: ReturnType<typeof getMyStatus>): string {
   switch (status) {
-    case 'pending':   return 'yellow';
-    case 'active':    return 'blue';
-    case 'closed':    return 'green';
-    case 'cancelled': return 'red';
-    default:          return 'gray';
+    case 'not_recorded': return 'Record Receipt';
+    case 'recorded': return 'Confirm Driver';
+    case 'driver_confirmed': return 'Stack Goods';
+    case 'stacking': return 'Stack Goods';
+    case 'done': return 'Completed';
   }
 }
+
+function myStatusColor(status: ReturnType<typeof getMyStatus>): string {
+  switch (status) {
+    case 'not_recorded': return 'yellow';
+    case 'recorded': return 'blue';
+    case 'driver_confirmed': return 'cyan';
+    case 'stacking': return 'cyan';
+    case 'done': return 'green';
+  }
+}
+
+// ── Main component ────────────────────────────────────────────────────────
 
 export default function StorekeeperRAListPage() {
   const navigate = useNavigate();
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const warehouseId = activeAssignment?.warehouse?.id;
   const storeId = activeAssignment?.store?.id;
 
-  // Fetch Active RAs for the storekeeper's store (these need Driver Confirm)
-  const { data: activeRAs = [], isLoading: activeLoading, error: activeError } = useQuery({
-    queryKey: ['receipt_authorizations', { store_id: storeId, status: 'active' }],
-    queryFn: () => getReceiptAuthorizations({ store_id: storeId, status: 'active' }),
-    enabled: !!storeId,
+  // Fetch ALL RAs for this warehouse (pending + active) — storekeeper decides which to take
+  const { data: allRAs = [], isLoading, error, refetch } = useQuery({
+    queryKey: ['receipt_authorizations', { warehouse_id: warehouseId }],
+    queryFn: () => getReceiptAuthorizations({ warehouse_id: warehouseId }),
+    enabled: !!warehouseId,
   });
 
-  // Fetch Pending RAs for the storekeeper's store (awaiting inspection)
-  const { data: pendingRAs = [], isLoading: pendingLoading } = useQuery({
-    queryKey: ['receipt_authorizations', { store_id: storeId, status: 'pending' }],
-    queryFn: () => getReceiptAuthorizations({ store_id: storeId, status: 'pending' }),
-    enabled: !!storeId,
-  });
+  if (isLoading) return <LoadingState message="Loading driver arrivals..." />;
+  if (error) return <ErrorState message="Failed to load driver arrivals" onRetry={refetch} />;
 
-  if (activeLoading || pendingLoading) return <LoadingState message="Loading Receipt Authorizations..." />;
-  if (activeError) return <ErrorState message="Failed to load Receipt Authorizations" />;
+  // Filter to active/pending only (not closed/cancelled)
+  const activeRAs = allRAs.filter((ra) => ra.status === 'pending' || ra.status === 'active');
+  const closedRAs = allRAs.filter((ra) => ra.status === 'closed'); // eslint-disable-line @typescript-eslint/no-unused-vars
 
-  const needsDriverConfirm = activeRAs.filter((ra) => !ra.driver_confirmed_at);
-  const awaitingStacking = activeRAs.filter((ra) => ra.driver_confirmed_at && ra.grn_id);
+  // Categorize by my progress
+  const needsMyAction = activeRAs.filter((ra) => getMyStatus(ra) !== 'done');
+  const myDone = activeRAs.filter((ra) => getMyStatus(ra) === 'done');
+
+  // Summary counts
+  const notRecorded = activeRAs.filter((ra) => getMyStatus(ra) === 'not_recorded').length;
+  const needsDriverConfirm = activeRAs.filter((ra) => getMyStatus(ra) === 'recorded').length;
+  const awaitingStacking = activeRAs.filter((ra) => getMyStatus(ra) === 'driver_confirmed').length;
 
   return (
     <Stack gap="md">
       <Group>
-        <IconTruckDelivery size={28} />
-        <Title order={2}>Receipt Authorizations</Title>
+        <IconTruck size={28} />
+        <Title order={2}>Driver Arrivals</Title>
       </Group>
 
       <Text c="dimmed">
-        Manage incoming truck deliveries for your store.
+        Trucks arriving at your warehouse. Record what you receive, confirm the driver, then stack the goods.
       </Text>
 
-      {/* Summary counts */}
+      {/* Summary */}
       <SimpleGrid cols={{ base: 1, sm: 3 }}>
         <Card withBorder padding="md" radius="md">
-          <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Pending Inspection</Text>
-          <Text size="xl" fw={700} c="yellow">{pendingRAs.length}</Text>
+          <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Awaiting Your Receipt</Text>
+          <Text size="xl" fw={700} c="yellow">{notRecorded}</Text>
         </Card>
         <Card withBorder padding="md" radius="md">
           <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Needs Driver Confirm</Text>
-          <Text size="xl" fw={700} c="blue">{needsDriverConfirm.length}</Text>
+          <Text size="xl" fw={700} c="blue">{needsDriverConfirm}</Text>
         </Card>
         <Card withBorder padding="md" radius="md">
-          <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Awaiting Stacking</Text>
-          <Text size="xl" fw={700} c="cyan">{awaitingStacking.length}</Text>
+          <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Ready to Stack</Text>
+          <Text size="xl" fw={700} c="cyan">{awaitingStacking}</Text>
         </Card>
       </SimpleGrid>
 
-      {/* Active RAs needing Driver Confirm */}
-      {needsDriverConfirm.length > 0 && (
+      {/* Active RAs needing action */}
+      {needsMyAction.length > 0 && (
         <>
-          <Title order={4}>Needs Driver Confirmation</Title>
-          {needsDriverConfirm.map((ra) => (
-            <Card key={ra.id} shadow="sm" padding="lg" radius="md" withBorder>
+          <Title order={4}>Incoming Trucks</Title>
+          {needsMyAction.map((ra) => {
+            const myStatus = getMyStatus(ra);
+            const totalReceived = ra.total_received ?? 0;
+            const authorized = Number(ra.authorized_quantity);
+            const pct = authorized > 0 ? Math.min(100, (totalReceived / authorized) * 100) : 0;
+
+            return (
+              <Card key={ra.id} shadow="sm" padding="lg" radius="md" withBorder>
+                <Stack gap="sm">
+                  <Group justify="space-between" align="flex-start">
+                    <div>
+                      <Group gap="xs" mb={4}>
+                        <Text fw={600} style={{ fontFamily: 'monospace' }}>{ra.reference_no}</Text>
+                        <Badge color={myStatusColor(myStatus)} variant="light" size="sm">
+                          {myStatusLabel(myStatus)}
+                        </Badge>
+                        {ra.status === 'active' && (
+                          <Badge color="blue" variant="dot" size="xs">Active</Badge>
+                        )}
+                      </Group>
+                      <Text size="sm" c="dimmed">
+                        {ra.driver_name} — {ra.truck_plate_number}
+                      </Text>
+                      <Text size="sm" c="dimmed">
+                        Authorized: {authorized.toLocaleString()} {ra.unit_name || ''}
+                        {ra.commodity_name ? ` · ${ra.commodity_name}` : ''}
+                        {ra.transporter_name ? ` · ${ra.transporter_name}` : ''}
+                      </Text>
+                    </div>
+                    <Group gap="xs">
+                      <Button
+                        size="sm"
+                        variant="light"
+                        onClick={() => navigate(`/storekeeper/receipt-authorizations/${ra.id}`)}
+                      >
+                        View Details
+                      </Button>
+                      <Button
+                        size="sm"
+                        color={myStatusColor(myStatus)}
+                        rightSection={<IconArrowRight size={14} />}
+                        onClick={() => {
+                          if (myStatus === 'driver_confirmed' || myStatus === 'stacking') {
+                            navigate(`/stacks/layout?receipt_authorization_id=${ra.id}&store_id=${storeId}`);
+                          } else {
+                            navigate(`/storekeeper/receipt-authorizations/${ra.id}`);
+                          }
+                        }}
+                      >
+                        {myStatusLabel(myStatus)}
+                      </Button>
+                    </Group>
+                  </Group>
+
+                  {/* Overall RA progress (all storekeepers combined) */}
+                  {totalReceived > 0 && (
+                    <Stack gap={2}>
+                      <Group justify="space-between">
+                        <Text size="xs" c="dimmed">Total received across all stores</Text>
+                        <Text size="xs" c="dimmed">{totalReceived.toLocaleString()} / {authorized.toLocaleString()}</Text>
+                      </Group>
+                      <Progress value={pct} size="xs" color={pct >= 100 ? 'green' : 'blue'} />
+                    </Stack>
+                  )}
+
+                  {/* My receipt status */}
+                  {ra.my_inspection && (
+                    <Group gap="xs">
+                      <Badge color="green" variant="light" size="xs" leftSection={<IconCheck size={10} />}>
+                        You recorded {ra.my_inspection.total_received.toLocaleString()} {ra.unit_name || ''}
+                      </Badge>
+                      {ra.my_grn && (
+                        <Badge color={ra.my_grn.status === 'confirmed' ? 'green' : 'blue'} variant="light" size="xs">
+                          GRN: {ra.my_grn.reference_no || `#${ra.my_grn.id}`} ({ra.my_grn.status})
+                        </Badge>
+                      )}
+                    </Group>
+                  )}
+                </Stack>
+              </Card>
+            );
+          })}
+        </>
+      )}
+
+      {/* My completed portions */}
+      {myDone.length > 0 && (
+        <>
+          <Title order={4}>My Completed Portions</Title>
+          {myDone.map((ra) => (
+            <Card key={ra.id} shadow="sm" padding="lg" radius="md" withBorder opacity={0.75}>
               <Group justify="space-between" align="flex-start">
                 <div>
                   <Group gap="xs" mb={4}>
                     <Text fw={600} style={{ fontFamily: 'monospace' }}>{ra.reference_no}</Text>
-                    <Badge color={statusColor(ra.status)} variant="light" size="sm">
-                      {ra.status}
+                    <Badge color="green" variant="light" size="sm" leftSection={<IconCheck size={12} />}>
+                      Your portion done
                     </Badge>
                   </Group>
                   <Text size="sm" c="dimmed">
                     {ra.driver_name} — {ra.truck_plate_number}
                   </Text>
-                  <Text size="sm" c="dimmed">
-                    Qty: {Number(ra.authorized_quantity).toLocaleString()}
-                    {ra.transporter_name ? ` · ${ra.transporter_name}` : ''}
-                  </Text>
+                  {ra.my_inspection && (
+                    <Text size="sm" c="dimmed">
+                      You received: {ra.my_inspection.total_received.toLocaleString()} {ra.unit_name || ''}
+                    </Text>
+                  )}
                 </div>
                 <Button
                   size="sm"
-                  color="blue"
-                  rightSection={<IconArrowRight size={14} />}
-                  onClick={() => navigate(`/storekeeper/receipt-authorizations/${ra.id}`)}
-                >
-                  Confirm Driver
-                </Button>
-              </Group>
-            </Card>
-          ))}
-        </>
-      )}
-
-      {/* Active RAs awaiting stacking */}
-      {awaitingStacking.length > 0 && (
-        <>
-          <Title order={4}>Ready for Stacking</Title>
-          {awaitingStacking.map((ra) => (
-            <Card key={ra.id} shadow="sm" padding="lg" radius="md" withBorder>
-              <Group justify="space-between" align="flex-start">
-                <div>
-                  <Group gap="xs" mb={4}>
-                    <Text fw={600} style={{ fontFamily: 'monospace' }}>{ra.reference_no}</Text>
-                    <Badge color="cyan" variant="light" size="sm">Ready to Stack</Badge>
-                    {ra.grn_reference_no && (
-                      <Badge color="blue" variant="outline" size="sm">
-                        GRN: {ra.grn_reference_no}
-                      </Badge>
-                    )}
-                  </Group>
-                  <Text size="sm" c="dimmed">
-                    {ra.driver_name} — {ra.truck_plate_number}
-                  </Text>
-                  <Text size="sm" c="dimmed">
-                    Qty: {Number(ra.authorized_quantity).toLocaleString()}
-                  </Text>
-                </div>
-                <Button
-                  size="sm"
-                  color="cyan"
-                  rightSection={<IconArrowRight size={14} />}
-                  onClick={() => navigate(`/stacks/layout`)}
-                >
-                  Go to Stacking
-                </Button>
-              </Group>
-            </Card>
-          ))}
-        </>
-      )}
-
-      {/* Pending RAs */}
-      {pendingRAs.length > 0 && (
-        <>
-          <Title order={4}>Pending — Awaiting Inspection</Title>
-          {pendingRAs.map((ra) => (
-            <Card key={ra.id} shadow="sm" padding="lg" radius="md" withBorder opacity={0.85}>
-              <Group justify="space-between" align="flex-start">
-                <div>
-                  <Group gap="xs" mb={4}>
-                    <Text fw={600} style={{ fontFamily: 'monospace' }}>{ra.reference_no}</Text>
-                    <Badge color="yellow" variant="light" size="sm">Pending</Badge>
-                  </Group>
-                  <Text size="sm" c="dimmed">
-                    {ra.driver_name} — {ra.truck_plate_number}
-                  </Text>
-                  <Text size="sm" c="dimmed">
-                    Qty: {Number(ra.authorized_quantity).toLocaleString()}
-                    {ra.transporter_name ? ` · ${ra.transporter_name}` : ''}
-                  </Text>
-                </div>
-                <Button
-                  size="sm"
-                  variant="light"
-                  rightSection={<IconArrowRight size={14} />}
+                  variant="subtle"
                   onClick={() => navigate(`/storekeeper/receipt-authorizations/${ra.id}`)}
                 >
                   View
@@ -188,9 +232,9 @@ export default function StorekeeperRAListPage() {
         </>
       )}
 
-      {pendingRAs.length === 0 && activeRAs.length === 0 && (
-        <Alert color="blue" title="No Receipt Authorizations">
-          There are no Receipt Authorizations for your store at this time.
+      {activeRAs.length === 0 && (
+        <Alert color="blue" title="No incoming trucks">
+          There are no pending truck deliveries for your warehouse at this time.
         </Alert>
       )}
     </Stack>

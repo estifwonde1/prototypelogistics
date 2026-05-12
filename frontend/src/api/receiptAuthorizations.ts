@@ -30,6 +30,12 @@ export interface ReceiptAuthorization {
   // Quantity
   authorized_quantity: number;
 
+  // Commodity info (from receipt order lines)
+  commodity_id?: number | null;
+  commodity_name?: string | null;
+  unit_id?: number | null;
+  unit_name?: string | null;
+
   // Driver confirmation
   driver_confirmed_at?: string | null;
   driver_confirmed_by_name?: string | null;
