@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import { Center, Loader } from '@mantine/core';
 import { useAuthStore } from './store/authStore';
 import { AppShell } from './components/layout/AppShell';
@@ -8,7 +9,40 @@ import { usePermission } from './hooks/usePermission';
 import { AccessDenied } from './components/common/AccessDenied';
 import { getDefaultRouteForRole, type RoleSlug } from './contracts/warehouse';
 
+const CHUNK_RELOAD_KEY = 'cats:chunk-reload-attempted';
+
+function isChunkLoadError(error: unknown): boolean {
+  const message = String(error instanceof Error ? error.message : error);
+  return /dynamically imported module|failed to fetch dynamically imported module|importing a module script failed|loading chunk/i.test(
+    message
+  );
+}
+
+function lazyWithReload<T extends ComponentType<unknown>>(
+  importer: () => Promise<{ default: T }>
+) {
+  return lazy(() =>
+    importer()
+      .then((module) => {
+        sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+        return module;
+      })
+      .catch((error) => {
+        if (
+          isChunkLoadError(error) &&
+          sessionStorage.getItem(CHUNK_RELOAD_KEY) !== 'true'
+        ) {
+          sessionStorage.setItem(CHUNK_RELOAD_KEY, 'true');
+          window.location.reload();
+          return new Promise<{ default: T }>(() => {});
+        }
+        throw error;
+      })
+  );
+}
+
 // Lazy load pages
+<<<<<<< Updated upstream
 const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage'));
 const OfficerDashboardPage = lazy(() => import('./pages/officer/OfficerDashboardPage'));
@@ -53,6 +87,63 @@ const StorekeeperAssignmentsPage = lazy(() => import('./pages/storekeeper/Storek
 const DispatchListPage = lazy(() => import('./pages/dispatches/DispatchListPage'));
 const BinCardReportPage = lazy(() => import('./pages/reports/BinCardReportPage'));
 const StackLayoutPage = lazy(() => import('./pages/stacks/StackLayoutPage'));
+=======
+const LoginPage = lazyWithReload(() => import('./pages/auth/LoginPage'));
+const RoleSelectionPage = lazyWithReload(() => import('./pages/auth/RoleSelectionPage'));
+const DashboardPage = lazyWithReload(() => import('./pages/dashboard/DashboardPage'));
+const OfficerDashboardPage = lazyWithReload(() => import('./pages/officer/OfficerDashboardPage'));
+const HubManagerDashboardPage = lazyWithReload(() => import('./pages/hubs/HubManagerDashboardPage'));
+const WarehouseManagerDashboardPage = lazyWithReload(() => import('./pages/warehouses/WarehouseManagerDashboardPage'));
+const StorekeeperDashboardPage = lazyWithReload(() => import('./pages/storekeeper/StorekeeperDashboardPage'));
+const FacilitiesOverviewPage = lazyWithReload(() => import('./pages/officer/FacilitiesOverviewPage'));
+const ReceiptOrdersListPage = lazyWithReload(() => import('./pages/officer/ReceiptOrdersListPage'));
+const ReceiptOrderFormPage = lazyWithReload(() => import('./pages/officer/ReceiptOrderFormPage'));
+const ReceiptOrderDetailPage = lazyWithReload(() => import('./pages/officer/ReceiptOrderDetailPage'));
+const CommodityFormPage = lazyWithReload(() => import('./pages/officer/CommodityFormPage'));
+const CommoditiesSetupPage = lazyWithReload(() => import('./pages/admin/setup/CommoditiesSetupPage'));
+const DispatchOrdersListPage = lazyWithReload(() => import('./pages/officer/DispatchOrdersListPage'));
+const DispatchOrderFormPage = lazyWithReload(() => import('./pages/officer/DispatchOrderFormPage'));
+const DispatchOrderDetailPage = lazyWithReload(() => import('./pages/officer/DispatchOrderDetailPage'));
+const HubListPage = lazyWithReload(() => import('./pages/hubs/HubListPage'));
+const HubDetailPage = lazyWithReload(() => import('./pages/hubs/HubDetailPage'));
+const HubFormPage = lazyWithReload(() => import('./pages/hubs/HubFormPage'));
+const WarehouseListPage = lazyWithReload(() => import('./pages/warehouses/WarehouseListPage'));
+const WarehouseDetailPage = lazyWithReload(() => import('./pages/warehouses/WarehouseDetailPage'));
+const WarehouseFormPage = lazyWithReload(() => import('./pages/warehouses/WarehouseFormPage'));
+const StoreListPage = lazyWithReload(() => import('./pages/stores/StoreListPage'));
+const StoreFormPage = lazyWithReload(() => import('./pages/stores/StoreFormPage'));
+const StackListPage = lazyWithReload(() => import('./pages/stacks/StackListPage'));
+const StackFormPage = lazyWithReload(() => import('./pages/stacks/StackFormPage'));
+const StockBalancePage = lazyWithReload(() => import('./pages/stock/StockBalancePage'));
+const GrnListPage = lazyWithReload(() => import('./pages/grns/GrnListPage'));
+const GrnCreatePage = lazyWithReload(() => import('./pages/grns/GrnCreatePage'));
+const GrnDetailPage = lazyWithReload(() => import('./pages/grns/GrnDetailPage'));
+const GinListPage = lazyWithReload(() => import('./pages/gins/GinListPage'));
+const GinCreatePage = lazyWithReload(() => import('./pages/gins/GinCreatePage'));
+const GinDetailPage = lazyWithReload(() => import('./pages/gins/GinDetailPage'));
+const InspectionListPage = lazyWithReload(() => import('./pages/inspections/InspectionListPage'));
+const InspectionCreatePage = lazyWithReload(() => import('./pages/inspections/InspectionCreatePage'));
+const InspectionDetailPage = lazyWithReload(() => import('./pages/inspections/InspectionDetailPage'));
+const WaybillListPage = lazyWithReload(() => import('./pages/waybills/WaybillListPage'));
+const WaybillCreatePage = lazyWithReload(() => import('./pages/waybills/WaybillCreatePage'));
+const WaybillDetailPage = lazyWithReload(() => import('./pages/waybills/WaybillDetailPage'));
+const AdminUsersPage = lazyWithReload(() => import('./pages/admin/users/AdminUsersPage'));
+const UserAssignmentsPage = lazyWithReload(() => import('./pages/admin/assignments/UserAssignmentsPage'));
+const RolesManagementPage = lazyWithReload(() => import('./pages/admin/roles/RolesManagementPage'));
+const LocationsSetupPage = lazyWithReload(() => import('./pages/admin/setup/LocationsSetupPage'));
+const HubSetupPage = lazyWithReload(() => import('./pages/admin/setup/HubSetupPage'));
+const WarehouseSetupPage = lazyWithReload(() => import('./pages/admin/setup/WarehouseSetupPage'));
+const StorekeeperAssignmentsPage = lazyWithReload(() => import('./pages/storekeeper/StorekeeperAssignmentsPage'));
+const DispatchListPage = lazyWithReload(() => import('./pages/dispatches/DispatchListPage'));
+const BinCardReportPage = lazyWithReload(() => import('./pages/reports/BinCardReportPage'));
+const StackLayoutPage = lazyWithReload(() => import('./pages/stacks/StackLayoutPage'));
+const TransferRequestsPage = lazyWithReload(() => import('./pages/stock/TransferRequestsPage'));
+const ReceiptAuthorizationListPage = lazyWithReload(() => import('./pages/hub-manager/ReceiptAuthorizationListPage'));
+const ReceiptAuthorizationFormPage = lazyWithReload(() => import('./pages/hub-manager/ReceiptAuthorizationFormPage'));
+const ReceiptAuthorizationDetailPage = lazyWithReload(() => import('./pages/hub-manager/ReceiptAuthorizationDetailPage'));
+const StorekeeperRAListPage = lazyWithReload(() => import('./pages/storekeeper/StorekeeperRAListPage'));
+const StorekeeperRADetailPage = lazyWithReload(() => import('./pages/storekeeper/StorekeeperRADetailPage'));
+>>>>>>> Stashed changes
 
 // Loading fallback
 const LoadingFallback = () => (
@@ -66,7 +157,7 @@ type PermissionResource = PermissionArgs[0];
 type PermissionAction = PermissionArgs[1];
 
 // Protected Route Component
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+const ProtectedRoute = ({ children }: { children: ReactNode }) => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated());
   
   if (!isAuthenticated) {
@@ -83,7 +174,7 @@ const RequirePermission = ({
 }: {
   resource: PermissionResource;
   action: PermissionAction;
-  children: React.ReactNode;
+  children: ReactNode;
 }) => {
   const { can } = usePermission();
   if (!can(resource, action)) {
@@ -92,7 +183,7 @@ const RequirePermission = ({
   return <>{children}</>;
 };
 
-const RequireAdmin = ({ children }: { children: React.ReactNode }) => {
+const RequireAdmin = ({ children }: { children: ReactNode }) => {
   const role = useAuthStore((state) => state.role);
   if (role !== 'admin' && role !== 'superadmin') {
     return <AccessDenied />;

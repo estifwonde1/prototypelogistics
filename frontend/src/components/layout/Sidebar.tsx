@@ -310,7 +310,8 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               label: "Receipts",
               icon: <IconInbox size={20} />,
               path: "/receipts",
-              resource: "receipts",
+              resource: "receipt_orders",
+            
             },
             {
               label: "Dispatches",
@@ -422,10 +423,10 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               resource: "inspections",
             },
             {
-              label: "Receipts",
+              label: "Receipt Orders",
               icon: <IconInbox size={20} />,
               path: "/receipts",
-              resource: "receipts",
+              resource: "receipt_orders",           
             },
             {
               label: "Dispatches",

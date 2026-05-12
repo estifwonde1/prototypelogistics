@@ -3,7 +3,95 @@ module Cats
     class ReceiptOrdersController < BaseController
       def index
         authorize ReceiptOrder
+<<<<<<< Updated upstream
         orders = policy_scope(ReceiptOrder).includes(*order_detail_includes).order(created_at: :desc)
+=======
+        
+        # CRITICAL: For warehouse managers with warehouse_id parameter, we need to filter
+        # BEFORE policy_scope to ensure we only get orders for the active warehouse
+        if params[:warehouse_id].present?
+          warehouse_id = params[:warehouse_id].to_i
+          
+          # Verify user has access to this warehouse
+          access = AccessContext.new(user: current_user)
+          unless access.accessible_warehouse_ids.include?(warehouse_id)
+            return render_error("Access denied to warehouse #{warehouse_id}", status: :forbidden)
+          end
+          
+          # Get store IDs for this warehouse
+          store_ids = Store.where(warehouse_id: warehouse_id).pluck(:id)
+          
+          roa_t = ReceiptOrderAssignment.table_name
+          # Assignments for this warehouse/stores (exclude rejected; match assignment service normalization)
+          assignment_order_ids =
+            ReceiptOrderAssignment
+              .where(warehouse_id: warehouse_id)
+              .or(ReceiptOrderAssignment.where(store_id: store_ids))
+              .where.not("LOWER(TRIM(#{roa_t}.status)) = ?", "rejected")
+              .distinct
+              .pluck(:receipt_order_id)
+
+          # Orders with an active Receipt Authorization routed to this warehouse (covers plan-change
+          # handoffs if assignment rows were missing or out of sync).
+          ra_t = ReceiptAuthorization.table_name
+          ra_order_ids =
+            ReceiptAuthorization
+              .where(warehouse_id: warehouse_id)
+              .where.not("LOWER(TRIM(#{ra_t}.status)) = ?", ReceiptAuthorization::CANCELLED)
+              .distinct
+              .pluck(:receipt_order_id)
+
+          assigned_order_ids = (assignment_order_ids + ra_order_ids).uniq
+
+          # Get orders where:
+          # 1. Main warehouse_id matches, OR
+          # 2. Order has an assignment to this warehouse/stores, OR
+          # 3. Order has a non-cancelled RA for this warehouse
+          orders = ReceiptOrder
+            .where(warehouse_id: warehouse_id)
+            .or(ReceiptOrder.where(id: assigned_order_ids))
+            .includes(*order_detail_includes)
+            .order(created_at: :desc)
+          
+          # Apply policy scope for authorization
+          orders = policy_scope(orders)
+        else
+          # No warehouse filter - use standard policy scope
+          orders = policy_scope(ReceiptOrder)
+            .includes(*order_detail_includes)
+            .order(created_at: :desc)
+
+          if params[:hub_id].present?
+            hub_id = params[:hub_id].to_i
+            access = AccessContext.new(user: current_user)
+            accessible_hub_ids = access.accessible_hub_ids
+            has_hub_access =
+              if accessible_hub_ids.is_a?(Array)
+                accessible_hub_ids.map(&:to_i).include?(hub_id)
+              else
+                accessible_hub_ids.exists?(id: hub_id)
+              end
+
+            unless has_hub_access
+              return render_error("Access denied to hub #{hub_id}", status: :forbidden)
+            end
+
+            warehouse_ids = Warehouse.where(hub_id: hub_id).select(:id)
+            hub_order_ids = ReceiptOrder.where(hub_id: hub_id)
+              .or(ReceiptOrder.where(warehouse_id: warehouse_ids))
+              .select(:id)
+            assignment_order_ids = ReceiptOrderAssignment
+              .where(hub_id: hub_id)
+              .or(ReceiptOrderAssignment.where(warehouse_id: warehouse_ids))
+              .distinct
+              .select(:receipt_order_id)
+
+            orders = orders.where(id: hub_order_ids)
+              .or(orders.where(id: assignment_order_ids))
+          end
+        end
+        
+>>>>>>> Stashed changes
         render_resource(orders, each_serializer: ReceiptOrderSerializer)
       end
 

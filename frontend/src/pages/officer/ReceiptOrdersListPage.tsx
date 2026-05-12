@@ -78,9 +78,33 @@ function ReceiptOrdersListPage() {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [warehouseFilter, setWarehouseFilter] = useState<string | null>(null);
 
+<<<<<<< Updated upstream
   const { data: orders, isLoading, error, refetch } = useQuery({
     queryKey: ['receipt_orders'],
     queryFn: getReceiptOrders,
+=======
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const role = useAuthStore((state) => state.role);
+  const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || role);
+  const userWarehouseId = activeAssignment?.warehouse?.id;
+  const userHubId = activeAssignment?.hub?.id;
+  const isWarehouseManager = roleSlug === 'warehouse_manager';
+  const isHubManager = roleSlug === 'hub_manager';
+
+  const { data: orders = [], isLoading, error, refetch } = useQuery({
+    queryKey: ['receipt_orders', { 
+      warehouse_id: isWarehouseManager ? userWarehouseId : undefined,
+      hub_id: isHubManager ? userHubId : undefined 
+    }],
+    queryFn: () => {
+      if (isWarehouseManager && userWarehouseId) {
+        return getReceiptOrders({ warehouse_id: userWarehouseId });
+      } else if (isHubManager && userHubId) {
+        return getReceiptOrders({ hub_id: userHubId });
+      }
+      return getReceiptOrders({});
+    },
+>>>>>>> Stashed changes
   });
 
   const { data: warehouses } = useQuery({

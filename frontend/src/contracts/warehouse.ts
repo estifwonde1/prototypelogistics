@@ -141,7 +141,7 @@ export const ROLE_CAPABILITIES: Record<RoleSlug, PermissionMatrix> = {
     stock_balances: ['read'],
     receipts: ['read'],
     dispatches: ['read'],
-    receipt_orders: ['read'],
+    receipt_orders: ['read', 'update'],
     dispatch_orders: ['read'],
     reports: ['read'],
   },

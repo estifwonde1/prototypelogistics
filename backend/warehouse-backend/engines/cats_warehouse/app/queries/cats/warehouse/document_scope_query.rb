@@ -99,6 +99,19 @@ module Cats
         wh_ids = access.accessible_warehouse_ids
         hub_ids = receipt_order_visible_hub_ids
         by_warehouse = scoped_relation.where(warehouse_id: wh_ids)
+<<<<<<< Updated upstream
+=======
+        
+        # For hub managers, also include orders where they have hub-level assignments (multi-hub orders)
+        if access.hub_manager?
+          by_hub = scoped_relation.where(hub_id: hub_ids)
+          # Include orders with assignments to this hub (for multi-hub orders)
+          assigned_order_ids = ReceiptOrderAssignment.where(hub_id: hub_ids).pluck(:receipt_order_id).uniq
+          rel = by_warehouse.or(by_hub).where(status: [DOCUMENT_STATUSES[:confirmed], DOCUMENT_STATUSES[:assigned]])
+          return rel.or(scoped_relation.where(id: assigned_order_ids))
+        end
+        
+>>>>>>> Stashed changes
         rel = hub_ids.blank? ? by_warehouse : by_warehouse.or(scoped_relation.where(hub_id: hub_ids))
 
         return rel.where(status: DOCUMENT_STATUSES[:assigned]) if access.hub_manager?
