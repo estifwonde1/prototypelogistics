@@ -36,7 +36,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import type { AxiosError } from 'axios';
 import { createStack, getStacks, updateStack } from '../../api/stacks';
-import { getStores } from '../../api/stores';
+import { getStore, getStores } from '../../api/stores';
 import { getCommodityReferences, getUnitReferences } from '../../api/referenceData';
 import { getCommodityDefinitions } from '../../api/commodityDefinitions';
 import type { CommodityDefinition } from '../../api/commodityDefinitions';
@@ -149,6 +149,16 @@ const MIN_DRAW_SIZE_METERS = 0.5;
 /** Meters — treat touching edges as non-overlap */
 const STACK_LAYOUT_EPS = 1e-4;
 
+/** Reject bad `store_id` query values (e.g. `store_id=undefined` from template literals). */
+function sanitizeStoreIdParam(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const t = String(value).trim();
+  if (t === '' || t === 'undefined' || t === 'null') return null;
+  const n = Number(t);
+  if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) return null;
+  return String(n);
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
@@ -239,7 +249,9 @@ function createInitialValues(storeId: string | null): StackFormValues {
 export default function StackLayoutPage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [storeId, setStoreId] = useState<string | null>(searchParams.get('store_id'));
+  const [storeId, setStoreId] = useState<string | null>(() =>
+    sanitizeStoreIdParam(searchParams.get('store_id'))
+  );
   const [editMode, setEditMode] = useState(searchParams.get('mode') === 'create');
   const [modalOpened, setModalOpened] = useState(false);
   const [selectedStack, setSelectedStack] = useState<StackType | null>(null);
@@ -259,6 +271,16 @@ export default function StackLayoutPage() {
 
   const autoPrepare = searchParams.get('auto_prepare') === 'true';
 
+  // Strip invalid store_id from the URL (e.g. legacy links with store_id=undefined).
+  useEffect(() => {
+    const raw = searchParams.get('store_id');
+    if (raw == null || raw === '') return;
+    if (sanitizeStoreIdParam(raw) !== null) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('store_id');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
   // Get active assignment context for filtering
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
   const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
@@ -269,15 +291,26 @@ export default function StackLayoutPage() {
   const isStorekeeper = roleSlug === 'storekeeper';
   const isHubManager = roleSlug === 'hub_manager';
 
+  /** Populated for storekeepers from /me/assignments (store-level includes parent warehouse). */
+  const storekeeperWarehouseId =
+    isStorekeeper && activeAssignment?.warehouse?.id != null ? activeAssignment.warehouse.id : undefined;
+
   const { data: stores = [], isLoading: storesLoading } = useQuery({
-    queryKey: ['stores', { 
-      warehouse_id: isWarehouseManager ? userWarehouseId : undefined,
-      hub_id: isHubManager ? userHubId : undefined 
-    }],
+    queryKey: [
+      'stores',
+      {
+        warehouse_id: isWarehouseManager ? userWarehouseId : storekeeperWarehouseId,
+        hub_id: isHubManager ? userHubId : undefined,
+      },
+    ],
     queryFn: () => {
       if (isWarehouseManager && userWarehouseId) {
         return getStores({ warehouse_id: userWarehouseId });
-      } else if (isHubManager && userHubId) {
+      }
+      if (isStorekeeper && storekeeperWarehouseId != null) {
+        return getStores({ warehouse_id: storekeeperWarehouseId });
+      }
+      if (isHubManager && userHubId) {
         // For hub managers, get stores from warehouses in their hub
         return getStores(); // Backend should handle hub-level filtering
       }
@@ -321,11 +354,26 @@ export default function StackLayoutPage() {
     queryFn: () => getUnitReferences(),
   });
 
-  // ── Active RAs with Draft GRN for the storekeeper's store (for finish_stacking) ──
+  // ── Active RAs with Draft GRN for the storekeeper (store-scoped or whole warehouse) ──
   const { data: activeRAsForStacking = [] } = useQuery({
-    queryKey: ['receipt_authorizations', { store_id: userStoreId, status: 'active' }],
-    queryFn: () => getReceiptAuthorizations({ store_id: userStoreId, status: 'active' }),
-    enabled: isStorekeeper && !!userStoreId,
+    queryKey: [
+      'receipt_authorizations',
+      {
+        store_id: userStoreId,
+        warehouse_id: isStorekeeper && !userStoreId ? storekeeperWarehouseId : undefined,
+        status: 'active',
+        stacking: true,
+      },
+    ],
+    queryFn: () =>
+      getReceiptAuthorizations({
+        status: 'active',
+        ...(userStoreId ? { store_id: userStoreId } : {}),
+        ...(isStorekeeper && !userStoreId && storekeeperWarehouseId != null
+          ? { warehouse_id: storekeeperWarehouseId }
+          : {}),
+      }),
+    enabled: isStorekeeper && (!!userStoreId || storekeeperWarehouseId != null),
     select: (data: ReceiptAuthorization[]) =>
       data.filter((ra) => ra.driver_confirmed_at && ra.grn_id && ra.grn_status === 'draft'),
   });
@@ -370,12 +418,31 @@ export default function StackLayoutPage() {
     },
   });
 
-  const resolvedStoreId = storeId || (isStorekeeper && userStoreId ? String(userStoreId) : (stores && stores.length > 0 ? String(stores[0].id) : null));
+  const effectivePickerStoreId = sanitizeStoreIdParam(storeId);
+  const resolvedStoreId =
+    effectivePickerStoreId ||
+    (isStorekeeper && userStoreId ? String(userStoreId) : stores && stores.length > 0 ? String(stores[0].id) : null);
 
-  const selectedStore = useMemo(
+  const selectedStoreFromList = useMemo(
     () => stores?.find((store) => String(store.id) === resolvedStoreId) || null,
     [resolvedStoreId, stores]
   );
+
+  const resolvedStoreIdNum = resolvedStoreId != null ? Number(resolvedStoreId) : NaN;
+  const shouldFetchFallbackStore =
+    Boolean(resolvedStoreId) &&
+    !Number.isNaN(resolvedStoreIdNum) &&
+    !storesLoading &&
+    !selectedStoreFromList;
+
+  const { data: fallbackStore, isLoading: fallbackStoreLoading } = useQuery({
+    queryKey: ['store', resolvedStoreId],
+    queryFn: () => getStore(resolvedStoreIdNum),
+    enabled: shouldFetchFallbackStore,
+    retry: false,
+  });
+
+  const selectedStore = selectedStoreFromList ?? fallbackStore ?? null;
 
   const storeStacks = useMemo(() => {
     return stacks?.filter((stack) => String(stack.store_id) === resolvedStoreId) || [];
@@ -529,11 +596,26 @@ export default function StackLayoutPage() {
     },
   });
 
-  const storeOptions =
-    stores?.map((store) => ({
-      value: String(store.id),
-      label: `${store.name} (${store.code})`,
-    })) || [];
+  const storeOptions = useMemo(() => {
+    const fromList =
+      stores?.map((store) => ({
+        value: String(store.id),
+        label: `${store.name} (${store.code})`,
+      })) || [];
+    if (
+      fallbackStore &&
+      !fromList.some((o) => o.value === String(fallbackStore.id))
+    ) {
+      return [
+        {
+          value: String(fallbackStore.id),
+          label: `${fallbackStore.name} (${fallbackStore.code})`,
+        },
+        ...fromList,
+      ];
+    }
+    return fromList;
+  }, [stores, fallbackStore]);
 
   const totalArea = selectedStore?.usable_space || (selectedStore ? selectedStore.length * selectedStore.width : 0);
   const allocatedArea = storeStacks
@@ -785,7 +867,7 @@ export default function StackLayoutPage() {
     upsertMutation.mutate(values);
   };
 
-  if (isLoading || storesLoading) {
+  if (isLoading || storesLoading || (shouldFetchFallbackStore && fallbackStoreLoading)) {
     return <LoadingState message="Loading stack layout..." />;
   }
 

@@ -457,8 +457,25 @@ module Cats
         order = policy_scope(ReceiptOrder).includes(receipt_order_lines: [:commodity, :unit]).find(params[:id])
         authorize order, :finish_stacking?
 
-        unless order.status.to_s.downcase == "in_progress"
-          raise ArgumentError, "Cannot finish stacking — order must be in progress (current: #{order.status})"
+        # Storekeeper RA flow goes straight to finish_stacking without a separate start_stacking call.
+        # Align with start_stacking: allow the same pre-states and transition to in_progress here.
+        status_key = order.status.to_s.downcase
+        allowed_pre_finish = %w[confirmed assigned reserved in_progress]
+        unless allowed_pre_finish.include?(status_key)
+          raise ArgumentError,
+                "Cannot finish stacking — order must be assigned, reserved, confirmed, or in progress (current: #{order.status})"
+        end
+
+        if status_key != "in_progress"
+          old_status = order.status
+          order.update!(status: "in_progress")
+          WorkflowEventRecorder.record!(
+            entity: order,
+            event_type: "receipt_order.stacking_started",
+            actor: current_user,
+            from_status: old_status,
+            to_status: order.status
+          )
         end
 
         placements = Array(params[:placements])

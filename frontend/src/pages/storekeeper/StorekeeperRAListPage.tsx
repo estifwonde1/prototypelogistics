@@ -154,7 +154,17 @@ export default function StorekeeperRAListPage() {
                         rightSection={<IconArrowRight size={14} />}
                         onClick={() => {
                           if (myStatus === 'driver_confirmed' || myStatus === 'stacking') {
-                            navigate(`/stacks/layout?receipt_authorization_id=${ra.id}&store_id=${storeId}`);
+                            const params = new URLSearchParams();
+                            params.set('receipt_authorization_id', String(ra.id));
+                            const targetStore = storeId ?? ra.store_id;
+                            if (
+                              targetStore != null &&
+                              Number.isFinite(Number(targetStore)) &&
+                              Number(targetStore) > 0
+                            ) {
+                              params.set('store_id', String(targetStore));
+                            }
+                            navigate(`/stacks/layout?${params.toString()}`);
                           } else {
                             navigate(`/storekeeper/receipt-authorizations/${ra.id}`);
                           }

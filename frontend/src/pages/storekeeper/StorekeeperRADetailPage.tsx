@@ -82,7 +82,13 @@ async function getStoreAssignment(receiptOrderId: number, storeId: number) {
   const response = await apiClient.get('/storekeeper_assignments', { params: { store_id: storeId } });
   const data = response.data.data || response.data;
   const assignments = Array.isArray(data.receipt_assignments) ? data.receipt_assignments : [];
-  return assignments.find((a: any) => a.receipt_order_id === receiptOrderId) || null;
+  const targetRo = Number(receiptOrderId);
+  return (
+    assignments.find((a: Record<string, unknown>) => {
+      const rid = a.receipt_order_id ?? a.receiptOrderId;
+      return rid != null && Number(rid) === targetRo;
+    }) || null
+  );
 }
 
 // ── Main component ────────────────────────────────────────────────────────
@@ -218,13 +224,17 @@ export default function StorekeeperRADetailPage() {
   const alreadyReceived = ra.total_received ?? 0;
   const raRemaining = Math.max(0, authorized - alreadyReceived);
 
-  const storeAssigned = Number(storeAssignment?.quantity ?? 0);
-  // "Already received" = the full RA authorized quantity that was accounted for
-  // (received + lost = total from this truck, which counts against the store assignment)
-  const storeReceived = myInspection ? Number(authorized) : 0;
-  const storeRemaining = Math.max(0, storeAssigned - storeReceived);
+  // Match recordReceiptMutation: if no store assignment row is returned, use RA authorized qty as the cap.
+  const storeAssignedQty = Number(storeAssignment?.quantity ?? authorized);
+  const storeReceivedFromAssignment = Number(storeAssignment?.received_quantity ?? 0);
+  const storeRemainingForRecord = Math.max(0, storeAssignedQty - storeReceivedFromAssignment);
 
-  const maxCanRecord = Math.min(raRemaining, storeRemaining);
+  // "Remaining (store)" in the assignment card after this storekeeper has recorded
+  const storeRemainingDisplay = myInspection
+    ? Math.max(0, storeAssignedQty - storeReceivedFromAssignment - Number(myInspection.total_received ?? 0))
+    : storeRemainingForRecord;
+
+  const maxCanRecord = Math.min(raRemaining, storeRemainingForRecord);
 
   const received = Number(qtyReceived) || 0;
   const lostPreview = showRecordingForm && received > 0 ? Math.max(0, maxCanRecord - received) : 0;
@@ -313,8 +323,8 @@ export default function StorekeeperRADetailPage() {
               </Stack>
               <Stack gap={0}>
                 <Text size="xs" c="dimmed">Remaining (store)</Text>
-                <Text fw={700} c={storeRemaining > 0 ? 'orange' : 'green'}>
-                  {storeRemaining.toLocaleString()} {ra.unit_name || ''}
+                <Text fw={700} c={storeRemainingDisplay > 0 ? 'orange' : 'green'}>
+                  {storeRemainingDisplay.toLocaleString()} {ra.unit_name || ''}
                 </Text>
               </Stack>
             </Group>
@@ -426,7 +436,7 @@ export default function StorekeeperRADetailPage() {
             </Stack>
           ) : (
             <Alert icon={<IconAlertCircle size={16} />} color="gray" variant="light">
-              {maxCanRecord <= 0 && storeAssigned > 0
+              {maxCanRecord <= 0 && storeAssignedQty > 0
                 ? 'Your store has received its full assigned quantity.'
                 : 'Click "Record What Arrived" when the truck delivers goods to your store.'}
             </Alert>
@@ -486,7 +496,19 @@ export default function StorekeeperRADetailPage() {
                   size="xs"
                   variant="light"
                   color="cyan"
-                  onClick={() => navigate(`/stacks/layout?receipt_authorization_id=${ra.id}&store_id=${storeId}`)}
+                  onClick={() => {
+                    const params = new URLSearchParams();
+                    params.set('receipt_authorization_id', String(ra.id));
+                    const targetStore = storeId ?? ra.store_id;
+                    if (
+                      targetStore != null &&
+                      Number.isFinite(Number(targetStore)) &&
+                      Number(targetStore) > 0
+                    ) {
+                      params.set('store_id', String(targetStore));
+                    }
+                    navigate(`/stacks/layout?${params.toString()}`);
+                  }}
                 >
                   Go to Stacking
                 </Button>
