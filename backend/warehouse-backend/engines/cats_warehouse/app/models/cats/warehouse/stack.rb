@@ -29,6 +29,7 @@ module Cats
       validates :quantity, numericality: { greater_than_or_equal_to: 0 }
       validates :base_quantity, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
       validate :fits_inside_store
+      validate :position_fits_inside_store, if: :layout_position_changed?
       validate :no_footprint_overlap_with_sibling_stacks
       validate :commodity_lock_respected, if: :commodity_id_changed?
 
@@ -122,6 +123,29 @@ module Cats
         return unless volume > store.usable_space.to_f
 
         errors.add(:base, "Stack volume cannot exceed the store usable capacity")
+      end
+
+      def layout_position_changed?
+        layout_positioned_for_overlap? &&
+          (new_record? ||
+            will_save_change_to_store_id? ||
+            will_save_change_to_start_x? ||
+            will_save_change_to_start_y? ||
+            will_save_change_to_length? ||
+            will_save_change_to_width?)
+      end
+
+      def position_fits_inside_store
+        return unless store.present?
+
+        if start_x.to_f < -FOOTPRINT_OVERLAP_EPS || start_y.to_f < -FOOTPRINT_OVERLAP_EPS
+          errors.add(:base, "Stack position cannot be negative")
+        end
+
+        if start_x.to_f + length.to_f > store.length.to_f + FOOTPRINT_OVERLAP_EPS ||
+           start_y.to_f + width.to_f > store.width.to_f + FOOTPRINT_OVERLAP_EPS
+          errors.add(:base, "Stack position and size must stay within the store floor")
+        end
       end
     end
   end

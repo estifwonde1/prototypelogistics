@@ -18,6 +18,14 @@ module Cats
                  :cancelled_at,
                  :created_at, :updated_at
 
+      def status
+        if object.active? && object.generated_inspection_grns_confirmed?
+          return ReceiptAuthorization::CLOSED
+        end
+
+        object.status
+      end
+
       def receipt_order_reference_no
         object.receipt_order&.reference_no
       end

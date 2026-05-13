@@ -487,6 +487,12 @@ module Cats
 
           first_line = order.receipt_order_lines.first
 
+          # Resolve commodity from inspection items (most reliable source)
+          # Fall back to receipt order line if inspection items don't have it
+          inspection_commodity_id = inspection&.inspection_items&.first&.commodity_id
+          inspection_unit_id = inspection&.inspection_items&.first&.entered_unit_id ||
+                               inspection&.inspection_items&.first&.unit_id
+
           ReceiptOrder.transaction do
             # Add stack placement items to the existing Draft GRN
             # Clear any existing items first (in case of retry)
@@ -494,8 +500,13 @@ module Cats
 
             placements.each do |placement|
               stack = Stack.find(placement[:stack_id].to_i)
-              commodity_id = stack.commodity_id.presence || first_line&.commodity_id
-              unit_id      = stack.unit_id.presence      || first_line&.unit_id
+              # Use inspection commodity (most reliable) → stack's existing commodity → receipt order line
+              commodity_id = inspection_commodity_id.presence ||
+                             stack.commodity_id.presence ||
+                             first_line&.commodity_id
+              unit_id      = inspection_unit_id.presence ||
+                             stack.unit_id.presence ||
+                             first_line&.unit_id
 
               # Assign commodity to the stack if it doesn't have one yet
               if stack.commodity_id.blank? && commodity_id.present?
@@ -511,6 +522,7 @@ module Cats
                 unit_id:           unit_id,
                 stack_id:          stack.id,
                 store_id:          stack.store_id,
+                quality_status:    inspection&.inspection_items&.first&.quality_status || 'Good',
                 line_reference_no: SourceDetailReference.generate_unique
               )
             end
@@ -537,10 +549,10 @@ module Cats
                                  grn_id: grn.id,
                                  receipt_order_id: order.id)
 
-            # Close the RA only when ALL its GRNs are confirmed
-            # (all storekeepers have finished stacking their portion)
-            all_grns_confirmed = ra.grns.all? { |g| g.status.to_s.downcase == "confirmed" }
-            if all_grns_confirmed
+            # Close the RA only when every recorded inspection has its current
+            # generated GRN confirmed. Stale duplicate draft GRNs from retries
+            # must not block closure.
+            if ra.reload.generated_inspection_grns_confirmed?
               ra.update!(status: ReceiptAuthorization::CLOSED)
               WorkflowEventRecorder.record!(
                 entity:      order,

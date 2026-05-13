@@ -7,12 +7,24 @@ module Cats
                  :base_unit_id, :base_unit_name, :base_quantity, :reference,
                  :created_at, :updated_at
 
+      def commodity_id
+        object.commodity_id || positive_stack_balance&.commodity_id
+      end
+
       def commodity_name
-        object.commodity&.[](:name) || object.commodity&.batch_no
+        commodity = object.commodity || positive_stack_balance&.commodity
+        commodity&.[](:name) || commodity&.batch_no
       end
 
       def commodity_code
-        object.commodity&.[](:code)
+        commodity = object.commodity || positive_stack_balance&.commodity
+        commodity&.[](:code)
+      end
+
+      def stack_status
+        return "active" if object.quantity.to_f.positive?
+
+        object[:stack_status].presence || "empty"
       end
 
       def store_name
@@ -28,15 +40,30 @@ module Cats
       end
 
       def unit_name
-        object.unit&.name
+        unit = object.unit || positive_stack_balance&.unit
+        unit&.name
       end
 
       def unit_abbreviation
-        object.unit&.abbreviation
+        unit = object.unit || positive_stack_balance&.unit
+        unit&.abbreviation
       end
 
       def base_unit_name
         object.base_unit&.name
+      end
+
+      private
+
+      def positive_stack_balance
+        return @positive_stack_balance if defined?(@positive_stack_balance)
+
+        @positive_stack_balance =
+          object.stock_balances
+                .includes(:commodity, :unit)
+                .where("quantity > 0")
+                .order(updated_at: :desc)
+                .first
       end
     end
   end
