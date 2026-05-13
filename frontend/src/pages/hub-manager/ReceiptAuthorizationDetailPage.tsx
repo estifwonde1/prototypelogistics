@@ -220,6 +220,10 @@ export default function ReceiptAuthorizationDetailPage() {
               <Text size="xs" c="dimmed">Plate Number</Text>
               <Text fw={600} style={{ fontFamily: 'monospace' }}>{ra.truck_plate_number}</Text>
             </div>
+            <div>
+              <Text size="xs" c="dimmed">Waybill</Text>
+              <Text fw={600} style={{ fontFamily: 'monospace' }}>{ra.waybill_number || '—'}</Text>
+            </div>
           </SimpleGrid>
         </Stack>
       </Card>
