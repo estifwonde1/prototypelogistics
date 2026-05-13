@@ -26,7 +26,7 @@ module Cats
         when "Cats::Warehouse::ReceiptOrder"
           receipt_orders_scope
         when "Cats::Warehouse::DispatchOrder"
-          scoped_relation.where(warehouse_id: access.accessible_warehouse_ids)
+          dispatch_orders_scope
         when "Cats::Warehouse::Waybill"
           waybills_scope
         when "Cats::Core::Receipt"
@@ -95,12 +95,16 @@ module Cats
 
       # Hub-only receipt orders have warehouse_id nil but hub_id set; include those for hub (and related) roles.
       # Hub Managers only see orders in their hub workflow queue: status must be +assigned+ (not draft/confirmed/etc.).
+      # CRITICAL: Hub managers should see orders with lines destined for their hub, even if the order-level hub_id is different
       def receipt_orders_scope
+        # Sub-federal officers use hierarchical scoping based on location and level
+        if access.officer? && !access.officer_full_access?
+          return HierarchicalOrderScopeQuery.new(user: access.user, scope: scoped_relation).call
+        end
+
         wh_ids = access.accessible_warehouse_ids
         hub_ids = receipt_order_visible_hub_ids
         by_warehouse = scoped_relation.where(warehouse_id: wh_ids)
-<<<<<<< Updated upstream
-=======
         
         # For hub managers, also include orders where they have hub-level assignments (multi-hub orders)
         if access.hub_manager?
@@ -111,12 +115,58 @@ module Cats
           return rel.or(scoped_relation.where(id: assigned_order_ids))
         end
         
->>>>>>> Stashed changes
         rel = hub_ids.blank? ? by_warehouse : by_warehouse.or(scoped_relation.where(hub_id: hub_ids))
 
-        return rel.where(status: DOCUMENT_STATUSES[:assigned]) if access.hub_manager?
+        # Warehouse managers also see hub-based orders where they have a warehouse assignment,
+        # or trucks were authorized directly to their warehouse via Receipt Authorization (routing override).
+        if access.warehouse_manager?
+          assigned_order_ids = receipt_order_ids_for_warehouse_manager_assignments(wh_ids)
+          ra_order_ids = receipt_order_ids_for_warehouse_manager_receipt_authorizations(wh_ids)
+          combined_ids = (assigned_order_ids + ra_order_ids).uniq
+          return rel.or(scoped_relation.where(id: combined_ids))
+        end
+
+        # Storekeepers see orders assigned to their store
+        if access.storekeeper?
+          store_ids = access.assigned_store_ids
+          assigned_order_ids = ReceiptOrderAssignment.where(store_id: store_ids).pluck(:receipt_order_id).uniq
+          return scoped_relation.where(id: assigned_order_ids)
+        end
 
         rel
+      end
+
+      # Dispatch orders use hierarchical scoping for sub-federal officers.
+      # Other roles (hub manager, warehouse manager, storekeeper) use warehouse-based scoping.
+      def dispatch_orders_scope
+        # Sub-federal officers use hierarchical scoping based on location and level
+        if access.officer? && !access.officer_full_access?
+          return HierarchicalOrderScopeQuery.new(user: access.user, scope: scoped_relation).call
+        end
+
+        scoped_relation.where(warehouse_id: access.accessible_warehouse_ids)
+      end
+
+      # Orders linked by assignment row: same facility warehouse(s) OR personally assigned (covers
+      # multi-warehouse managers who only have one UserAssignment row but are assigned_to on other WH rows).
+      def receipt_order_ids_for_warehouse_manager_assignments(wh_ids)
+        t  = ReceiptOrderAssignment.table_name
+        nr = ReceiptOrderAssignment.where.not("LOWER(TRIM(#{t}.status)) = ?", "rejected")
+        uid = access.user&.id
+        by_wh = nr.where(warehouse_id: wh_ids)
+        by_me = uid.present? ? nr.where(assigned_to_id: uid) : nr.none
+        by_wh.or(by_me).distinct.pluck(:receipt_order_id)
+      end
+
+      def receipt_order_ids_for_warehouse_manager_receipt_authorizations(wh_ids)
+        return [] if wh_ids.blank?
+
+        ra_t = ReceiptAuthorization.table_name
+        ReceiptAuthorization
+          .where(warehouse_id: wh_ids)
+          .where.not("LOWER(TRIM(#{ra_t}.status)) = ?", "cancelled")
+          .distinct
+          .pluck(:receipt_order_id)
       end
 
       def receipt_order_visible_hub_ids

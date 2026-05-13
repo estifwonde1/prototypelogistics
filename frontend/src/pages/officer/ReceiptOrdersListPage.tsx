@@ -11,6 +11,7 @@ import {
   ActionIcon,
   Text,
   Select,
+  Badge,
 } from '@mantine/core';
 import { IconPlus, IconSearch, IconEye } from '@tabler/icons-react';
 import { getReceiptOrders, type ReceiptOrder } from '../../api/receiptOrders';
@@ -20,6 +21,8 @@ import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
 import { usePermission } from '../../hooks/usePermission';
+import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 
 /** Matches Rails `ReceiptOrderSerializer#status` (enum value + `.titleize`). */
 const RECEIPT_ORDER_STATUS_FILTER_OPTIONS = [
@@ -78,11 +81,6 @@ function ReceiptOrdersListPage() {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [warehouseFilter, setWarehouseFilter] = useState<string | null>(null);
 
-<<<<<<< Updated upstream
-  const { data: orders, isLoading, error, refetch } = useQuery({
-    queryKey: ['receipt_orders'],
-    queryFn: getReceiptOrders,
-=======
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
   const role = useAuthStore((state) => state.role);
   const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || role);
@@ -104,18 +102,23 @@ function ReceiptOrdersListPage() {
       }
       return getReceiptOrders({});
     },
->>>>>>> Stashed changes
   });
 
-  const { data: warehouses } = useQuery({
-    queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ['warehouses', { hub_id: isHubManager ? userHubId : undefined }],
+    queryFn: () => {
+      if (isHubManager && userHubId) {
+        return getWarehouses({ hub_id: userHubId });
+      }
+      return getWarehouses();
+    },
   });
 
   const filteredOrders = useMemo(() => {
     if (!orders?.length) return orders;
 
     return orders.filter((order) => {
+      // Backend now handles warehouse filtering, so we only need to filter by search and status
       if (!receiptOrderMatchesSearch(order, search)) return false;
 
       if (statusFilter) {
@@ -234,6 +237,7 @@ function ReceiptOrdersListPage() {
                 <Table.Th>Order ID</Table.Th>
                 <Table.Th>Source</Table.Th>
                 <Table.Th>Destination</Table.Th>
+                <Table.Th>Jurisdiction</Table.Th>
                 <Table.Th>Status</Table.Th>
                 <Table.Th>Items</Table.Th>
                 <Table.Th>Created</Table.Th>
@@ -241,43 +245,79 @@ function ReceiptOrdersListPage() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {filteredOrders?.map((order) => (
-                <Table.Tr
-                  key={order.id}
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => navigate(`/receipt-orders/${order.id}`)}
-                >
-                  <Table.Td style={{ fontWeight: 600 }}>RO-{order.id}</Table.Td>
-                  <Table.Td>
-                    {order.source_name ||
-                      order.name ||
-                      (order.source_reference != null ? String(order.source_reference) : '—')}
-                  </Table.Td>
-                  <Table.Td>
-                    {order.warehouse_name || order.destination_warehouse_name || '—'}
-                  </Table.Td>
-                  <Table.Td>
-                    <StatusBadge status={order.status} />
-                  </Table.Td>
-                  <Table.Td>
-                    {order.receipt_order_lines?.length ?? order.lines?.length ?? 0}
-                  </Table.Td>
-                  <Table.Td>
-                    {new Date(order.created_at).toLocaleDateString()}
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap="xs" justify="flex-end" onClick={(e) => e.stopPropagation()}>
-                      <ActionIcon
-                        variant="subtle"
-                        color="blue"
-                        onClick={() => navigate(`/receipt-orders/${order.id}`)}
-                      >
-                        <IconEye size={16} />
-                      </ActionIcon>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
+              {filteredOrders?.map((order) => {
+                const isFederal = !order.location_name || !order.hierarchical_level || order.hierarchical_level === 'Federal';
+                return (
+                  <Table.Tr
+                    key={order.id}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => navigate(`/receipt-orders/${order.id}`)}
+                  >
+                    <Table.Td style={{ fontWeight: 600 }}>RO-{order.id}</Table.Td>
+                    <Table.Td>
+                      {order.source_name ||
+                        order.name ||
+                        (order.source_reference != null ? String(order.source_reference) : '—')}
+                    </Table.Td>
+                    <Table.Td>
+                      {(() => {
+                        const lines = order.receipt_order_lines ?? order.lines ?? [];
+                        
+                        // Check if there are multiple unique destinations across lines
+                        const destinations = new Set<string>();
+                        lines.forEach((line: any) => {
+                          const dest = line.destination_hub_name || line.destination_warehouse_name || line.hub_name || line.warehouse_name;
+                          if (dest) destinations.add(dest);
+                        });
+                        
+                        // If multiple line-level destinations, show "Multiple Destinations"
+                        if (destinations.size > 1) {
+                          return (
+                            <Group gap={4}>
+                              <Text size="sm">Multiple Destinations</Text>
+                              <Badge size="xs" color="blue" variant="light">
+                                {destinations.size}
+                              </Badge>
+                            </Group>
+                          );
+                        }
+                        
+                        // Otherwise show the order-level destination
+                        return order.warehouse_name || order.destination_warehouse_name || order.hub_name || '—';
+                      })()}
+                    </Table.Td>
+                    <Table.Td>
+                      {isFederal ? (
+                        <Badge color="gray" variant="light" size="sm">Federal</Badge>
+                      ) : (
+                        <Badge color="blue" variant="light" size="sm">
+                          {order.location_name} — {order.hierarchical_level}
+                        </Badge>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      <StatusBadge status={order.status} />
+                    </Table.Td>
+                    <Table.Td>
+                      {order.receipt_order_lines?.length ?? order.lines?.length ?? 0}
+                    </Table.Td>
+                    <Table.Td>
+                      {new Date(order.created_at).toLocaleDateString()}
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap="xs" justify="flex-end" onClick={(e) => e.stopPropagation()}>
+                        <ActionIcon
+                          variant="subtle"
+                          color="blue"
+                          onClick={() => navigate(`/receipt-orders/${order.id}`)}
+                        >
+                          <IconEye size={16} />
+                        </ActionIcon>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                );
+              })}
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>
