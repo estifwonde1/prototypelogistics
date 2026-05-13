@@ -18,6 +18,15 @@ module Cats
                  :cancelled_at,
                  :created_at, :updated_at
 
+      def status
+        grns = object.grns.to_a
+        if object.active? && grns.any? && grns.all? { |grn| grn.status.to_s.downcase == "confirmed" }
+          return ReceiptAuthorization::CLOSED
+        end
+
+        object.status
+      end
+
       def receipt_order_reference_no
         object.receipt_order&.reference_no
       end

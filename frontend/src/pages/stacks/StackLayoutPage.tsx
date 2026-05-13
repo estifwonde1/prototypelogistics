@@ -244,6 +244,7 @@ export default function StackLayoutPage() {
   const [modalOpened, setModalOpened] = useState(false);
   const [selectedStack, setSelectedStack] = useState<StackType | null>(null);
   const [draftArea, setDraftArea] = useState<DraftArea | null>(null);
+  const draftPointerStartRef = useRef<{ x: number; y: number } | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
 
   // ── Receipt Authorization selector state (storekeeper stacking flow) ──
@@ -343,9 +344,8 @@ export default function StackLayoutPage() {
 
       if (placementList.length === 0) throw new Error('Please assign goods to at least one stack before finishing.');
 
-      // Backend requires receipt order status `in_progress` for finish_stacking
-      await startStacking(selectedRA.receipt_order_id);
-
+      // Backend requires receipt order status `in_progress` for finish_stacking.
+      // The finish_stacking action auto-transitions when receipt_authorization_id is present.
       return finishStacking(selectedRA.receipt_order_id, placementList, selectedRA.id);
     },
     onSuccess: () => {
@@ -667,6 +667,7 @@ export default function StackLayoutPage() {
 
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
+    draftPointerStartRef.current = { x: event.clientX, y: event.clientY };
     setDraftArea({
       startX: point.x,
       startY: point.y,
@@ -708,9 +709,19 @@ export default function StackLayoutPage() {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
 
+    const pointerStart = draftPointerStartRef.current;
+    draftPointerStartRef.current = null;
+    const movedPixels = pointerStart
+      ? Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y)
+      : 0;
+
     // Clear draft area first to prevent re-triggering
     setDraftArea(null);
-    
+
+    if (movedPixels < 6) {
+      return;
+    }
+
     // Use setTimeout to break out of the current render cycle
     setTimeout(() => {
       openCreateEditorFromDraw(completedArea);
@@ -1161,12 +1172,13 @@ export default function StackLayoutPage() {
 
                       {storeStacks.map((stack) => {
                         const statusMeta = getStatusMeta(stack.stack_status);
-                        const tileW = Math.max(stack.length * boardScale, 56);
-                        const tileH = Math.max(stack.width * boardScale, 52);
-                        const maxLeft = Math.max(0, boardWidth - tileW);
-                        const maxTop = Math.max(0, boardHeight - tileH);
-                        const left = clamp(Number(stack.start_x ?? 0) * boardScale, 0, maxLeft);
-                        const top = clamp(Number(stack.start_y ?? 0) * boardScale, 0, maxTop);
+                        const rawLeft = Number(stack.start_x ?? 0) * boardScale;
+                        const rawTop = Number(stack.start_y ?? 0) * boardScale;
+                        const left = clamp(rawLeft, 0, Math.max(boardWidth - 8, 0));
+                        const top = clamp(rawTop, 0, Math.max(boardHeight - 8, 0));
+                        const tileW = Math.max(Math.min(stack.length * boardScale, boardWidth - left), 8);
+                        const tileH = Math.max(Math.min(stack.width * boardScale, boardHeight - top), 8);
+                        const compactTile = tileW < 56 || tileH < 46;
 
                         return (
                           <Tooltip
@@ -1195,20 +1207,20 @@ export default function StackLayoutPage() {
                                 border: `2px solid ${statusMeta.border}`,
                                 background: selectedRAId && !editMode ? (placements[String(stack.id)] > 0 ? '#1fbe84' : statusMeta.fill) : statusMeta.fill,
                                 color: statusMeta.color,
-                                padding: '8px 10px',
+                                padding: compactTile ? 2 : '8px 10px',
                                 textAlign: 'left',
                                 boxShadow: '0 8px 18px rgba(51, 76, 117, 0.10)',
                                 cursor: editMode ? 'pointer' : selectedRAId ? 'pointer' : 'default',
                                 opacity: editMode || stack.stack_status !== 'inactive' ? 1 : 0.92,
                               }}
                             >
-                              <div style={{ fontSize: 11, fontWeight: 800, lineHeight: 1.05 }}>
+                              <div style={{ fontSize: compactTile ? 0 : 11, fontWeight: 800, lineHeight: 1.05 }}>
                                 {stack.code}
                               </div>
                               <div
                                 style={{
-                                  marginTop: 8,
-                                  fontSize: 15,
+                                  marginTop: compactTile ? 0 : 8,
+                                  fontSize: compactTile ? 0 : 15,
                                   lineHeight: 1.05,
                                   fontWeight: 900,
                                   textTransform: 'uppercase',
