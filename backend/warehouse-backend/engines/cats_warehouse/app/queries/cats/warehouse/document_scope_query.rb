@@ -109,9 +109,44 @@ module Cats
         # For hub managers, also include orders where they have hub-level assignments (multi-hub orders)
         if access.hub_manager?
           by_hub = scoped_relation.where(hub_id: hub_ids)
-          # Include orders with assignments to this hub (for multi-hub orders)
-          assigned_order_ids = ReceiptOrderAssignment.where(hub_id: hub_ids).pluck(:receipt_order_id).uniq
-          rel = by_warehouse.or(by_hub).or(scoped_relation.where(id: assigned_order_ids))
+          roa_t = ReceiptOrderAssignment.table_name
+          # Assignments whose hub_id matches (officer / hub-level rows)
+          assigned_order_ids = ReceiptOrderAssignment.where(hub_id: hub_ids).distinct.pluck(:receipt_order_id)
+
+          # Warehouse-only assignment rows often omit hub_id; still belong to this hub if the warehouse is under it.
+          wh_ids_in_hubs = Warehouse.where(hub_id: hub_ids).pluck(:id)
+          assign_wh_order_ids =
+            if wh_ids_in_hubs.any?
+              ReceiptOrderAssignment
+                .where(warehouse_id: wh_ids_in_hubs)
+                .where.not("LOWER(TRIM(#{roa_t}.status)) = ?", "rejected")
+                .distinct
+                .pluck(:receipt_order_id)
+            else
+              []
+            end
+
+          # Lines explicitly destined to this hub (federal / multi-hub ROs with order.hub_id blank)
+          line_dest_order_ids =
+            ReceiptOrderLine.where(destination_hub_id: hub_ids).distinct.pluck(:receipt_order_id)
+
+          ra_t = ReceiptAuthorization.table_name
+          ra_wh_order_ids =
+            if wh_ids_in_hubs.any?
+              ReceiptAuthorization
+                .where(warehouse_id: wh_ids_in_hubs)
+                .where.not("LOWER(TRIM(#{ra_t}.status)) = ?", ReceiptAuthorization::CANCELLED)
+                .distinct
+                .pluck(:receipt_order_id)
+            else
+              []
+            end
+
+          linked_order_ids =
+            (assigned_order_ids + assign_wh_order_ids + line_dest_order_ids + ra_wh_order_ids).uniq
+
+          rel = by_warehouse.or(by_hub)
+          rel = rel.or(scoped_relation.where(id: linked_order_ids)) if linked_order_ids.any?
           # Hub managers must keep seeing receipt orders through the physical receipt lifecycle:
           # after partial warehouse assignment / RAs / stacking, status moves past +assigned+ (e.g.
           # +reserved+, +in_progress+). Those rows must not disappear from the hub Receipt Orders list.

@@ -586,6 +586,11 @@ module Cats
 
         # ── Legacy flow (backward compatible — no RA) ────────────────────────
         else
+          if order.receipt_authorizations.not_cancelled.exists?
+            raise ArgumentError,
+                  "This receipt order uses Receipt Authorizations. Finish stacking with receipt_authorization_id set."
+          end
+
           # Use quantity_received from inspections if available, otherwise fall back to ordered quantity
           total_received = Inspection
             .joins(:inspection_items)
@@ -643,13 +648,13 @@ module Cats
               actor: current_user, from_status: "draft", to_status: "confirmed"
             )
 
-            order.update!(status: "completed")
+            order.update!(status: Cats::Warehouse::ContractConstants::DOCUMENT_STATUSES[:completed])
             WorkflowEventRecorder.record!(
               entity:      order,
               event_type:  "receipt_order.stacking_completed",
               actor:       current_user,
               from_status: "in_progress",
-              to_status:   "completed"
+              to_status:   Cats::Warehouse::ContractConstants::DOCUMENT_STATUSES[:completed]
             )
           end
         end

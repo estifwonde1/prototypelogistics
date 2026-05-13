@@ -66,6 +66,85 @@ function plannedWarehouseIdsOnLine(
   return [...new Set(ids.map((a) => Number(a.warehouse_id)))];
 }
 
+/** RAs explicitly linked to an assignment row (receipt_order_assignment_id). */
+function usedQtyDirectlyLinkedByAssignmentId(
+  orderRAs: { status: string; receipt_order_assignment_id?: number | null; authorized_quantity: number }[]
+): Map<number, number> {
+  const m = new Map<number, number>();
+  for (const ra of orderRAs) {
+    if (ra.status === 'cancelled') continue;
+    const aid = ra.receipt_order_assignment_id;
+    if (aid == null) continue;
+    const k = Number(aid);
+    m.set(k, (m.get(k) ?? 0) + Number(ra.authorized_quantity ?? 0));
+  }
+  return m;
+}
+
+/**
+ * Older or routed trucks may have receipt_order_assignment_id unset while still matching
+ * warehouse + line. Spread that quantity across matching hub→warehouse plan rows (pro-rata
+ * by row quantity when several rows share the same warehouse+line).
+ */
+function mergeOrphanRasIntoAssignmentUsage(
+  orderRAs: {
+    status: string;
+    receipt_order_assignment_id?: number | null;
+    receipt_order_line_id?: number | null;
+    warehouse_id: number;
+    authorized_quantity: number;
+  }[],
+  warehouseAssignments: ReceiptOrderAssignment[],
+  orderLines: ReceiptOrderLine[],
+  direct: Map<number, number>
+): Map<number, number> {
+  const m = new Map(direct);
+  const singleLineId =
+    orderLines.length === 1 && orderLines[0].id != null ? Number(orderLines[0].id) : undefined;
+
+  for (const ra of orderRAs) {
+    if (ra.status === 'cancelled') continue;
+    if (ra.receipt_order_assignment_id != null) continue;
+    const w = ra.warehouse_id;
+    if (w == null) continue;
+
+    const raLine =
+      ra.receipt_order_line_id != null
+        ? Number(ra.receipt_order_line_id)
+        : singleLineId != null
+          ? singleLineId
+          : NaN;
+    if (Number.isNaN(raLine)) continue;
+
+    const matches = warehouseAssignments.filter((a) => {
+      if (Number(a.warehouse_id) !== Number(w)) return false;
+      if (a.receipt_order_line_id == null) {
+        return orderLines.length === 1 && Number(orderLines[0].id) === raLine;
+      }
+      return Number(a.receipt_order_line_id) === raLine;
+    });
+    if (matches.length === 0) continue;
+
+    const qty = Number(ra.authorized_quantity ?? 0);
+    const weights = matches.map((a) => Number(a.quantity ?? 0) || 0);
+    const sumW = weights.reduce((s, x) => s + x, 0);
+    if (sumW <= 1e-9) {
+      const share = qty / matches.length;
+      matches.forEach((a) => {
+        const id = Number(a.id);
+        m.set(id, (m.get(id) ?? 0) + share);
+      });
+    } else {
+      matches.forEach((a, idx) => {
+        const id = Number(a.id);
+        const share = (qty * weights[idx]) / sumW;
+        m.set(id, (m.get(id) ?? 0) + share);
+      });
+    }
+  }
+  return m;
+}
+
 export default function ReceiptAuthorizationFormPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -98,12 +177,15 @@ export default function ReceiptAuthorizationFormPage() {
       ),
     select: (orders) =>
       orders.filter((o) => {
-        const s = String(o.status || '').toLowerCase();
+        // Serializer titleizes statuses: "in_progress" → "In Progress".
+        // Normalise to snake_case before comparing so "In Progress" matches 'in_progress'.
+        const s = String(o.status || '').toLowerCase().replace(/\s+/g, '_');
         const statusMatch =
           s === 'confirmed' ||
           s === 'assigned' ||
           s === 'reserved' ||
-          s === 'in_progress';
+          s === 'in_progress' ||
+          s === 'completed';
         if (!statusMatch) return false;
 
         const assignments = o.receipt_order_assignments ?? o.assignments ?? [];
@@ -111,9 +193,11 @@ export default function ReceiptAuthorizationFormPage() {
           if (Number(o.warehouse_id) === Number(scopedWarehouseId)) return true;
           return assignments.some((a) => Number(a.warehouse_id) === Number(scopedWarehouseId));
         }
+        // Hub manager: list is already policy-scoped server-side (includes warehouse assignments,
+        // line destination_hub_id, and RAs under this hub). Do not re-filter by order.hub_id — that drops
+        // federal / multi-hub rows where work happens at this hub but order.hub_id is blank.
         if (scopedHubId) {
-          if (Number(o.hub_id) === Number(scopedHubId)) return true;
-          return assignments.some((a) => Number(a.hub_id) === Number(scopedHubId));
+          return true;
         }
         return true;
       }),
@@ -154,18 +238,11 @@ export default function ReceiptAuthorizationFormPage() {
     enabled: !!selectedOrder?.id,
   });
 
-  /** Authorized qty on RO (line unit); summed per assignment row for planned warehouse buckets. */
+  /** Authorized qty per assignment row: linked RAs + orphan same-warehouse/line trucks (pro-rata). */
   const usedQtyByAssignmentId = useMemo(() => {
-    const m = new Map<number, number>();
-    for (const ra of orderRAs) {
-      if (ra.status === 'cancelled') continue;
-      const aid = ra.receipt_order_assignment_id;
-      if (aid == null) continue;
-      const k = Number(aid);
-      m.set(k, (m.get(k) ?? 0) + Number(ra.authorized_quantity ?? 0));
-    }
-    return m;
-  }, [orderRAs]);
+    const direct = usedQtyDirectlyLinkedByAssignmentId(orderRAs);
+    return mergeOrphanRasIntoAssignmentUsage(orderRAs, warehouseAssignments, orderLines, direct);
+  }, [orderRAs, warehouseAssignments, orderLines]);
 
   const openTruckCountByAssignmentId = useMemo(() => {
     const m = new Map<number, number>();
@@ -195,16 +272,17 @@ export default function ReceiptAuthorizationFormPage() {
             ? ` · line #${a.receipt_order_line_id}`
             : '';
 
+        const allocTag = ` · alloc #${a.id}`;
         let label: string;
         if (complete) {
           label =
-            `${whName} — plan complete (${allocated.toLocaleString()}${uPart} authorized)${lineHint}` +
+            `${whName} — plan complete (${allocated.toLocaleString()}${uPart} authorized)${lineHint}${allocTag}` +
             (trucks > 0 ? ` · ${trucks} truck(s) still in hub flow (pending/active)` : '');
         } else {
           const truckPart = trucks > 0 ? ` · ${trucks} truck(s) in progress` : '';
           label =
             `${whName} — ${remaining.toLocaleString()} / ${allocated.toLocaleString()}${uPart} remaining` +
-            ` (${used.toLocaleString()}${uPart} already on trucks)${truckPart}${lineHint}`;
+            ` (${used.toLocaleString()}${uPart} already on trucks)${truckPart}${lineHint}${allocTag}`;
         }
 
         return { value: String(a.id), label, disabled: complete };
@@ -224,19 +302,6 @@ export default function ReceiptAuthorizationFormPage() {
     }
   }, [receiptOrderId, hasPlannedWarehouseRows]);
 
-  /** Drop selection if that allocation row is already fully authorized (avoid stale “5 mt” pick). */
-  useEffect(() => {
-    if (!assignmentId || !warehouseAssignments.length) return;
-    const a = warehouseAssignments.find((x) => String(x.id) === assignmentId);
-    if (!a) {
-      setAssignmentId(null);
-      return;
-    }
-    const allocated = Number(a.quantity ?? 0);
-    const used = usedQtyByAssignmentId.get(Number(a.id)) ?? 0;
-    if (allocated - used <= 1e-9) setAssignmentId(null);
-  }, [assignmentId, warehouseAssignments, usedQtyByAssignmentId]);
-
   useEffect(() => {
     const lines = selectedOrder?.receipt_order_lines ?? selectedOrder?.lines ?? [];
     if (lines.length === 1 && lines[0].id != null) {
@@ -246,10 +311,21 @@ export default function ReceiptAuthorizationFormPage() {
     }
   }, [receiptOrderId, selectedOrder?.receipt_order_lines, selectedOrder?.lines]);
 
-  const receiptOrderOptions = receiptOrders.map((o) => ({
-    value: String(o.id),
-    label: `RO-${o.id} — ${o.warehouse_name || o.hub_name || 'Unknown destination'}`,
-  }));
+  const receiptOrderOptions = receiptOrders.map((o) => {
+    // For federal / multi-hub orders, order.hub_name is null; pull destination from
+    // the first non-rejected assignment instead so the label is always meaningful.
+    const orderAssignments: ReceiptOrderAssignment[] =
+      (o.receipt_order_assignments ?? (o as unknown as { assignments?: ReceiptOrderAssignment[] }).assignments ?? []) as ReceiptOrderAssignment[];
+    const firstAssignmentDest =
+      orderAssignments
+        .filter((a) => !isAssignmentRejected(a.status))
+        .map((a) => a.hub_name || a.warehouse_name)
+        .find(Boolean);
+    const destination = o.warehouse_name || o.hub_name || firstAssignmentDest || 'Unknown destination';
+    const sNorm = String(o.status || '').toLowerCase().replace(/\s+/g, '_');
+    const statusSuffix = sNorm === 'completed' ? ' [Complete]' : sNorm === 'in_progress' ? ' [In Progress]' : '';
+    return { value: String(o.id), label: `RO-${o.id} — ${destination}${statusSuffix}` };
+  });
 
   const selectedAssignment = warehouseAssignments.find((a) => String(a.id) === assignmentId);
 
@@ -266,6 +342,12 @@ export default function ReceiptAuthorizationFormPage() {
   );
 
   const effectiveLine = routingByOverride ? overrideLine : selectedLinePlanned;
+
+  const effectiveLineNumericId = effectiveLine?.id != null ? Number(effectiveLine.id) : null;
+  const lineTotal =
+    effectiveLine != null && !Number.isNaN(Number(effectiveLine.quantity))
+      ? Number(effectiveLine.quantity)
+      : null;
 
   const measurementUnitId =
     effectiveLine?.unit_id != null
@@ -302,8 +384,25 @@ export default function ReceiptAuthorizationFormPage() {
     selectedAssignment != null
       ? usedQtyByAssignmentId.get(Number(selectedAssignment.id)) ?? 0
       : 0;
+  const usedDirectLinkedOnAssignment =
+    selectedAssignment != null
+      ? usedQtyDirectlyLinkedByAssignmentId(orderRAs).get(Number(selectedAssignment.id)) ?? 0
+      : 0;
+  const usedOrphanAttributedOnAssignment = Math.max(0, usedOnAssignment - usedDirectLinkedOnAssignment);
+
   const allocatedOnAssignment = Number(selectedAssignment?.quantity ?? 0);
   const remainingOnAssignment = Math.max(0, allocatedOnAssignment - usedOnAssignment);
+
+  const usedOnPlannedLineAllRas = useMemo(() => {
+    if (routingByOverride || selectedLinePlanned?.id == null) return 0;
+    const lid = Number(selectedLinePlanned.id);
+    return orderRAs
+      .filter((ra) => ra.status !== 'cancelled')
+      .filter((ra) =>
+        ra.receipt_order_line_id != null ? Number(ra.receipt_order_line_id) === lid : orderLines.length === 1
+      )
+      .reduce((s, ra) => s + Number(ra.authorized_quantity || 0), 0);
+  }, [routingByOverride, selectedLinePlanned?.id, orderRAs, orderLines.length]);
 
   const allowedUnitOptions =
     measurementUnitId != null && measurementCommodityId != null
@@ -328,17 +427,19 @@ export default function ReceiptAuthorizationFormPage() {
       ? Number((enteredQty * previewMultiplier).toFixed(6))
       : null;
 
+  const lineRemainingPlanned =
+    !routingByOverride && lineTotal != null ? Math.max(0, lineTotal - usedOnPlannedLineAllRas) : null;
+  const exceedsLineTotalPlanned =
+    !routingByOverride &&
+    lineRemainingPlanned != null &&
+    previewNormalizedQty != null &&
+    previewNormalizedQty - lineRemainingPlanned > 0.0001;
+
   const exceedsRemainingAssignment =
     !routingByOverride && previewNormalizedQty != null && previewNormalizedQty - remainingOnAssignment > 0.0001;
   const remainingAfterThisTruckAssignment =
     previewNormalizedQty != null && !routingByOverride
       ? Math.max(0, Number((remainingOnAssignment - previewNormalizedQty).toFixed(6)))
-      : null;
-
-  const effectiveLineNumericId = effectiveLine?.id != null ? Number(effectiveLine.id) : null;
-  const lineTotal =
-    effectiveLine != null && !Number.isNaN(Number(effectiveLine.quantity))
-      ? Number(effectiveLine.quantity)
       : null;
 
   const usedOnReceiptLineApprox = useMemo(() => {
@@ -448,6 +549,11 @@ export default function ReceiptAuthorizationFormPage() {
             `Cannot authorize ${normalizedQty.toLocaleString()} ${measurementUnitLabel}; only ${remainingOnAssignment.toLocaleString()} ${measurementUnitLabel} remains for this warehouse`
           );
         }
+        if (exceedsLineTotalPlanned) {
+          throw new Error(
+            `Cannot authorize ${normalizedQty.toLocaleString()} ${measurementUnitLabel}; only ${(lineRemainingPlanned ?? 0).toLocaleString()} ${measurementUnitLabel} remains on the receipt order line after trucks already on file`
+          );
+        }
         return createReceiptAuthorization({
           receipt_order_id: Number(receiptOrderId),
           receipt_order_assignment_id: assignmentId ? Number(assignmentId) : null,
@@ -551,7 +657,8 @@ export default function ReceiptAuthorizationFormPage() {
       ((!assignmentId && hasPlannedWarehouseRows) ||
         !authorizedUnitId ||
         remainingOnAssignment <= 0 ||
-        exceedsRemainingAssignment)) ||
+        exceedsRemainingAssignment ||
+        exceedsLineTotalPlanned)) ||
     (routingByOverride &&
       (!explicitWarehouseId ||
         !effectiveLine ||
@@ -586,7 +693,7 @@ export default function ReceiptAuthorizationFormPage() {
             onChange={setReceiptOrderId}
             searchable
             required
-            description="Confirmed, assigned, reserved, or in-progress orders for your hub or warehouse"
+            description="Includes completed for rare legacy rows; prefer orders still in hub flow. New RAs stay blocked if the order is truly complete at the API."
           />
 
           {receiptOrderId && hasPlannedWarehouseRows ? (
@@ -685,12 +792,42 @@ export default function ReceiptAuthorizationFormPage() {
 
           {selectedAssignment && !routingByOverride && (
             <Alert color="blue" variant="light" title="Selected Warehouse Allocation">
-              {`Warehouse: ${selectedAssignment.warehouse_name || `Warehouse #${selectedAssignment.warehouse_id}`}. Plan: ${allocatedOnAssignment.toLocaleString()} ${measurementUnitLabel}. Already authorized (all trucks): ${usedOnAssignment.toLocaleString()} ${measurementUnitLabel}. You can still schedule: ${remainingOnAssignment.toLocaleString()} ${measurementUnitLabel}.`}
+              <Text size="sm">
+                <strong>Hub → warehouse plan (this row, alloc #{selectedAssignment.id})</strong>: up to{' '}
+                {allocatedOnAssignment.toLocaleString()} {measurementUnitLabel} for this bucket. Trucks counted toward
+                this row: {usedOnAssignment.toLocaleString()} {measurementUnitLabel} (
+                {usedDirectLinkedOnAssignment.toLocaleString()} linked to this plan row
+                {usedOrphanAttributedOnAssignment > 0.0001
+                  ? ` + ${usedOrphanAttributedOnAssignment.toLocaleString()} same warehouse/line without a link`
+                  : ''}
+                ). You can still put on trucks for <em>this</em> row:{' '}
+                <strong>
+                  {remainingOnAssignment.toLocaleString()} {measurementUnitLabel}
+                </strong>
+                .
+              </Text>
+              {lineTotal != null ? (
+                <Text size="sm" mt={8}>
+                  <strong>Receipt order line ceiling</strong>: {lineTotal.toLocaleString()} {measurementUnitLabel}{' '}
+                  ordered; {usedOnPlannedLineAllRas.toLocaleString()} already authorized on this line (all trucks).
+                  Room left before hitting the line cap:{' '}
+                  <strong>
+                    {(lineRemainingPlanned ?? Math.max(0, lineTotal - usedOnPlannedLineAllRas)).toLocaleString()}{' '}
+                    {measurementUnitLabel}
+                  </strong>
+                  .
+                </Text>
+              ) : null}
               {(openTruckCountByAssignmentId.get(Number(selectedAssignment.id)) ?? 0) > 0 ? (
                 <Text size="sm" mt={6}>
                   {`${openTruckCountByAssignmentId.get(Number(selectedAssignment.id))} receipt authorization(s) for this row are still pending or active at the warehouse.`}
                 </Text>
               ) : null}
+            </Alert>
+          )}
+          {selectedAssignment && !routingByOverride && exceedsLineTotalPlanned && previewNormalizedQty != null && (
+            <Alert color="red" title="Quantity exceeds receipt line ceiling">
+              {`This truck converts to ${previewNormalizedQty.toLocaleString()} ${measurementUnitLabel}, but only ${(lineRemainingPlanned ?? 0).toLocaleString()} ${measurementUnitLabel} remains on the receipt order line after trucks already on file.`}
             </Alert>
           )}
           {selectedAssignment && !routingByOverride && exceedsRemainingAssignment && previewNormalizedQty != null && (
@@ -700,7 +837,7 @@ export default function ReceiptAuthorizationFormPage() {
           )}
           {effectiveLine && previewNormalizedQty != null && (
             <Alert
-              color={exceedsRemainingAssignment || exceedsLineTotal ? 'red' : 'teal'}
+              color={exceedsRemainingAssignment || exceedsLineTotal || exceedsLineTotalPlanned ? 'red' : 'teal'}
               variant="light"
               title="Unit conversion preview"
             >
@@ -708,6 +845,11 @@ export default function ReceiptAuthorizationFormPage() {
               {!routingByOverride && remainingAfterThisTruckAssignment != null
                 ? `Remaining on assignment after this truck: ${remainingAfterThisTruckAssignment.toLocaleString()} ${measurementUnitLabel}.`
                 : null}
+              {!routingByOverride && lineTotal != null ? (
+                <Text size="sm" mt={4} component="span">
+                  {` Line total ${lineTotal.toLocaleString()} ${measurementUnitLabel}; all trucks on this line: ${usedOnPlannedLineAllRas.toLocaleString()}; remaining under line cap: ${(lineRemainingPlanned ?? 0).toLocaleString()}.`}
+                </Text>
+              ) : null}
               {routingByOverride && lineTotal != null ? (
                 <Text size="sm" mt={4} component="span">
                   {` Line total ${lineTotal.toLocaleString()} ${measurementUnitLabel}; other RAs on this line (approx.): ${usedOnReceiptLineApprox.toLocaleString()}; remaining (approx.): ${(lineRemainingApprox ?? 0).toLocaleString()}. Final cap is enforced on save.`}
@@ -728,9 +870,11 @@ export default function ReceiptAuthorizationFormPage() {
               error={
                 exceedsRemainingAssignment
                   ? `Exceeded assignment: ${previewNormalizedQty?.toLocaleString()} ${measurementUnitLabel} > ${remainingOnAssignment.toLocaleString()} remaining`
-                  : exceedsLineTotal
-                    ? `Exceeds line remaining (approx.): ${lineRemainingApprox?.toLocaleString()} ${measurementUnitLabel}`
-                    : undefined
+                  : exceedsLineTotalPlanned
+                    ? `Exceeds line remaining: ${previewNormalizedQty?.toLocaleString()} ${measurementUnitLabel} > ${(lineRemainingPlanned ?? 0).toLocaleString()} ${measurementUnitLabel}`
+                    : exceedsLineTotal
+                      ? `Exceeds line remaining (approx.): ${previewNormalizedQty?.toLocaleString()} ${measurementUnitLabel} > ${lineRemainingApprox?.toLocaleString()} ${measurementUnitLabel}`
+                      : undefined
               }
               description={
                 routingByOverride
