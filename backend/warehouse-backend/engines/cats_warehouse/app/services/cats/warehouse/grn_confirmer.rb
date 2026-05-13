@@ -48,10 +48,7 @@ module Cats
         ra = @grn.receipt_authorization
         return unless ra.active?
 
-        all_grns_confirmed =
-          Grn.where(receipt_authorization_id: ra.id)
-             .all? { |g| g.status.to_s.downcase == "confirmed" }
-        return unless all_grns_confirmed
+        return unless ra.generated_inspection_grns_confirmed?
 
         order = ra.receipt_order
         ra.update!(status: ReceiptAuthorization::CLOSED)

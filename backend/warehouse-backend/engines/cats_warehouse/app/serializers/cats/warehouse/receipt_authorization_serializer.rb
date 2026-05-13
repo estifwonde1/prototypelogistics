@@ -19,8 +19,7 @@ module Cats
                  :created_at, :updated_at
 
       def status
-        grns = object.grns.to_a
-        if object.active? && grns.any? && grns.all? { |grn| grn.status.to_s.downcase == "confirmed" }
+        if object.active? && object.generated_inspection_grns_confirmed?
           return ReceiptAuthorization::CLOSED
         end
 

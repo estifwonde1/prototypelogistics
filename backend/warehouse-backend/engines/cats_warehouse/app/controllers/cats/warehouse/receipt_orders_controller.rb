@@ -546,12 +546,10 @@ module Cats
                                  grn_id: grn.id,
                                  receipt_order_id: order.id)
 
-            # Close the RA only when ALL its GRNs are confirmed
-            # (all storekeepers have finished stacking their portion)
-            # Use a fresh DB query to avoid stale association cache
-            all_grns_confirmed = Grn.where(receipt_authorization_id: ra.id)
-                                    .all? { |g| g.status.to_s.downcase == "confirmed" }
-            if all_grns_confirmed
+            # Close the RA only when every recorded inspection has its current
+            # generated GRN confirmed. Stale duplicate draft GRNs from retries
+            # must not block closure.
+            if ra.reload.generated_inspection_grns_confirmed?
               ra.update!(status: ReceiptAuthorization::CLOSED)
               WorkflowEventRecorder.record!(
                 entity:      order,

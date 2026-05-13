@@ -44,6 +44,15 @@ module Cats
       def closed?    = status == CLOSED
       def cancelled? = status == CANCELLED
 
+      def generated_inspection_grns_confirmed?
+        inspection_rows = inspections.includes(:auto_generated_grn).to_a
+        return false if inspection_rows.empty?
+
+        inspection_rows.all? do |inspection|
+          inspection.auto_generated_grn&.status.to_s.downcase == "confirmed"
+        end
+      end
+
       # ── Scopes ────────────────────────────────────────────────────────────
       scope :pending,   -> { where(status: PENDING) }
       scope :active,    -> { where(status: ACTIVE) }
