@@ -85,6 +85,7 @@ export default function ReceiptAuthorizationFormPage() {
   const [driverName, setDriverName] = useState('');
   const [driverIdNumber, setDriverIdNumber] = useState('');
   const [truckPlateNumber, setTruckPlateNumber] = useState('');
+  const [waybillNumber, setWaybillNumber] = useState('');
 
   const { data: receiptOrders = [] } = useQuery({
     queryKey: ['receipt_orders', { status: 'confirmed', hub_id: scopedHubId, warehouse_id: scopedWarehouseId }],
@@ -402,6 +403,7 @@ export default function ReceiptAuthorizationFormPage() {
           driver_name: driverName.trim(),
           driver_id_number: driverIdNumber.trim(),
           truck_plate_number: truckPlateNumber.trim(),
+          waybill_number: waybillNumber.trim() || undefined,
         });
       }
 
@@ -425,6 +427,7 @@ export default function ReceiptAuthorizationFormPage() {
         driver_name: driverName.trim(),
         driver_id_number: driverIdNumber.trim(),
         truck_plate_number: truckPlateNumber.trim(),
+        waybill_number: waybillNumber.trim() || undefined,
         notify_planned_facilities: notifyPlannedFacilities || undefined,
       });
     },
@@ -728,14 +731,24 @@ export default function ReceiptAuthorizationFormPage() {
             />
           </Group>
 
-          <TextInput
-            label="Truck Plate Number"
-            placeholder="e.g. AA-12345"
-            value={truckPlateNumber}
-            onChange={(e) => setTruckPlateNumber(e.target.value)}
-            required
-            style={{ fontFamily: 'monospace' }}
-          />
+          <Group grow>
+            <TextInput
+              label="Truck Plate Number"
+              placeholder="e.g. AA-12345"
+              value={truckPlateNumber}
+              onChange={(e) => setTruckPlateNumber(e.target.value)}
+              required
+              style={{ fontFamily: 'monospace' }}
+            />
+            <TextInput
+              label="Waybill Number"
+              placeholder="Leave blank to auto-generate"
+              description="Auto-generated if left blank; enter manually to match an existing waybill document."
+              value={waybillNumber}
+              onChange={(e) => setWaybillNumber(e.target.value)}
+              style={{ fontFamily: 'monospace' }}
+            />
+          </Group>
 
           <Group justify="flex-end" mt="md">
             <Button variant="light" onClick={() => navigate('/hub/receipt-authorizations')}>
