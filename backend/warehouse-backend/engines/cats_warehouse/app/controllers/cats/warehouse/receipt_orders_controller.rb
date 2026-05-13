@@ -507,8 +507,7 @@ module Cats
           # Resolve commodity from inspection items (most reliable source)
           # Fall back to receipt order line if inspection items don't have it
           inspection_commodity_id = inspection&.inspection_items&.first&.commodity_id
-          inspection_unit_id = inspection&.inspection_items&.first&.entered_unit_id ||
-                               inspection&.inspection_items&.first&.unit_id
+          inspection_unit_id = inspection&.inspection_items&.first&.entered_unit_id
 
           ReceiptOrder.transaction do
             # Add stack placement items to the existing Draft GRN

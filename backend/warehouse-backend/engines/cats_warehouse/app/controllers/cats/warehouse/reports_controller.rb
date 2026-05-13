@@ -23,6 +23,25 @@ module Cats
           
           date_range = validate_date_range
           scope = scope.where(transaction_date: date_range) if date_range
+
+          if params[:commodity_id].present?
+            commodity_id = validate_id_param(:commodity_id)
+            lots = InventoryLot.where(commodity_id: commodity_id)
+            if params[:batch_no].present?
+              batch_no = params[:batch_no].to_s.strip
+              raise ArgumentError, "Invalid batch_no" if batch_no.blank?
+
+              lots = lots.where(batch_no: batch_no)
+            end
+            lot_ids = lots.pluck(:id)
+            scope = lot_ids.empty? ? scope.none : scope.where(inventory_lot_id: lot_ids)
+          elsif params[:batch_no].present?
+            batch_no = params[:batch_no].to_s.strip
+            raise ArgumentError, "Invalid batch_no" if batch_no.blank?
+
+            lot_ids = InventoryLot.where(batch_no: batch_no).pluck(:id)
+            scope = lot_ids.empty? ? scope.none : scope.where(inventory_lot_id: lot_ids)
+          end
         rescue ArgumentError => e
           return render_error(e.message, status: :bad_request)
         rescue Pundit::NotAuthorizedError => e

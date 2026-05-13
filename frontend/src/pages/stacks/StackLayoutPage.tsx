@@ -49,6 +49,11 @@ import { useAuthStore } from '../../store/authStore';
 import { normalizeRoleSlug } from '../../contracts/warehouse';
 import type { Stack as StackType } from '../../types/stack';
 
+/** Hub / receipt line unit for quantities on this RA (full name or abbreviation from API). */
+function raQuantityUnit(ra: ReceiptAuthorization): string {
+  return (ra.unit_label ?? ra.unit_name ?? '').trim();
+}
+
 type StackFormValues = {
   id?: number;
   code: string;
@@ -1036,6 +1041,7 @@ export default function StackLayoutPage() {
           {isStorekeeper && selectedRAId && (() => {
             const selectedRA = activeRAsForStacking.find((ra) => String(ra.id) === selectedRAId);
             if (!selectedRA) return null;
+            const u = raQuantityUnit(selectedRA);
             const totalToPlace = Number(selectedRA.my_inspection?.total_received ?? selectedRA.authorized_quantity);
             const totalPlaced = Object.values(placements).reduce((s, q) => s + q, 0);
             const remaining = totalToPlace - totalPlaced;
@@ -1046,14 +1052,14 @@ export default function StackLayoutPage() {
                   <Group justify="space-between">
                     <Text size="sm" fw={700} c="#1d3354">Placement Progress</Text>
                     <Badge color={remaining === 0 ? 'green' : remaining < 0 ? 'red' : 'blue'} variant="light">
-                      {remaining === 0 ? 'All placed ✓' : remaining < 0 ? `Over by ${Math.abs(remaining).toLocaleString()}` : `${remaining.toLocaleString()} remaining`}
+                      {remaining === 0 ? 'All placed ✓' : remaining < 0 ? `Over by ${Math.abs(remaining).toLocaleString()}${u ? ` ${u}` : ''}` : `${remaining.toLocaleString()}${u ? ` ${u}` : ''} remaining`}
                     </Badge>
                   </Group>
                   <Progress value={placedPct} color={remaining < 0 ? 'red' : remaining === 0 ? 'green' : 'blue'} size="md" radius="xl" />
                   <Group gap="xl">
-                    <Text size="xs" c="dimmed">To place: <strong>{totalToPlace.toLocaleString()}</strong></Text>
-                    <Text size="xs" c="dimmed">Placed: <strong>{totalPlaced.toLocaleString()}</strong></Text>
-                    <Text size="xs" c="dimmed">Remaining: <strong>{remaining.toLocaleString()}</strong></Text>
+                    <Text size="xs" c="dimmed">To place (received): <strong>{totalToPlace.toLocaleString()}{u ? ` ${u}` : ''}</strong></Text>
+                    <Text size="xs" c="dimmed">Placed: <strong>{totalPlaced.toLocaleString()}{u ? ` ${u}` : ''}</strong></Text>
+                    <Text size="xs" c="dimmed">Remaining: <strong>{remaining.toLocaleString()}{u ? ` ${u}` : ''}</strong></Text>
                   </Group>
                   {Object.entries(placements).filter(([, q]) => q > 0).length > 0 ? (
                     <Stack gap={4}>
@@ -1063,7 +1069,7 @@ export default function StackLayoutPage() {
                         return (
                           <Group key={stackId} gap="xs">
                             <Text size="xs" style={{ fontFamily: 'monospace' }}>{stack?.code || `Stack #${stackId}`}</Text>
-                            <Text size="xs" c="blue" fw={600}>{qty.toLocaleString()}</Text>
+                            <Text size="xs" c="blue" fw={600}>{qty.toLocaleString()}{u ? ` ${u}` : ''}</Text>
                             <Button size="xs" variant="subtle" color="red" style={{ padding: '0 4px', height: 18 }} onClick={() => setPlacements(p => { const n = {...p}; delete n[stackId]; return n; })}>×</Button>
                           </Group>
                         );
@@ -1594,6 +1600,7 @@ export default function StackLayoutPage() {
       {placementModalStack && selectedRAId && (() => {
         const selectedRA = activeRAsForStacking.find((ra) => String(ra.id) === selectedRAId);
         if (!selectedRA) return null;
+        const u = raQuantityUnit(selectedRA);
         const totalToPlace = Number(selectedRA.my_inspection?.total_received ?? selectedRA.authorized_quantity);
         const alreadyPlaced = Object.entries(placements)
           .filter(([sid]) => sid !== String(placementModalStack.id))
@@ -1639,8 +1646,8 @@ export default function StackLayoutPage() {
               {!incompatible && (
                 <>
                   <NumberInput
-                    label={`Quantity to place (max ${maxForThisStack.toLocaleString()})`}
-                    description={`Commodity: ${selectedRA.commodity_name || '—'}`}
+                    label={`Quantity to place${u ? ` (${u})` : ''}`}
+                    description={`Maximum for this stack: ${maxForThisStack.toLocaleString()}${u ? ` ${u}` : ''} (must match total received for this delivery).`}
                     value={currentQty || ''}
                     onChange={(val) => {
                       const raw = Number(val) || 0;
@@ -1683,7 +1690,12 @@ export default function StackLayoutPage() {
               <Alert color="blue" variant="light">
                 <Text size="sm" fw={600}>{ra.reference_no}</Text>
                 <Text size="sm">{ra.driver_name} — {ra.truck_plate_number}</Text>
-                <Text size="sm">Authorized Qty: {Number(ra.authorized_quantity).toLocaleString()}</Text>
+                <Text size="sm">
+                  Hub authorized: {Number(ra.authorized_quantity).toLocaleString()}{raQuantityUnit(ra) ? ` ${raQuantityUnit(ra)}` : ''}
+                  {ra.my_inspection?.total_received != null && Number(ra.my_inspection.total_received) !== Number(ra.authorized_quantity) && (
+                    <span> · Received: {Number(ra.my_inspection.total_received).toLocaleString()}{raQuantityUnit(ra) ? ` ${raQuantityUnit(ra)}` : ''}</span>
+                  )}
+                </Text>
                 {ra.grn_reference_no && (
                   <Text size="sm">GRN: {ra.grn_reference_no}</Text>
                 )}

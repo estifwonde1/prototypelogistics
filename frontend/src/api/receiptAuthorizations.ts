@@ -34,7 +34,20 @@ export interface ReceiptAuthorization {
   commodity_id?: number | null;
   commodity_name?: string | null;
   unit_id?: number | null;
+  /** Human-readable UOM name (e.g. Kuntal); preferred for display over abbreviation. */
+  unit_label?: string | null;
+  /** Unit abbreviation from hub line (legacy field name `unit_name` mirrors this). */
   unit_name?: string | null;
+  unit_abbreviation?: string | null;
+
+  packaging_unit_id?: number | null;
+  packaging_unit_name?: string | null;
+  packaging_unit_abbreviation?: string | null;
+  packaging_size?: number | string | null;
+  /** Package count after UOM conversion (see API); null when not computable. */
+  expected_packaging_units?: number | null;
+  /** e.g. "50 kg per BAG" — packaging_size is in this per-container unit. */
+  packaging_spec_label?: string | null;
 
   // Driver confirmation
   driver_confirmed_at?: string | null;

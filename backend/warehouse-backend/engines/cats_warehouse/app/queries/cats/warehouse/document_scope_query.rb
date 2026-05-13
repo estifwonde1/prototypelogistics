@@ -94,7 +94,7 @@ module Cats
       end
 
       # Hub-only receipt orders have warehouse_id nil but hub_id set; include those for hub (and related) roles.
-      # Hub Managers only see orders in their hub workflow queue: status must be +assigned+ (not draft/confirmed/etc.).
+      # Hub managers: scoped by hub / hub assignments; statuses include confirmed through completed (excludes draft/cancelled).
       # CRITICAL: Hub managers should see orders with lines destined for their hub, even if the order-level hub_id is different
       def receipt_orders_scope
         # Sub-federal officers use hierarchical scoping based on location and level
@@ -112,7 +112,17 @@ module Cats
           # Include orders with assignments to this hub (for multi-hub orders)
           assigned_order_ids = ReceiptOrderAssignment.where(hub_id: hub_ids).pluck(:receipt_order_id).uniq
           rel = by_warehouse.or(by_hub).or(scoped_relation.where(id: assigned_order_ids))
-          return rel.where(status: [DOCUMENT_STATUSES[:confirmed], DOCUMENT_STATUSES[:assigned]])
+          # Hub managers must keep seeing receipt orders through the physical receipt lifecycle:
+          # after partial warehouse assignment / RAs / stacking, status moves past +assigned+ (e.g.
+          # +reserved+, +in_progress+). Those rows must not disappear from the hub Receipt Orders list.
+          hub_receipt_queue_statuses = [
+            DOCUMENT_STATUSES[:confirmed],
+            DOCUMENT_STATUSES[:assigned],
+            DOCUMENT_STATUSES[:reserved],
+            DOCUMENT_STATUSES[:in_progress],
+            DOCUMENT_STATUSES[:completed]
+          ].uniq
+          return rel.where(status: hub_receipt_queue_statuses)
         end
         
         rel = hub_ids.blank? ? by_warehouse : by_warehouse.or(scoped_relation.where(hub_id: hub_ids))

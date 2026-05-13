@@ -5,6 +5,8 @@ import type { BinCardEntry } from '../types/reports';
 export interface BinCardFilters {
   store_id?: number;
   stack_id?: number;
+  commodity_id?: number;
+  batch_no?: string;
   from?: string;
   to?: string;
 }

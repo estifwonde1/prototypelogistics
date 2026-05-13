@@ -99,7 +99,11 @@ export default function ReceiptAuthorizationFormPage() {
     select: (orders) =>
       orders.filter((o) => {
         const s = String(o.status || '').toLowerCase();
-        const statusMatch = s === 'confirmed' || s === 'assigned' || s === 'reserved';
+        const statusMatch =
+          s === 'confirmed' ||
+          s === 'assigned' ||
+          s === 'reserved' ||
+          s === 'in_progress';
         if (!statusMatch) return false;
 
         const assignments = o.receipt_order_assignments ?? o.assignments ?? [];
@@ -133,6 +137,7 @@ export default function ReceiptAuthorizationFormPage() {
 
   const assignmentsAll = selectedOrder?.receipt_order_assignments ?? selectedOrder?.assignments ?? [];
   const warehouseAssignments = assignmentsAll.filter((a) => a.warehouse_id != null);
+  const orderLines = selectedOrder?.receipt_order_lines ?? selectedOrder?.lines ?? [];
   const hasPlannedWarehouseRows = warehouseAssignments.length > 0;
   const routingByOverride = !usePlannedAllocation || !hasPlannedWarehouseRows;
   const hubIdForRo = selectedOrder?.hub_id ?? scopedHubId ?? undefined;
@@ -149,6 +154,64 @@ export default function ReceiptAuthorizationFormPage() {
     enabled: !!selectedOrder?.id,
   });
 
+  /** Authorized qty on RO (line unit); summed per assignment row for planned warehouse buckets. */
+  const usedQtyByAssignmentId = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const ra of orderRAs) {
+      if (ra.status === 'cancelled') continue;
+      const aid = ra.receipt_order_assignment_id;
+      if (aid == null) continue;
+      const k = Number(aid);
+      m.set(k, (m.get(k) ?? 0) + Number(ra.authorized_quantity ?? 0));
+    }
+    return m;
+  }, [orderRAs]);
+
+  const openTruckCountByAssignmentId = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const ra of orderRAs) {
+      if (ra.status !== 'pending' && ra.status !== 'active') continue;
+      const aid = ra.receipt_order_assignment_id;
+      if (aid == null) continue;
+      const k = Number(aid);
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return m;
+  }, [orderRAs]);
+
+  const assignmentOptions = useMemo(
+    () =>
+      warehouseAssignments.map((a) => {
+        const whName = a.warehouse_name || `Warehouse #${a.warehouse_id}`;
+        const allocated = Number(a.quantity ?? 0);
+        const u = (a.quantity_unit_abbreviation || '').trim();
+        const uPart = u ? ` ${u}` : '';
+        const used = usedQtyByAssignmentId.get(Number(a.id)) ?? 0;
+        const remaining = Math.max(0, allocated - used);
+        const complete = remaining <= 1e-9;
+        const trucks = openTruckCountByAssignmentId.get(Number(a.id)) ?? 0;
+        const lineHint =
+          a.receipt_order_line_id != null && orderLines.length > 1
+            ? ` · line #${a.receipt_order_line_id}`
+            : '';
+
+        let label: string;
+        if (complete) {
+          label =
+            `${whName} — plan complete (${allocated.toLocaleString()}${uPart} authorized)${lineHint}` +
+            (trucks > 0 ? ` · ${trucks} truck(s) still in hub flow (pending/active)` : '');
+        } else {
+          const truckPart = trucks > 0 ? ` · ${trucks} truck(s) in progress` : '';
+          label =
+            `${whName} — ${remaining.toLocaleString()} / ${allocated.toLocaleString()}${uPart} remaining` +
+            ` (${used.toLocaleString()}${uPart} already on trucks)${truckPart}${lineHint}`;
+        }
+
+        return { value: String(a.id), label, disabled: complete };
+      }),
+    [warehouseAssignments, usedQtyByAssignmentId, openTruckCountByAssignmentId, orderLines.length]
+  );
+
   useEffect(() => {
     setAssignmentId(null);
     setExplicitWarehouseId(null);
@@ -160,6 +223,19 @@ export default function ReceiptAuthorizationFormPage() {
       setUsePlannedAllocation(false);
     }
   }, [receiptOrderId, hasPlannedWarehouseRows]);
+
+  /** Drop selection if that allocation row is already fully authorized (avoid stale “5 mt” pick). */
+  useEffect(() => {
+    if (!assignmentId || !warehouseAssignments.length) return;
+    const a = warehouseAssignments.find((x) => String(x.id) === assignmentId);
+    if (!a) {
+      setAssignmentId(null);
+      return;
+    }
+    const allocated = Number(a.quantity ?? 0);
+    const used = usedQtyByAssignmentId.get(Number(a.id)) ?? 0;
+    if (allocated - used <= 1e-9) setAssignmentId(null);
+  }, [assignmentId, warehouseAssignments, usedQtyByAssignmentId]);
 
   useEffect(() => {
     const lines = selectedOrder?.receipt_order_lines ?? selectedOrder?.lines ?? [];
@@ -175,15 +251,7 @@ export default function ReceiptAuthorizationFormPage() {
     label: `RO-${o.id} — ${o.warehouse_name || o.hub_name || 'Unknown destination'}`,
   }));
 
-  const assignmentOptions = warehouseAssignments.map((a) => ({
-    value: String(a.id),
-    label:
-      `${a.warehouse_name || `Warehouse #${a.warehouse_id}`} — ` +
-      `${Number(a.quantity ?? 0).toLocaleString()} ${a.quantity_unit_abbreviation || ''}`.trim(),
-  }));
-
   const selectedAssignment = warehouseAssignments.find((a) => String(a.id) === assignmentId);
-  const orderLines = selectedOrder?.receipt_order_lines ?? selectedOrder?.lines ?? [];
 
   const overrideLine =
     overrideReceiptLineId != null
@@ -230,23 +298,10 @@ export default function ReceiptAuthorizationFormPage() {
     setAuthorizedUnitId(String(measurementUnitId));
   }, [measurementUnitId, routingByOverride, selectedAssignment?.id, overrideReceiptLineId]);
 
-  const { data: relatedRAs = [] } = useQuery({
-    queryKey: ['receipt_authorizations', { receipt_order_id: selectedOrder?.id, warehouse_id: selectedAssignment?.warehouse_id }],
-    queryFn: () =>
-      getReceiptAuthorizations({
-        receipt_order_id: selectedOrder?.id,
-        warehouse_id: selectedAssignment?.warehouse_id,
-      }),
-    enabled: !!selectedOrder?.id && !!selectedAssignment?.warehouse_id && !routingByOverride,
-  });
-  const usedOnAssignment = relatedRAs
-    .filter(
-      (ra) =>
-        selectedAssignment != null &&
-        ra.status !== 'cancelled' &&
-        Number(ra.receipt_order_assignment_id) === Number(selectedAssignment.id)
-    )
-    .reduce((sum, ra) => sum + Number(ra.authorized_quantity || 0), 0);
+  const usedOnAssignment =
+    selectedAssignment != null
+      ? usedQtyByAssignmentId.get(Number(selectedAssignment.id)) ?? 0
+      : 0;
   const allocatedOnAssignment = Number(selectedAssignment?.quantity ?? 0);
   const remainingOnAssignment = Math.max(0, allocatedOnAssignment - usedOnAssignment);
 
@@ -531,7 +586,7 @@ export default function ReceiptAuthorizationFormPage() {
             onChange={setReceiptOrderId}
             searchable
             required
-            description="Only confirmed, assigned, or reserved orders are shown"
+            description="Confirmed, assigned, reserved, or in-progress orders for your hub or warehouse"
           />
 
           {receiptOrderId && hasPlannedWarehouseRows ? (
@@ -543,16 +598,25 @@ export default function ReceiptAuthorizationFormPage() {
           ) : null}
 
           {!routingByOverride && assignmentOptions.length > 0 ? (
-            <Select
-              label="Warehouse Assignment"
-              placeholder="Select warehouse allocation"
-              data={assignmentOptions}
-              value={assignmentId}
-              onChange={setAssignmentId}
-              searchable
-              required
-              description="Authorize against a hub→warehouse allocation row"
-            />
+            <>
+              <Select
+                label="Warehouse Assignment"
+                placeholder="Select warehouse allocation"
+                data={assignmentOptions}
+                value={assignmentId}
+                onChange={setAssignmentId}
+                searchable
+                required
+                description="Each row is a planned hub→warehouse bucket: remaining / plan shows how much you can still put on trucks. Rows marked plan complete are disabled."
+              />
+              {assignmentOptions.every((o) => o.disabled) ? (
+                <Alert color="yellow" variant="light" title="All planned buckets are full">
+                  Every warehouse allocation row for this receipt order already has the full planned quantity on
+                  receipt authorizations. Uncheck planned allocation if you intentionally need an extra truck outside
+                  the plan; quantity is still capped by the receipt order line.
+                </Alert>
+              ) : null}
+            </>
           ) : null}
 
           {routingByOverride && receiptOrderId ? (
@@ -621,7 +685,12 @@ export default function ReceiptAuthorizationFormPage() {
 
           {selectedAssignment && !routingByOverride && (
             <Alert color="blue" variant="light" title="Selected Warehouse Allocation">
-              {`Warehouse: ${selectedAssignment.warehouse_name || `Warehouse #${selectedAssignment.warehouse_id}`}. Assigned: ${allocatedOnAssignment.toLocaleString()} ${measurementUnitLabel}. Used in RAs: ${usedOnAssignment.toLocaleString()} ${measurementUnitLabel}. Remaining: ${remainingOnAssignment.toLocaleString()} ${measurementUnitLabel}.`}
+              {`Warehouse: ${selectedAssignment.warehouse_name || `Warehouse #${selectedAssignment.warehouse_id}`}. Plan: ${allocatedOnAssignment.toLocaleString()} ${measurementUnitLabel}. Already authorized (all trucks): ${usedOnAssignment.toLocaleString()} ${measurementUnitLabel}. You can still schedule: ${remainingOnAssignment.toLocaleString()} ${measurementUnitLabel}.`}
+              {(openTruckCountByAssignmentId.get(Number(selectedAssignment.id)) ?? 0) > 0 ? (
+                <Text size="sm" mt={6}>
+                  {`${openTruckCountByAssignmentId.get(Number(selectedAssignment.id))} receipt authorization(s) for this row are still pending or active at the warehouse.`}
+                </Text>
+              ) : null}
             </Alert>
           )}
           {selectedAssignment && !routingByOverride && exceedsRemainingAssignment && previewNormalizedQty != null && (
