@@ -8,6 +8,10 @@ module Cats
                  :warehouse_id, :warehouse_name,
                  :transporter_id, :transporter_name,
                  :authorized_quantity,
+                 :authorized_quantity_input,
+                 :authorized_quantity_input_unit_id,
+                 :authorized_quantity_input_unit_name,
+                 :authorized_quantity_input_unit_abbreviation,
                  :commodity_id, :commodity_name, :unit_id, :unit_name, :unit_label, :unit_abbreviation,
                  :packaging_unit_id, :packaging_unit_name, :packaging_unit_abbreviation,
                  :packaging_size, :expected_packaging_units, :packaging_spec_label,
@@ -30,6 +34,35 @@ module Cats
 
       def receipt_order_reference_no
         object.receipt_order&.reference_no
+      end
+
+      # The quantity exactly as typed by whoever last set it (e.g. 30 when the user picked
+      # Kuntal). Falls back to the canonical `authorized_quantity` so legacy rows still
+      # render a coherent value.
+      def authorized_quantity_input
+        col_value = object.respond_to?(:authorized_quantity_input) ? object.authorized_quantity_input : nil
+        return col_value.to_f if col_value.present?
+
+        object.authorized_quantity.to_f
+      end
+
+      # The UOM id the user picked when entering the quantity. Falls back to the receipt-order
+      # line unit so older rows keep producing readable display data.
+      def authorized_quantity_input_unit_id
+        col_value = object.respond_to?(:authorized_quantity_input_unit_id) ? object.authorized_quantity_input_unit_id : nil
+        return col_value if col_value.present?
+
+        unit_id
+      end
+
+      def authorized_quantity_input_unit_name
+        u = resolved_input_unit
+        u&.name
+      end
+
+      def authorized_quantity_input_unit_abbreviation
+        u = resolved_input_unit
+        u&.abbreviation
       end
 
       def commodity_id
@@ -209,6 +242,18 @@ module Cats
           uid = unit_id
           Cats::Core::UnitOfMeasure.find_by(id: uid) if uid
         end
+      end
+
+      def resolved_input_unit
+        return @resolved_input_unit if defined?(@resolved_input_unit)
+
+        col_value = object.respond_to?(:authorized_quantity_input_unit_id) ? object.authorized_quantity_input_unit_id : nil
+        @resolved_input_unit =
+          if col_value.present?
+            Cats::Core::UnitOfMeasure.find_by(id: col_value)
+          else
+            line_unit
+          end
       end
 
       def commodity_for_packaging

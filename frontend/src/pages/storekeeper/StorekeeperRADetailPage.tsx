@@ -61,9 +61,50 @@ function formatDate(value: string | null | undefined): string {
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString();
 }
 
-/** Hub line UOM for display (full name preferred, else abbreviation). */
-function raQtyUnit(ra: ReceiptAuthorization): string {
+/** Hub line UOM (canonical) for display — kept for places that still need the line unit. */
+function raLineUnit(ra: ReceiptAuthorization): string {
   return (ra.unit_label ?? ra.unit_name ?? ra.unit_abbreviation ?? '').trim();
+}
+
+/**
+ * Preferred display unit for the RA — the one the user actually picked when
+ * creating/updating the RA (e.g. "Kuntal"). Falls back to the line unit when the
+ * API didn't record an explicit input (legacy rows).
+ */
+function raDisplayUnit(ra: ReceiptAuthorization): string {
+  const inputName = (ra.authorized_quantity_input_unit_name ?? '').trim();
+  const inputAbbr = (ra.authorized_quantity_input_unit_abbreviation ?? '').trim();
+  return inputName || inputAbbr || raLineUnit(ra);
+}
+
+/** Quantity in the user-entered unit; falls back to canonical qty for legacy rows. */
+function raDisplayQty(ra: ReceiptAuthorization): number {
+  const v = ra.authorized_quantity_input;
+  if (v != null && Number.isFinite(Number(v)) && Number(v) > 0) return Number(v);
+  return Number(ra.authorized_quantity);
+}
+
+/**
+ * Multiplier to convert a value expressed in the canonical line unit into the
+ * user-entered unit (e.g. 1 mt → 10 kntl). Derived from this RA's own input vs
+ * canonical pair so the same conversion is applied without re-fetching the UOM
+ * graph; rounding errors are bounded by the storage precision of both columns.
+ */
+function lineToInputMultiplier(ra: ReceiptAuthorization): number {
+  const input = Number(ra.authorized_quantity_input ?? 0);
+  const line = Number(ra.authorized_quantity ?? 0);
+  if (input > 0 && line > 0) return input / line;
+  return 1;
+}
+
+function convertLineToInput(value: number, ra: ReceiptAuthorization): number {
+  return value * lineToInputMultiplier(ra);
+}
+
+function convertInputToLine(value: number, ra: ReceiptAuthorization): number {
+  const m = lineToInputMultiplier(ra);
+  if (m === 0) return value;
+  return value / m;
 }
 
 function DetailField({ label, value }: { label: string; value: React.ReactNode }) {
@@ -128,15 +169,19 @@ export default function StorekeeperRADetailPage() {
       const unitId = ra.unit_id;
       if (!commodityId) throw new Error('Cannot determine commodity from receipt order');
 
-      const received = Number(qtyReceived);
-      const authorized = Number(ra.authorized_quantity);
-      const alreadyReceived = ra.total_received ?? 0;
-      const raRem = Math.max(0, authorized - alreadyReceived);
-      const storeAssigned = Number(storeAssignment?.quantity ?? authorized);
-      const storeReceived = Number(storeAssignment?.received_quantity ?? 0);
-      const storeRem = Math.max(0, storeAssigned - storeReceived);
-      const cap = Math.min(raRem, storeRem);
-      const lostQty = Math.max(0, cap - received);
+      // The storekeeper enters in the RA's display unit (e.g. Kuntal). Inspections
+      // and all downstream totals (raRemaining, store-assignment math, GRN stacking)
+      // are computed in the receipt-order line unit, so convert before sending.
+      const receivedInput = Number(qtyReceived);
+      const receivedLine = convertInputToLine(receivedInput, ra);
+      const authorizedLine = Number(ra.authorized_quantity);
+      const alreadyReceivedLine = ra.total_received ?? 0;
+      const raRemLine = Math.max(0, authorizedLine - alreadyReceivedLine);
+      const storeAssignedLine = Number(storeAssignment?.quantity ?? authorizedLine);
+      const storeReceivedLine = Number(storeAssignment?.received_quantity ?? 0);
+      const storeRemLine = Math.max(0, storeAssignedLine - storeReceivedLine);
+      const capLine = Math.min(raRemLine, storeRemLine);
+      const lostLine = Math.max(0, capLine - receivedLine);
 
       return createInspection({
         warehouse_id: warehouseId,
@@ -148,8 +193,8 @@ export default function StorekeeperRADetailPage() {
         items: [{
           commodity_id: commodityId,
           ...(unitId ? { unit_id: unitId } : {}),
-          quantity_received: received,
-          quantity_lost: lostQty > 0 ? lostQty : undefined,
+          quantity_received: Number(receivedLine.toFixed(3)),
+          quantity_lost: lostLine > 0 ? Number(lostLine.toFixed(3)) : undefined,
           quality_status: grade ?? 'Good',
           packaging_condition: 'Standard',
           remarks: remarks || undefined,
@@ -207,26 +252,40 @@ export default function StorekeeperRADetailPage() {
   const myGrn = ra.my_grn ?? null;
   const canDriverConfirm = isActive && myInspection && !myGrn;
 
-  const authorized = Number(ra.authorized_quantity);
-  const alreadyReceived = ra.total_received ?? 0;
-  const raRemaining = Math.max(0, authorized - alreadyReceived);
+  // Canonical (line-unit) totals — kept for the inspection-record math
+  const authorizedLine = Number(ra.authorized_quantity);
+  const alreadyReceivedLine = ra.total_received ?? 0;
+  const raRemainingLine = Math.max(0, authorizedLine - alreadyReceivedLine);
 
   // Match recordReceiptMutation: if no store assignment row is returned, use RA authorized qty as the cap.
-  const storeAssignedQty = Number(storeAssignment?.quantity ?? authorized);
-  const storeReceivedFromAssignment = Number(storeAssignment?.received_quantity ?? 0);
-  const storeRemainingForRecord = Math.max(0, storeAssignedQty - storeReceivedFromAssignment);
+  const storeAssignedLine = Number(storeAssignment?.quantity ?? authorizedLine);
+  const storeReceivedFromAssignmentLine = Number(storeAssignment?.received_quantity ?? 0);
+  const storeRemainingForRecordLine = Math.max(0, storeAssignedLine - storeReceivedFromAssignmentLine);
+  const maxCanRecordLine = Math.min(raRemainingLine, storeRemainingForRecordLine);
 
-  // "Remaining (store)" in the assignment card after this storekeeper has recorded
+  // Display values in the user-preferred (input) unit. The line-unit values above
+  // remain authoritative for math; these are only for what the storekeeper sees.
+  const u = raDisplayUnit(ra);
+  const uLine = raLineUnit(ra);
+  const showLineEquivalent = u && uLine && u !== uLine;
+
+  const authorized = raDisplayQty(ra);
+  const raRemaining = convertLineToInput(raRemainingLine, ra);
+  const storeAssignedQty = convertLineToInput(storeAssignedLine, ra);
+  const storeReceivedFromAssignment = convertLineToInput(storeReceivedFromAssignmentLine, ra);
+  const storeRemainingForRecord = convertLineToInput(storeRemainingForRecordLine, ra);
+  const maxCanRecord = convertLineToInput(maxCanRecordLine, ra);
+
+  const myInspectionReceivedInput = myInspection
+    ? convertLineToInput(Number(myInspection.total_received ?? 0), ra)
+    : 0;
   const storeRemainingDisplay = myInspection
-    ? Math.max(0, storeAssignedQty - storeReceivedFromAssignment - Number(myInspection.total_received ?? 0))
+    ? Math.max(0, storeAssignedQty - storeReceivedFromAssignment - myInspectionReceivedInput)
     : storeRemainingForRecord;
-
-  const maxCanRecord = Math.min(raRemaining, storeRemainingForRecord);
 
   const received = Number(qtyReceived) || 0;
   const lostPreview = showRecordingForm && received > 0 ? Math.max(0, maxCanRecord - received) : 0;
   const receivedPct = maxCanRecord > 0 ? Math.min(100, (received / maxCanRecord) * 100) : 0;
-  const u = raQtyUnit(ra);
   const exceedsStoreSuggestion = showRecordingForm && received > maxCanRecord + 0.001;
   const exceedsHubAuthorized = showRecordingForm && received > raRemaining + 0.001;
 
@@ -275,14 +334,21 @@ export default function StorekeeperRADetailPage() {
             <DetailField
               label="Authorized quantity"
               value={
-                <Group gap={6} align="baseline" wrap="wrap">
-                  <Text size="sm" fw={700}>
-                    {authorized.toLocaleString()}{u ? ` ${u}` : ''}
-                  </Text>
-                  {ra.unit_abbreviation && ra.unit_label && ra.unit_abbreviation !== ra.unit_label ? (
-                    <Text size="xs" c="dimmed">({ra.unit_abbreviation})</Text>
+                <Stack gap={2}>
+                  <Group gap={6} align="baseline" wrap="wrap">
+                    <Text size="sm" fw={700}>
+                      {authorized.toLocaleString()}{u ? ` ${u}` : ''}
+                    </Text>
+                    {ra.unit_abbreviation && ra.unit_label && ra.unit_abbreviation !== ra.unit_label && !showLineEquivalent ? (
+                      <Text size="xs" c="dimmed">({ra.unit_abbreviation})</Text>
+                    ) : null}
+                  </Group>
+                  {showLineEquivalent ? (
+                    <Text size="xs" c="dimmed">
+                      = {authorizedLine.toLocaleString()} {uLine}
+                    </Text>
                   ) : null}
-                </Group>
+                </Stack>
               }
             />
             <DetailField label="Commodity" value={ra.commodity_name || '—'} />
@@ -328,14 +394,14 @@ export default function StorekeeperRADetailPage() {
               <Stack gap={0}>
                 <Text size="xs" c="dimmed">Received</Text>
                 <Text fw={700} c="green">
-                  {myInspection ? Number(myInspection.total_received ?? 0).toLocaleString() : '—'}{u ? ` ${u}` : ''}
+                  {myInspection ? myInspectionReceivedInput.toLocaleString() : '—'}{u ? ` ${u}` : ''}
                 </Text>
               </Stack>
               <Stack gap={0}>
                 <Text size="xs" c="dimmed">Lost</Text>
-                <Text fw={700} c={myInspection && (authorized - Number(myInspection.total_received ?? 0)) > 0 ? 'red' : 'dimmed'}>
+                <Text fw={700} c={myInspection && (authorized - myInspectionReceivedInput) > 0 ? 'red' : 'dimmed'}>
                   {myInspection
-                    ? Math.max(0, authorized - Number(myInspection.total_received ?? 0)).toLocaleString()
+                    ? Math.max(0, authorized - myInspectionReceivedInput).toLocaleString()
                     : '—'}{u ? ` ${u}` : ''}
                 </Text>
               </Stack>
@@ -373,7 +439,10 @@ export default function StorekeeperRADetailPage() {
                 Goods received
               </Badge>
               <Text size="sm" c="dimmed">
-                You received {myInspection.total_received?.toLocaleString() ?? '—'}{u ? ` ${u}` : ''}
+                You received {myInspectionReceivedInput.toLocaleString()}{u ? ` ${u}` : ''}
+                {showLineEquivalent
+                  ? ` (= ${Number(myInspection.total_received ?? 0).toLocaleString()} ${uLine})`
+                  : ''}
               </Text>
             </Group>
           ) : showRecordingForm ? (
@@ -403,6 +472,11 @@ export default function StorekeeperRADetailPage() {
                     decimalScale={3}
                     required
                   />
+                  {showLineEquivalent && received > 0 ? (
+                    <Text size="xs" c="dimmed">
+                      = {convertInputToLine(received, ra).toLocaleString(undefined, { maximumFractionDigits: 3 })} {uLine}
+                    </Text>
+                  ) : null}
                   {maxCanRecord > 0 && received > 0 && received <= maxCanRecord && (
                     <Progress
                       value={receivedPct}

@@ -27,8 +27,20 @@ export interface ReceiptAuthorization {
   truck_plate_number: string;
   waybill_number: string;
 
-  // Quantity
+  // Quantity (canonical, in receipt-order line unit — used for allocation math)
   authorized_quantity: number;
+
+  /**
+   * Quantity exactly as typed by whoever last set it on the RA (e.g. 30 when the
+   * user picked Kuntal). Display this everywhere the RA appears so downstream
+   * users see the same unit the hub manager (or last editor) actually entered.
+   * Falls back to `authorized_quantity` for legacy rows where the API didn't
+   * record an explicit input.
+   */
+  authorized_quantity_input?: number | null;
+  authorized_quantity_input_unit_id?: number | null;
+  authorized_quantity_input_unit_name?: string | null;
+  authorized_quantity_input_unit_abbreviation?: string | null;
 
   // Commodity info (from receipt order lines)
   commodity_id?: number | null;
@@ -82,7 +94,12 @@ export interface CreateReceiptAuthorizationPayload {
   /** Prefer with hub UI free-text entry; alternatively send transporter_id for master-list clients */
   transporter_id?: number;
   transporter_name?: string;
+  /** Canonical quantity in receipt-order line unit (drives allocation math). */
   authorized_quantity: number;
+  /** Quantity as typed by the user — preserved for downstream display. */
+  authorized_quantity_input?: number;
+  /** UOM id the user picked when entering the quantity. */
+  authorized_quantity_input_unit_id?: number;
   driver_name: string;
   driver_id_number: string;
   truck_plate_number: string;
@@ -96,6 +113,8 @@ export interface UpdateReceiptAuthorizationPayload {
   transporter_id?: number;
   transporter_name?: string;
   authorized_quantity?: number;
+  authorized_quantity_input?: number;
+  authorized_quantity_input_unit_id?: number;
   driver_name?: string;
   driver_id_number?: string;
   truck_plate_number?: string;

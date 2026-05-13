@@ -30,6 +30,18 @@ function statusColor(status: ReceiptAuthorization['status']) {
   }
 }
 
+function raDisplayUnit(ra: ReceiptAuthorization): string {
+  const inputName = (ra.authorized_quantity_input_unit_name ?? '').trim();
+  const inputAbbr = (ra.authorized_quantity_input_unit_abbreviation ?? '').trim();
+  return inputName || inputAbbr || (ra.unit_name ?? ra.unit_abbreviation ?? '').trim();
+}
+
+function raDisplayQty(ra: ReceiptAuthorization): number {
+  const v = ra.authorized_quantity_input;
+  if (v != null && Number.isFinite(Number(v)) && Number(v) > 0) return Number(v);
+  return Number(ra.authorized_quantity);
+}
+
 export default function ReceiptAuthorizationListPage() {
   const navigate = useNavigate();
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
@@ -170,7 +182,11 @@ export default function ReceiptAuthorizationListPage() {
                   <Table.Td>
                     <Text size="sm">{ra.store_name || (ra.store_id != null ? `Store #${ra.store_id}` : '—')}</Text>
                   </Table.Td>
-                  <Table.Td><Text size="sm" fw={600}>{Number(ra.authorized_quantity).toLocaleString()}</Text></Table.Td>
+                  <Table.Td>
+                    <Text size="sm" fw={600}>
+                      {raDisplayQty(ra).toLocaleString()} {raDisplayUnit(ra)}
+                    </Text>
+                  </Table.Td>
                   <Table.Td><Text size="sm">{ra.driver_name}</Text></Table.Td>
                   <Table.Td>
                     <Text size="sm" style={{ fontFamily: 'monospace' }}>{ra.truck_plate_number}</Text>

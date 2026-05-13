@@ -54,6 +54,26 @@ function raQuantityUnit(ra: ReceiptAuthorization): string {
   return (ra.unit_label ?? ra.unit_name ?? '').trim();
 }
 
+/** Unit + qty as typed by the user when the RA was created (e.g. 30 Kuntal). */
+function raDisplayUnit(ra: ReceiptAuthorization): string {
+  const inputName = (ra.authorized_quantity_input_unit_name ?? '').trim();
+  const inputAbbr = (ra.authorized_quantity_input_unit_abbreviation ?? '').trim();
+  return inputName || inputAbbr || raQuantityUnit(ra);
+}
+
+function raDisplayQty(ra: ReceiptAuthorization): number {
+  const v = ra.authorized_quantity_input;
+  if (v != null && Number.isFinite(Number(v)) && Number(v) > 0) return Number(v);
+  return Number(ra.authorized_quantity);
+}
+
+function raLineToInputMultiplier(ra: ReceiptAuthorization): number {
+  const input = Number(ra.authorized_quantity_input ?? 0);
+  const line = Number(ra.authorized_quantity ?? 0);
+  if (input > 0 && line > 0) return input / line;
+  return 1;
+}
+
 type StackFormValues = {
   id?: number;
   code: string;
@@ -1041,35 +1061,41 @@ export default function StackLayoutPage() {
           {isStorekeeper && selectedRAId && (() => {
             const selectedRA = activeRAsForStacking.find((ra) => String(ra.id) === selectedRAId);
             if (!selectedRA) return null;
-            const u = raQuantityUnit(selectedRA);
-            const totalToPlace = Number(selectedRA.my_inspection?.total_received ?? selectedRA.authorized_quantity);
-            const totalPlaced = Object.values(placements).reduce((s, q) => s + q, 0);
-            const remaining = totalToPlace - totalPlaced;
-            const placedPct = totalToPlace > 0 ? Math.min(100, (totalPlaced / totalToPlace) * 100) : 0;
+            const uLine = raQuantityUnit(selectedRA);
+            const uDisp = raDisplayUnit(selectedRA);
+            const mult = raLineToInputMultiplier(selectedRA);
+            const totalToPlaceLine = Number(selectedRA.my_inspection?.total_received ?? selectedRA.authorized_quantity);
+            const totalPlacedLine = Object.values(placements).reduce((s, q) => s + q, 0);
+            const remainingLine = totalToPlaceLine - totalPlacedLine;
+            const placedPct = totalToPlaceLine > 0 ? Math.min(100, (totalPlacedLine / totalToPlaceLine) * 100) : 0;
+            const lineToDispQty = (lineQty: number) => Number((lineQty * mult).toFixed(6));
+            const fmtDisp = (lineQty: number) =>
+              lineToDispQty(lineQty).toLocaleString(undefined, { maximumFractionDigits: 3 });
             return (
               <Card radius="xl" padding="lg" style={{ background: '#f0f7ff', border: '1px solid #bdd4f5' }}>
                 <Stack gap="sm">
                   <Group justify="space-between">
                     <Text size="sm" fw={700} c="#1d3354">Placement Progress</Text>
-                    <Badge color={remaining === 0 ? 'green' : remaining < 0 ? 'red' : 'blue'} variant="light">
-                      {remaining === 0 ? 'All placed ✓' : remaining < 0 ? `Over by ${Math.abs(remaining).toLocaleString()}${u ? ` ${u}` : ''}` : `${remaining.toLocaleString()}${u ? ` ${u}` : ''} remaining`}
+                    <Badge color={remainingLine === 0 ? 'green' : remainingLine < 0 ? 'red' : 'blue'} variant="light">
+                      {remainingLine === 0 ? 'All placed ✓' : remainingLine < 0 ? `Over by ${fmtDisp(Math.abs(remainingLine))}${uDisp ? ` ${uDisp}` : ''}` : `${fmtDisp(remainingLine)}${uDisp ? ` ${uDisp}` : ''} remaining`}
                     </Badge>
                   </Group>
-                  <Progress value={placedPct} color={remaining < 0 ? 'red' : remaining === 0 ? 'green' : 'blue'} size="md" radius="xl" />
+                  <Progress value={placedPct} color={remainingLine < 0 ? 'red' : remainingLine === 0 ? 'green' : 'blue'} size="md" radius="xl" />
                   <Group gap="xl">
-                    <Text size="xs" c="dimmed">To place (received): <strong>{totalToPlace.toLocaleString()}{u ? ` ${u}` : ''}</strong></Text>
-                    <Text size="xs" c="dimmed">Placed: <strong>{totalPlaced.toLocaleString()}{u ? ` ${u}` : ''}</strong></Text>
-                    <Text size="xs" c="dimmed">Remaining: <strong>{remaining.toLocaleString()}{u ? ` ${u}` : ''}</strong></Text>
+                    <Text size="xs" c="dimmed">To place (received): <strong>{fmtDisp(totalToPlaceLine)}{uDisp ? ` ${uDisp}` : ''}</strong>{uDisp !== uLine && uLine ? <span> ({totalToPlaceLine.toLocaleString()} {uLine})</span> : null}</Text>
+                    <Text size="xs" c="dimmed">Placed: <strong>{fmtDisp(totalPlacedLine)}{uDisp ? ` ${uDisp}` : ''}</strong>{uDisp !== uLine && uLine ? <span> ({totalPlacedLine.toLocaleString()} {uLine})</span> : null}</Text>
+                    <Text size="xs" c="dimmed">Remaining: <strong>{fmtDisp(remainingLine)}{uDisp ? ` ${uDisp}` : ''}</strong>{uDisp !== uLine && uLine ? <span> ({remainingLine.toLocaleString()} {uLine})</span> : null}</Text>
                   </Group>
                   {Object.entries(placements).filter(([, q]) => q > 0).length > 0 ? (
                     <Stack gap={4}>
                       <Text size="xs" fw={700} c="#42506a" tt="uppercase">Assigned stacks:</Text>
                       {Object.entries(placements).filter(([, q]) => q > 0).map(([stackId, qty]) => {
                         const stack = storeStacks.find(s => String(s.id) === stackId);
+                        const qtyLine = Number(qty);
                         return (
                           <Group key={stackId} gap="xs">
                             <Text size="xs" style={{ fontFamily: 'monospace' }}>{stack?.code || `Stack #${stackId}`}</Text>
-                            <Text size="xs" c="blue" fw={600}>{qty.toLocaleString()}{u ? ` ${u}` : ''}</Text>
+                            <Text size="xs" c="blue" fw={600}>{fmtDisp(qtyLine)}{uDisp ? ` ${uDisp}` : ''}{uDisp !== uLine && uLine ? <span> ({qtyLine.toLocaleString()} {uLine})</span> : null}</Text>
                             <Button size="xs" variant="subtle" color="red" style={{ padding: '0 4px', height: 18 }} onClick={() => setPlacements(p => { const n = {...p}; delete n[stackId]; return n; })}>×</Button>
                           </Group>
                         );
@@ -1600,13 +1626,17 @@ export default function StackLayoutPage() {
       {placementModalStack && selectedRAId && (() => {
         const selectedRA = activeRAsForStacking.find((ra) => String(ra.id) === selectedRAId);
         if (!selectedRA) return null;
-        const u = raQuantityUnit(selectedRA);
+        const uLine = raQuantityUnit(selectedRA);
+        const uDisp = raDisplayUnit(selectedRA);
+        const mult = raLineToInputMultiplier(selectedRA);
         const totalToPlace = Number(selectedRA.my_inspection?.total_received ?? selectedRA.authorized_quantity);
         const alreadyPlaced = Object.entries(placements)
           .filter(([sid]) => sid !== String(placementModalStack.id))
           .reduce((s, [, q]) => s + q, 0);
         const maxForThisStack = Math.max(0, totalToPlace - alreadyPlaced);
+        const maxDisp = Number((maxForThisStack * mult).toFixed(6));
         const currentQty = placements[String(placementModalStack.id)] || 0;
+        const currentDisp = Number((Number(currentQty) * mult).toFixed(6));
 
         // Check commodity compatibility
         const stackHasGoods = placementModalStack.quantity > 0 && placementModalStack.commodity_id;
@@ -1646,8 +1676,8 @@ export default function StackLayoutPage() {
               {!incompatible && (
                 <>
                   <NumberInput
-                    label={`Quantity to place${u ? ` (${u})` : ''}`}
-                    description={`Maximum for this stack: ${maxForThisStack.toLocaleString()}${u ? ` ${u}` : ''} (must match total received for this delivery).`}
+                    label={`Quantity to place${uLine ? ` (${uLine})` : ''}`}
+                    description={`Maximum for this stack: ${maxForThisStack.toLocaleString()}${uLine ? ` ${uLine}` : ''}${uDisp && uDisp !== uLine ? ` (≈ ${maxDisp.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${uDisp})` : ''}. Enter amounts in ${uLine || 'the receipt line unit'} — same as received quantity on file.`}
                     value={currentQty || ''}
                     onChange={(val) => {
                       const raw = Number(val) || 0;
@@ -1660,6 +1690,11 @@ export default function StackLayoutPage() {
                     decimalScale={3}
                     disabled={maxForThisStack <= 0}
                   />
+                  {Number(currentQty) > 0 && uDisp && uDisp !== uLine ? (
+                    <Text size="xs" c="dimmed">
+                      ≈ {currentDisp.toLocaleString(undefined, { maximumFractionDigits: 3 })} {uDisp}
+                    </Text>
+                  ) : null}
                   {maxForThisStack <= 0 && (
                     <Text size="xs" c="orange">All goods have already been assigned to other stacks.</Text>
                   )}
@@ -1691,9 +1726,19 @@ export default function StackLayoutPage() {
                 <Text size="sm" fw={600}>{ra.reference_no}</Text>
                 <Text size="sm">{ra.driver_name} — {ra.truck_plate_number}</Text>
                 <Text size="sm">
-                  Hub authorized: {Number(ra.authorized_quantity).toLocaleString()}{raQuantityUnit(ra) ? ` ${raQuantityUnit(ra)}` : ''}
+                  Hub authorized: {raDisplayQty(ra).toLocaleString(undefined, { maximumFractionDigits: 3 })}{raDisplayUnit(ra) ? ` ${raDisplayUnit(ra)}` : ''}
+                  {raDisplayUnit(ra) && raQuantityUnit(ra) && raDisplayUnit(ra) !== raQuantityUnit(ra) ? (
+                    <span> (= {Number(ra.authorized_quantity).toLocaleString()} {raQuantityUnit(ra)})</span>
+                  ) : null}
                   {ra.my_inspection?.total_received != null && Number(ra.my_inspection.total_received) !== Number(ra.authorized_quantity) && (
-                    <span> · Received: {Number(ra.my_inspection.total_received).toLocaleString()}{raQuantityUnit(ra) ? ` ${raQuantityUnit(ra)}` : ''}</span>
+                    <span>
+                      {' '}· Received:{' '}
+                      {Number((Number(ra.my_inspection.total_received) * raLineToInputMultiplier(ra)).toFixed(6)).toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                      {raDisplayUnit(ra) ? ` ${raDisplayUnit(ra)}` : ''}
+                      {raDisplayUnit(ra) && raQuantityUnit(ra) && raDisplayUnit(ra) !== raQuantityUnit(ra) ? (
+                        <span> (= {Number(ra.my_inspection.total_received).toLocaleString()} {raQuantityUnit(ra)})</span>
+                      ) : null}
+                    </span>
                   )}
                 </Text>
                 {ra.grn_reference_no && (

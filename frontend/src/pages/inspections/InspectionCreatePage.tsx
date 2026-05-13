@@ -33,8 +33,19 @@ import { generateSourceDetailReference } from '../../utils/sourceDetailReference
 import { convertQuantityToTargetUnit } from '../../utils/uomConversions';
 import type { InspectionItem } from '../../types/inspection';
 import type { ApiError } from '../../types/common';
+import type { ReceiptAuthorization } from '../../api/receiptAuthorizations';
 import { useAuthStore } from '../../store/authStore';
 import { normalizeRoleSlug } from '../../contracts/warehouse';
+
+function raAuthDisplayParts(ra: ReceiptAuthorization) {
+  const inputQty = ra.authorized_quantity_input;
+  const hasInput = inputQty != null && Number.isFinite(Number(inputQty)) && Number(inputQty) > 0;
+  const qty = hasInput ? Number(inputQty) : Number(ra.authorized_quantity);
+  const uDisp = (ra.authorized_quantity_input_unit_name ?? ra.authorized_quantity_input_unit_abbreviation ?? '').trim();
+  const uLine = (ra.unit_label ?? ra.unit_name ?? ra.unit_abbreviation ?? '').trim();
+  const lineQty = Number(ra.authorized_quantity);
+  return { qty, uPrimary: uDisp || uLine, uLine, lineQty, showEquiv: Boolean(uDisp && uLine && uDisp !== uLine) };
+}
 
 function uniqueLineRefsForInspectionItems(list: InspectionItem[]): InspectionItem[] {
   const used = new Set<string>();
@@ -578,7 +589,10 @@ function InspectionCreatePage() {
               />
               {selectedRA && (
                 <Alert color="blue" variant="light" title="Receipt Authorization Details">
-                  {`Expected quantity (line unit): ${Number(selectedRA.authorized_quantity).toLocaleString()}. Truck plate: ${selectedRA.truck_plate_number}.`}
+                  {(() => {
+                    const d = raAuthDisplayParts(selectedRA);
+                    return `Expected quantity: ${d.qty.toLocaleString(undefined, { maximumFractionDigits: 3 })}${d.uPrimary ? ` ${d.uPrimary}` : ''}${d.showEquiv ? ` (= ${d.lineQty.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${d.uLine})` : ''}. Truck plate: ${selectedRA.truck_plate_number}.`;
+                  })()}
                 </Alert>
               )}
               {selectedRA && sourceType === 'Waybill' && matchingWaybills.length === 0 && (

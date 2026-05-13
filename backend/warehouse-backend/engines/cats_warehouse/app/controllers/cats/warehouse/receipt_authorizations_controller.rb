@@ -74,6 +74,11 @@ module Cats
           ro_line = receipt_order.receipt_order_lines.find(payload[:receipt_order_line_id])
         end
 
+        input_unit = nil
+        if payload[:authorized_quantity_input_unit_id].present?
+          input_unit = Cats::Core::UnitOfMeasure.find(payload[:authorized_quantity_input_unit_id])
+        end
+
         ra = ReceiptAuthorizationService.new(
           receipt_order:                    receipt_order,
           actor:                            current_user,
@@ -87,6 +92,8 @@ module Cats
           receipt_order_assignment:          assignment,
           explicit_warehouse:                explicit_wh,
           receipt_order_line:                ro_line,
+          authorized_quantity_input:         payload[:authorized_quantity_input],
+          authorized_quantity_input_unit:    input_unit,
           force_plan_change_notification:    payload[:notify_planned_facilities]
         ).call
 
@@ -103,7 +110,26 @@ module Cats
           ra.transporter = resolve_transporter_for_payload!(payload)
         end
 
-        ra.assign_attributes(payload.except(:transporter_id, :transporter_name))
+        attrs = payload.except(:transporter_id, :transporter_name).to_h
+
+        # When the client updates the "as-typed" quantity / unit, recompute the
+        # canonical quantity in the receipt-order line unit so allocation math
+        # (already in line unit) stays correct end-to-end.
+        if payload[:authorized_quantity_input].present? &&
+           payload[:authorized_quantity_input_unit_id].present? &&
+           !payload.key?(:authorized_quantity)
+          line = ra.receipt_order_line || ra.receipt_order&.receipt_order_lines&.first
+          if line&.unit_id.present?
+            attrs["authorized_quantity"] = UomConversionResolver.convert(
+              payload[:authorized_quantity_input].to_f,
+              from_unit_id: payload[:authorized_quantity_input_unit_id].to_i,
+              to_unit_id:   line.unit_id,
+              commodity_id: line.commodity_id
+            )
+          end
+        end
+
+        ra.assign_attributes(attrs)
         ra.save!
 
         render_resource(ra, serializer: ReceiptAuthorizationSerializer)
@@ -172,6 +198,8 @@ module Cats
           :transporter_id,
           :transporter_name,
           :authorized_quantity,
+          :authorized_quantity_input,
+          :authorized_quantity_input_unit_id,
           :driver_name,
           :driver_id_number,
           :truck_plate_number,
@@ -185,6 +213,8 @@ module Cats
           :transporter_id,
           :transporter_name,
           :authorized_quantity,
+          :authorized_quantity_input,
+          :authorized_quantity_input_unit_id,
           :driver_name,
           :driver_id_number,
           :truck_plate_number,

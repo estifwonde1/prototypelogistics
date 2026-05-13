@@ -12,6 +12,8 @@ module Cats
                      receipt_order_assignment: nil,
                      explicit_warehouse: nil,
                      receipt_order_line: nil,
+                     authorized_quantity_input: nil,
+                     authorized_quantity_input_unit: nil,
                      force_plan_change_notification: false)
         @receipt_order                  = receipt_order
         @actor                          = actor
@@ -25,6 +27,8 @@ module Cats
         @receipt_order_assignment       = receipt_order_assignment
         @explicit_warehouse             = explicit_warehouse
         @receipt_order_line             = receipt_order_line
+        @authorized_quantity_input      = authorized_quantity_input
+        @authorized_quantity_input_unit = authorized_quantity_input_unit
         @force_plan_change_notification = ActiveModel::Type::Boolean.new.cast(force_plan_change_notification)
       end
 
@@ -238,6 +242,7 @@ module Cats
           reference_no:             generate_reference_no,
           created_by:               @actor
         }
+        attrs.merge!(resolved_input_quantity_attrs(line: line))
         ReceiptAuthorization.create!(attrs)
       rescue ActiveModel::MissingAttributeError => e
         raise e unless e.message.to_s.include?("receipt_order_line_id")
@@ -246,6 +251,24 @@ module Cats
               "Receipt authorizations schema is outdated (missing receipt_order_line_id). " \
               "Run bin/rails db:migrate in backend/warehouse-backend, restart Spring if used (bin/spring stop), " \
               "then restart the API."
+      end
+
+      # Preserve "as-typed" qty + unit on the RA when the client sent them; otherwise
+      # default to the normalized qty in the receipt-order line unit so historical/API
+      # callers that omit the new fields still produce well-formed display data.
+      # No-op when the columns haven't been migrated in this environment yet.
+      def resolved_input_quantity_attrs(line:)
+        cols = ReceiptAuthorization.column_names
+        return {} unless cols.include?("authorized_quantity_input") &&
+                         cols.include?("authorized_quantity_input_unit_id")
+
+        qty_in = @authorized_quantity_input.present? ? @authorized_quantity_input.to_f : @authorized_quantity.to_f
+        unit_id_in = @authorized_quantity_input_unit&.id || line.unit_id
+
+        {
+          authorized_quantity_input:         qty_in,
+          authorized_quantity_input_unit_id: unit_id_in
+        }
       end
 
       def routing_override?(warehouse)
