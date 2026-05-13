@@ -129,7 +129,6 @@ export default function BinCardReportPage() {
         expiry_date: brows[0]?.lot_expiry_date,
         stacks: brows,
       }));
-
       return {
         commodity_id: cid,
         commodity_name: first.commodity_name || `Commodity #${cid}`,

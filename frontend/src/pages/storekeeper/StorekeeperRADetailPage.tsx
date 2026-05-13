@@ -210,12 +210,18 @@ export default function StorekeeperRADetailPage() {
   const isPending = ra.status === 'pending';
   const isActive = ra.status === 'active';
 
+  const myInspection = ra.my_inspection ?? null;
+  const myGrn = ra.my_grn ?? null;
+  const canDriverConfirm = isActive && myInspection && !myGrn;
+
   const authorized = Number(ra.authorized_quantity);
   const alreadyReceived = ra.total_received ?? 0;
   const raRemaining = Math.max(0, authorized - alreadyReceived);
 
   const storeAssigned = Number(storeAssignment?.quantity ?? 0);
-  const storeReceived = Number(storeAssignment?.received_quantity ?? 0);
+  // "Already received" = the full RA authorized quantity that was accounted for
+  // (received + lost = total from this truck, which counts against the store assignment)
+  const storeReceived = myInspection ? Number(authorized) : 0;
   const storeRemaining = Math.max(0, storeAssigned - storeReceived);
 
   const maxCanRecord = Math.min(raRemaining, storeRemaining);
@@ -223,10 +229,6 @@ export default function StorekeeperRADetailPage() {
   const received = Number(qtyReceived) || 0;
   const lostPreview = showRecordingForm && received > 0 ? Math.max(0, maxCanRecord - received) : 0;
   const receivedPct = maxCanRecord > 0 ? Math.min(100, (received / maxCanRecord) * 100) : 0;
-
-  const myInspection = ra.my_inspection ?? null;
-  const myGrn = ra.my_grn ?? null;
-  const canDriverConfirm = isActive && myInspection && !myGrn;
 
   return (
     <Stack gap="md">
@@ -290,18 +292,30 @@ export default function StorekeeperRADetailPage() {
         <Card withBorder padding="lg" bg="blue.0">
           <Stack gap="xs">
             <Text size="sm" fw={700} c="blue.9">Your Store Assignment</Text>
-            <Group gap="xl">
+            <Group gap="xl" wrap="wrap">
               <Stack gap={0}>
-                <Text size="xs" c="dimmed">Assigned to your store</Text>
-                <Text fw={700}>{storeAssigned.toLocaleString()} {ra.unit_name || ''}</Text>
+                <Text size="xs" c="dimmed">Sent in this RA</Text>
+                <Text fw={700}>{authorized.toLocaleString()} {ra.unit_name || ''}</Text>
               </Stack>
               <Stack gap={0}>
-                <Text size="xs" c="dimmed">Already received</Text>
-                <Text fw={700} c="green">{storeReceived.toLocaleString()}</Text>
+                <Text size="xs" c="dimmed">Received</Text>
+                <Text fw={700} c="green">
+                  {myInspection ? Number(myInspection.total_received ?? 0).toLocaleString() : '—'} {ra.unit_name || ''}
+                </Text>
               </Stack>
               <Stack gap={0}>
-                <Text size="xs" c="dimmed">Still to receive</Text>
-                <Text fw={700} c={storeRemaining > 0 ? 'orange' : 'green'}>{storeRemaining.toLocaleString()}</Text>
+                <Text size="xs" c="dimmed">Lost</Text>
+                <Text fw={700} c={myInspection && (authorized - Number(myInspection.total_received ?? 0)) > 0 ? 'red' : 'dimmed'}>
+                  {myInspection
+                    ? Math.max(0, authorized - Number(myInspection.total_received ?? 0)).toLocaleString()
+                    : '—'} {ra.unit_name || ''}
+                </Text>
+              </Stack>
+              <Stack gap={0}>
+                <Text size="xs" c="dimmed">Remaining (store)</Text>
+                <Text fw={700} c={storeRemaining > 0 ? 'orange' : 'green'}>
+                  {storeRemaining.toLocaleString()} {ra.unit_name || ''}
+                </Text>
               </Stack>
             </Group>
           </Stack>
