@@ -530,6 +530,9 @@ module Cats
                 stack.update_columns(commodity_id: commodity_id, unit_id: unit_id)
               end
 
+              # Mark the stack as active now that goods are being placed in it
+              stack.update_columns(stack_status: "active") unless stack.stack_status.to_s.downcase == "active"
+
               grn.grn_items.create!(
                 commodity_id:      commodity_id,
                 quantity:          placement[:quantity].to_f,
@@ -615,6 +618,7 @@ module Cats
 
             placements.each do |placement|
               stack = Stack.find(placement[:stack_id].to_i)
+              stack.update_columns(stack_status: "active") unless stack.stack_status.to_s.downcase == "active"
               grn.grn_items.create!(
                 commodity_id:      first_line.commodity_id,
                 quantity:          placement[:quantity].to_f,
