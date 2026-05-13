@@ -15,11 +15,10 @@ import {
   Divider,
 } from '@mantine/core';
 import { IconChevronDown, IconChevronRight, IconArrowLeft, IconPackage } from '@tabler/icons-react';
-import { getBinCardReport } from '../../api/reports';
+import { getBinCardReport, type BinCardFilters } from '../../api/reports';
 import { getStockBalances } from '../../api/stockBalances';
 import { getStores } from '../../api/stores';
 import { LoadingState } from '../../components/common/LoadingState';
-import { ErrorState } from '../../components/common/ErrorState';
 import { ExpiryBadge } from '../../components/common/ExpiryBadge';
 import { useAuthStore } from '../../store/authStore';
 import { normalizeRoleSlug } from '../../contracts/warehouse';
@@ -36,6 +35,8 @@ interface CommodityGroup {
 }
 
 interface BatchGroup {
+  /** Stable key for grouping / React list keys */
+  groupKey: string;
   batch_no: string;
   commodity_id: number;
   commodity_name: string;
@@ -43,34 +44,108 @@ interface BatchGroup {
   unit_name: string;
   expiry_date?: string | null;
   stacks: StockBalance[];
+  inventory_lot_ids: number[];
+}
+
+function balanceRowGroupKey(r: StockBalance): string {
+  if (r.inventory_lot_id != null && r.inventory_lot_id > 0) {
+    return `lot:${r.inventory_lot_id}`;
+  }
+  const lbn = r.lot_batch_no?.trim();
+  if (lbn) return `lbn:${lbn}`;
+  const bn = r.batch_no?.trim();
+  if (bn) return `bn:${bn}`;
+  const cbn = r.commodity_batch_no?.trim();
+  if (cbn) return `cbn:${cbn}`;
+  return `orphan:${r.commodity_id}`;
+}
+
+function batchNoFromGroupKey(groupKey: string): string | undefined {
+  if (groupKey.startsWith('lbn:')) return groupKey.slice(4);
+  if (groupKey.startsWith('bn:')) return groupKey.slice(3);
+  if (groupKey.startsWith('cbn:')) return groupKey.slice(4);
+  return undefined;
+}
+
+function buildBinCardFiltersForBatch(batch: BatchGroup, storeId: string): BinCardFilters {
+  const stackIds = [
+    ...new Set(
+      batch.stacks
+        .map((s) => s.stack_id)
+        .filter((id): id is number => typeof id === 'number' && id > 0)
+    ),
+  ];
+  const lotIdsFromRows = [
+    ...new Set(
+      batch.stacks
+        .map((s) => s.inventory_lot_id)
+        .filter((id): id is number => typeof id === 'number' && id > 0)
+    ),
+  ];
+  const hasNullLotRow = batch.stacks.some((s) => s.inventory_lot_id == null);
+  const singularLotId = lotIdsFromRows.length === 1 ? lotIdsFromRows[0] : undefined;
+  const orphanKey = batch.groupKey.startsWith('orphan:');
+  const includeNull = hasNullLotRow && stackIds.length > 0;
+  const omitLot = orphanKey && stackIds.length > 0;
+
+  const first = batch.stacks[0];
+  const reportBatchNo =
+    first?.lot_batch_no?.trim() ||
+    first?.batch_no?.trim() ||
+    first?.commodity_batch_no?.trim() ||
+    batchNoFromGroupKey(batch.groupKey);
+
+  const filters: BinCardFilters = {
+    store_id: Number(storeId),
+    commodity_id: batch.commodity_id,
+    ...(stackIds.length ? { stack_ids: stackIds } : {}),
+    ...(includeNull ? { include_null_inventory_lot: true } : {}),
+    ...(omitLot ? { omit_lot_filter: true } : {}),
+  };
+
+  if (singularLotId) {
+    filters.inventory_lot_id = singularLotId;
+  } else if (!omitLot && reportBatchNo) {
+    filters.batch_no = reportBatchNo;
+  }
+
+  return filters;
 }
 
 // ── Main component ────────────────────────────────────────────────────────
 
 export default function BinCardReportPage() {
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
-  const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
+  const persistedRole = useAuthStore((state) => state.role);
+  const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || persistedRole);
   const userWarehouseId = activeAssignment?.warehouse?.id;
   const userStoreId = activeAssignment?.store?.id;
   const isStorekeeper = roleSlug === 'storekeeper';
   const isWarehouseManager = roleSlug === 'warehouse_manager';
 
+  const warehouseIdForStoreList =
+    isWarehouseManager || (isStorekeeper && userWarehouseId) ? userWarehouseId : undefined;
+
   const [storeId, setStoreId] = useState<string | null>(null);
-  const [selectedCommodity, setSelectedCommodity] = useState<CommodityGroup | null>(null);
   const [selectedBatch, setSelectedBatch] = useState<BatchGroup | null>(null);
   const [expandedCommodities, setExpandedCommodities] = useState<Set<number>>(new Set());
 
-  // Auto-select storekeeper's store
-  useEffect(() => {
-    if (isStorekeeper && userStoreId && !storeId) {
-      setStoreId(String(userStoreId));
-    }
-  }, [isStorekeeper, userStoreId, storeId]);
-
   const { data: stores = [] } = useQuery({
-    queryKey: ['stores', { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],
-    queryFn: () => getStores({ warehouse_id: isWarehouseManager ? userWarehouseId : undefined }),
+    queryKey: ['stores', { warehouse_id: warehouseIdForStoreList }],
+    queryFn: () => getStores(warehouseIdForStoreList ? { warehouse_id: warehouseIdForStoreList } : undefined),
   });
+
+  // Auto-select store: explicit assignment store, else sole store in scope
+  useEffect(() => {
+    if (!isStorekeeper || storeId) return;
+    if (userStoreId) {
+      setStoreId(String(userStoreId));
+      return;
+    }
+    if (stores.length === 1) {
+      setStoreId(String(stores[0].id));
+    }
+  }, [isStorekeeper, userStoreId, storeId, stores]);
 
   // Fetch stock balances for the selected store
   const { data: balances = [], isLoading: balancesLoading } = useQuery({
@@ -80,34 +155,26 @@ export default function BinCardReportPage() {
   });
 
   // Fetch transaction history for selected batch
+  const binCardFilterKey = useMemo(
+    () =>
+      selectedBatch && storeId
+        ? JSON.stringify(buildBinCardFiltersForBatch(selectedBatch, storeId))
+        : '',
+    [selectedBatch, storeId]
+  );
+
   const { data: transactions = [], isLoading: txLoading } = useQuery({
-    queryKey: ['reports', 'bin-card', storeId, selectedBatch?.commodity_id, selectedBatch?.batch_no],
-    queryFn: () => {
-      const batchNo = selectedBatch?.batch_no;
-      const isSyntheticBatch = !batchNo || batchNo.startsWith('batch-');
-      return getBinCardReport({
-        store_id: storeId ? Number(storeId) : undefined,
-        commodity_id: selectedBatch?.commodity_id,
-        ...(isSyntheticBatch ? {} : { batch_no: batchNo }),
-      });
-    },
+    queryKey: ['reports', 'bin-card', binCardFilterKey],
+    queryFn: () => getBinCardReport(buildBinCardFiltersForBatch(selectedBatch!, storeId!)),
     enabled: !!selectedBatch && !!storeId,
-    select: (data) => {
-      const batchKey = selectedBatch?.batch_no;
-      let rows = data;
-      if (batchKey?.startsWith('batch-')) {
-        rows = data.filter((e: { commodity_id?: number }) =>
-          e.commodity_id === selectedBatch?.commodity_id
-        );
-      }
-      return rows.sort(
+    select: (data) =>
+      [...data].sort(
         (a: { transaction_date: string }, b: { transaction_date: string }) =>
           new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime()
-      );
-    },
+      ),
   });
 
-  // Group balances by commodity → batch
+  // Group balances by commodity → batch (lot-aware keys)
   const commodityGroups = useMemo((): CommodityGroup[] => {
     if (!balances.length) return [];
 
@@ -121,23 +188,43 @@ export default function BinCardReportPage() {
       const totalQty = rows.reduce((s, r) => s + r.quantity, 0);
       const first = rows[0];
 
-      // Group by batch_no within this commodity
       const byBatch = new Map<string, StockBalance[]>();
       rows.forEach((r) => {
-        const key = r.commodity_batch_no || r.lot_batch_no || `batch-${cid}`;
-        if (!byBatch.has(key)) byBatch.set(key, []);
-        byBatch.get(key)!.push(r);
+        const gk = balanceRowGroupKey(r);
+        if (!byBatch.has(gk)) byBatch.set(gk, []);
+        byBatch.get(gk)!.push(r);
       });
 
-      const batches: BatchGroup[] = Array.from(byBatch.entries()).map(([bno, brows]) => ({
-        batch_no: bno,
-        commodity_id: cid,
-        commodity_name: first.commodity_name || `Commodity #${cid}`,
-        quantity: brows.reduce((s, r) => s + r.quantity, 0),
-        unit_name: first.unit_abbreviation || first.unit_name || '',
-        expiry_date: brows[0]?.lot_expiry_date,
-        stacks: brows,
-      }));
+      const batches: BatchGroup[] = Array.from(byBatch.entries()).map(([groupKey, brows]) => {
+        const row0 = brows[0];
+        const displayBatch =
+          row0.lot_batch_no?.trim() ||
+          row0.batch_no?.trim() ||
+          row0.commodity_batch_no?.trim() ||
+          batchNoFromGroupKey(groupKey) ||
+          (groupKey.startsWith('orphan:') ? 'No lot on balance' : groupKey);
+
+        const inventory_lot_ids = [
+          ...new Set(
+            brows
+              .map((b) => b.inventory_lot_id)
+              .filter((id): id is number => typeof id === 'number' && id > 0)
+          ),
+        ];
+
+        return {
+          groupKey,
+          batch_no: displayBatch,
+          commodity_id: cid,
+          commodity_name: first.commodity_name || `Commodity #${cid}`,
+          quantity: brows.reduce((s, r) => s + r.quantity, 0),
+          unit_name: first.unit_abbreviation || first.unit_name || '',
+          expiry_date: brows[0]?.lot_expiry_date ?? brows[0]?.expiry_date,
+          stacks: brows,
+          inventory_lot_ids,
+        };
+      });
+
       return {
         commodity_id: cid,
         commodity_name: first.commodity_name || `Commodity #${cid}`,
@@ -151,12 +238,14 @@ export default function BinCardReportPage() {
   // Calculate running balance for transaction history
   const txWithBalance = useMemo(() => {
     let running = 0;
-    return transactions.map((t: any) => {
+    const rows: any[] = [];
+    for (const t of transactions) {
       const isIn = t.movement_type === 'inbound' || (!t.movement_type && t.destination_id && !t.source_id);
       const qty = Number(t.quantity) || 0;
       running = isIn ? running + qty : running - qty;
-      return { ...t, isIn, running };
-    });
+      rows.push({ ...t, isIn, running });
+    }
+    return rows;
   }, [transactions]);
 
   const storeOptions = stores.map((s) => ({ value: String(s.id), label: s.name }));
@@ -200,6 +289,48 @@ export default function BinCardReportPage() {
             )}
           </Group>
         </Card>
+
+        <div>
+          <Title order={5} mb="xs">Quantity by stack</Title>
+          <Table.ScrollContainer minWidth={520}>
+            <Table striped withTableBorder withColumnBorders>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Stack</Table.Th>
+                  <Table.Th style={{ textAlign: 'right' }}>Quantity</Table.Th>
+                  <Table.Th>Unit</Table.Th>
+                  <Table.Th>Lot / batch</Table.Th>
+                  <Table.Th>Expiry</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {selectedBatch.stacks.map((row) => {
+                  const lotLabel =
+                    row.lot_batch_no?.trim() ||
+                    row.batch_no?.trim() ||
+                    row.commodity_batch_no?.trim() ||
+                    (row.inventory_lot_id ? `Lot #${row.inventory_lot_id}` : '—');
+                  const exp = row.lot_expiry_date || row.expiry_date;
+                  return (
+                    <Table.Tr key={`${row.stack_id}-${row.id}`}>
+                      <Table.Td style={{ fontFamily: 'monospace', fontSize: 13 }}>
+                        {row.stack_code || `Stack #${row.stack_id}`}
+                      </Table.Td>
+                      <Table.Td style={{ textAlign: 'right', fontWeight: 600 }}>
+                        {Number(row.quantity).toLocaleString()}
+                      </Table.Td>
+                      <Table.Td>{row.unit_abbreviation || row.unit_name || selectedBatch.unit_name}</Table.Td>
+                      <Table.Td style={{ fontFamily: 'monospace', fontSize: 12 }}>{lotLabel}</Table.Td>
+                      <Table.Td>
+                        {exp ? <ExpiryBadge expiryDate={exp} size="xs" /> : '—'}
+                      </Table.Td>
+                    </Table.Tr>
+                  );
+                })}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </div>
 
         {txLoading ? (
           <LoadingState message="Loading transaction history..." />
@@ -264,20 +395,29 @@ export default function BinCardReportPage() {
         </Text>
       </div>
 
-      {!isStorekeeper && (
-        <Select
-          label="Store"
-          placeholder="Select a store"
-          data={storeOptions}
-          value={storeId}
-          onChange={setStoreId}
-          w={300}
-          clearable
-        />
-      )}
+      <Select
+        label="Store"
+        description={
+          isStorekeeper
+            ? 'Pick which store’s stock to view. Each batch links to full in/out history (GRN, GIN, transfers, etc.).'
+            : undefined
+        }
+        placeholder={storeOptions.length ? 'Select a store' : 'No stores available'}
+        data={storeOptions}
+        value={storeId}
+        onChange={setStoreId}
+        w={360}
+        clearable={!isStorekeeper || storeOptions.length > 1}
+        disabled={!storeOptions.length}
+        searchable={storeOptions.length > 8}
+      />
 
       {!storeId && (
-        <Alert color="blue">Select a store to view its bin card.</Alert>
+        <Alert color="blue" title="Choose a store">
+          {isStorekeeper && storeOptions.length === 0
+            ? 'No stores are available for your login in this warehouse. A warehouse manager needs to assign you to at least one store.'
+            : 'Use the store dropdown above, then open a commodity and a batch to see movement history (receipts, issues, adjustments) like a classic bin card.'}
+        </Alert>
       )}
 
       {storeId && balancesLoading && <LoadingState message="Loading stock..." />}
@@ -322,7 +462,7 @@ export default function BinCardReportPage() {
               <Stack gap="xs">
                 {comm.batches.map((batch) => (
                   <Card
-                    key={batch.batch_no}
+                    key={batch.groupKey}
                     withBorder
                     padding="sm"
                     radius="sm"
