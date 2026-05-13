@@ -36,6 +36,22 @@ function statusColor(status: ReceiptAuthorization['status']) {
   }
 }
 
+function raDisplayUnit(ra: ReceiptAuthorization): string {
+  const inputName = (ra.authorized_quantity_input_unit_name ?? '').trim();
+  const inputAbbr = (ra.authorized_quantity_input_unit_abbreviation ?? '').trim();
+  return inputName || inputAbbr || (ra.unit_label ?? ra.unit_name ?? ra.unit_abbreviation ?? '').trim();
+}
+
+function raLineUnit(ra: ReceiptAuthorization): string {
+  return (ra.unit_label ?? ra.unit_name ?? ra.unit_abbreviation ?? '').trim();
+}
+
+function raDisplayQty(ra: ReceiptAuthorization): number {
+  const v = ra.authorized_quantity_input;
+  if (v != null && Number.isFinite(Number(v)) && Number(v) > 0) return Number(v);
+  return Number(ra.authorized_quantity);
+}
+
 export default function ReceiptAuthorizationDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -167,7 +183,14 @@ export default function ReceiptAuthorizationDetailPage() {
             </div>
             <div>
               <Text size="xs" c="dimmed">Authorized Quantity</Text>
-              <Text fw={700} size="lg">{Number(ra.authorized_quantity).toLocaleString()}</Text>
+              <Text fw={700} size="lg">
+                {raDisplayQty(ra).toLocaleString()} {raDisplayUnit(ra)}
+              </Text>
+              {raDisplayUnit(ra) && raLineUnit(ra) && raDisplayUnit(ra) !== raLineUnit(ra) ? (
+                <Text size="xs" c="dimmed">
+                  = {Number(ra.authorized_quantity).toLocaleString()} {raLineUnit(ra)}
+                </Text>
+              ) : null}
             </div>
           </SimpleGrid>
         </Stack>

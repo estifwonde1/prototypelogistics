@@ -69,4 +69,80 @@ RSpec.describe "GET /cats_warehouse/v1/receipt_orders warehouse filter + RA visi
     expect(ids).to include(receipt_order.id),
                    "Expected RO #{receipt_order.id} in #{ids.inspect}"
   end
+
+  it "returns in-progress receipt orders for a Hub Manager scoped to their hub" do
+    hm = create(:cats_core_user, role_name: "Hub Manager")
+    Cats::Warehouse::UserAssignment.create!(
+      user: hm,
+      hub: hub,
+      role_name: "Hub Manager"
+    )
+
+    ro_ip = Cats::Warehouse::ReceiptOrder.create!(
+      hub: hub,
+      created_by: actor,
+      status: Cats::Warehouse::ContractConstants::DOCUMENT_STATUSES[:in_progress],
+      reference_no: "RO-IDX-IP-#{SecureRandom.hex(4)}",
+      received_date: Date.current
+    )
+    Cats::Warehouse::ReceiptOrderLine.create!(
+      receipt_order: ro_ip,
+      commodity: commodity,
+      unit: unit,
+      quantity: 10,
+      line_reference_no: "RL-IDX-IP-#{SecureRandom.hex(4)}"
+    )
+
+    get "/cats_warehouse/v1/receipt_orders", headers: auth_headers_for(hm)
+
+    expect(response).to have_http_status(:ok)
+    body = JSON.parse(response.body)
+    expect(body["success"]).to eq(true)
+    ids = (body["data"] || []).map { |row| row["id"] || row.with_indifferent_access[:id] }
+    expect(ids).to include(ro_ip.id),
+                   "Hub manager should still see in_progress RO #{ro_ip.id}; got #{ids.inspect}"
+  end
+
+  it "includes receipt orders for hub manager when only line destination_hub_id or warehouse assignment links to hub" do
+    other_hub = create(:cats_warehouse_hub)
+    hm = create(:cats_core_user, role_name: "Hub Manager")
+    Cats::Warehouse::UserAssignment.create!(
+      user: hm,
+      hub: hub,
+      role_name: "Hub Manager"
+    )
+
+    ro = Cats::Warehouse::ReceiptOrder.create!(
+      hub: other_hub,
+      created_by: actor,
+      status: Cats::Warehouse::ContractConstants::DOCUMENT_STATUSES[:in_progress],
+      reference_no: "RO-IDX-DEST-#{SecureRandom.hex(4)}",
+      received_date: Date.current
+    )
+    rl = Cats::Warehouse::ReceiptOrderLine.create!(
+      receipt_order: ro,
+      commodity: commodity,
+      unit: unit,
+      quantity: 10,
+      destination_hub_id: hub.id,
+      line_reference_no: "RL-IDX-DEST-#{SecureRandom.hex(4)}"
+    )
+    Cats::Warehouse::ReceiptOrderAssignment.create!(
+      receipt_order: ro,
+      receipt_order_line: rl,
+      hub_id: nil,
+      warehouse_id: wh_target.id,
+      assigned_by: actor,
+      quantity: 5,
+      status: "assigned"
+    )
+
+    get "/cats_warehouse/v1/receipt_orders", headers: auth_headers_for(hm)
+
+    expect(response).to have_http_status(:ok)
+    body = JSON.parse(response.body)
+    ids = (body["data"] || []).map { |row| row["id"] || row.with_indifferent_access[:id] }
+    expect(ids).to include(ro.id),
+                   "Hub manager should see RO #{ro.id} via destination_hub_id / warehouse-in-hub; got #{ids.inspect}"
+  end
 end

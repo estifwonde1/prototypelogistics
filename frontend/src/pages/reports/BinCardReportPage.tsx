@@ -82,18 +82,27 @@ export default function BinCardReportPage() {
   // Fetch transaction history for selected batch
   const { data: transactions = [], isLoading: txLoading } = useQuery({
     queryKey: ['reports', 'bin-card', storeId, selectedBatch?.commodity_id, selectedBatch?.batch_no],
-    queryFn: () => getBinCardReport({
-      store_id: storeId ? Number(storeId) : undefined,
-    }),
+    queryFn: () => {
+      const batchNo = selectedBatch?.batch_no;
+      const isSyntheticBatch = !batchNo || batchNo.startsWith('batch-');
+      return getBinCardReport({
+        store_id: storeId ? Number(storeId) : undefined,
+        commodity_id: selectedBatch?.commodity_id,
+        ...(isSyntheticBatch ? {} : { batch_no: batchNo }),
+      });
+    },
     enabled: !!selectedBatch && !!storeId,
     select: (data) => {
-      // Filter to this commodity only
-      const filtered = data.filter((e: any) =>
-        e.commodity_id === selectedBatch?.commodity_id
-      );
-      // Sort by date ascending for running balance
-      return filtered.sort((a: any, b: any) =>
-        new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime()
+      const batchKey = selectedBatch?.batch_no;
+      let rows = data;
+      if (batchKey?.startsWith('batch-')) {
+        rows = data.filter((e: { commodity_id?: number }) =>
+          e.commodity_id === selectedBatch?.commodity_id
+        );
+      }
+      return rows.sort(
+        (a: { transaction_date: string }, b: { transaction_date: string }) =>
+          new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime()
       );
     },
   });

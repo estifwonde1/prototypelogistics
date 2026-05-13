@@ -29,9 +29,25 @@ module Cats
           if @grn.receipt_authorization.present?
             close_receipt_authorization_if_complete!
           elsif @grn.receipt_order.present?
-            order_old_status = @grn.receipt_order.status
-            @grn.receipt_order.update!(status: "Completed")
-            WorkflowEventRecorder.record!(entity: @grn.receipt_order, event_type: "receipt_order.completed", actor: @approved_by || @grn.approved_by, from_status: order_old_status, to_status: @grn.receipt_order.status, payload: { grn_id: @grn.id })
+            order = @grn.receipt_order.reload
+            # Do not auto-complete orders that use RAs via this legacy GRN path; let the checker apply line rules.
+            if order.receipt_authorizations.not_cancelled.exists?
+              ReceiptOrderCompletionChecker.new(
+                receipt_order: order,
+                actor:         @approved_by || @grn.approved_by
+              ).call
+            else
+              order_old_status = order.status
+              order.update!(status: Cats::Warehouse::ContractConstants::DOCUMENT_STATUSES[:completed])
+              WorkflowEventRecorder.record!(
+                entity:      order,
+                event_type:  "receipt_order.completed",
+                actor:       @approved_by || @grn.approved_by,
+                from_status: order_old_status,
+                to_status:   order.status,
+                payload:     { grn_id: @grn.id }
+              )
+            end
           end
 
           WorkflowEventRecorder.record!(entity: @grn, event_type: "grn.confirmed", actor: @approved_by || @grn.approved_by, from_status: old_status, to_status: @grn.status)

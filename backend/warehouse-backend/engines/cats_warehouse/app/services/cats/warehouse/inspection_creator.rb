@@ -23,17 +23,6 @@ module Cats
           ra = ReceiptAuthorization.find_by(id: @receipt_authorization_id)
           raise ArgumentError, "Receipt Authorization not found" unless ra
           raise ArgumentError, "Receipt Authorization must be Pending or Active to record a receipt" unless ra.pending? || ra.active?
-
-          # Validate that adding this receipt does not exceed the RA's authorized quantity.
-          # Multiple storekeepers can record against the same RA (one per store portion).
-          new_qty = @items.sum { |item| item[:quantity_received].to_f }
-          already_received = ra.inspections.joins(:inspection_items).sum("cats_warehouse_inspection_items.quantity_received").to_f
-
-          if already_received + new_qty > ra.authorized_quantity.to_f + 0.0001
-            remaining = (ra.authorized_quantity.to_f - already_received).round(4)
-            raise ArgumentError,
-                  "Quantity received (#{new_qty}) exceeds remaining authorized quantity (#{remaining})"
-          end
         end
 
         Inspection.transaction do

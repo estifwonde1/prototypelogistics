@@ -51,11 +51,19 @@ module Cats
       end
 
       def commodity_id
-        reference_item&.commodity_id
+        id = reference_item&.commodity_id
+        return id if id.present?
+
+        object.inventory_lot&.commodity_id.presence ||
+          object.destination&.commodity_id.presence ||
+          object.source&.commodity_id
       end
 
       def commodity_name
-        reference_item&.commodity&.[](:name) || reference_item&.commodity&.description || reference_item&.commodity&.batch_no
+        com = commodity_record
+        return unless com
+
+        com.read_attribute(:name).presence || com.try(:description) || com.batch_no
       end
 
       def unit_name
@@ -106,15 +114,39 @@ module Cats
         @reference_item ||= begin
           case object.reference
           when Cats::Warehouse::Grn
-            object.reference.grn_items.find_by(stack_id: object.destination_id, unit_id: object.unit_id) ||
-              object.reference.grn_items.find_by(unit_id: object.unit_id)
+            items = object.reference.grn_items
+            items.find_by(stack_id: object.destination_id, unit_id: object.unit_id) ||
+              items.find_by(stack_id: object.destination_id) ||
+              items.find_by(stack_id: object.source_id, unit_id: object.unit_id) ||
+              items.find_by(stack_id: object.source_id) ||
+              items.find_by(unit_id: object.unit_id) ||
+              items.first
           when Cats::Warehouse::Gin
-            object.reference.gin_items.find_by(stack_id: object.source_id, unit_id: object.unit_id) ||
-              object.reference.gin_items.find_by(unit_id: object.unit_id)
+            items = object.reference.gin_items
+            items.find_by(stack_id: object.source_id, unit_id: object.unit_id) ||
+              items.find_by(stack_id: object.source_id) ||
+              items.find_by(unit_id: object.unit_id) ||
+              items.first
           when Cats::Warehouse::Inspection
             object.reference.inspection_items.find_by(commodity_id: object.destination&.commodity_id || object.source&.commodity_id)
           end
         end
+      end
+
+      def commodity_record
+        return @commodity_record if defined?(@commodity_record)
+
+        item = reference_item
+        @commodity_record =
+          if item&.respond_to?(:commodity) && item.commodity
+            item.commodity
+          elsif item&.respond_to?(:commodity_id) && item.commodity_id.present?
+            Cats::Core::Commodity.find_by(id: item.commodity_id)
+          elsif object.inventory_lot&.commodity
+            object.inventory_lot.commodity
+          elsif (cid = commodity_id)
+            Cats::Core::Commodity.find_by(id: cid)
+          end
       end
     end
   end

@@ -18,6 +18,10 @@ module Cats
       belongs_to :store,                    class_name: "Cats::Warehouse::Store", optional: true
       belongs_to :warehouse,                class_name: "Cats::Warehouse::Warehouse"
       belongs_to :transporter,              class_name: "Cats::Core::Transporter"
+      belongs_to :authorized_quantity_input_unit,
+                                            class_name: "Cats::Core::UnitOfMeasure",
+                                            optional: true,
+                                            foreign_key: :authorized_quantity_input_unit_id
       belongs_to :created_by,               class_name: "Cats::Core::User"
       belongs_to :driver_confirmed_by,      class_name: "Cats::Core::User", optional: true,
                                             foreign_key: :driver_confirmed_by_id

@@ -33,7 +33,6 @@ import {
 } from '../../api/receiptAuthorizations';
 import type { ReceiptAuthorization } from '../../api/receiptAuthorizations';
 import { createInspection } from '../../api/inspections';
-import { getStockBalances } from '../../api/stockBalances';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { useAuthStore } from '../../store/authStore';
@@ -56,16 +55,56 @@ function statusLabel(status: ReceiptAuthorization['status']) {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-function formatDateTime(value: string | null | undefined): string {
-  if (!value) return '—';
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString();
-}
-
 function formatDate(value: string | null | undefined): string {
   if (!value) return '—';
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString();
+}
+
+/** Hub line UOM (canonical) for display — kept for places that still need the line unit. */
+function raLineUnit(ra: ReceiptAuthorization): string {
+  return (ra.unit_label ?? ra.unit_name ?? ra.unit_abbreviation ?? '').trim();
+}
+
+/**
+ * Preferred display unit for the RA — the one the user actually picked when
+ * creating/updating the RA (e.g. "Kuntal"). Falls back to the line unit when the
+ * API didn't record an explicit input (legacy rows).
+ */
+function raDisplayUnit(ra: ReceiptAuthorization): string {
+  const inputName = (ra.authorized_quantity_input_unit_name ?? '').trim();
+  const inputAbbr = (ra.authorized_quantity_input_unit_abbreviation ?? '').trim();
+  return inputName || inputAbbr || raLineUnit(ra);
+}
+
+/** Quantity in the user-entered unit; falls back to canonical qty for legacy rows. */
+function raDisplayQty(ra: ReceiptAuthorization): number {
+  const v = ra.authorized_quantity_input;
+  if (v != null && Number.isFinite(Number(v)) && Number(v) > 0) return Number(v);
+  return Number(ra.authorized_quantity);
+}
+
+/**
+ * Multiplier to convert a value expressed in the canonical line unit into the
+ * user-entered unit (e.g. 1 mt → 10 kntl). Derived from this RA's own input vs
+ * canonical pair so the same conversion is applied without re-fetching the UOM
+ * graph; rounding errors are bounded by the storage precision of both columns.
+ */
+function lineToInputMultiplier(ra: ReceiptAuthorization): number {
+  const input = Number(ra.authorized_quantity_input ?? 0);
+  const line = Number(ra.authorized_quantity ?? 0);
+  if (input > 0 && line > 0) return input / line;
+  return 1;
+}
+
+function convertLineToInput(value: number, ra: ReceiptAuthorization): number {
+  return value * lineToInputMultiplier(ra);
+}
+
+function convertInputToLine(value: number, ra: ReceiptAuthorization): number {
+  const m = lineToInputMultiplier(ra);
+  if (m === 0) return value;
+  return value / m;
 }
 
 function DetailField({ label, value }: { label: string; value: React.ReactNode }) {
@@ -82,7 +121,13 @@ async function getStoreAssignment(receiptOrderId: number, storeId: number) {
   const response = await apiClient.get('/storekeeper_assignments', { params: { store_id: storeId } });
   const data = response.data.data || response.data;
   const assignments = Array.isArray(data.receipt_assignments) ? data.receipt_assignments : [];
-  return assignments.find((a: any) => a.receipt_order_id === receiptOrderId) || null;
+  const targetRo = Number(receiptOrderId);
+  return (
+    assignments.find((a: Record<string, unknown>) => {
+      const rid = a.receipt_order_id ?? a.receiptOrderId;
+      return rid != null && Number(rid) === targetRo;
+    }) || null
+  );
 }
 
 // ── Main component ────────────────────────────────────────────────────────
@@ -114,7 +159,7 @@ export default function StorekeeperRADetailPage() {
     enabled: !!ra && !!storeId,
   });
 
-  // ── Receipt Recording mutation ──
+  // ── Receive goods mutation ──
   const recordReceiptMutation = useMutation({
     mutationFn: () => {
       if (!ra) throw new Error('No RA loaded');
@@ -124,26 +169,19 @@ export default function StorekeeperRADetailPage() {
       const unitId = ra.unit_id;
       if (!commodityId) throw new Error('Cannot determine commodity from receipt order');
 
-      const received = Number(qtyReceived);
-      const authorized = Number(ra.authorized_quantity);
-
-      // Already received against this RA from all inspections
-      const alreadyReceived = ra.total_received ?? 0;
-      const raRemaining = authorized - alreadyReceived;
-
-      // Store assignment remaining
-      const storeAssigned = Number(storeAssignment?.quantity ?? authorized);
-      const storeReceived = Number(storeAssignment?.received_quantity ?? 0);
-      const storeRemaining = storeAssigned - storeReceived;
-
-      const maxAllowed = Math.min(raRemaining, storeRemaining);
-
-      if (received > maxAllowed + 0.001) {
-        throw new Error(`Cannot record more than ${maxAllowed.toLocaleString()} (RA remaining: ${raRemaining.toLocaleString()}, your store remaining: ${storeRemaining.toLocaleString()})`);
-      }
-
-      // Auto-calculate lost quantity
-      const lostQty = Math.max(0, maxAllowed - received);
+      // The storekeeper enters in the RA's display unit (e.g. Kuntal). Inspections
+      // and all downstream totals (raRemaining, store-assignment math, GRN stacking)
+      // are computed in the receipt-order line unit, so convert before sending.
+      const receivedInput = Number(qtyReceived);
+      const receivedLine = convertInputToLine(receivedInput, ra);
+      const authorizedLine = Number(ra.authorized_quantity);
+      const alreadyReceivedLine = ra.total_received ?? 0;
+      const raRemLine = Math.max(0, authorizedLine - alreadyReceivedLine);
+      const storeAssignedLine = Number(storeAssignment?.quantity ?? authorizedLine);
+      const storeReceivedLine = Number(storeAssignment?.received_quantity ?? 0);
+      const storeRemLine = Math.max(0, storeAssignedLine - storeReceivedLine);
+      const capLine = Math.min(raRemLine, storeRemLine);
+      const lostLine = Math.max(0, capLine - receivedLine);
 
       return createInspection({
         warehouse_id: warehouseId,
@@ -155,8 +193,8 @@ export default function StorekeeperRADetailPage() {
         items: [{
           commodity_id: commodityId,
           ...(unitId ? { unit_id: unitId } : {}),
-          quantity_received: received,
-          quantity_lost: lostQty > 0 ? lostQty : undefined,
+          quantity_received: Number(receivedLine.toFixed(3)),
+          quantity_lost: lostLine > 0 ? Number(lostLine.toFixed(3)) : undefined,
           quality_status: grade ?? 'Good',
           packaging_condition: 'Standard',
           remarks: remarks || undefined,
@@ -166,8 +204,8 @@ export default function StorekeeperRADetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['receipt_authorizations'] });
       notifications.show({
-        title: 'Receipt Recorded',
-        message: 'Receipt recorded. You can now confirm driver delivery.',
+        title: 'Goods received',
+        message: 'Receipt saved. You can now confirm driver delivery.',
         color: 'green',
       });
       setShowRecordingForm(false);
@@ -179,7 +217,7 @@ export default function StorekeeperRADetailPage() {
     onError: (err: unknown) => {
       const msg =
         (isAxiosError<ApiError>(err) ? err.response?.data?.error?.message : undefined) ||
-        (err instanceof Error ? err.message : 'Failed to record receipt.');
+        (err instanceof Error ? err.message : 'Failed to save receipt.');
       notifications.show({ title: 'Error', message: msg, color: 'red', autoClose: 8000 });
     },
   });
@@ -214,21 +252,42 @@ export default function StorekeeperRADetailPage() {
   const myGrn = ra.my_grn ?? null;
   const canDriverConfirm = isActive && myInspection && !myGrn;
 
-  const authorized = Number(ra.authorized_quantity);
-  const alreadyReceived = ra.total_received ?? 0;
-  const raRemaining = Math.max(0, authorized - alreadyReceived);
+  // Canonical (line-unit) totals — kept for the inspection-record math
+  const authorizedLine = Number(ra.authorized_quantity);
+  const alreadyReceivedLine = ra.total_received ?? 0;
+  const raRemainingLine = Math.max(0, authorizedLine - alreadyReceivedLine);
 
-  const storeAssigned = Number(storeAssignment?.quantity ?? 0);
-  // "Already received" = the full RA authorized quantity that was accounted for
-  // (received + lost = total from this truck, which counts against the store assignment)
-  const storeReceived = myInspection ? Number(authorized) : 0;
-  const storeRemaining = Math.max(0, storeAssigned - storeReceived);
+  // Match recordReceiptMutation: if no store assignment row is returned, use RA authorized qty as the cap.
+  const storeAssignedLine = Number(storeAssignment?.quantity ?? authorizedLine);
+  const storeReceivedFromAssignmentLine = Number(storeAssignment?.received_quantity ?? 0);
+  const storeRemainingForRecordLine = Math.max(0, storeAssignedLine - storeReceivedFromAssignmentLine);
+  const maxCanRecordLine = Math.min(raRemainingLine, storeRemainingForRecordLine);
 
-  const maxCanRecord = Math.min(raRemaining, storeRemaining);
+  // Display values in the user-preferred (input) unit. The line-unit values above
+  // remain authoritative for math; these are only for what the storekeeper sees.
+  const u = raDisplayUnit(ra);
+  const uLine = raLineUnit(ra);
+  const showLineEquivalent = u && uLine && u !== uLine;
+
+  const authorized = raDisplayQty(ra);
+  const raRemaining = convertLineToInput(raRemainingLine, ra);
+  const storeAssignedQty = convertLineToInput(storeAssignedLine, ra);
+  const storeReceivedFromAssignment = convertLineToInput(storeReceivedFromAssignmentLine, ra);
+  const storeRemainingForRecord = convertLineToInput(storeRemainingForRecordLine, ra);
+  const maxCanRecord = convertLineToInput(maxCanRecordLine, ra);
+
+  const myInspectionReceivedInput = myInspection
+    ? convertLineToInput(Number(myInspection.total_received ?? 0), ra)
+    : 0;
+  const storeRemainingDisplay = myInspection
+    ? Math.max(0, storeAssignedQty - storeReceivedFromAssignment - myInspectionReceivedInput)
+    : storeRemainingForRecord;
 
   const received = Number(qtyReceived) || 0;
   const lostPreview = showRecordingForm && received > 0 ? Math.max(0, maxCanRecord - received) : 0;
   const receivedPct = maxCanRecord > 0 ? Math.min(100, (received / maxCanRecord) * 100) : 0;
+  const exceedsStoreSuggestion = showRecordingForm && received > maxCanRecord + 0.001;
+  const exceedsHubAuthorized = showRecordingForm && received > raRemaining + 0.001;
 
   return (
     <Stack gap="md">
@@ -260,7 +319,7 @@ export default function StorekeeperRADetailPage() {
 
       {canDriverConfirm && (
         <Alert icon={<IconTruckDelivery size={16} />} color="blue" variant="light" title="Action Required">
-          Receipt recorded. Click "Driver Confirmed Delivery" above to generate your GRN.
+          Goods received. Click &quot;Driver Confirmed Delivery&quot; above to generate your GRN.
         </Alert>
       )}
 
@@ -272,8 +331,43 @@ export default function StorekeeperRADetailPage() {
             <DetailField label="Reference" value={<Text size="sm" style={{ fontFamily: 'monospace' }}>{ra.reference_no}</Text>} />
             <DetailField label="Status" value={<Badge color={statusColor(ra.status)} variant="light">{statusLabel(ra.status)}</Badge>} />
             <DetailField label="Date" value={formatDate(ra.created_at)} />
-            <DetailField label="Authorized Quantity" value={<Text size="sm" fw={700}>{authorized.toLocaleString()} {ra.unit_name || ''}</Text>} />
+            <DetailField
+              label="Authorized quantity"
+              value={
+                <Stack gap={2}>
+                  <Group gap={6} align="baseline" wrap="wrap">
+                    <Text size="sm" fw={700}>
+                      {authorized.toLocaleString()}{u ? ` ${u}` : ''}
+                    </Text>
+                    {ra.unit_abbreviation && ra.unit_label && ra.unit_abbreviation !== ra.unit_label && !showLineEquivalent ? (
+                      <Text size="xs" c="dimmed">({ra.unit_abbreviation})</Text>
+                    ) : null}
+                  </Group>
+                  {showLineEquivalent ? (
+                    <Text size="xs" c="dimmed">
+                      = {authorizedLine.toLocaleString()} {uLine}
+                    </Text>
+                  ) : null}
+                </Stack>
+              }
+            />
             <DetailField label="Commodity" value={ra.commodity_name || '—'} />
+            {ra.expected_packaging_units != null && Number(ra.expected_packaging_units) > 0 ? (
+              <DetailField
+                label="Expected packages"
+                value={
+                  <Stack gap={2}>
+                    <Text size="sm" fw={700}>
+                      {Number(ra.expected_packaging_units).toLocaleString()}{' '}
+                      {(ra.packaging_unit_name || ra.packaging_unit_abbreviation || 'packages').trim()}
+                    </Text>
+                    {ra.packaging_spec_label?.trim() ? (
+                      <Text size="xs" c="dimmed">{ra.packaging_spec_label}</Text>
+                    ) : null}
+                  </Stack>
+                }
+              />
+            ) : null}
           </SimpleGrid>
 
           <Divider label="Vehicle & Driver" labelPosition="left" />
@@ -295,26 +389,26 @@ export default function StorekeeperRADetailPage() {
             <Group gap="xl" wrap="wrap">
               <Stack gap={0}>
                 <Text size="xs" c="dimmed">Sent in this RA</Text>
-                <Text fw={700}>{authorized.toLocaleString()} {ra.unit_name || ''}</Text>
+                <Text fw={700}>{authorized.toLocaleString()}{u ? ` ${u}` : ''}</Text>
               </Stack>
               <Stack gap={0}>
                 <Text size="xs" c="dimmed">Received</Text>
                 <Text fw={700} c="green">
-                  {myInspection ? Number(myInspection.total_received ?? 0).toLocaleString() : '—'} {ra.unit_name || ''}
+                  {myInspection ? myInspectionReceivedInput.toLocaleString() : '—'}{u ? ` ${u}` : ''}
                 </Text>
               </Stack>
               <Stack gap={0}>
                 <Text size="xs" c="dimmed">Lost</Text>
-                <Text fw={700} c={myInspection && (authorized - Number(myInspection.total_received ?? 0)) > 0 ? 'red' : 'dimmed'}>
+                <Text fw={700} c={myInspection && (authorized - myInspectionReceivedInput) > 0 ? 'red' : 'dimmed'}>
                   {myInspection
-                    ? Math.max(0, authorized - Number(myInspection.total_received ?? 0)).toLocaleString()
-                    : '—'} {ra.unit_name || ''}
+                    ? Math.max(0, authorized - myInspectionReceivedInput).toLocaleString()
+                    : '—'}{u ? ` ${u}` : ''}
                 </Text>
               </Stack>
               <Stack gap={0}>
                 <Text size="xs" c="dimmed">Remaining (store)</Text>
-                <Text fw={700} c={storeRemaining > 0 ? 'orange' : 'green'}>
-                  {storeRemaining.toLocaleString()} {ra.unit_name || ''}
+                <Text fw={700} c={storeRemainingDisplay > 0 ? 'orange' : 'green'}>
+                  {storeRemainingDisplay.toLocaleString()}{u ? ` ${u}` : ''}
                 </Text>
               </Stack>
             </Group>
@@ -322,19 +416,19 @@ export default function StorekeeperRADetailPage() {
         </Card>
       )}
 
-      {/* ── Receipt Recording ── */}
+      {/* ── Receive receipt ── */}
       <Card withBorder padding="lg">
         <Stack gap="sm">
           <Group justify="space-between">
-            <Title order={4}>Record Receipt</Title>
-            {(isPending || isActive) && !myInspection && maxCanRecord > 0 && (
+            <Title order={4}>Receive receipt</Title>
+            {(isPending || isActive) && !myInspection && (
               <Button
                 size="sm"
                 leftSection={<IconClipboardCheck size={16} />}
                 onClick={() => setShowRecordingForm((v) => !v)}
                 variant={showRecordingForm ? 'light' : 'filled'}
               >
-                {showRecordingForm ? 'Cancel' : 'Record What Arrived'}
+                {showRecordingForm ? 'Cancel' : 'Enter received quantity'}
               </Button>
             )}
           </Group>
@@ -342,31 +436,48 @@ export default function StorekeeperRADetailPage() {
           {myInspection ? (
             <Group gap="md" align="center">
               <Badge color="green" variant="light" leftSection={<IconCheck size={12} />} size="md">
-                Receipt Recorded
+                Goods received
               </Badge>
               <Text size="sm" c="dimmed">
-                You recorded {myInspection.total_received?.toLocaleString() ?? '—'} {ra.unit_name || ''}
+                You received {myInspectionReceivedInput.toLocaleString()}{u ? ` ${u}` : ''}
+                {showLineEquivalent
+                  ? ` (= ${Number(myInspection.total_received ?? 0).toLocaleString()} ${uLine})`
+                  : ''}
               </Text>
             </Group>
           ) : showRecordingForm ? (
             <Stack gap="md" mt="xs">
-              <Divider label={`Record what arrived for your store (max ${maxCanRecord.toLocaleString()} ${ra.unit_name || ''})`} labelPosition="left" />
+              <Divider label={`Receive what arrived for your store (reference: up to ${maxCanRecord.toLocaleString()}${u ? ` ${u}` : ''} from assignment)`} labelPosition="left" />
+
+              {exceedsHubAuthorized && (
+                <Alert color="orange" variant="light" title="Above hub authorization">
+                  You are entering more than remains on the hub authorization for this truck. The amount will still be saved and reflected on your GRN.
+                </Alert>
+              )}
+              {exceedsStoreSuggestion && !exceedsHubAuthorized && (
+                <Alert color="yellow" variant="light" title="Above store assignment">
+                  You are entering more than this store&apos;s remaining assigned share. The amount will still be saved if you continue.
+                </Alert>
+              )}
 
               <SimpleGrid cols={{ base: 1, sm: 2 }}>
                 <Stack gap={4}>
                   <NumberInput
-                    label="Quantity Received"
-                    description={`Your store's remaining: ${maxCanRecord.toLocaleString()} ${ra.unit_name || ''}`}
-                    placeholder={`Max ${maxCanRecord.toLocaleString()}`}
+                    label={`Quantity received${u ? ` (${u})` : ''}`}
+                    description={`Typical cap from assignment: ${maxCanRecord.toLocaleString()}${u ? ` ${u}` : ''} (you may enter a different actual quantity).`}
+                    placeholder="Enter quantity"
                     value={qtyReceived}
                     onChange={setQtyReceived}
                     min={0.001}
-                    max={maxCanRecord}
                     decimalScale={3}
                     required
-                    error={received > maxCanRecord + 0.001 ? `Cannot exceed ${maxCanRecord.toLocaleString()} ${ra.unit_name || ''}` : null}
                   />
-                  {received > 0 && received <= maxCanRecord && (
+                  {showLineEquivalent && received > 0 ? (
+                    <Text size="xs" c="dimmed">
+                      = {convertInputToLine(received, ra).toLocaleString(undefined, { maximumFractionDigits: 3 })} {uLine}
+                    </Text>
+                  ) : null}
+                  {maxCanRecord > 0 && received > 0 && received <= maxCanRecord && (
                     <Progress
                       value={receivedPct}
                       color={receivedPct < 100 ? 'orange' : 'green'}
@@ -385,23 +496,15 @@ export default function StorekeeperRADetailPage() {
                 />
               </SimpleGrid>
 
-              {received > maxCanRecord + 0.001 && (
-                <Alert color="red" variant="light" title="Quantity too high">
-                  You cannot record more than {maxCanRecord.toLocaleString()} {ra.unit_name || ''}.
-                  Your store was assigned {maxCanRecord.toLocaleString()} and that is the maximum you can record.
+              {received > 0 && lostPreview > 0 && (
+                <Alert color="orange" variant="light" title={`Shortfall: ${lostPreview.toLocaleString()}${u ? ` ${u}` : ''} will be recorded as lost`}>
+                  Compared to the lower of hub remaining and your store&apos;s remaining assignment, the difference will be recorded as lost quantity.
                 </Alert>
               )}
 
-              {received > 0 && received <= maxCanRecord && lostPreview > 0 && (
-                <Alert color="orange" variant="light" title={`Loss: ${lostPreview.toLocaleString()} ${ra.unit_name || ''} will be recorded as lost`}>
-                  You received {received.toLocaleString()} but your store was assigned {maxCanRecord.toLocaleString()}.
-                  The difference ({lostPreview.toLocaleString()}) will be automatically recorded as lost.
-                </Alert>
-              )}
-
-              {received > 0 && received <= maxCanRecord && lostPreview === 0 && (
-                <Alert color="green" variant="light" title="Full quantity received">
-                  All {maxCanRecord.toLocaleString()} {ra.unit_name || ''} accounted for.
+              {received > 0 && lostPreview === 0 && !exceedsStoreSuggestion && (
+                <Alert color="green" variant="light" title="No automatic shortfall loss">
+                  Received quantity meets or exceeds the reference assignment window (no shortfall loss line added).
                 </Alert>
               )}
 
@@ -418,17 +521,17 @@ export default function StorekeeperRADetailPage() {
                 <Button
                   onClick={() => recordReceiptMutation.mutate()}
                   loading={recordReceiptMutation.isPending}
-                  disabled={!qtyReceived || Number(qtyReceived) <= 0 || Number(qtyReceived) > maxCanRecord + 0.001}
+                  disabled={!qtyReceived || Number(qtyReceived) <= 0}
                 >
-                  Save Receipt
+                  Save receipt
                 </Button>
               </Group>
             </Stack>
           ) : (
             <Alert icon={<IconAlertCircle size={16} />} color="gray" variant="light">
-              {maxCanRecord <= 0 && storeAssigned > 0
-                ? 'Your store has received its full assigned quantity.'
-                : 'Click "Record What Arrived" when the truck delivers goods to your store.'}
+              {maxCanRecord <= 0 && storeAssignedQty > 0
+                ? 'Your store assignment shows no remaining quantity; you can still enter the actual quantity received if it differs.'
+                : 'Click "Enter received quantity" when the truck delivers goods to your store.'}
             </Alert>
           )}
         </Stack>
@@ -451,11 +554,11 @@ export default function StorekeeperRADetailPage() {
             <Text size="sm" c="dimmed">Driver confirmed. GRN generated.</Text>
           ) : myInspection ? (
             <Text size="sm" c="dimmed">
-              Receipt recorded. Use the "Driver Confirmed Delivery" button at the top of this page.
+              Goods received. Use the &quot;Driver Confirmed Delivery&quot; button at the top of this page.
             </Text>
           ) : (
             <Text size="sm" c="dimmed">
-              Record the receipt first, then confirm driver delivery.
+              Receive the goods first, then confirm driver delivery.
             </Text>
           )}
         </Stack>
@@ -486,7 +589,19 @@ export default function StorekeeperRADetailPage() {
                   size="xs"
                   variant="light"
                   color="cyan"
-                  onClick={() => navigate(`/stacks/layout?receipt_authorization_id=${ra.id}&store_id=${storeId}`)}
+                  onClick={() => {
+                    const params = new URLSearchParams();
+                    params.set('receipt_authorization_id', String(ra.id));
+                    const targetStore = storeId ?? ra.store_id;
+                    if (
+                      targetStore != null &&
+                      Number.isFinite(Number(targetStore)) &&
+                      Number(targetStore) > 0
+                    ) {
+                      params.set('store_id', String(targetStore));
+                    }
+                    navigate(`/stacks/layout?${params.toString()}`);
+                  }}
                 >
                   Go to Stacking
                 </Button>

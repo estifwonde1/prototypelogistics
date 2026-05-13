@@ -21,6 +21,29 @@ import { useAuthStore } from '../../store/authStore';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
+/**
+ * Show the unit the user actually picked when creating the RA (e.g. Kuntal); fall back to
+ * the canonical receipt-order line unit for legacy rows that don't carry input info.
+ */
+function raDisplayUnit(ra: ReceiptAuthorization): string {
+  const inputName = (ra.authorized_quantity_input_unit_name ?? '').trim();
+  const inputAbbr = (ra.authorized_quantity_input_unit_abbreviation ?? '').trim();
+  return inputName || inputAbbr || (ra.unit_name ?? ra.unit_abbreviation ?? '').trim();
+}
+
+function raDisplayQty(ra: ReceiptAuthorization): number {
+  const v = ra.authorized_quantity_input;
+  if (v != null && Number.isFinite(Number(v)) && Number(v) > 0) return Number(v);
+  return Number(ra.authorized_quantity);
+}
+
+function lineToInputMultiplier(ra: ReceiptAuthorization): number {
+  const input = Number(ra.authorized_quantity_input ?? 0);
+  const line = Number(ra.authorized_quantity ?? 0);
+  if (input > 0 && line > 0) return input / line;
+  return 1;
+}
+
 function getMyStatus(ra: ReceiptAuthorization): 'not_recorded' | 'recorded' | 'driver_confirmed' | 'stacking' | 'done' {
   if (!ra.my_inspection) return 'not_recorded';
   if (!ra.my_grn) return 'recorded';
@@ -113,9 +136,13 @@ export default function StorekeeperRAListPage() {
           <Title order={4}>Incoming Trucks</Title>
           {needsMyAction.map((ra) => {
             const myStatus = getMyStatus(ra);
-            const totalReceived = ra.total_received ?? 0;
-            const authorized = Number(ra.authorized_quantity);
-            const pct = authorized > 0 ? Math.min(100, (totalReceived / authorized) * 100) : 0;
+            const totalReceivedLine = ra.total_received ?? 0;
+            const authorizedLine = Number(ra.authorized_quantity);
+            const mult = lineToInputMultiplier(ra);
+            const authorized = raDisplayQty(ra);
+            const totalReceived = totalReceivedLine * mult;
+            const displayUnit = raDisplayUnit(ra);
+            const pct = authorizedLine > 0 ? Math.min(100, (totalReceivedLine / authorizedLine) * 100) : 0;
 
             return (
               <Card key={ra.id} shadow="sm" padding="lg" radius="md" withBorder>
@@ -135,7 +162,7 @@ export default function StorekeeperRAListPage() {
                         {ra.driver_name} — {ra.truck_plate_number}
                       </Text>
                       <Text size="sm" c="dimmed">
-                        Authorized: {authorized.toLocaleString()} {ra.unit_name || ''}
+                        Authorized: {authorized.toLocaleString()} {displayUnit || ''}
                         {ra.commodity_name ? ` · ${ra.commodity_name}` : ''}
                         {ra.transporter_name ? ` · ${ra.transporter_name}` : ''}
                       </Text>
@@ -154,7 +181,17 @@ export default function StorekeeperRAListPage() {
                         rightSection={<IconArrowRight size={14} />}
                         onClick={() => {
                           if (myStatus === 'driver_confirmed' || myStatus === 'stacking') {
-                            navigate(`/stacks/layout?receipt_authorization_id=${ra.id}&store_id=${storeId}`);
+                            const params = new URLSearchParams();
+                            params.set('receipt_authorization_id', String(ra.id));
+                            const targetStore = storeId ?? ra.store_id;
+                            if (
+                              targetStore != null &&
+                              Number.isFinite(Number(targetStore)) &&
+                              Number(targetStore) > 0
+                            ) {
+                              params.set('store_id', String(targetStore));
+                            }
+                            navigate(`/stacks/layout?${params.toString()}`);
                           } else {
                             navigate(`/storekeeper/receipt-authorizations/${ra.id}`);
                           }
@@ -170,7 +207,9 @@ export default function StorekeeperRAListPage() {
                     <Stack gap={2}>
                       <Group justify="space-between">
                         <Text size="xs" c="dimmed">Total received across all stores</Text>
-                        <Text size="xs" c="dimmed">{totalReceived.toLocaleString()} / {authorized.toLocaleString()}</Text>
+                        <Text size="xs" c="dimmed">
+                          {totalReceived.toLocaleString(undefined, { maximumFractionDigits: 3 })} / {authorized.toLocaleString()} {displayUnit || ''}
+                        </Text>
                       </Group>
                       <Progress value={pct} size="xs" color={pct >= 100 ? 'green' : 'blue'} />
                     </Stack>
@@ -180,7 +219,7 @@ export default function StorekeeperRAListPage() {
                   {ra.my_inspection && (
                     <Group gap="xs">
                       <Badge color="green" variant="light" size="xs" leftSection={<IconCheck size={10} />}>
-                        You recorded {ra.my_inspection.total_received.toLocaleString()} {ra.unit_name || ''}
+                        You recorded {(Number(ra.my_inspection.total_received) * mult).toLocaleString(undefined, { maximumFractionDigits: 3 })} {displayUnit || ''}
                       </Badge>
                       {ra.my_grn && (
                         <Badge color={ra.my_grn.status === 'confirmed' ? 'green' : 'blue'} variant="light" size="xs">
@@ -200,35 +239,39 @@ export default function StorekeeperRAListPage() {
       {myDone.length > 0 && (
         <>
           <Title order={4}>My Completed Portions</Title>
-          {myDone.map((ra) => (
-            <Card key={ra.id} shadow="sm" padding="lg" radius="md" withBorder opacity={0.75}>
-              <Group justify="space-between" align="flex-start">
-                <div>
-                  <Group gap="xs" mb={4}>
-                    <Text fw={600} style={{ fontFamily: 'monospace' }}>{ra.reference_no}</Text>
-                    <Badge color="green" variant="light" size="sm" leftSection={<IconCheck size={12} />}>
-                      Your portion done
-                    </Badge>
-                  </Group>
-                  <Text size="sm" c="dimmed">
-                    {ra.driver_name} — {ra.truck_plate_number}
-                  </Text>
-                  {ra.my_inspection && (
+          {myDone.map((ra) => {
+            const mult = lineToInputMultiplier(ra);
+            const displayUnit = raDisplayUnit(ra);
+            return (
+              <Card key={ra.id} shadow="sm" padding="lg" radius="md" withBorder opacity={0.75}>
+                <Group justify="space-between" align="flex-start">
+                  <div>
+                    <Group gap="xs" mb={4}>
+                      <Text fw={600} style={{ fontFamily: 'monospace' }}>{ra.reference_no}</Text>
+                      <Badge color="green" variant="light" size="sm" leftSection={<IconCheck size={12} />}>
+                        Your portion done
+                      </Badge>
+                    </Group>
                     <Text size="sm" c="dimmed">
-                      You received: {ra.my_inspection.total_received.toLocaleString()} {ra.unit_name || ''}
+                      {ra.driver_name} — {ra.truck_plate_number}
                     </Text>
-                  )}
-                </div>
-                <Button
-                  size="sm"
-                  variant="subtle"
-                  onClick={() => navigate(`/storekeeper/receipt-authorizations/${ra.id}`)}
-                >
-                  View
-                </Button>
-              </Group>
-            </Card>
-          ))}
+                    {ra.my_inspection && (
+                      <Text size="sm" c="dimmed">
+                        You received: {(Number(ra.my_inspection.total_received) * mult).toLocaleString(undefined, { maximumFractionDigits: 3 })} {displayUnit || ''}
+                      </Text>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="subtle"
+                    onClick={() => navigate(`/storekeeper/receipt-authorizations/${ra.id}`)}
+                  >
+                    View
+                  </Button>
+                </Group>
+              </Card>
+            );
+          })}
         </>
       )}
 
