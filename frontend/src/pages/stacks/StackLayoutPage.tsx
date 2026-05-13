@@ -8,8 +8,10 @@ import {
   Card,
   Divider,
   Group,
+  Loader,
   Modal,
   NumberInput,
+  Progress,
   Select,
   SimpleGrid,
   Stack,
@@ -250,6 +252,10 @@ export default function StackLayoutPage() {
   );
   const [finishStackingModalOpen, setFinishStackingModalOpen] = useState(false);
 
+  // ── Placement state — tracks how much of the RA goods go into each stack ──
+  const [placements, setPlacements] = useState<Record<string, number>>({});
+  const [placementModalStack, setPlacementModalStack] = useState<StackType | null>(null);
+
   const autoPrepare = searchParams.get('auto_prepare') === 'true';
 
   // Get active assignment context for filtering
@@ -330,15 +336,17 @@ export default function StackLayoutPage() {
       const selectedRA = activeRAsForStacking.find((ra) => String(ra.id) === selectedRAId);
       if (!selectedRA) throw new Error('Receipt Authorization not found');
 
-      // Backend requires receipt order status `in_progress` for finish_stacking; no separate UI calls start_stacking today.
+      // Use explicit placements entered by the storekeeper
+      const placementList = Object.entries(placements)
+        .filter(([, qty]) => qty > 0)
+        .map(([stackId, qty]) => ({ stack_id: Number(stackId), quantity: qty }));
+
+      if (placementList.length === 0) throw new Error('Please assign goods to at least one stack before finishing.');
+
+      // Backend requires receipt order status `in_progress` for finish_stacking
       await startStacking(selectedRA.receipt_order_id);
 
-      // Build placements from the current store's active stacks
-      const placements = storeStacks
-        .filter((s) => s.quantity > 0)
-        .map((s) => ({ stack_id: s.id, quantity: s.quantity }));
-
-      return finishStacking(selectedRA.receipt_order_id, placements, selectedRA.id);
+      return finishStacking(selectedRA.receipt_order_id, placementList, selectedRA.id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stacks'] });
@@ -350,6 +358,7 @@ export default function StackLayoutPage() {
       });
       setFinishStackingModalOpen(false);
       setSelectedRAId(null);
+      setPlacements({});
     },
     onError: (mutationError: AxiosError<{ error?: { message?: string } }>) => {
       notifications.show({
@@ -886,7 +895,10 @@ export default function StackLayoutPage() {
                       label: `${ra.reference_no} — ${ra.driver_name} (${ra.truck_plate_number}) · GRN: ${ra.grn_reference_no || `#${ra.grn_id}`}`,
                     }))}
                     value={selectedRAId}
-                    onChange={setSelectedRAId}
+                    onChange={(val) => {
+                      setSelectedRAId(val);
+                      setPlacements({}); // clear placements when switching RA
+                    }}
                     searchable
                     clearable
                     disabled={activeRAsForStacking.length === 0}
@@ -917,7 +929,7 @@ export default function StackLayoutPage() {
                 <Button
                   color="green"
                   leftSection={<IconCheck size={16} />}
-                  disabled={!selectedRAId}
+                  disabled={!selectedRAId || Object.values(placements).every(q => q === 0)}
                   onClick={() => setFinishStackingModalOpen(true)}
                   radius="md"
                 >
@@ -926,6 +938,51 @@ export default function StackLayoutPage() {
               </Group>
             </Card>
           )}
+
+          {/* ── Placement progress panel ── */}
+          {isStorekeeper && selectedRAId && (() => {
+            const selectedRA = activeRAsForStacking.find((ra) => String(ra.id) === selectedRAId);
+            if (!selectedRA) return null;
+            const totalToPlace = Number(selectedRA.my_inspection?.total_received ?? selectedRA.authorized_quantity);
+            const totalPlaced = Object.values(placements).reduce((s, q) => s + q, 0);
+            const remaining = totalToPlace - totalPlaced;
+            const placedPct = totalToPlace > 0 ? Math.min(100, (totalPlaced / totalToPlace) * 100) : 0;
+            return (
+              <Card radius="xl" padding="lg" style={{ background: '#f0f7ff', border: '1px solid #bdd4f5' }}>
+                <Stack gap="sm">
+                  <Group justify="space-between">
+                    <Text size="sm" fw={700} c="#1d3354">Placement Progress</Text>
+                    <Badge color={remaining === 0 ? 'green' : remaining < 0 ? 'red' : 'blue'} variant="light">
+                      {remaining === 0 ? 'All placed ✓' : remaining < 0 ? `Over by ${Math.abs(remaining).toLocaleString()}` : `${remaining.toLocaleString()} remaining`}
+                    </Badge>
+                  </Group>
+                  <Progress value={placedPct} color={remaining < 0 ? 'red' : remaining === 0 ? 'green' : 'blue'} size="md" radius="xl" />
+                  <Group gap="xl">
+                    <Text size="xs" c="dimmed">To place: <strong>{totalToPlace.toLocaleString()}</strong></Text>
+                    <Text size="xs" c="dimmed">Placed: <strong>{totalPlaced.toLocaleString()}</strong></Text>
+                    <Text size="xs" c="dimmed">Remaining: <strong>{remaining.toLocaleString()}</strong></Text>
+                  </Group>
+                  {Object.entries(placements).filter(([, q]) => q > 0).length > 0 ? (
+                    <Stack gap={4}>
+                      <Text size="xs" fw={700} c="#42506a" tt="uppercase">Assigned stacks:</Text>
+                      {Object.entries(placements).filter(([, q]) => q > 0).map(([stackId, qty]) => {
+                        const stack = storeStacks.find(s => String(s.id) === stackId);
+                        return (
+                          <Group key={stackId} gap="xs">
+                            <Text size="xs" style={{ fontFamily: 'monospace' }}>{stack?.code || `Stack #${stackId}`}</Text>
+                            <Text size="xs" c="blue" fw={600}>{qty.toLocaleString()}</Text>
+                            <Button size="xs" variant="subtle" color="red" style={{ padding: '0 4px', height: 18 }} onClick={() => setPlacements(p => { const n = {...p}; delete n[stackId]; return n; })}>×</Button>
+                          </Group>
+                        );
+                      })}
+                    </Stack>
+                  ) : (
+                    <Text size="xs" c="dimmed">Click on a stack in the layout below to assign goods to it.</Text>
+                  )}
+                </Stack>
+              </Card>
+            );
+          })()}
 
           <Card
             radius="xl"
@@ -1123,6 +1180,8 @@ export default function StackLayoutPage() {
                               onClick={() => {
                                 if (editMode) {
                                   openEditor(stack);
+                                } else if (selectedRAId) {
+                                  setPlacementModalStack(stack);
                                 }
                               }}
                               style={{
@@ -1134,12 +1193,12 @@ export default function StackLayoutPage() {
                                 zIndex: stack.id,
                                 borderRadius: 10,
                                 border: `2px solid ${statusMeta.border}`,
-                                background: statusMeta.fill,
+                                background: selectedRAId && !editMode ? (placements[String(stack.id)] > 0 ? '#1fbe84' : statusMeta.fill) : statusMeta.fill,
                                 color: statusMeta.color,
                                 padding: '8px 10px',
                                 textAlign: 'left',
                                 boxShadow: '0 8px 18px rgba(51, 76, 117, 0.10)',
-                                cursor: editMode ? 'pointer' : 'default',
+                                cursor: editMode ? 'pointer' : selectedRAId ? 'pointer' : 'default',
                                 opacity: editMode || stack.stack_status !== 'inactive' ? 1 : 0.92,
                               }}
                             >
@@ -1436,6 +1495,85 @@ export default function StackLayoutPage() {
           </Stack>
         </form>
       </Modal>
+
+      {/* ── Placement Modal — click a stack to assign quantity ── */}
+      {placementModalStack && selectedRAId && (() => {
+        const selectedRA = activeRAsForStacking.find((ra) => String(ra.id) === selectedRAId);
+        if (!selectedRA) return null;
+        const totalToPlace = Number(selectedRA.my_inspection?.total_received ?? selectedRA.authorized_quantity);
+        const alreadyPlaced = Object.entries(placements)
+          .filter(([sid]) => sid !== String(placementModalStack.id))
+          .reduce((s, [, q]) => s + q, 0);
+        const maxForThisStack = Math.max(0, totalToPlace - alreadyPlaced);
+        const currentQty = placements[String(placementModalStack.id)] || 0;
+
+        // Check commodity compatibility
+        const stackHasGoods = placementModalStack.quantity > 0 && placementModalStack.commodity_id;
+        const stackCommodityName = (placementModalStack.commodity_name || '').trim().toLowerCase();
+        const raCommodityName = (selectedRA.commodity_name || '').trim().toLowerCase();
+        const incompatible = stackHasGoods && stackCommodityName && raCommodityName && stackCommodityName !== raCommodityName;
+
+        return (
+          <Modal
+            opened={!!placementModalStack}
+            onClose={() => setPlacementModalStack(null)}
+            title={<Text fw={700}>Place Goods — {placementModalStack.code}</Text>}
+            centered
+            size="sm"
+          >
+            <Stack gap="md">
+              <Group gap="xl">
+                <Stack gap={0}>
+                  <Text size="xs" c="dimmed">Stack</Text>
+                  <Text size="sm" fw={600} style={{ fontFamily: 'monospace' }}>{placementModalStack.code}</Text>
+                </Stack>
+                <Stack gap={0}>
+                  <Text size="xs" c="dimmed">Dimensions</Text>
+                  <Text size="sm">{placementModalStack.length}m × {placementModalStack.width}m × {placementModalStack.height}m</Text>
+                </Stack>
+              </Group>
+
+              {stackHasGoods && (
+                <Alert color={incompatible ? 'red' : 'blue'} variant="light" title={incompatible ? 'Different commodity' : 'Current contents'}>
+                  {incompatible
+                    ? `This stack holds ${placementModalStack.commodity_name}. You are placing ${selectedRA.commodity_name}. Cannot mix different commodities.`
+                    : `${placementModalStack.commodity_name} — ${placementModalStack.quantity.toLocaleString()} ${placementModalStack.unit_abbreviation || ''} already here. Same commodity — allowed.`
+                  }
+                </Alert>
+              )}
+
+              {!incompatible && (
+                <>
+                  <NumberInput
+                    label={`Quantity to place (max ${maxForThisStack.toLocaleString()})`}
+                    description={`Commodity: ${selectedRA.commodity_name || '—'}`}
+                    value={currentQty || ''}
+                    onChange={(val) => {
+                      const raw = Number(val) || 0;
+                      const qty = Math.min(raw, maxForThisStack);
+                      setPlacements(p => ({ ...p, [String(placementModalStack.id)]: qty }));
+                    }}
+                    min={0}
+                    max={maxForThisStack}
+                    clampBehavior="strict"
+                    decimalScale={3}
+                    disabled={maxForThisStack <= 0}
+                  />
+                  {maxForThisStack <= 0 && (
+                    <Text size="xs" c="orange">All goods have already been assigned to other stacks.</Text>
+                  )}
+                </>
+              )}
+
+              <Group justify="flex-end">
+                <Button variant="light" onClick={() => setPlacementModalStack(null)}>
+                  {incompatible ? 'Close' : 'Done'}
+                </Button>
+              </Group>
+            </Stack>
+          </Modal>
+        );
+      })()}
 
       {/* ── Finish Stacking confirmation modal ── */}
       <Modal

@@ -38,9 +38,9 @@ function GrnListPage() {
 
   const filteredGrns = grns?.filter((grn) => {
     const matchesSearch =
-      grn.reference_no.toLowerCase().includes(search.toLowerCase()) ||
+      (grn.reference_no || '').toLowerCase().includes(search.toLowerCase()) ||
       grn.warehouse_id.toString().includes(search);
-    const matchesStatus = !statusFilter || grn.status === statusFilter;
+    const matchesStatus = !statusFilter || (grn.status || '').toLowerCase() === (statusFilter || '').toLowerCase();
     return matchesSearch && matchesStatus;
   });
 

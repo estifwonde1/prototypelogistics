@@ -497,6 +497,11 @@ module Cats
               commodity_id = stack.commodity_id.presence || first_line&.commodity_id
               unit_id      = stack.unit_id.presence      || first_line&.unit_id
 
+              # Assign commodity to the stack if it doesn't have one yet
+              if stack.commodity_id.blank? && commodity_id.present?
+                stack.update_columns(commodity_id: commodity_id, unit_id: unit_id)
+              end
+
               grn.grn_items.create!(
                 commodity_id:      commodity_id,
                 quantity:          placement[:quantity].to_f,

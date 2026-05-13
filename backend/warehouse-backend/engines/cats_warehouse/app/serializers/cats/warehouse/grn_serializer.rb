@@ -3,7 +3,10 @@ module Cats
     class GrnSerializer < ApplicationSerializer
       attributes :id, :reference_no, :warehouse_id, :warehouse_name, :warehouse_code, :received_on, :source_type, :source_id,
                  :source_reference, :status, :workflow_status, :receipt_order_id, :generated_from_inspection_id,
-                 :received_by_id, :received_by_name, :approved_by_id, :approved_by_name, :created_at, :updated_at
+                 :received_by_id, :received_by_name, :approved_by_id, :approved_by_name,
+                 :receipt_authorization_id, :ra_transporter_name, :ra_driver_name,
+                 :ra_truck_plate_number, :ra_waybill_number, :ra_authorized_quantity,
+                 :created_at, :updated_at
       belongs_to :receipt_order, serializer: ReceiptOrderSerializer
       has_many :grn_items, serializer: GrnItemSerializer
 
@@ -44,6 +47,30 @@ module Cats
       def approved_by_name
         [ object.approved_by&.first_name, object.approved_by&.last_name ].compact.join(" ").presence ||
           object.approved_by&.email
+      end
+
+      def receipt_authorization_id
+        object.receipt_authorization&.id
+      end
+
+      def ra_transporter_name
+        object.receipt_authorization&.transporter&.name
+      end
+
+      def ra_driver_name
+        object.receipt_authorization&.driver_name
+      end
+
+      def ra_truck_plate_number
+        object.receipt_authorization&.truck_plate_number
+      end
+
+      def ra_waybill_number
+        object.receipt_authorization&.waybill_number
+      end
+
+      def ra_authorized_quantity
+        object.receipt_authorization&.authorized_quantity
       end
     end
   end
