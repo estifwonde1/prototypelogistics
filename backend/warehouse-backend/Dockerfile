@@ -27,8 +27,6 @@ RUN bundle install
 # Copy the rest of the application
 COPY . .
 
-# Expose port 3000
-EXPOSE 3000
 
 # Create entrypoint script
 COPY docker-entrypoint.sh /usr/bin/
@@ -36,6 +34,8 @@ RUN chmod +x /usr/bin/docker-entrypoint.sh && \
   sed -i 's/\r$//' /usr/bin/docker-entrypoint.sh
 
 ENTRYPOINT ["docker-entrypoint.sh"]
+
+EXPOSE 3000
 
 # Start the Rails server
 CMD ["rails", "server", "-b", "0.0.0.0"]

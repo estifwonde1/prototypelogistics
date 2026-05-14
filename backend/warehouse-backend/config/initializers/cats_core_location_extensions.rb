@@ -1,3 +1,17 @@
+# config/initializers/cats_core_location_extensions.rb
+
+# --- START OF SAFETY PATCH ---
+# This prevents the NoMethodError caused by older engines/gems 
+# calling a method removed in newer Rails versions.
+ActiveSupport.on_load(:active_record) do
+  unless respond_to?(:attributes_for_inspect=)
+    def self.attributes_for_inspect=(*)
+      # Do nothing, just prevent the crash
+    end
+  end
+end
+# --- END OF SAFETY PATCH ---
+
 Rails.application.config.to_prepare do
   require "cats/core/location"
 
@@ -31,10 +45,9 @@ Rails.application.config.to_prepare do
             }
 
             return if location_type.nil? || location_type.empty?
-
             return if location_type == REGION && parent.nil?
 
-            # Allow Kebele even though the inclusion validator was defined before we extended LOCATION_TYPES.
+            # Allow Kebele even though the inclusion validator was defined earlier
             errors.delete(:location_type) if location_type == KEBELE
 
             errors.add(:location, "parent cannot be empty") if location_type != REGION && parent.nil?

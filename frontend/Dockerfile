@@ -1,31 +1,30 @@
 # Stage 1: Build
-FROM node:alpine AS build
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
-# Copy package files and install dependencies
 COPY package*.json ./
 RUN npm install
 
-# Copy the rest of the application code
 COPY . .
 
-# Pass VITE_API_URL as a build argument
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
+ARG VITE_API_BASE_URL
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
-# Build the application
 RUN npm run build
 
 # Stage 2: Serve
-FROM nginx:alpine
+FROM node:20-alpine
 
-# Copy the custom nginx config
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+WORKDIR /app
 
-# Copy the build output from the build stage
-COPY --from=build /app/dist /usr/share/nginx/html
+RUN npm install -g serve
 
-EXPOSE 80
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/serve.json ./serve.json
 
-CMD ["nginx", "-g", "daemon off;"]
+EXPOSE 3000
+
+CMD ["serve", "-s", "dist", "-l", "3000"]

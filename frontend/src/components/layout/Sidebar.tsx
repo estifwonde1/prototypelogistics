@@ -319,7 +319,8 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               label: "Receipts",
               icon: <IconInbox size={20} />,
               path: "/receipts",
-              resource: "receipts",
+              resource: "receipt_orders",
+            
             },
             {
               label: "Dispatches",

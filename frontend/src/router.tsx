@@ -1,12 +1,45 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import { Center, Loader } from '@mantine/core';
 import { useAuthStore } from './store/authStore';
 import { AppShell } from './components/layout/AppShell';
 import { usePermission } from './hooks/usePermission';
 import { AccessDenied } from './components/common/AccessDenied';
 import { getDefaultRouteForRole, type RoleSlug } from './contracts/warehouse';
+
+const CHUNK_RELOAD_KEY = 'cats:chunk-reload-attempted';
+
+function isChunkLoadError(error: unknown): boolean {
+  const message = String(error instanceof Error ? error.message : error);
+  return /dynamically imported module|failed to fetch dynamically imported module|importing a module script failed|loading chunk/i.test(
+    message
+  );
+}
+
+function lazyWithReload<T extends ComponentType<unknown>>(
+  importer: () => Promise<{ default: T }>
+) {
+  return lazy(() =>
+    importer()
+      .then((module) => {
+        sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+        return module;
+      })
+      .catch((error) => {
+        if (
+          isChunkLoadError(error) &&
+          sessionStorage.getItem(CHUNK_RELOAD_KEY) !== 'true'
+        ) {
+          sessionStorage.setItem(CHUNK_RELOAD_KEY, 'true');
+          window.location.reload();
+          return new Promise<{ default: T }>(() => {});
+        }
+        throw error;
+      })
+  );
+}
 
 // Lazy load pages
 const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
@@ -77,7 +110,7 @@ type PermissionResource = PermissionArgs[0];
 type PermissionAction = PermissionArgs[1];
 
 // Protected Route Component
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+const ProtectedRoute = ({ children }: { children: ReactNode }) => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated());
   
   if (!isAuthenticated) {
@@ -94,7 +127,7 @@ const RequirePermission = ({
 }: {
   resource: PermissionResource;
   action: PermissionAction;
-  children: React.ReactNode;
+  children: ReactNode;
 }) => {
   const { can } = usePermission();
   if (!can(resource, action)) {
@@ -103,7 +136,7 @@ const RequirePermission = ({
   return <>{children}</>;
 };
 
-const RequireAdmin = ({ children }: { children: React.ReactNode }) => {
+const RequireAdmin = ({ children }: { children: ReactNode }) => {
   const role = useAuthStore((state) => state.role);
   if (role !== 'admin' && role !== 'superadmin') {
     return <AccessDenied />;
