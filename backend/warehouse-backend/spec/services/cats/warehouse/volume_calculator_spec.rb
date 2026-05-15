@@ -9,18 +9,22 @@ RSpec.describe Cats::Warehouse::VolumeCalculator do
       expect(result).to eq(15.0)
     end
 
-    it "returns nil when volume_per_metric_ton is nil" do
+    it "uses default 1.25 m³/MT when volume_per_metric_ton is nil" do
       commodity = build_stubbed(:cats_core_commodity, volume_per_metric_ton: nil)
-      expect(described_class.call(commodity: commodity, base_quantity: 10)).to be_nil
+      expect(described_class.call(commodity: commodity, base_quantity: 5)).to eq(6.25)
     end
 
-    it "returns nil when volume_per_metric_ton is 0" do
+    it "uses default 1.25 m³/MT when volume_per_metric_ton is 0" do
       commodity = build_stubbed(:cats_core_commodity, volume_per_metric_ton: 0)
-      expect(described_class.call(commodity: commodity, base_quantity: 10)).to be_nil
+      expect(described_class.call(commodity: commodity, base_quantity: 10)).to eq(12.5)
     end
 
-    it "returns nil when commodity is nil" do
-      expect(described_class.call(commodity: nil, base_quantity: 10)).to be_nil
+    it "uses default density when commodity is nil" do
+      expect(described_class.call(commodity: nil, base_quantity: 10)).to eq(12.5)
+    end
+
+    it "returns nil when base_quantity is zero" do
+      expect(described_class.call(commodity: commodity, base_quantity: 0)).to be_nil
     end
 
     it "handles fractional quantities" do

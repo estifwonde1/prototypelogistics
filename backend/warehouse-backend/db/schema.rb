@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_05_15_130000) do
+ActiveRecord::Schema[7.0].define(version: 2026_05_15_140100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1049,6 +1049,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_15_130000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.string "commodity_code", null: false
+    t.float "volume_per_metric_ton", default: 1.25, null: false
     t.index ["commodity_category_id"], name: "idx_comm_defs_on_category_id"
     t.index ["commodity_code"], name: "idx_comm_defs_on_code", unique: true
     t.index ["name"], name: "index_cats_warehouse_commodity_definitions_on_name", unique: true

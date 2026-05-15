@@ -10,6 +10,7 @@ import {
   ActionIcon,
   Modal,
   TextInput,
+  NumberInput,
   Select,
   Badge,
   Divider,
@@ -35,6 +36,7 @@ import {
   updateCommodityDefinition,
   deleteCommodityDefinition,
   type CommodityDefinition,
+  type CommodityDefinitionPayload,
 } from '../../../api/commodityDefinitions';
 import {
   getCategoryReferences,
@@ -47,6 +49,7 @@ import { safeTextFilter, sanitizeSearchInput } from '../../../utils/filterUtils'
 import { ErrorState } from '../../../components/common/ErrorState';
 import { EmptyState } from '../../../components/common/EmptyState';
 import type { ApiError } from '../../../types/common';
+import { REFERENCE_M3_PER_MT } from '../../../utils/capacityCalculator';
 
 const GROUP_COLORS: Record<string, string> = {
   Food: 'green',
@@ -118,7 +121,7 @@ export default function CommoditiesSetupPage() {
 
   // ── Commodity Create ──────────────────────────────────────────────────────
   const createForm = useForm({
-    initialValues: { name: '', commodity_code: '', category_id: '' },
+    initialValues: { name: '', commodity_code: '', category_id: '', volume_per_metric_ton: REFERENCE_M3_PER_MT },
     validate: {
       name: (v) => (!v.trim() ? 'Commodity name is required' : null),
       commodity_code: (v) => {
@@ -152,7 +155,7 @@ export default function CommoditiesSetupPage() {
 
   // ── Commodity Edit ────────────────────────────────────────────────────────
   const editForm = useForm({
-    initialValues: { name: '', commodity_code: '', category_id: '' },
+    initialValues: { name: '', commodity_code: '', category_id: '', volume_per_metric_ton: REFERENCE_M3_PER_MT },
     validate: {
       name: (v) => (!v.trim() ? 'Commodity name is required' : null),
       commodity_code: (v) => {
@@ -166,7 +169,7 @@ export default function CommoditiesSetupPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: number; payload: { name: string; commodity_code: string; commodity_category_id: number } }) =>
+    mutationFn: ({ id, payload }: { id: number; payload: CommodityDefinitionPayload }) =>
       updateCommodityDefinition(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['commodity-definitions'] });
@@ -257,6 +260,10 @@ export default function CommoditiesSetupPage() {
       name: values.name.trim(),
       commodity_code: values.commodity_code.trim(),
       commodity_category_id: parseInt(values.category_id),
+      volume_per_metric_ton:
+        values.volume_per_metric_ton != null && Number(values.volume_per_metric_ton) > 0
+          ? Number(values.volume_per_metric_ton)
+          : REFERENCE_M3_PER_MT,
     });
   });
 
@@ -266,6 +273,10 @@ export default function CommoditiesSetupPage() {
       name: definition.name,
       commodity_code: definition.commodity_code ?? '',
       category_id: definition.category_id ? String(definition.category_id) : '',
+      volume_per_metric_ton:
+        definition.volume_per_metric_ton != null && definition.volume_per_metric_ton > 0
+          ? definition.volume_per_metric_ton
+          : REFERENCE_M3_PER_MT,
     });
   };
 
@@ -277,6 +288,10 @@ export default function CommoditiesSetupPage() {
         name: values.name.trim(),
         commodity_code: values.commodity_code.trim(),
         commodity_category_id: parseInt(values.category_id),
+        volume_per_metric_ton:
+          values.volume_per_metric_ton != null && Number(values.volume_per_metric_ton) > 0
+            ? Number(values.volume_per_metric_ton)
+            : REFERENCE_M3_PER_MT,
       },
     });
   });
@@ -610,6 +625,15 @@ export default function CommoditiesSetupPage() {
               searchable
               {...createForm.getInputProps('category_id')}
             />
+            <NumberInput
+              label="Volume per MT (m³/MT)"
+              placeholder="1.25"
+              min={0.01}
+              decimalScale={4}
+              required
+              description="Cubic meters per metric ton for capacity checks. Defaults to 1.25 when blank."
+              {...createForm.getInputProps('volume_per_metric_ton')}
+            />
             <Divider />
             <Group justify="flex-end">
               <Button variant="default" onClick={() => { setCreateModalOpen(false); createForm.reset(); }}>
@@ -653,6 +677,15 @@ export default function CommoditiesSetupPage() {
               required
               searchable
               {...editForm.getInputProps('category_id')}
+            />
+            <NumberInput
+              label="Volume per MT (m³/MT)"
+              placeholder="1.25"
+              min={0.01}
+              decimalScale={4}
+              required
+              description="Cubic meters per metric ton for capacity checks. Defaults to 1.25 when blank."
+              {...editForm.getInputProps('volume_per_metric_ton')}
             />
             <Divider />
             <Group justify="flex-end">

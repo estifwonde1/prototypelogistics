@@ -42,6 +42,7 @@ import { getCommodityDefinitions } from "../../api/commodityDefinitions";
 import type { ApiError } from "../../types/common";
 import type { CreateCommodityPayload } from "../../api/referenceData";
 import type { UnitReference } from "../../types/referenceData";
+import { REFERENCE_M3_PER_MT } from "../../utils/capacityCalculator";
 
 // Fixed packaging container options — these are the physical containers/packaging types.
 // They are stored as UnitOfMeasure records on the backend (package_unit_id).
@@ -211,6 +212,9 @@ function CommodityFormPage() {
   const [selectedDefinitionId, setSelectedDefinitionId] = useState<
     string | null
   >(null);
+  const [volumePerMetricTon, setVolumePerMetricTon] = useState<number | string>(
+    REFERENCE_M3_PER_MT
+  );
 
   const { data: units = [] } = useQuery({
     queryKey: ["reference-data", "units"],
@@ -247,6 +251,7 @@ function CommodityFormPage() {
       setSourceType("");
       setSourceName("");
       setSelectedDefinitionId(null);
+      setVolumePerMetricTon(REFERENCE_M3_PER_MT);
       notifications.show({
         title: "Success",
         message: `Commodity "${newCommodity.name}" created successfully`,
@@ -347,6 +352,14 @@ function CommodityFormPage() {
         : undefined,
       source_type: sourceType.trim(),
       source_name: sourceName.trim(),
+      volume_per_metric_ton:
+        volumePerMetricTon !== "" &&
+        volumePerMetricTon != null &&
+        Number(volumePerMetricTon) > 0
+          ? typeof volumePerMetricTon === "number"
+            ? volumePerMetricTon
+            : parseFloat(String(volumePerMetricTon)) || REFERENCE_M3_PER_MT
+          : REFERENCE_M3_PER_MT,
     });
   };
 
@@ -382,6 +395,7 @@ function CommodityFormPage() {
     if (!val) {
       setName("");
       setCategory(null);
+      setVolumePerMetricTon(REFERENCE_M3_PER_MT);
       return;
     }
     const definition = commodityDefinitions.find((d) => String(d.id) === val);
@@ -392,6 +406,12 @@ function CommodityFormPage() {
       } else {
         setCategory(null);
       }
+      setVolumePerMetricTon(
+        definition.volume_per_metric_ton != null &&
+          definition.volume_per_metric_ton > 0
+          ? definition.volume_per_metric_ton
+          : REFERENCE_M3_PER_MT
+      );
     }
   };
 
@@ -646,6 +666,16 @@ function CommodityFormPage() {
             description={
               category ? "Fetched from the selected commodity" : undefined
             }
+          />
+
+          <NumberInput
+            label="Volume per MT (m³/MT)"
+            placeholder="1.25"
+            min={0.01}
+            decimalScale={4}
+            value={volumePerMetricTon}
+            onChange={setVolumePerMetricTon}
+            description="Cubic meters per metric ton for warehouse capacity. Pre-filled from the catalog; defaults to 1.25."
           />
 
           <DateInput

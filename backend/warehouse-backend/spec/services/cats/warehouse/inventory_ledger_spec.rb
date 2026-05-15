@@ -112,12 +112,9 @@ RSpec.describe Cats::Warehouse::InventoryLedger, type: :service do
     context "space check — commodity has no volume_per_metric_ton" do
       let(:commodity) { create(:cats_core_commodity, volume_per_metric_ton: nil) }
 
-      it "blocks receipt when density is unknown" do
+      it "allows receipt using default planning density (1.25 m³/MT)" do
         item = make_item(quantity: 10)
-        expect { apply_receipt(item) }.to raise_error(
-          Cats::Warehouse::InsufficientSpaceError,
-          /volume_per_metric_ton/
-        )
+        expect { apply_receipt(item) }.not_to raise_error
       end
     end
   end

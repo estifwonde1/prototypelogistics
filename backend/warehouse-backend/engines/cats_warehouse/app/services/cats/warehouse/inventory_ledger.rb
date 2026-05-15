@@ -161,11 +161,8 @@ module Cats
       #      >= the incoming volume.  This catches the case where the stack
       #      itself has room but the store is already full of other stacks.
       #
-      # If the commodity has no volume_per_metric_ton density factor the check
-      # is skipped with a warning log.  This is intentional: blocking receipts
-      # for commodities without density data would be worse than allowing them
-      # through.  Operators should populate volume_per_metric_ton for all
-      # commodities to get reliable enforcement.
+      # Uses commodity volume_per_metric_ton when set; otherwise planning default
+      # (CapacityCalculator::REFERENCE_M3_PER_MT) via VolumeCalculator.
       #
       # @param stack [Stack]  the locked stack row (already fetched)
       # @param incoming_base_qty [Numeric]  quantity in base unit (MT)
@@ -181,12 +178,6 @@ module Cats
           commodity: item.commodity,
           base_quantity: incoming_base_qty
         )
-
-        if incoming_m3.nil?
-          raise Cats::Warehouse::InsufficientSpaceError,
-                "Commodity #{item.commodity_id} has no volume_per_metric_ton; " \
-                "cannot verify physical capacity for this receipt"
-        end
 
         incoming_mt = incoming_base_qty.to_f
 

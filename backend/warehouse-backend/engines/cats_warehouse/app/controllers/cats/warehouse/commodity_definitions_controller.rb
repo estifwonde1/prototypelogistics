@@ -23,7 +23,8 @@ module Cats
         definition = CommodityDefinition.new(
           name: payload[:name]&.strip,
           commodity_code: payload[:commodity_code]&.strip,
-          commodity_category_id: payload[:commodity_category_id]
+          commodity_category_id: payload[:commodity_category_id],
+          volume_per_metric_ton: payload[:volume_per_metric_ton]
         )
 
         if definition.save
@@ -44,7 +45,8 @@ module Cats
         definition.assign_attributes(
           name: payload[:name]&.strip,
           commodity_code: payload[:commodity_code]&.strip,
-          commodity_category_id: payload[:commodity_category_id]
+          commodity_category_id: payload[:commodity_category_id],
+          volume_per_metric_ton: payload[:volume_per_metric_ton]
         )
 
         if definition.save
@@ -68,7 +70,12 @@ module Cats
       private
 
       def definition_params
-        params.require(:commodity_definition).permit(:name, :commodity_code, :commodity_category_id)
+        params.require(:commodity_definition).permit(
+          :name,
+          :commodity_code,
+          :commodity_category_id,
+          :volume_per_metric_ton
+        )
       end
 
       def serialize_definition(definition, category_map)
@@ -82,7 +89,8 @@ module Cats
           commodity_code: definition.commodity_code,
           category_id: definition.commodity_category_id,
           category_name: category&.name,
-          group_name: group_name
+          group_name: group_name,
+          volume_per_metric_ton: definition.volume_per_metric_ton
         }
       end
 

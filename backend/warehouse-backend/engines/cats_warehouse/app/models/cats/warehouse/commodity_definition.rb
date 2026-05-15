@@ -9,8 +9,12 @@ module Cats
                 uniqueness: { case_sensitive: false },
                 format: { with: /\A[A-Za-z0-9\-_]+\z/, message: "only allows letters, numbers, hyphens, and underscores" },
                 length: { maximum: 50 }
+      validates :volume_per_metric_ton,
+                numericality: { greater_than: 0 },
+                allow_nil: true
 
       before_validation :upcase_commodity_code
+      before_validation :apply_default_volume_per_metric_ton
 
       def category_name
         return nil if commodity_category_id.blank?
@@ -22,6 +26,12 @@ module Cats
 
       def upcase_commodity_code
         self.commodity_code = commodity_code&.strip&.upcase
+      end
+
+      def apply_default_volume_per_metric_ton
+        return if volume_per_metric_ton.to_f.positive?
+
+        self.volume_per_metric_ton = CommodityDensityResolver.default_density
       end
     end
   end
