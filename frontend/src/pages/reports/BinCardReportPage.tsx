@@ -235,6 +235,47 @@ export default function BinCardReportPage() {
     }).sort((a, b) => a.commodity_name.localeCompare(b.commodity_name));
   }, [balances]);
 
+  /** Stacks that physically hold more than one lot/batch row for this commodity (e.g. after mixing transfers). */
+  const multiBatchStacksHint = useMemo(() => {
+    const byCommodity = new Map<
+      number,
+      Map<number, { stack_code?: string | null; batches: Set<string> }>
+    >();
+
+    for (const row of balances) {
+      const sid = row.stack_id;
+      if (sid == null || sid <= 0) continue;
+      const lotPart =
+        row.lot_batch_no?.trim() ||
+        row.batch_no?.trim() ||
+        row.commodity_batch_no?.trim() ||
+        (row.inventory_lot_id ? `Lot #${row.inventory_lot_id}` : null);
+      const label = lotPart ?? 'No batch on record';
+
+      if (!byCommodity.has(row.commodity_id)) byCommodity.set(row.commodity_id, new Map());
+      const m = byCommodity.get(row.commodity_id)!;
+      const cur = m.get(sid) ?? { stack_code: row.stack_code, batches: new Set<string>() };
+      cur.stack_code = cur.stack_code || row.stack_code;
+      cur.batches.add(label);
+      m.set(sid, cur);
+    }
+
+    const result = new Map<number, Array<{ stack_id: number; stack_code?: string | null; batch_labels: string[] }>>();
+    for (const [cid, stacks] of byCommodity) {
+      const multi = [...stacks.entries()]
+        .filter(([, v]) => v.batches.size > 1)
+        .map(([stack_id, v]) => ({
+          stack_id,
+          stack_code: v.stack_code,
+          batch_labels: [...v.batches],
+        }))
+        .sort((a, b) => String(a.stack_code).localeCompare(String(b.stack_code)));
+      if (multi.length) result.set(cid, multi);
+    }
+
+    return result;
+  }, [balances]);
+
   // Calculate running balance for transaction history
   const txWithBalance = useMemo(() => {
     let running = 0;
@@ -270,6 +311,31 @@ export default function BinCardReportPage() {
             </Text>
           </div>
         </Group>
+
+        {(() => {
+          const multi = multiBatchStacksHint.get(selectedBatch.commodity_id);
+          if (!multi?.length) return null;
+          return (
+            <Alert color="teal" variant="light" title="Same commodity, multiple batches in one stack">
+              <Text size="sm" mb="xs">
+                The stacks below hold this commodity under more than one lot or batch at the same location. Use{' '}
+                <strong>Quantity by stack</strong> to see each batch line; open other batch cards for the same stacks to
+                review their separate movement history.
+              </Text>
+              <Stack gap={4}>
+                {multi.map((m) => (
+                  <Text key={m.stack_id} size="sm">
+                    <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                      {m.stack_code || `Stack #${m.stack_id}`}
+                    </span>
+                    {' — '}
+                    {m.batch_labels.join(' · ')}
+                  </Text>
+                ))}
+              </Stack>
+            </Alert>
+          );
+        })()}
 
         <Card withBorder padding="md">
           <Group gap="xl">
@@ -311,10 +377,20 @@ export default function BinCardReportPage() {
                     row.commodity_batch_no?.trim() ||
                     (row.inventory_lot_id ? `Lot #${row.inventory_lot_id}` : '—');
                   const exp = row.lot_expiry_date || row.expiry_date;
+                  const multiOnStack = multiBatchStacksHint
+                    .get(selectedBatch.commodity_id)
+                    ?.find((m) => m.stack_id === row.stack_id);
                   return (
                     <Table.Tr key={`${row.stack_id}-${row.id}`}>
                       <Table.Td style={{ fontFamily: 'monospace', fontSize: 13 }}>
-                        {row.stack_code || `Stack #${row.stack_id}`}
+                        <Group gap={6} wrap="nowrap">
+                          <span>{row.stack_code || `Stack #${row.stack_id}`}</span>
+                          {multiOnStack ? (
+                            <Badge size="xs" variant="light" color="teal">
+                              + other batch
+                            </Badge>
+                          ) : null}
+                        </Group>
                       </Table.Td>
                       <Table.Td style={{ textAlign: 'right', fontWeight: 600 }}>
                         {Number(row.quantity).toLocaleString()}
@@ -459,8 +535,31 @@ export default function BinCardReportPage() {
             {/* Batch list — shown when expanded */}
             <Collapse in={isExpanded}>
               <Divider my="sm" />
+              {multiBatchStacksHint.get(comm.commodity_id)?.length ? (
+                <Alert color="teal" variant="light" mb="sm" title="Multi-batch stacks for this commodity">
+                  <Text size="sm">
+                    At least one stack holds more than one batch of {comm.commodity_name}. Open each batch&apos;s Bin Card for
+                    full traceability; totals here are broken out by batch.
+                  </Text>
+                  <Text size="xs" c="dimmed" mt="xs">
+                    {multiBatchStacksHint
+                      .get(comm.commodity_id)!
+                      .map(
+                        (m) =>
+                          `${m.stack_code || `#${m.stack_id}`}: ${m.batch_labels.join('; ')}`
+                      )
+                      .join(' · ')}
+                  </Text>
+                </Alert>
+              ) : null}
               <Stack gap="xs">
-                {comm.batches.map((batch) => (
+                {comm.batches.map((batch) => {
+                  const multiStacks = multiBatchStacksHint.get(comm.commodity_id) ?? [];
+                  const batchTouchesMixedStack = batch.stacks.some((row) =>
+                    multiStacks.some((m) => m.stack_id === row.stack_id),
+                  );
+
+                  return (
                   <Card
                     key={batch.groupKey}
                     withBorder
@@ -475,6 +574,11 @@ export default function BinCardReportPage() {
                           <Text size="sm" fw={600} style={{ fontFamily: 'monospace' }}>
                             {batch.batch_no}
                           </Text>
+                          {batchTouchesMixedStack ? (
+                            <Badge size="xs" variant="outline" color="teal">
+                              Shared stack — other batches present
+                            </Badge>
+                          ) : null}
                           {batch.expiry_date && (
                             <ExpiryBadge expiryDate={batch.expiry_date} size="xs" />
                           )}
@@ -493,7 +597,8 @@ export default function BinCardReportPage() {
                       </Group>
                     </Group>
                   </Card>
-                ))}
+                  );
+                })}
               </Stack>
             </Collapse>
           </Card>

@@ -6,7 +6,7 @@ export interface Stack {
   height: number;
   start_x: number;
   start_y: number;
-  commodity_id: number;
+  commodity_id: number | null;
   commodity_name?: string;
   commodity_code?: string;
   store_id: number;
