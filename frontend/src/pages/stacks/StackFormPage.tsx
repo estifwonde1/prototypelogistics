@@ -668,6 +668,99 @@ function StackFormPage() {
                     {...form.getInputProps('height')}
                   />
                 </Group>
+
+                {/* ── Capacity preview ── */}
+                {(() => {
+                  const selectedStore = stores.find(
+                    (s) => s.id.toString() === form.values.store_id
+                  );
+                  const l = form.values.length || 0;
+                  const w = form.values.width || 0;
+                  const stackFootprint = l * w;
+
+                  // Store usable area (m²) — from backend-calculated usable_space
+                  const storeUsableArea = selectedStore?.usable_space || 0;
+
+                  // Option A: stack usable area = footprint × usable_pct
+                  const usablePct = selectedStore?.warehouse_usable_space_percentage ?? 75;
+                  const stackUsableArea = stackFootprint * (usablePct / 100);
+
+                  // Option C: stack MT = store_est_mt × (stack_footprint / store_usable_area)
+                  const storeNetArea = selectedStore
+                    ? selectedStore.length * selectedStore.width -
+                      (selectedStore.has_gangway
+                        ? (selectedStore.gangway_length ?? 0) * (selectedStore.gangway_width ?? 0)
+                        : 0)
+                    : 0;
+                  const warehouseTotalArea = selectedStore?.warehouse_total_area_sqm;
+                  const warehouseUsableMt = selectedStore?.warehouse_usable_storage_capacity_mt;
+
+                  const storeEstMt =
+                    warehouseTotalArea && warehouseTotalArea > 0 && warehouseUsableMt
+                      ? (storeNetArea / warehouseTotalArea) * warehouseUsableMt
+                      : null;
+
+                  const stackEstMt =
+                    storeEstMt !== null && storeUsableArea > 0
+                      ? (stackFootprint / storeUsableArea) * storeEstMt
+                      : null;
+
+                  if (!selectedStore || stackFootprint === 0) return null;
+
+                  return (
+                    <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md"
+                      style={{ background: '#f0f5ff', borderRadius: 12, padding: '12px 16px' }}
+                    >
+                      <div>
+                        <Text size="xs" fw={800} c="#5b6e8c" tt="uppercase" mb={2}>
+                          Footprint
+                        </Text>
+                        <Text size="lg" fw={700} c="#1d3354">
+                          {stackFootprint.toFixed(2)}{' '}
+                          <Text span size="xs" c="dimmed">m²</Text>
+                        </Text>
+                        <Text size="xs" c="dimmed">{l} × {w} m floor area</Text>
+                      </div>
+
+                      <div>
+                        <Text size="xs" fw={800} c="#5b6e8c" tt="uppercase" mb={2}>
+                          Usable Area
+                        </Text>
+                        <Text size="lg" fw={700} c="#1955a5">
+                          {stackUsableArea.toFixed(2)}{' '}
+                          <Text span size="xs" c="dimmed">m²</Text>
+                        </Text>
+                        <Text size="xs" c="dimmed">
+                          {usablePct}% of footprint
+                        </Text>
+                      </div>
+
+                      <div>
+                        <Text size="xs" fw={800} c="#5b6e8c" tt="uppercase" mb={2}>
+                          Est. Capacity
+                        </Text>
+                        {stackEstMt !== null ? (
+                          <>
+                            <Text size="lg" fw={700} c="#0d6e3f">
+                              {stackEstMt.toFixed(2)}{' '}
+                              <Text span size="xs" c="dimmed">MT</Text>
+                            </Text>
+                            <Text size="xs" c="dimmed">
+                              Pro-rata of store's {storeEstMt?.toFixed(1)} MT
+                            </Text>
+                          </>
+                        ) : (
+                          <>
+                            <Text size="sm" c="dimmed">—</Text>
+                            <Text size="xs" c="dimmed">
+                              Set warehouse area + MT capacity
+                            </Text>
+                          </>
+                        )}
+                      </div>
+                    </SimpleGrid>
+                  );
+                })()}
               </Stack>
             </Card>
 

@@ -32,6 +32,7 @@ const WarehouseListPage = lazy(() => import('./pages/warehouses/WarehouseListPag
 const WarehouseDetailPage = lazy(() => import('./pages/warehouses/WarehouseDetailPage'));
 const WarehouseFormPage = lazy(() => import('./pages/warehouses/WarehouseFormPage'));
 const StoreListPage = lazy(() => import('./pages/stores/StoreListPage'));
+const StoreDetailPage = lazy(() => import('./pages/stores/StoreDetailPage'));
 const StoreFormPage = lazy(() => import('./pages/stores/StoreFormPage'));
 const StackListPage = lazy(() => import('./pages/stacks/StackListPage'));
 const StackFormPage = lazy(() => import('./pages/stacks/StackFormPage'));
@@ -402,6 +403,14 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission resource="stores" action="create">
             <StoreFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'stores/:id',
+        element: (
+          <RequirePermission resource="stores" action="read">
+            <StoreDetailPage />
           </RequirePermission>
         ),
       },

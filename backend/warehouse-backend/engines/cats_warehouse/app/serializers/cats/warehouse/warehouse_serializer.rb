@@ -2,7 +2,7 @@ module Cats
   module Warehouse
     class WarehouseSerializer < ApplicationSerializer
       attributes :id, :code, :name, :warehouse_type, :status, :description, :location_id, :location_name,
-                 :subcity_name, :woreda_name, :kebele_name, :kebele, :hub_id, :hub_name, :geo_id, :managed_under, :ownership_type,
+                 :region_name, :subcity_name, :woreda_name, :kebele_name, :kebele, :hub_id, :hub_name, :geo_id, :managed_under, :ownership_type,
                  :rental_agreement_document, :created_at, :updated_at, :assigned_manager
 
       has_one :warehouse_capacity, serializer: WarehouseCapacitySerializer
@@ -26,6 +26,10 @@ module Cats
 
       def location_name
         object.location&.name
+      end
+
+      def region_name
+        region_ancestor&.name
       end
 
       def subcity_name
@@ -66,6 +70,10 @@ module Cats
 
       def zone_ancestor
         location_ancestors.find { |location| location_type_matches?(location, :ZONE, "zone") }
+      end
+
+      def region_ancestor
+        location_ancestors.find { |location| location_type_matches?(location, :REGION, "region") }
       end
 
       def woreda_ancestor

@@ -67,6 +67,21 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
 
   const adminMenus: NavGroup[] = [
     {
+      label: "Facilities",
+      items: [
+        {
+          label: "Hubs",
+          icon: <IconBuilding size={20} />,
+          path: "/hubs",
+        },
+        {
+          label: "Warehouses",
+          icon: <IconBuildingWarehouse size={20} />,
+          path: "/warehouses",
+        },
+      ],
+    },
+    {
       label: "User Management",
       items: [
         { label: "Users", icon: <IconUsers size={20} />, path: "/admin/users" },

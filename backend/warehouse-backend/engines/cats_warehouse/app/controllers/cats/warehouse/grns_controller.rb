@@ -3,7 +3,9 @@ module Cats
     class GrnsController < BaseController
       def index
         authorize Grn
-        render_resource(policy_scope(Grn).includes(:warehouse, :grn_items).order(created_at: :desc), each_serializer: GrnSerializer)
+        scope = policy_scope(Grn).includes(:warehouse, :grn_items).order(created_at: :desc)
+        scope = scope.where(warehouse_id: params[:warehouse_id]) if params[:warehouse_id].present?
+        render_resource(scope, each_serializer: GrnSerializer)
       end
 
       def show

@@ -32,6 +32,9 @@ module Cats
       validate :position_fits_inside_store, if: :layout_position_changed?
       validate :no_footprint_overlap_with_sibling_stacks
       validate :commodity_lock_respected, if: :commodity_id_changed?
+      validate :respects_stacking_rules, if: :layout_position_changed?
+
+      before_save :sync_occupied_volume
 
       def footprint_area
         length.to_f * width.to_f
@@ -43,6 +46,12 @@ module Cats
 
       protected
 
+      # A stack is considered "layout-positioned" only when both floor coordinates
+      # are explicitly set.  nil start_x/start_y means the stack is a placeholder
+      # (e.g. a space-reservation stub) that has not yet been placed on the floor.
+      # All spatial validations (overlap, boundary) are skipped for unpositioned stacks
+      # so that multiple reservations can coexist in the same store without colliding.
+      # A real position must be assigned before or at putaway (GRN confirmation).
       def layout_positioned_for_overlap?
         store_id.present? &&
           start_x.present? &&
@@ -52,6 +61,15 @@ module Cats
       end
 
       private
+
+      # Keep occupied_volume consistent with quantity and dimensions.
+      # InventoryLedger also sets this explicitly, but having it here ensures
+      # correctness when stacks are saved through other paths (e.g. admin edits).
+      def sync_occupied_volume
+        return unless has_attribute?(:occupied_volume)
+
+        self.occupied_volume = quantity.to_f.positive? ? volume : 0.0
+      end
 
       # A stack that holds goods (quantity > 0) cannot have its commodity changed
       # to a DIFFERENT commodity type. Same commodity (different batch) is allowed.
@@ -120,9 +138,10 @@ module Cats
           errors.add(:base, "Stack footprint cannot exceed the store usable floor area")
         end
 
-        return unless volume > store.usable_space.to_f
+        # usable_space is now floor area (m²) — compare footprint, not volume.
+        return unless footprint_area > store.usable_space.to_f
 
-        errors.add(:base, "Stack volume cannot exceed the store usable capacity")
+        errors.add(:base, "Stack footprint cannot exceed the store usable area")
       end
 
       def layout_position_changed?
@@ -135,7 +154,100 @@ module Cats
             will_save_change_to_width?)
       end
 
+      # Stacking rule enforcement — clearance checks only.
+      # No dimension caps (maximum_height / maximum_length / maximum_width) are
+      # enforced here; those fields exist on StackingRule but are not used for
+      # validation.  The three clearances below are checked against the stack's
+      # floor position and the store boundary:
+      #
+      #   distance_from_wall    — gap required between the stack edge and the
+      #                           store wall on all four sides.
+      #   space_between_stack   — minimum gap between this stack and any
+      #                           neighbouring stack (enforced via the expanded
+      #                           footprint used in the overlap check below).
+      #   distance_from_ceiling — the stack top (start_z + height) must leave
+      #                           at least this much clearance below the store
+      #                           ceiling.
+      #
+      # Only runs when the stack has an explicit floor position (layout_positioned_for_overlap?
+      # is already the guard on the validate call).
+      def respects_stacking_rules
+        rule = store&.warehouse&.stacking_rules&.first
+        return unless rule
+
+        dfw = rule.distance_from_wall.to_f
+        sbs = rule.space_between_stack.to_f
+        dfc = rule.distance_from_ceiling.to_f
+
+        # ── distance_from_wall ───────────────────────────────────────────────
+        # The stack must sit at least dfw metres from every wall.
+        if start_x.to_f < dfw - FOOTPRINT_OVERLAP_EPS
+          errors.add(:start_x,
+                     "must be at least #{dfw} m from the wall (distance_from_wall rule)")
+        end
+
+        if start_y.to_f < dfw - FOOTPRINT_OVERLAP_EPS
+          errors.add(:start_y,
+                     "must be at least #{dfw} m from the wall (distance_from_wall rule)")
+        end
+
+        if start_x.to_f + length.to_f > store.length.to_f - dfw + FOOTPRINT_OVERLAP_EPS
+          errors.add(:base,
+                     "Stack is too close to the far wall — " \
+                     "leave at least #{dfw} m clearance (distance_from_wall rule)")
+        end
+
+        if start_y.to_f + width.to_f > store.width.to_f - dfw + FOOTPRINT_OVERLAP_EPS
+          errors.add(:base,
+                     "Stack is too close to the far wall — " \
+                     "leave at least #{dfw} m clearance (distance_from_wall rule)")
+        end
+
+        # ── space_between_stack ──────────────────────────────────────────────
+        # Re-run the overlap check with each stack's footprint expanded by sbs/2
+        # on every side, which enforces the minimum aisle gap between stacks.
+        if sbs > FOOTPRINT_OVERLAP_EPS
+          half = sbs / 2.0
+          ax = start_x.to_f - half
+          ay = start_y.to_f - half
+          al = length.to_f + sbs
+          aw = width.to_f + sbs
+
+          siblings = self.class.where(store_id: store_id)
+          siblings = siblings.where.not(id: id) if persisted?
+
+          siblings.find_each do |other|
+            next unless other.layout_positioned_for_overlap?
+
+            ox = other.start_x.to_f - half
+            oy = other.start_y.to_f - half
+            ol = other.length.to_f + sbs
+            ow = other.width.to_f + sbs
+
+            next unless axis_aligned_footprints_overlap?(ax, ay, al, aw, ox, oy, ol, ow)
+
+            label = other.code.presence || "stack ##{other.id}"
+            errors.add(:base,
+                       "Stack is too close to #{label} — " \
+                       "maintain at least #{sbs} m between stacks (space_between_stack rule)")
+            break
+          end
+        end
+
+        # ── distance_from_ceiling ────────────────────────────────────────────
+        # The top of the stack must leave at least dfc metres below the ceiling.
+        if height.to_f > store.height.to_f - dfc + FOOTPRINT_OVERLAP_EPS
+          errors.add(:height,
+                     "Stack is too tall — leave at least #{dfc} m below the ceiling " \
+                     "(distance_from_ceiling rule)")
+        end
+      end
+
       def position_fits_inside_store
+        # Only validate boundary when the stack has an explicit floor position.
+        # Unpositioned stacks (start_x/start_y nil) are reservation placeholders
+        # and are exempt until a real position is assigned at putaway.
+        return unless layout_positioned_for_overlap?
         return unless store.present?
 
         if start_x.to_f < -FOOTPRINT_OVERLAP_EPS || start_y.to_f < -FOOTPRINT_OVERLAP_EPS

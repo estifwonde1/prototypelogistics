@@ -3,7 +3,21 @@ module Cats
     class StoreSerializer < ApplicationSerializer
       attributes :id, :code, :name, :length, :width, :height, :total_space, :usable_space, :available_space,
                  :temporary, :has_gangway, :gangway_length, :gangway_width, :gangway_corner_dist,
-                 :warehouse_id, :created_at, :updated_at, :assigned_storekeepers
+                 :warehouse_id, :created_at, :updated_at, :assigned_storekeepers,
+                 :warehouse_usable_space_percentage, :warehouse_total_area_sqm,
+                 :warehouse_usable_storage_capacity_mt
+
+      def warehouse_usable_space_percentage
+        object.warehouse&.warehouse_capacity&.usable_space_percentage || 75
+      end
+
+      def warehouse_total_area_sqm
+        object.warehouse&.warehouse_capacity&.total_area_sqm
+      end
+
+      def warehouse_usable_storage_capacity_mt
+        object.warehouse&.warehouse_capacity&.usable_storage_capacity_mt
+      end
 
       def assigned_storekeepers
         # Get storekeepers with warehouse-level assignment for this store's warehouse

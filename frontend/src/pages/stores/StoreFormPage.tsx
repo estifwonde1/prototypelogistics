@@ -13,7 +13,10 @@ import {
   Switch,
   Card,
   Text,
+  Tooltip,
+  SimpleGrid,
 } from "@mantine/core";
+import { IconInfoCircle } from "@tabler/icons-react";
 import { useForm } from "@mantine/form";
 import { IconArrowLeft, IconDeviceFloppy } from "@tabler/icons-react";
 import { getStore, createStore, updateStore } from "../../api/stores";
@@ -172,11 +175,31 @@ function StoreFormPage() {
     label: `${warehouse.name} (${warehouse.code})`,
   }));
 
-  const totalSpace = form.values.length * form.values.width * form.values.height;
-  const gangwayVolume = form.values.has_gangway
-    ? form.values.gangway_length * form.values.gangway_width * form.values.height
+  const totalSpace = form.values.length * form.values.width;
+  const gangwayArea = form.values.has_gangway
+    ? form.values.gangway_length * form.values.gangway_width
     : 0;
-  const estimatedUsableSpace = Math.max(totalSpace - gangwayVolume, 0);
+  const storeArea = Math.max(totalSpace - gangwayArea, 0);
+
+  // ── Option A: Usable area = store floor area × warehouse usable_space_percentage ──
+  const selectedWarehouse = warehouses.find(
+    (w) => w.id.toString() === form.values.warehouse_id
+  );
+  const usablePct = (selectedWarehouse?.capacity as any)?.usable_space_percentage ?? 75;
+  const usableAreaM2 = storeArea * (usablePct / 100);
+
+  // ── Option C: Pro-rata MT capacity ──────────────────────────────────────────
+  // store_share = store_area / warehouse_total_area_sqm
+  // store_usable_mt = warehouse_usable_storage_capacity_mt × store_share
+  const warehouseTotalAreaSqm: number | undefined =
+    (selectedWarehouse?.capacity as any)?.total_area_sqm;
+  const warehouseUsableMt: number | undefined =
+    (selectedWarehouse?.capacity as any)?.usable_storage_capacity_mt;
+
+  const proRataMt =
+    warehouseTotalAreaSqm && warehouseTotalAreaSqm > 0 && warehouseUsableMt && storeArea > 0
+      ? (storeArea / warehouseTotalAreaSqm) * warehouseUsableMt
+      : null;
 
   if (isEdit && isLoading) {
     return <LoadingState message="Loading store..." />;
@@ -271,21 +294,73 @@ function StoreFormPage() {
                 />
               </Group>
 
-              <Group grow>
+              <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
+                {/* Total floor area — raw l×w */}
                 <NumberInput
-                  label="Total Space (m³)"
+                  label="Total Area (m²)"
                   value={Number(totalSpace.toFixed(2))}
                   readOnly
                   disabled
                 />
+
+                {/* Option A — usable area after applying warehouse usable % */}
                 <NumberInput
-                  label="Estimated Usable Space (m³)"
-                  value={Number(estimatedUsableSpace.toFixed(2))}
+                  label={
+                    <Group gap={4}>
+                      <Text size="sm" fw={500}>Usable Area (m²)</Text>
+                      <Tooltip
+                        label={`Store floor area × ${usablePct}% usable space (warehouse setting). Gangway excluded.`}
+                        multiline
+                        w={260}
+                        withArrow
+                      >
+                        <IconInfoCircle size={14} style={{ color: 'var(--mantine-color-dimmed)', cursor: 'help' }} />
+                      </Tooltip>
+                    </Group>
+                  }
+                  value={Number(usableAreaM2.toFixed(2))}
                   readOnly
                   disabled
-                  description="Final usable and available space are calculated automatically by the backend."
+                  description={`${usablePct}% of store area`}
                 />
-              </Group>
+
+                {/* Option C — pro-rata MT capacity from warehouse */}
+                <NumberInput
+                  label={
+                    <Group gap={4}>
+                      <Text size="sm" fw={500}>Est. Capacity (MT)</Text>
+                      <Tooltip
+                        label={
+                          proRataMt !== null
+                            ? `Pro-rata share of warehouse usable capacity.\n` +
+                              `Store area (${storeArea.toFixed(1)} m²) ÷ ` +
+                              `Warehouse area (${warehouseTotalAreaSqm?.toFixed(1)} m²) × ` +
+                              `${warehouseUsableMt?.toFixed(1)} MT`
+                            : "Set the warehouse Total Area (m²) and Storage Capacity (MT) to see this estimate."
+                        }
+                        multiline
+                        w={280}
+                        withArrow
+                      >
+                        <IconInfoCircle size={14} style={{ color: 'var(--mantine-color-dimmed)', cursor: 'help' }} />
+                      </Tooltip>
+                    </Group>
+                  }
+                  value={proRataMt !== null ? Number(proRataMt.toFixed(2)) : ""}
+                  placeholder={proRataMt === null ? "Set warehouse capacity" : undefined}
+                  readOnly
+                  disabled
+                  description={
+                    proRataMt !== null
+                      ? "Pro-rata share of warehouse MT capacity"
+                      : "Requires warehouse area + MT capacity"
+                  }
+                />
+              </SimpleGrid>
+
+              <Text size="xs" c="dimmed">
+                Final usable and available area are saved automatically by the backend when you submit.
+              </Text>
             </Stack>
           </Card>
 

@@ -15,6 +15,10 @@ export interface Store {
   gangway_height?: number;
   warehouse_id: number;
   assigned_storekeepers?: AssignedStorekeeper[];
+  // Warehouse capacity fields — denormalised onto the store for convenience
+  warehouse_usable_space_percentage?: number;
+  warehouse_total_area_sqm?: number;
+  warehouse_usable_storage_capacity_mt?: number;
 }
 
 export interface AssignedStorekeeper {

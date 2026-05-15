@@ -7,6 +7,7 @@ export interface Warehouse {
   description?: string;
   location_id?: number;
   location_name?: string;
+  region_name?: string;
   subcity_name?: string;
   woreda_name?: string;
   kebele_name?: string;
