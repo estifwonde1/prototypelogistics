@@ -3,8 +3,8 @@ import type { Gin, GinItem } from '../types/gin';
 import type { ApiResponse } from '../types/common';
 import { toCreateGinRequest, type CreateGinRequest } from '../contracts/documents';
 
-export const getGins = async (): Promise<Gin[]> => {
-  const response = await apiClient.get<ApiResponse<Gin[]>>('/gins');
+export const getGins = async (params?: { warehouse_id?: number }): Promise<Gin[]> => {
+  const response = await apiClient.get<ApiResponse<Gin[]>>('/gins', { params });
   return response.data.data;
 };
 

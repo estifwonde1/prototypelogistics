@@ -308,7 +308,11 @@ function StoreListPage() {
                 const canView = can("stores", "read");
 
                 return (
-                  <Table.Tr key={store.id}>
+                  <Table.Tr
+                    key={store.id}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => navigate(`/stores/${store.id}`)}
+                  >
                     <Table.Td>{store.code}</Table.Td>
                     <Table.Td>{store.name}</Table.Td>
                     <Table.Td>{warehouse?.name || "-"}</Table.Td>

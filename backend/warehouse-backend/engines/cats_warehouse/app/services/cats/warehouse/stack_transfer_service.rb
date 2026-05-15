@@ -71,6 +71,9 @@ module Cats
           update_stock_balance(source_stack, -quantity)
           update_stock_balance(destination_stack, quantity)
 
+          # Recalculate store space after the transfer
+          StoreOccupancyUpdater.call(store_id: source_stack.store_id)
+
           # Create workflow event for audit trail
           create_workflow_event(transaction)
 

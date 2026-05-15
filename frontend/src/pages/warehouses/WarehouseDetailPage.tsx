@@ -8,7 +8,7 @@ import {
 import { IconEdit, IconTrash, IconArrowLeft, IconMapPin } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import {
-  getWarehouse, deleteWarehouse, updateWarehouseCapacity,
+  getWarehouse, deleteWarehouse, updateWarehouse, updateWarehouseCapacity,
   updateWarehouseAccess, updateWarehouseInfra, updateWarehouseContacts,
   updateWarehouseGps,
 } from '../../api/warehouses';
@@ -73,10 +73,26 @@ function WarehouseDetailPage() {
       return getStores();
     }
   });
-  const { data: stockBalances = [] } = useQuery({ queryKey: ['stockBalances'], queryFn: () => getStockBalances() });
-  const { data: grns } = useQuery({ queryKey: ['grns'], queryFn: () => getGrns() });
-  const { data: gins } = useQuery({ queryKey: ['gins'], queryFn: () => getGins() });
-  const { data: inspections } = useQuery({ queryKey: ['inspections'], queryFn: () => getInspections() });
+  const { data: stockBalances = [] } = useQuery({
+    queryKey: ['stockBalances', { warehouse_id: Number(id) }],
+    queryFn: () => getStockBalances({ warehouse_id: Number(id) }),
+    enabled: !!id,
+  });
+  const { data: grns } = useQuery({
+    queryKey: ['grns', { warehouse_id: Number(id) }],
+    queryFn: () => getGrns({ warehouse_id: Number(id) }),
+    enabled: !!id,
+  });
+  const { data: gins } = useQuery({
+    queryKey: ['gins', { warehouse_id: Number(id) }],
+    queryFn: () => getGins({ warehouse_id: Number(id) }),
+    enabled: !!id,
+  });
+  const { data: inspections } = useQuery({
+    queryKey: ['inspections', { warehouse_id: Number(id) }],
+    queryFn: () => getInspections({ warehouse_id: Number(id) }),
+    enabled: !!id,
+  });
   const { data: facilityOptions } = useQuery({
     queryKey: ['reference-data', 'facility-options'],
     queryFn: () => getFacilityOptions(),
@@ -167,12 +183,21 @@ function WarehouseDetailPage() {
   }, [warehouse]);
 
   const updateCapacityMutation = useMutation({
-    mutationFn: (payload: typeof capacityForm.values) =>
-      updateWarehouseCapacity(Number(id), {
+    mutationFn: async (payload: typeof capacityForm.values) => {
+      // WarehouseCapacity fields — sent to PUT /warehouses/:id/capacity
+      await updateWarehouseCapacity(Number(id), {
         total_area_sqm: toNumber(payload.total_area_sqm),
         total_storage_capacity_mt: toNumber(payload.total_storage_capacity_mt),
         construction_year: toNumber(payload.construction_year),
-      }),
+        usable_space_percentage: payload.usable_space_percentage,
+      });
+
+      // ownership_type lives on the Warehouse record itself, not on WarehouseCapacity.
+      // Only send the PATCH when the value has actually changed to avoid a redundant write.
+      if (payload.ownership_type && payload.ownership_type !== warehouse?.ownership_type) {
+        await updateWarehouse(Number(id), { ownership_type: payload.ownership_type });
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['warehouses', id] });
       notifications.show({ title: 'Success', message: 'Capacity updated', color: 'green' });
@@ -255,10 +280,10 @@ function WarehouseDetailPage() {
 
   const hub = hubs?.find((h) => h.id === warehouse?.hub_id);
   const warehouseStores = stores?.filter((s) => s.warehouse_id === Number(id));
-  const warehouseStock = stockBalances?.filter((sb) => sb.warehouse_id === Number(id));
-  const warehouseGrns = grns?.filter((g) => g.warehouse_id === Number(id))?.slice(0, 5);
-  const warehouseGins = gins?.filter((g) => g.warehouse_id === Number(id))?.slice(0, 5);
-  const warehouseInspections = inspections?.filter((i) => i.warehouse_id === Number(id))?.slice(0, 5);
+  const warehouseStock = stockBalances;
+  const warehouseGrns = grns?.slice(0, 5);
+  const warehouseGins = gins?.slice(0, 5);
+  const warehouseInspections = inspections?.slice(0, 5);
 
   const formatHierarchicalLevel = (value?: string) => {
     if (!value) return '-';
@@ -341,7 +366,7 @@ function WarehouseDetailPage() {
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
                   <Text size="sm" c="dimmed">Region</Text>
-                  <Text fw={500}>Addis Ababa</Text>
+                  <Text fw={500}>{warehouse.region_name || '-'}</Text>
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
                   <Text size="sm" c="dimmed">Subcity</Text>
@@ -587,7 +612,7 @@ function WarehouseDetailPage() {
             {warehouseStores && warehouseStores.length > 0 ? (
               <Stack gap="sm">
                 {warehouseStores.map((store) => (
-                  <Card key={store.id} withBorder padding="sm" style={{ cursor: 'pointer' }} onClick={() => navigate(`/stores/${store.id}/edit`)}>
+                  <Card key={store.id} withBorder padding="sm" style={{ cursor: 'pointer' }} onClick={() => navigate(`/stores/${store.id}`)}>
                     <Group justify="space-between">
                       <div>
                         <Text fw={500}>{store.name}</Text>
