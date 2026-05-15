@@ -11,9 +11,8 @@ import { useAuthStore } from '../store/authStore';
  */
 export function useWarehouseManagerRaAccess() {
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
-  const roleSlug = normalizeRoleSlug(
-    activeAssignment?.role_name || useAuthStore((state) => state.role)
-  );
+  const storeRole = useAuthStore((state) => state.role);
+  const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || storeRole);
   const isWarehouseManager = roleSlug === 'warehouse_manager';
   const warehouseId = activeAssignment?.warehouse?.id;
   const hubIdFromAssignment = activeAssignment?.warehouse?.hub_id;

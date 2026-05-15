@@ -101,7 +101,7 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
           size="sm"
         />
         <Text size="lg" fw={700}>
-          CATS Warehouse Management
+          DRiMS Warehouse Management
         </Text>
       </Group>
 
