@@ -87,3 +87,38 @@ RSpec.describe Cats::Warehouse::ReceiptAuthorizationPolicy::Scope, type: :policy
     expect(resolved.where(id: ra_b.id)).not_to exist
   end
 end
+
+RSpec.describe Cats::Warehouse::ReceiptAuthorizationPolicy, type: :policy do
+  let(:hub) { create(:cats_warehouse_hub) }
+  let(:hub_warehouse) { create(:cats_warehouse_warehouse, hub: hub) }
+  let(:standalone_warehouse) { create(:cats_warehouse_warehouse, hub: nil) }
+  let(:hm) { create(:cats_core_user, role_name: "Hub Manager") }
+  let(:wm) { create(:cats_core_user, role_name: "Warehouse Manager") }
+
+  before do
+    Cats::Warehouse::UserAssignment.create!(user: hm, hub: hub, role_name: "Hub Manager")
+    Cats::Warehouse::UserAssignment.create!(
+      user: wm,
+      warehouse: standalone_warehouse,
+      role_name: "Warehouse Manager"
+    )
+    Cats::Warehouse::UserAssignment.create!(
+      user: wm,
+      warehouse: hub_warehouse,
+      role_name: "Warehouse Manager"
+    )
+  end
+
+  describe "#create_for_warehouse?" do
+    it "allows Hub Manager for warehouses under their hub" do
+      policy = described_class.new(hm, nil)
+      expect(policy.create_for_warehouse?(hub_warehouse.id)).to be(true)
+    end
+
+    it "allows Warehouse Manager only for standalone assigned warehouses" do
+      policy = described_class.new(wm, nil)
+      expect(policy.create_for_warehouse?(standalone_warehouse.id)).to be(true)
+      expect(policy.create_for_warehouse?(hub_warehouse.id)).to be(false)
+    end
+  end
+end

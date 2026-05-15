@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import {
@@ -27,6 +27,9 @@ import { getCommodityReferences, getUnitReferences, getUomConversions } from '..
 import { getWarehouses } from '../../api/warehouses';
 import type { ReceiptOrderAssignment } from '../../types/assignment';
 import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
+import { receiptAuthorizationBasePath } from '../../utils/receiptAuthorizationPaths';
+import { useWarehouseManagerRaAccess } from '../../hooks/useWarehouseManagerRaAccess';
 import { findDirectedMultiplier } from '../../utils/uomConversions';
 import { computePackagingPackagesHint } from '../../utils/packagingQuantityHint';
 import type { ApiError } from '../../types/common';
@@ -147,10 +150,18 @@ function mergeOrphanRasIntoAssignmentUsage(
 
 export default function ReceiptAuthorizationFormPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(
+    activeAssignment?.role_name || useAuthStore((state) => state.role)
+  );
+  const raBasePath = receiptAuthorizationBasePath(roleSlug);
+  const { isWarehouseManager, isStandaloneWarehouse: isStandaloneAssignment } =
+    useWarehouseManagerRaAccess();
   const scopedHubId = activeAssignment?.hub?.id;
   const scopedWarehouseId = activeAssignment?.warehouse?.id;
+  const scopedWarehouseName = activeAssignment?.warehouse?.name;
 
   const [receiptOrderId, setReceiptOrderId] = useState<string | null>(null);
   const [usePlannedAllocation, setUsePlannedAllocation] = useState(true);
@@ -165,6 +176,11 @@ export default function ReceiptAuthorizationFormPage() {
   const [driverIdNumber, setDriverIdNumber] = useState('');
   const [truckPlateNumber, setTruckPlateNumber] = useState('');
   const [waybillNumber, setWaybillNumber] = useState('');
+
+  useEffect(() => {
+    const roId = searchParams.get('receipt_order_id');
+    if (roId) setReceiptOrderId(roId);
+  }, [searchParams]);
 
   const { data: receiptOrders = [] } = useQuery({
     queryKey: ['receipt_orders', { status: 'confirmed', hub_id: scopedHubId, warehouse_id: scopedWarehouseId }],
@@ -226,6 +242,25 @@ export default function ReceiptAuthorizationFormPage() {
   const hasPlannedWarehouseRows = warehouseAssignments.length > 0;
   const routingByOverride = !usePlannedAllocation || !hasPlannedWarehouseRows;
   const hubIdForRo = selectedOrder?.hub_id ?? scopedHubId ?? undefined;
+  const isStandaloneReceiptOrder =
+    selectedOrder != null &&
+    selectedOrder.hub_id == null &&
+    selectedOrder.warehouse_id != null;
+
+  useEffect(() => {
+    if (!isWarehouseManager || !isStandaloneAssignment || !scopedWarehouseId) return;
+    if (selectedOrder && (isStandaloneReceiptOrder || !hasPlannedWarehouseRows)) {
+      setUsePlannedAllocation(false);
+      setExplicitWarehouseId(String(scopedWarehouseId));
+    }
+  }, [
+    isWarehouseManager,
+    isStandaloneAssignment,
+    scopedWarehouseId,
+    selectedOrder,
+    isStandaloneReceiptOrder,
+    hasPlannedWarehouseRows,
+  ]);
 
   const { data: hubWarehouses = [] } = useQuery({
     queryKey: ['warehouses', { hub_id: hubIdForRo }],
@@ -373,13 +408,15 @@ export default function ReceiptAuthorizationFormPage() {
     routingByOverride,
   ]);
 
+  const lineContextKey = `${receiptOrderId ?? ''}:${overrideReceiptLineId ?? ''}:${assignmentId ?? ''}`;
+
   useEffect(() => {
     if (measurementUnitId == null) {
       setAuthorizedUnitId(null);
       return;
     }
     setAuthorizedUnitId(String(measurementUnitId));
-  }, [measurementUnitId, routingByOverride, selectedAssignment?.id, overrideReceiptLineId]);
+  }, [lineContextKey, measurementUnitId]);
 
   const usedOnAssignment =
     selectedAssignment != null
@@ -405,24 +442,68 @@ export default function ReceiptAuthorizationFormPage() {
       .reduce((s, ra) => s + Number(ra.authorized_quantity || 0), 0);
   }, [routingByOverride, selectedLinePlanned?.id, orderRAs, orderLines.length]);
 
-  const allowedUnitOptions =
-    measurementUnitId != null && measurementCommodityId != null
-      ? units
-          .filter(
-            (unit) =>
-              findDirectedMultiplier(unit.id, measurementUnitId, measurementCommodityId, uomConversions) != null
-          )
-          .map((unit) => ({
-            value: String(unit.id),
-            label: unit.abbreviation ? `${unit.name} (${unit.abbreviation})` : unit.name,
-          }))
-      : [];
+  const allowedUnitOptions = useMemo(() => {
+    if (measurementUnitId == null) return [];
+
+    const lineUnit = units.find((u) => u.id === measurementUnitId);
+    const lineOption = {
+      value: String(measurementUnitId),
+      label: lineUnit
+        ? lineUnit.abbreviation
+          ? `${lineUnit.name} (${lineUnit.abbreviation})`
+          : lineUnit.name
+        : measurementUnitLabel,
+    };
+
+    if (measurementCommodityId == null) {
+      return [lineOption];
+    }
+
+    const convertible = units
+      .filter((unit) => {
+        if (unit.id === measurementUnitId) return true;
+        return (
+          findDirectedMultiplier(unit.id, measurementUnitId, measurementCommodityId, uomConversions) != null
+        );
+      })
+      .map((unit) => ({
+        value: String(unit.id),
+        label: unit.abbreviation ? `${unit.name} (${unit.abbreviation})` : unit.name,
+      }));
+
+    const seen = new Set<string>();
+    return [lineOption, ...convertible].filter((opt) => {
+      if (seen.has(opt.value)) return false;
+      seen.add(opt.value);
+      return true;
+    });
+  }, [measurementUnitId, measurementCommodityId, units, uomConversions, measurementUnitLabel]);
+
+  const destinationWarehouseReady =
+    !routingByOverride ||
+    Boolean(
+      explicitWarehouseId ||
+        (isWarehouseManager && isStandaloneAssignment && scopedWarehouseId != null)
+    );
 
   const enteredQty = Number(authorizedQuantity);
-  const previewMultiplier =
-    effectiveLine && authorizedUnitId && measurementUnitId != null && measurementCommodityId != null
-      ? findDirectedMultiplier(Number(authorizedUnitId), measurementUnitId, measurementCommodityId, uomConversions)
-      : null;
+  const previewMultiplier = useMemo(() => {
+    if (!effectiveLine || !authorizedUnitId || measurementUnitId == null) return null;
+    if (Number(authorizedUnitId) === measurementUnitId) return 1;
+    if (measurementCommodityId == null) return null;
+    return findDirectedMultiplier(
+      Number(authorizedUnitId),
+      measurementUnitId,
+      measurementCommodityId,
+      uomConversions
+    );
+  }, [
+    effectiveLine,
+    authorizedUnitId,
+    measurementUnitId,
+    measurementCommodityId,
+    uomConversions,
+  ]);
   const previewNormalizedQty =
     Number.isFinite(enteredQty) && enteredQty > 0 && previewMultiplier != null
       ? Number((enteredQty * previewMultiplier).toFixed(6))
@@ -524,15 +605,20 @@ export default function ReceiptAuthorizationFormPage() {
       if (!Number.isFinite(enteredQtyLocal) || enteredQtyLocal <= 0) {
         throw new Error('Enter a quantity greater than zero');
       }
-      if (measurementUnitId == null || measurementCommodityId == null || !effectiveLine) {
+      if (measurementUnitId == null || !effectiveLine) {
         throw new Error('Select receipt order line and destination so quantity units resolve.');
       }
-      const unitMultiplier = findDirectedMultiplier(
-        Number(authorizedUnitId),
-        measurementUnitId,
-        measurementCommodityId,
-        uomConversions
-      );
+      const unitMultiplier =
+        Number(authorizedUnitId) === measurementUnitId
+          ? 1
+          : measurementCommodityId != null
+            ? findDirectedMultiplier(
+                Number(authorizedUnitId),
+                measurementUnitId,
+                measurementCommodityId,
+                uomConversions
+              )
+            : null;
       if (unitMultiplier == null) {
         throw new Error('Selected unit cannot be converted to the receipt order line unit');
       }
@@ -570,7 +656,10 @@ export default function ReceiptAuthorizationFormPage() {
         });
       }
 
-      if (!explicitWarehouseId) {
+      const destinationWarehouseId =
+        explicitWarehouseId ??
+        (isWarehouseManager && scopedWarehouseId != null ? String(scopedWarehouseId) : null);
+      if (!destinationWarehouseId) {
         throw new Error('Select a destination warehouse');
       }
       if (orderLines.length > 1 && !overrideReceiptLineId) {
@@ -584,7 +673,7 @@ export default function ReceiptAuthorizationFormPage() {
         receipt_order_id: Number(receiptOrderId),
         receipt_order_assignment_id: null,
         receipt_order_line_id: payloadReceiptLineId,
-        warehouse_id: Number(explicitWarehouseId),
+        warehouse_id: Number(destinationWarehouseId),
         transporter_name: transporterName.trim(),
         authorized_quantity: normalizedQty,
         authorized_quantity_input: enteredQtyLocal,
@@ -603,7 +692,7 @@ export default function ReceiptAuthorizationFormPage() {
         message: `${ra.reference_no} created. Warehouse staff will be notified.`,
         color: 'green',
       });
-      navigate(`/hub/receipt-authorizations/${ra.id}`);
+      navigate(`${raBasePath}/${ra.id}`);
     },
     onError: (error: unknown) => {
       notifications.show({
@@ -619,7 +708,7 @@ export default function ReceiptAuthorizationFormPage() {
   const qtySectionEnabled =
     !routingByOverride
       ? !!selectedAssignment && allowedUnitOptions.length > 0
-      : !!explicitWarehouseId && !!effectiveLine && allowedUnitOptions.length > 0;
+      : destinationWarehouseReady && !!effectiveLine && allowedUnitOptions.length > 0;
 
   const packagingAuthorizedHint = useMemo(() => {
     if (!qtySectionEnabled || !Number.isFinite(enteredQty) || enteredQty <= 0 || !authorizedUnitId) {
@@ -667,7 +756,7 @@ export default function ReceiptAuthorizationFormPage() {
         exceedsRemainingAssignment ||
         exceedsLineTotalPlanned)) ||
     (routingByOverride &&
-      (!explicitWarehouseId ||
+      (!destinationWarehouseReady ||
         !effectiveLine ||
         !authorizedUnitId ||
         (orderLines.length > 1 && !overrideReceiptLineId) ||
@@ -676,7 +765,7 @@ export default function ReceiptAuthorizationFormPage() {
   return (
     <Stack gap="md">
       <Group>
-        <Button variant="default" onClick={() => navigate('/hub/receipt-authorizations')}>
+        <Button variant="default" onClick={() => navigate(raBasePath)}>
           ← Back
         </Button>
         <Title order={2}>New Receipt Authorization</Title>
@@ -685,9 +774,9 @@ export default function ReceiptAuthorizationFormPage() {
       <Card shadow="sm" padding="lg" radius="md" withBorder>
         <Stack gap="md">
           <Text size="sm" c="dimmed">
-            Create one Receipt Authorization per truck. You can follow hub→warehouse rows from the Receipt Order
-            allocation, or route directly to a warehouse under your hub when the plan is only guidance; quantity is
-            always capped by the receipt order line total. Store assignment stays on the Receipt Order.
+            {isWarehouseManager
+              ? 'Create one Receipt Authorization per truck for this independent warehouse. Each truck authorizes inbound quantity against the receipt order line total; storekeepers use this to run inspection and GRN.'
+              : 'Create one Receipt Authorization per truck. You can follow hub→warehouse rows from the Receipt Order allocation, or route directly to a warehouse under your hub when the plan is only guidance; quantity is always capped by the receipt order line total. Store assignment stays on the Receipt Order.'}
           </Text>
 
           <Divider label="Receipt Order" labelPosition="left" />
@@ -735,7 +824,12 @@ export default function ReceiptAuthorizationFormPage() {
 
           {routingByOverride && receiptOrderId ? (
             <>
-              {!hubIdForRo ? (
+              {!hubIdForRo && isWarehouseManager && scopedWarehouseId ? (
+                <Alert color="blue" variant="light" title="Independent warehouse">
+                  Trucks are authorized for{' '}
+                  <strong>{scopedWarehouseName ?? `warehouse #${scopedWarehouseId}`}</strong> on this receipt order.
+                </Alert>
+              ) : !hubIdForRo ? (
                 <Alert icon={<IconAlertCircle size={16} />} title="Hub required" color="yellow">
                   This receipt order has no hub on file; authorize only after hub routing exists on the order, or use an
                   order tied to your hub assignment.
@@ -902,7 +996,11 @@ export default function ReceiptAuthorizationFormPage() {
                 qtySectionEnabled
                   ? `Units convertible to ${measurementUnitLabel}`
                   : routingByOverride
-                    ? 'Choose destination warehouse and line first'
+                    ? orderLines.length > 1 && !overrideReceiptLineId
+                      ? 'Select the receipt order line first'
+                      : !effectiveLine
+                        ? 'Select a receipt order with line details first'
+                        : 'Confirm destination warehouse for this truck'
                     : 'Select warehouse assignment first'
               }
             />
@@ -968,7 +1066,7 @@ export default function ReceiptAuthorizationFormPage() {
           </Group>
 
           <Group justify="flex-end" mt="md">
-            <Button variant="light" onClick={() => navigate('/hub/receipt-authorizations')}>
+            <Button variant="light" onClick={() => navigate(raBasePath)}>
               Cancel
             </Button>
             <Button onClick={() => createMutation.mutate()} loading={createMutation.isPending} disabled={disableSubmit}>

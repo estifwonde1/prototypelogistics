@@ -22,10 +22,12 @@ import {
   IconArrowRight,
   IconAlertCircle,
   IconFileImport,
-  IconFileExport
+  IconFileExport,
+  IconClipboardCheck,
 } from '@tabler/icons-react';
 import { useAuthStore } from '../../store/authStore';
 import { getRoleLabel } from '../../contracts/warehouse';
+import { useWarehouseManagerRaAccess } from '../../hooks/useWarehouseManagerRaAccess';
 import { getReceiptOrders } from '../../api/receiptOrders';
 import { getDispatchOrders } from '../../api/dispatchOrders';
 import { getStockBalances } from '../../api/stockBalances';
@@ -38,6 +40,7 @@ export default function WarehouseManagerDashboardPage() {
   const warehouseId = activeAssignment?.warehouse?.id;
   const warehouseName = activeAssignment?.warehouse?.name ?? 'Unknown Warehouse';
   const roleLabel = getRoleLabel(activeAssignment?.role_name);
+  const { isStandaloneWarehouse: standaloneWarehouse } = useWarehouseManagerRaAccess();
 
   // 1. Receipt Orders pending Storekeeper assignment
   const { data: receiptOrders, isLoading: receiptsLoading } = useQuery({
@@ -107,6 +110,16 @@ export default function WarehouseManagerDashboardPage() {
             <Text c="dimmed" size="sm">
               Operational overview and pending actions for your warehouse.
             </Text>
+            {standaloneWarehouse ? (
+              <Button
+                mt="sm"
+                variant="light"
+                leftSection={<IconClipboardCheck size={16} />}
+                onClick={() => navigate('/warehouse/receipt-authorizations')}
+              >
+                Receipt Authorizations
+              </Button>
+            ) : null}
           </div>
         </Group>
 

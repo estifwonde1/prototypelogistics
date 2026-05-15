@@ -7,6 +7,7 @@ import { useAuthStore } from './store/authStore';
 import { AppShell } from './components/layout/AppShell';
 import { usePermission } from './hooks/usePermission';
 import { AccessDenied } from './components/common/AccessDenied';
+import { RequireStandaloneWarehouseRa } from './components/common/RequireStandaloneWarehouseRa';
 import { getDefaultRouteForRole, type RoleSlug } from './contracts/warehouse';
 
 const CHUNK_RELOAD_KEY = 'cats:chunk-reload-attempted';
@@ -210,7 +211,7 @@ export const router = createBrowserRouter([
       {
         path: 'hub/receipt-authorizations',
         element: (
-          <RequirePermission resource="hubs" action="read">
+          <RequirePermission resource="receipt_authorizations" action="read">
             <ReceiptAuthorizationListPage />
           </RequirePermission>
         ),
@@ -218,7 +219,7 @@ export const router = createBrowserRouter([
       {
         path: 'hub/receipt-authorizations/new',
         element: (
-          <RequirePermission resource="hubs" action="read">
+          <RequirePermission resource="receipt_authorizations" action="read">
             <ReceiptAuthorizationFormPage />
           </RequirePermission>
         ),
@@ -226,7 +227,7 @@ export const router = createBrowserRouter([
       {
         path: 'hub/receipt-authorizations/:id',
         element: (
-          <RequirePermission resource="hubs" action="read">
+          <RequirePermission resource="receipt_authorizations" action="read">
             <ReceiptAuthorizationDetailPage />
           </RequirePermission>
         ),
@@ -234,7 +235,7 @@ export const router = createBrowserRouter([
       {
         path: 'hub/receipt-authorizations/:id/edit',
         element: (
-          <RequirePermission resource="hubs" action="read">
+          <RequirePermission resource="receipt_authorizations" action="read">
             <ReceiptAuthorizationFormPage />
           </RequirePermission>
         ),
@@ -244,6 +245,46 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission resource="warehouses" action="read">
             <WarehouseManagerDashboardPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/receipt-authorizations',
+        element: (
+          <RequirePermission resource="receipt_authorizations" action="read">
+            <RequireStandaloneWarehouseRa>
+              <ReceiptAuthorizationListPage />
+            </RequireStandaloneWarehouseRa>
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/receipt-authorizations/new',
+        element: (
+          <RequirePermission resource="receipt_authorizations" action="read">
+            <RequireStandaloneWarehouseRa requireCreate>
+              <ReceiptAuthorizationFormPage />
+            </RequireStandaloneWarehouseRa>
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/receipt-authorizations/:id',
+        element: (
+          <RequirePermission resource="receipt_authorizations" action="read">
+            <RequireStandaloneWarehouseRa>
+              <ReceiptAuthorizationDetailPage />
+            </RequireStandaloneWarehouseRa>
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/receipt-authorizations/:id/edit',
+        element: (
+          <RequirePermission resource="receipt_authorizations" action="read">
+            <RequireStandaloneWarehouseRa requireCreate>
+              <ReceiptAuthorizationFormPage />
+            </RequireStandaloneWarehouseRa>
           </RequirePermission>
         ),
       },

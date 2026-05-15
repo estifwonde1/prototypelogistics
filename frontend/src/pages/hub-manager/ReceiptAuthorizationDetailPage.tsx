@@ -22,6 +22,8 @@ import {
 import type { ReceiptAuthorization } from '../../api/receiptAuthorizations';
 import { useAuthStore } from '../../store/authStore';
 import { normalizeRoleSlug } from '../../contracts/warehouse';
+import { receiptAuthorizationBasePath } from '../../utils/receiptAuthorizationPaths';
+import { useWarehouseManagerRaAccess } from '../../hooks/useWarehouseManagerRaAccess';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import type { ApiError } from '../../types/common';
@@ -61,6 +63,7 @@ export default function ReceiptAuthorizationDetailPage() {
   const isHubManager  = roleSlug === 'hub_manager';
   const isWM          = roleSlug === 'warehouse_manager';
   const isAdmin       = roleSlug === 'admin' || roleSlug === 'superadmin';
+  const { canCreateRa: wmCanCreateRa } = useWarehouseManagerRaAccess();
 
   const { data: ra, isLoading, error, refetch } = useQuery({
     queryKey: ['receipt_authorizations', id],
@@ -106,9 +109,14 @@ export default function ReceiptAuthorizationDetailPage() {
   if (isLoading) return <LoadingState message="Loading Receipt Authorization..." />;
   if (error || !ra) return <ErrorState message="Failed to load Receipt Authorization." onRetry={refetch} />;
 
-  const canCancel = (isHubManager || isWM || isAdmin) && ra.status === 'pending' && !ra.inspection_id;
+  const canCancel =
+    ra.status === 'pending' &&
+    !ra.inspection_id &&
+    (isAdmin || isHubManager || (isWM && wmCanCreateRa));
   const canDriverConfirm = (isStorekeeper || isAdmin) && ra.status === 'active' && !ra.driver_confirmed_at;
-  const backPath = isStorekeeper ? '/storekeeper/assignments' : '/hub/receipt-authorizations';
+  const backPath = isStorekeeper
+    ? '/storekeeper/assignments'
+    : receiptAuthorizationBasePath(roleSlug);
 
   return (
     <Stack gap="md">

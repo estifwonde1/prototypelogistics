@@ -171,14 +171,53 @@ module Cats
           return rel.or(scoped_relation.where(id: combined_ids))
         end
 
-        # Storekeepers see orders assigned to their store
+        # Storekeepers: store/warehouse assignments plus standalone hub-less orders and RAs at their warehouse.
         if access.storekeeper?
-          store_ids = access.assigned_store_ids
-          assigned_order_ids = ReceiptOrderAssignment.where(store_id: store_ids).pluck(:receipt_order_id).uniq
-          return scoped_relation.where(id: assigned_order_ids)
+          return storekeeper_receipt_orders_scope
         end
 
         rel
+      end
+
+      def storekeeper_receipt_orders_scope
+        store_ids = Array(access.assigned_store_ids).map(&:to_i).uniq
+        wh_ids = (
+          Array(access.storekeeper_warehouse_ids) +
+          (store_ids.any? ? Store.where(id: store_ids).where.not(warehouse_id: nil).distinct.pluck(:warehouse_id) : [])
+        ).map(&:to_i).uniq
+
+        return scoped_relation.none if store_ids.empty? && wh_ids.empty?
+
+        roa_t = ReceiptOrderAssignment.table_name
+        not_rejected = ReceiptOrderAssignment.where.not("LOWER(TRIM(#{roa_t}.status)) = ?", "rejected")
+
+        linked_ids = []
+
+        if store_ids.any?
+          linked_ids.concat(not_rejected.where(store_id: store_ids).distinct.pluck(:receipt_order_id))
+        end
+
+        if wh_ids.any?
+          linked_ids.concat(
+            not_rejected.where(warehouse_id: wh_ids, store_id: nil).distinct.pluck(:receipt_order_id)
+          )
+          linked_ids.concat(scoped_relation.where(warehouse_id: wh_ids).pluck(:id))
+        end
+
+        ra_t = ReceiptAuthorization.table_name
+        ra_rel = ReceiptAuthorization.where.not("LOWER(TRIM(#{ra_t}.status)) = ?", ReceiptAuthorization::CANCELLED)
+        if wh_ids.any?
+          ra_rel = ra_rel.where(warehouse_id: wh_ids)
+          ra_rel = ra_rel.where("store_id IN (?) OR store_id IS NULL", store_ids) if store_ids.any?
+        elsif store_ids.any?
+          ra_rel = ra_rel.where(store_id: store_ids)
+        end
+        linked_ids.concat(ra_rel.distinct.pluck(:receipt_order_id))
+
+        order_ids = linked_ids.compact.uniq
+        return scoped_relation.none if order_ids.empty?
+
+        scoped_relation.where(id: order_ids)
       end
 
       # Dispatch orders use hierarchical scoping for sub-federal officers.

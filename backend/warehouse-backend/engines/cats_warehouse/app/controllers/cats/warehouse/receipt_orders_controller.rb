@@ -454,7 +454,17 @@ module Cats
       end
 
       def finish_stacking
-        order = policy_scope(ReceiptOrder).includes(receipt_order_lines: [:commodity, :unit]).find(params[:id])
+        order =
+          if params[:receipt_authorization_id].present?
+            ra = policy_scope(ReceiptAuthorization).find_by(id: params[:receipt_authorization_id])
+            raise ActiveRecord::RecordNotFound, "Receipt Authorization not found" unless ra
+
+            ReceiptOrder
+              .includes(receipt_order_lines: [:commodity, :unit])
+              .find(ra.receipt_order_id)
+          else
+            policy_scope(ReceiptOrder).includes(receipt_order_lines: [:commodity, :unit]).find(params[:id])
+          end
         authorize order, :finish_stacking?
 
         # Storekeeper RA flow goes straight to finish_stacking without a separate start_stacking call.

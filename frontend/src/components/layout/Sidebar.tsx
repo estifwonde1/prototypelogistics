@@ -28,6 +28,7 @@ import {
   type Resource,
   type RoleSlug,
 } from "../../contracts/warehouse";
+import { useWarehouseManagerRaAccess } from "../../hooks/useWarehouseManagerRaAccess";
 
 interface NavItem {
   label: string;
@@ -56,7 +57,8 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
     ? OFFICER_ROLE_SLUGS.includes(roleSlug)
     : false;
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
-  
+  const { isStandaloneWarehouse: wmCanUseRa } = useWarehouseManagerRaAccess();
+
   const isFullAccess = roleSlug === 'federal_officer' || roleSlug === 'officer';
 
   const currentScopeLabel = activeAssignment?.hub?.name || 
@@ -259,7 +261,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               label: "Receipt Authorizations",
               icon: <IconClipboardCheck size={20} />,
               path: "/hub/receipt-authorizations",
-              resource: "hubs",
+              resource: "receipt_authorizations",
             },
             {
               label: "Dispatches",
@@ -296,54 +298,65 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
     }
 
     if (role === "warehouse_manager") {
+      const warehouseManagementItems: NavItem[] = [
+        {
+          label: "Dashboard",
+          icon: <IconChartBar size={20} />,
+          path: "/warehouse/dashboard",
+          resource: "warehouses",
+        },
+        {
+          label: "Warehouses",
+          icon: <IconBuildingWarehouse size={20} />,
+          path: "/warehouses",
+          resource: "warehouses",
+        },
+        {
+          label: "Stores",
+          icon: <IconBox size={20} />,
+          path: "/stores",
+          resource: "stores",
+        },
+        {
+          label: "Stacks",
+          icon: <IconStack2 size={20} />,
+          path: "/stacks",
+          resource: "stacks",
+        },
+        {
+          label: "Transfer Requests",
+          icon: <IconFileArrowRight size={20} />,
+          path: "/transfer-requests",
+          resource: "transfer_requests",
+        },
+        {
+          label: "Receipts",
+          icon: <IconInbox size={20} />,
+          path: "/receipts",
+          resource: "receipt_orders",
+        },
+        ...(wmCanUseRa
+          ? [
+              {
+                label: "Receipt Authorizations",
+                icon: <IconClipboardCheck size={20} />,
+                path: "/warehouse/receipt-authorizations",
+                resource: "receipt_authorizations" as Resource,
+              },
+            ]
+          : []),
+        {
+          label: "Dispatches",
+          icon: <IconTruck size={20} />,
+          path: "/dispatches",
+          resource: "dispatches",
+        },
+      ];
+
       return [
         {
           label: "Warehouse Management",
-          items: [
-            {
-              label: "Dashboard",
-              icon: <IconChartBar size={20} />,
-              path: "/warehouse/dashboard",
-              resource: "warehouses",
-            },
-            {
-              label: "Warehouses",
-              icon: <IconBuildingWarehouse size={20} />,
-              path: "/warehouses",
-              resource: "warehouses",
-            },
-            {
-              label: "Stores",
-              icon: <IconBox size={20} />,
-              path: "/stores",
-              resource: "stores",
-            },
-            {
-              label: "Stacks",
-              icon: <IconStack2 size={20} />,
-              path: "/stacks",
-              resource: "stacks",
-            },
-            {
-              label: "Transfer Requests",
-              icon: <IconFileArrowRight size={20} />,
-              path: "/transfer-requests",
-              resource: "transfer_requests",
-            },
-            {
-              label: "Receipts",
-              icon: <IconInbox size={20} />,
-              path: "/receipts",
-              resource: "receipt_orders",
-            
-            },
-            {
-              label: "Dispatches",
-              icon: <IconTruck size={20} />,
-              path: "/dispatches",
-              resource: "dispatches",
-            },
-          ],
+          items: warehouseManagementItems,
         },
         {
           label: "Warehouse Operations",
@@ -574,7 +587,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
     }
 
     return [];
-  }, [isAdmin, role, isOfficerRole, isFullAccess]);
+  }, [isAdmin, role, isOfficerRole, isFullAccess, activeAssignment, wmCanUseRa]);
 
   const filterGroupItems = (group: NavGroup) => ({
     ...group,

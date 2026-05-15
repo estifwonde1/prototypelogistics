@@ -17,6 +17,9 @@ import { IconPlus } from '@tabler/icons-react';
 import { getReceiptAuthorizations } from '../../api/receiptAuthorizations';
 import type { ReceiptAuthorization } from '../../api/receiptAuthorizations';
 import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
+import { receiptAuthorizationBasePath } from '../../utils/receiptAuthorizationPaths';
+import { useWarehouseManagerRaAccess } from '../../hooks/useWarehouseManagerRaAccess';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 
@@ -45,18 +48,25 @@ function raDisplayQty(ra: ReceiptAuthorization): number {
 export default function ReceiptAuthorizationListPage() {
   const navigate = useNavigate();
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || useAuthStore((state) => state.role));
+  const raBasePath = receiptAuthorizationBasePath(roleSlug);
   const userHubId = activeAssignment?.hub?.id;
+  const scopedWarehouseId = activeAssignment?.warehouse?.id;
+  const { isWarehouseManager, canCreateRa } = useWarehouseManagerRaAccess();
 
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [warehouseFilter, setWarehouseFilter] = useState<string | null>(null);
 
   const { data: ras = [], isLoading, error, refetch } = useQuery({
-    queryKey: ['receipt_authorizations', { status: statusFilter, hub_id: userHubId }],
-    queryFn: () => getReceiptAuthorizations(
-      statusFilter
-        ? { status: statusFilter as ReceiptAuthorization['status'] }
-        : undefined
-    ),
+    queryKey: [
+      'receipt_authorizations',
+      { status: statusFilter, hub_id: userHubId, warehouse_id: scopedWarehouseId },
+    ],
+    queryFn: () =>
+      getReceiptAuthorizations({
+        ...(statusFilter ? { status: statusFilter as ReceiptAuthorization['status'] } : {}),
+        ...(scopedWarehouseId ? { warehouse_id: scopedWarehouseId } : {}),
+      }),
   });
 
   // Derive unique warehouses from the fetched RAs for the warehouse filter dropdown
@@ -91,12 +101,14 @@ export default function ReceiptAuthorizationListPage() {
     <Stack gap="md">
       <Group justify="space-between">
         <Title order={2}>Receipt Authorizations</Title>
-        <Button
-          leftSection={<IconPlus size={16} />}
-          onClick={() => navigate('/hub/receipt-authorizations/new')}
-        >
-          New Receipt Authorization
-        </Button>
+        {(!isWarehouseManager || canCreateRa) && (
+          <Button
+            leftSection={<IconPlus size={16} />}
+            onClick={() => navigate(`${raBasePath}/new`)}
+          >
+            New Receipt Authorization
+          </Button>
+        )}
       </Group>
 
       {/* Summary counts */}
@@ -166,7 +178,7 @@ export default function ReceiptAuthorizationListPage() {
                 <Table.Tr
                   key={ra.id}
                   style={{ cursor: 'pointer' }}
-                  onClick={() => navigate(`/hub/receipt-authorizations/${ra.id}`)}
+                  onClick={() => navigate(`${raBasePath}/${ra.id}`)}
                 >
                   <Table.Td>
                     <Text size="sm" fw={500} style={{ fontFamily: 'monospace' }}>
