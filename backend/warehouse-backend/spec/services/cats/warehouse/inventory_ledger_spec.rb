@@ -2,6 +2,7 @@ require "rails_helper"
 
 RSpec.describe Cats::Warehouse::InventoryLedger, type: :service do
   let(:warehouse) { create(:cats_warehouse_warehouse) }
+  let!(:warehouse_capacity) { create(:cats_warehouse_warehouse_capacity, warehouse: warehouse) }
   let(:store) do
     create(:cats_warehouse_store, warehouse: warehouse,
            length: 20, width: 20, height: 10,
@@ -111,9 +112,12 @@ RSpec.describe Cats::Warehouse::InventoryLedger, type: :service do
     context "space check — commodity has no volume_per_metric_ton" do
       let(:commodity) { create(:cats_core_commodity, volume_per_metric_ton: nil) }
 
-      it "skips the space check and succeeds" do
-        item = make_item(quantity: 9999)
-        expect { apply_receipt(item) }.not_to raise_error
+      it "blocks receipt when density is unknown" do
+        item = make_item(quantity: 10)
+        expect { apply_receipt(item) }.to raise_error(
+          Cats::Warehouse::InsufficientSpaceError,
+          /volume_per_metric_ton/
+        )
       end
     end
   end

@@ -47,6 +47,20 @@ module Cats
       after_commit :recalculate_related_hub_capacities
 
       MANAGED_UNDER_VALUES = ["Hub", "federal", "regional", "zonal", "woreda", "kebele"].freeze
+
+      def capacity_established?
+        warehouse_capacity&.capacity_established? == true
+      end
+
+      def operational?
+        capacity_established?
+      end
+
+      def operational_blockers
+        blockers = []
+        blockers << "capacity_not_established" unless capacity_established?
+        blockers
+      end
       private
 
       def inherit_location_and_management_from_hub

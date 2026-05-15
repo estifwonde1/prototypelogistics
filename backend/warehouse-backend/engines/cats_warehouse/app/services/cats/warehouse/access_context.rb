@@ -147,6 +147,17 @@ module Cats
 
         Stack.where(store_id: accessible_store_ids).select(:id)
       end
+
+      def can_access_store?(store_id)
+        return true if admin?
+
+        ids = accessible_store_ids
+        if ids.is_a?(ActiveRecord::Relation)
+          ids.where(id: store_id).exists?
+        else
+          Array(ids).map(&:to_i).include?(store_id.to_i)
+        end
+      end
     end
   end
 end

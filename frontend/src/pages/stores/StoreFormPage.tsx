@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect */
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -15,18 +15,31 @@ import {
   Text,
   Tooltip,
   SimpleGrid,
+  Alert,
 } from "@mantine/core";
 import { IconInfoCircle } from "@tabler/icons-react";
 import { useForm } from "@mantine/form";
 import { IconArrowLeft, IconDeviceFloppy } from "@tabler/icons-react";
-import { getStore, createStore, updateStore } from "../../api/stores";
-import { getWarehouses } from "../../api/warehouses";
+import { getStore, getStores, createStore, updateStore } from "../../api/stores";
+import { getWarehouse, getWarehouses } from "../../api/warehouses";
 import { LoadingState } from "../../components/common/LoadingState";
 import { ErrorState } from "../../components/common/ErrorState";
 import { useAuthStore } from '../../store/authStore';
 import { normalizeRoleSlug } from '../../contracts/warehouse';
 import { notifications } from "@mantine/notifications";
 import type { Store } from "../../types/store";
+import {
+  allocatedStoreMt,
+  storeUsableVolumeM3,
+  storeDimensionHints,
+  formatFootprintHint,
+  dimensionAxisStatus,
+  footprintStatus,
+  dimensionInputBorderStyle,
+  dimensionValidLabel,
+  previewWarehouseCapacity,
+  type DimensionFieldStatus,
+} from "../../utils/capacityCalculator";
 
 function StoreFormPage() {
   const { id } = useParams<{ id: string }>();
@@ -47,13 +60,19 @@ function StoreFormPage() {
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
   const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || useAuthStore((state) => state.role));
   const userHubId = activeAssignment?.hub?.id;
+  const userWarehouseId = activeAssignment?.warehouse?.id;
   const isHubManager = roleSlug === 'hub_manager';
+  const isWarehouseManager = roleSlug === 'warehouse_manager';
 
   const { data: warehouses = [] } = useQuery({
-    queryKey: ["warehouses", { hub_id: isHubManager ? userHubId : undefined }],
-    queryFn: () => {
+    queryKey: ["warehouses", { hub_id: isHubManager ? userHubId : undefined, warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],
+    queryFn: async () => {
       if (isHubManager && userHubId) {
         return getWarehouses({ hub_id: userHubId });
+      }
+      if (isWarehouseManager && userWarehouseId) {
+        const wh = await getWarehouse(userWarehouseId);
+        return [wh];
       }
       return getWarehouses();
     },
@@ -102,6 +121,13 @@ function StoreFormPage() {
     }
   }, [store, form]);
 
+  // Auto-select warehouse when user only has access to one (e.g. warehouse manager).
+  useEffect(() => {
+    if (isEdit || preselectedWarehouseId || form.values.warehouse_id || warehouses.length !== 1) return;
+    form.setFieldValue("warehouse_id", warehouses[0].id.toString());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [warehouses, isEdit, preselectedWarehouseId]);
+
   const createMutation = useMutation({
     mutationFn: createStore,
     onSuccess: () => {
@@ -146,6 +172,34 @@ function StoreFormPage() {
   });
 
   const handleSubmit = (values: typeof form.values) => {
+    const wh = warehouses.find((w) => w.id.toString() === values.warehouse_id);
+    if (wh && !wh.capacity?.capacity_established) {
+      notifications.show({
+        title: "Capacity required",
+        message: "Establish warehouse capacity before creating stores",
+        color: "red",
+      });
+      return;
+    }
+
+    if (dimensionHints && !dimensionsAllValid) {
+      notifications.show({
+        title: "Dimensions out of range",
+        message: "Fix fields marked in red so the store fits inside the warehouse.",
+        color: "red",
+      });
+      return;
+    }
+
+    if (capacityExceedsWarehouse) {
+      notifications.show({
+        title: "Capacity exceeded",
+        message: "This store would use more MT than the warehouse has remaining.",
+        color: "red",
+      });
+      return;
+    }
+
     const payload: Partial<Store> = {
       code: values.code,
       name: values.name,
@@ -181,25 +235,133 @@ function StoreFormPage() {
     : 0;
   const storeArea = Math.max(totalSpace - gangwayArea, 0);
 
-  // ── Option A: Usable area = store floor area × warehouse usable_space_percentage ──
   const selectedWarehouse = warehouses.find(
     (w) => w.id.toString() === form.values.warehouse_id
   );
-  const usablePct = (selectedWarehouse?.capacity as any)?.usable_space_percentage ?? 75;
-  const usableAreaM2 = storeArea * (usablePct / 100);
+  const capacityEstablished = selectedWarehouse?.capacity?.capacity_established === true;
+  const warehouseUsablePct = selectedWarehouse?.capacity?.usable_space_percentage ?? 75;
+  const floorAreaM2 = storeArea;
+  const storeVolumeM3 = storeUsableVolumeM3(
+    form.values.length,
+    form.values.width,
+    form.values.height,
+    gangwayArea
+  );
+  const warehouseCapacityPreview = useMemo(() => {
+    const cap = selectedWarehouse?.capacity;
+    if (!cap?.capacity_established) return null;
+    return previewWarehouseCapacity(
+      cap.length_m ?? 0,
+      cap.width_m ?? 0,
+      cap.height_m ?? 0,
+      cap.usable_space_percentage ?? 75
+    );
+  }, [selectedWarehouse]);
 
-  // ── Option C: Pro-rata MT capacity ──────────────────────────────────────────
-  // store_share = store_area / warehouse_total_area_sqm
-  // store_usable_mt = warehouse_usable_storage_capacity_mt × store_share
-  const warehouseTotalAreaSqm: number | undefined =
-    (selectedWarehouse?.capacity as any)?.total_area_sqm;
-  const warehouseUsableMt: number | undefined =
-    (selectedWarehouse?.capacity as any)?.usable_storage_capacity_mt;
-
-  const proRataMt =
-    warehouseTotalAreaSqm && warehouseTotalAreaSqm > 0 && warehouseUsableMt && storeArea > 0
-      ? (storeArea / warehouseTotalAreaSqm) * warehouseUsableMt
+  const warehouseUsableVolume =
+    Number(selectedWarehouse?.capacity?.usable_volume_m3) ||
+    warehouseCapacityPreview?.usableVolumeM3 ||
+    0;
+  const warehouseUsableMt =
+    Number(selectedWarehouse?.capacity?.usable_storage_capacity_mt) ||
+    warehouseCapacityPreview?.capacityMt ||
+    0;
+  const proRataMt = allocatedStoreMt(storeVolumeM3, warehouseUsableVolume, warehouseUsableMt);
+  const warehouseRemainingMt =
+    selectedWarehouse?.capacity?.remaining_capacity_mt != null
+      ? Number(selectedWarehouse.capacity.remaining_capacity_mt)
       : null;
+
+  const warehouseIdNum = form.values.warehouse_id ? Number(form.values.warehouse_id) : undefined;
+
+  const { data: siblingStores = [] } = useQuery({
+    queryKey: ["stores", { warehouse_id: warehouseIdNum }],
+    queryFn: () => getStores({ warehouse_id: warehouseIdNum! }),
+    enabled: !!warehouseIdNum && capacityEstablished,
+  });
+
+  const dimensionHints = useMemo(
+    () =>
+      storeDimensionHints(
+        selectedWarehouse?.capacity?.length_m,
+        selectedWarehouse?.capacity?.width_m,
+        selectedWarehouse?.capacity?.height_m,
+        siblingStores,
+        isEdit ? Number(id) : undefined
+      ),
+    [selectedWarehouse, siblingStores, isEdit, id]
+  );
+
+  const footprintHint = dimensionHints
+    ? formatFootprintHint(
+        dimensionHints.remainingFootprintSqm,
+        dimensionHints.maxLengthM,
+        dimensionHints.maxWidthM
+      )
+    : null;
+
+  const lengthStatus: DimensionFieldStatus = dimensionHints
+    ? dimensionAxisStatus(form.values.length, dimensionHints.maxLengthM)
+    : 'empty';
+  const widthStatus: DimensionFieldStatus = dimensionHints
+    ? dimensionAxisStatus(form.values.width, dimensionHints.maxWidthM)
+    : 'empty';
+  const heightStatus: DimensionFieldStatus = dimensionHints
+    ? dimensionAxisStatus(form.values.height, dimensionHints.maxHeightM)
+    : 'empty';
+  const floorStatus: DimensionFieldStatus = dimensionHints
+    ? footprintStatus(storeArea, dimensionHints.remainingFootprintSqm)
+    : 'empty';
+
+  const dimensionsAllValid =
+    lengthStatus === 'valid' &&
+    widthStatus === 'valid' &&
+    heightStatus === 'valid' &&
+    floorStatus === 'valid';
+
+  const lengthError =
+    lengthStatus === 'invalid'
+      ? `Length cannot exceed ${dimensionHints?.maxLengthM} m`
+      : floorStatus === 'invalid' && form.values.length > 0 && form.values.width > 0
+        ? `Floor ${storeArea.toFixed(0)} m² exceeds ${dimensionHints?.remainingFootprintSqm.toLocaleString()} m² available`
+        : undefined;
+
+  const widthError =
+    widthStatus === 'invalid'
+      ? `Width cannot exceed ${dimensionHints?.maxWidthM} m`
+      : floorStatus === 'invalid' && form.values.length > 0 && form.values.width > 0
+        ? `Reduce width or length — only ${dimensionHints?.remainingFootprintSqm.toLocaleString()} m² floor left`
+        : undefined;
+
+  const heightError =
+    heightStatus === 'invalid'
+      ? `Height cannot exceed ${dimensionHints?.maxHeightM} m (warehouse ceiling)`
+      : undefined;
+
+  const hasStoreDimensions =
+    form.values.length > 0 && form.values.width > 0 && form.values.height > 0;
+  const canEstimateMt =
+    !!form.values.warehouse_id &&
+    capacityEstablished &&
+    hasStoreDimensions &&
+    warehouseUsableVolume > 0 &&
+    warehouseUsableMt > 0;
+  const displayProRataMt = canEstimateMt ? proRataMt : null;
+  const capacityExceedsWarehouse =
+    dimensionsAllValid &&
+    displayProRataMt != null &&
+    warehouseRemainingMt != null &&
+    displayProRataMt > warehouseRemainingMt + 1e-6;
+
+  const estCapacityPlaceholder = !form.values.warehouse_id
+    ? "Select warehouse first"
+    : !capacityEstablished
+      ? "Set warehouse capacity"
+      : !hasStoreDimensions
+        ? "Enter length, width, height"
+        : displayProRataMt === null
+          ? "Cannot compute — check warehouse capacity"
+          : undefined;
 
   if (isEdit && isLoading) {
     return <LoadingState message="Loading store..." />;
@@ -263,36 +425,118 @@ function StoreFormPage() {
             </Stack>
           </Card>
 
+          {selectedWarehouse && !capacityEstablished && (
+            <Alert color="orange" title="Warehouse capacity not established">
+              Configure length, width, height, and usable floor % on the warehouse Capacity tab before adding stores.
+            </Alert>
+          )}
+          {warehouseRemainingMt != null && capacityEstablished && (
+            <Alert color="blue" variant="light">
+              Warehouse has {Number(warehouseRemainingMt).toLocaleString(undefined, { maximumFractionDigits: 2 })} MT remaining of{" "}
+              {Number(warehouseUsableMt).toLocaleString()} MT total capacity.
+            </Alert>
+          )}
+
           <Card withBorder padding="lg">
             <Stack gap="md">
               <Title order={4}>Dimensions</Title>
 
-              <Group grow>
+              {capacityEstablished && dimensionHints && (
+                <Group gap="md">
+                  <Text size="xs" c="green" fw={600}>● Green border = within limit</Text>
+                  <Text size="xs" c="red" fw={600}>● Red = adjust before saving</Text>
+                </Group>
+              )}
+
+              {capacityEstablished && dimensionHints && (
+                <Alert color="gray" variant="light" title="Size limits for this warehouse">
+                  <Text size="sm">
+                    Warehouse building: {dimensionHints.warehouseLengthM} × {dimensionHints.warehouseWidthM} m
+                    floor, {dimensionHints.warehouseHeightM} m high ({dimensionHints.warehouseFootprintSqm.toLocaleString()} m²
+                    total footprint).
+                  </Text>
+                  <Text size="sm" mt={4}>
+                    {footprintHint}. Each side cannot exceed the warehouse wall length on that axis; height cannot
+                    exceed {dimensionHints.maxHeightM} m.
+                  </Text>
+                </Alert>
+              )}
+
+              <Group grow align="flex-start">
                 <NumberInput
                   label="Length (m)"
-                  placeholder="0"
+                  placeholder={
+                    dimensionHints
+                      ? `Max ${dimensionHints.maxLengthM} m`
+                      : capacityEstablished
+                        ? "Along warehouse length"
+                        : "Set warehouse capacity first"
+                  }
+                  description={
+                    lengthError
+                      ? undefined
+                      : dimensionValidLabel(lengthStatus) ||
+                        (dimensionHints ? `≤ ${dimensionHints.maxLengthM} m (warehouse length)` : undefined)
+                  }
+                  error={lengthError}
                   required
                   min={0}
                   decimalScale={2}
+                  styles={dimensionInputBorderStyle(lengthStatus)}
                   {...form.getInputProps("length")}
                 />
                 <NumberInput
                   label="Width (m)"
-                  placeholder="0"
+                  placeholder={
+                    dimensionHints
+                      ? `Max ${dimensionHints.maxWidthM} m`
+                      : capacityEstablished
+                        ? "Along warehouse width"
+                        : "Set warehouse capacity first"
+                  }
+                  description={
+                    widthError
+                      ? undefined
+                      : dimensionValidLabel(widthStatus) ||
+                        (dimensionHints ? `≤ ${dimensionHints.maxWidthM} m (warehouse width)` : undefined)
+                  }
+                  error={widthError}
                   required
                   min={0}
                   decimalScale={2}
+                  styles={dimensionInputBorderStyle(widthStatus)}
                   {...form.getInputProps("width")}
                 />
                 <NumberInput
                   label="Height (m)"
-                  placeholder="0"
+                  placeholder={
+                    dimensionHints
+                      ? `Max ${dimensionHints.maxHeightM} m`
+                      : capacityEstablished
+                        ? "Up to warehouse ceiling"
+                        : "Set warehouse capacity first"
+                  }
+                  description={
+                    heightError
+                      ? undefined
+                      : dimensionValidLabel(heightStatus) ||
+                        (dimensionHints ? `≤ ${dimensionHints.maxHeightM} m (warehouse height)` : undefined)
+                  }
+                  error={heightError}
                   required
                   min={0}
                   decimalScale={2}
+                  styles={dimensionInputBorderStyle(heightStatus)}
                   {...form.getInputProps("height")}
                 />
               </Group>
+
+              {floorStatus === 'invalid' && form.values.length > 0 && form.values.width > 0 && (
+                <Text size="sm" c="red">
+                  This store footprint ({storeArea.toLocaleString()} m²) is too large — only{' '}
+                  {dimensionHints?.remainingFootprintSqm.toLocaleString()} m² floor area remains in this warehouse.
+                </Text>
+              )}
 
               <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
                 {/* Total floor area — raw l×w */}
@@ -301,27 +545,40 @@ function StoreFormPage() {
                   value={Number(totalSpace.toFixed(2))}
                   readOnly
                   disabled
+                  error={
+                    floorStatus === 'invalid' && storeArea > 0
+                      ? `Exceeds ${dimensionHints?.remainingFootprintSqm.toLocaleString()} m² available`
+                      : undefined
+                  }
+                  styles={dimensionInputBorderStyle(floorStatus === 'empty' ? 'empty' : floorStatus)}
+                  description={floorStatus === 'valid' ? 'Within limit' : undefined}
                 />
 
-                {/* Option A — usable area after applying warehouse usable % */}
                 <NumberInput
                   label={
                     <Group gap={4}>
-                      <Text size="sm" fw={500}>Usable Area (m²)</Text>
+                      <Text size="sm" fw={500}>Floor Area (m²)</Text>
                       <Tooltip
-                        label={`Store floor area × ${usablePct}% usable space (warehouse setting). Gangway excluded.`}
+                        label="Net store floor (length × width minus gangway). Warehouse usable % applies only on the warehouse Capacity tab."
                         multiline
-                        w={260}
+                        w={280}
                         withArrow
                       >
                         <IconInfoCircle size={14} style={{ color: 'var(--mantine-color-dimmed)', cursor: 'help' }} />
                       </Tooltip>
                     </Group>
                   }
-                  value={Number(usableAreaM2.toFixed(2))}
+                  value={Number(floorAreaM2.toFixed(2))}
                   readOnly
                   disabled
-                  description={`${usablePct}% of store area`}
+                  styles={dimensionsAllValid ? dimensionInputBorderStyle('valid') : undefined}
+                  description={
+                    dimensionsAllValid
+                      ? 'Net floor · Within limit'
+                      : form.values.has_gangway
+                        ? 'Gangway excluded'
+                        : undefined
+                  }
                 />
 
                 {/* Option C — pro-rata MT capacity from warehouse */}
@@ -331,12 +588,14 @@ function StoreFormPage() {
                       <Text size="sm" fw={500}>Est. Capacity (MT)</Text>
                       <Tooltip
                         label={
-                          proRataMt !== null
+                          displayProRataMt !== null
                             ? `Pro-rata share of warehouse usable capacity.\n` +
-                              `Store area (${storeArea.toFixed(1)} m²) ÷ ` +
-                              `Warehouse area (${warehouseTotalAreaSqm?.toFixed(1)} m²) × ` +
-                              `${warehouseUsableMt?.toFixed(1)} MT`
-                            : "Set the warehouse Total Area (m²) and Storage Capacity (MT) to see this estimate."
+                              `Store volume (${Number(storeVolumeM3).toFixed(1)} m³) ÷ ` +
+                              `Warehouse volume (${warehouseUsableVolume.toFixed(1)} m³) × ` +
+                              `${warehouseUsableMt.toFixed(1)} MT`
+                            : dimensionsAllValid
+                              ? "Establish warehouse dimensions and capacity to see this estimate."
+                              : "Fix red fields above to see estimated MT capacity."
                         }
                         multiline
                         w={280}
@@ -346,20 +605,46 @@ function StoreFormPage() {
                       </Tooltip>
                     </Group>
                   }
-                  value={proRataMt !== null ? Number(proRataMt.toFixed(2)) : ""}
-                  placeholder={proRataMt === null ? "Set warehouse capacity" : undefined}
+                  value={displayProRataMt !== null ? Number(displayProRataMt.toFixed(2)) : ""}
+                  placeholder={estCapacityPlaceholder}
                   readOnly
                   disabled
+                  error={
+                    capacityExceedsWarehouse
+                      ? `Exceeds warehouse remaining ${warehouseRemainingMt?.toLocaleString(undefined, { maximumFractionDigits: 2 })} MT`
+                      : undefined
+                  }
+                  styles={
+                    displayProRataMt != null && !capacityExceedsWarehouse
+                      ? dimensionInputBorderStyle('valid')
+                      : capacityExceedsWarehouse
+                        ? undefined
+                        : undefined
+                  }
                   description={
-                    proRataMt !== null
-                      ? "Pro-rata share of warehouse MT capacity"
-                      : "Requires warehouse area + MT capacity"
+                    capacityExceedsWarehouse
+                      ? undefined
+                      : displayProRataMt !== null
+                        ? "Pro-rata share of warehouse MT capacity · Within limit"
+                        : !form.values.warehouse_id
+                          ? "Choose a warehouse to calculate MT share"
+                          : !capacityEstablished
+                            ? "Requires established warehouse capacity"
+                            : !dimensionsAllValid
+                              ? "Fix red dimension fields if over warehouse limits"
+                              : undefined
                   }
                 />
               </SimpleGrid>
 
+              {capacityEstablished && (
+                <Text size="xs" c="dimmed">
+                  Warehouse usable floor ({warehouseUsablePct}%) is configured on the warehouse Capacity tab only.
+                  Store and stack capacity use full dimensions.
+                </Text>
+              )}
               <Text size="xs" c="dimmed">
-                Final usable and available area are saved automatically by the backend when you submit.
+                Floor area and available space are saved automatically by the backend when you submit.
               </Text>
             </Stack>
           </Card>
@@ -415,6 +700,11 @@ function StoreFormPage() {
               type="submit"
               leftSection={<IconDeviceFloppy size={16} />}
               loading={createMutation.isPending || updateMutation.isPending}
+              disabled={
+                (!!selectedWarehouse && !capacityEstablished) ||
+                (!!dimensionHints && !dimensionsAllValid) ||
+                capacityExceedsWarehouse
+              }
             >
               {isEdit ? "Update Store" : "Create Store"}
             </Button>

@@ -10,6 +10,11 @@ module Cats
       def call
         raise ArgumentError, "reservations are required" if @reservations.empty?
 
+        warehouse = @order.warehouse
+        if warehouse.present? && !warehouse.capacity_established?
+          raise ArgumentError, "Warehouse capacity must be established before reserving space"
+        end
+
         ReceiptOrder.transaction do
           @reservations.each do |payload|
             line =
@@ -137,16 +142,22 @@ module Cats
               "cannot reserve #{requested} units; only #{remaining.round(4)} remaining for this line (ordered #{max_qty})"
       end
 
-      def ensure_space_available!(target, reserved_volume, reserved_quantity)
+      def ensure_space_available!(target, reserved_volume, _reserved_quantity)
         return unless target.is_a?(Store)
 
-        # available_space is now in m² (floor area).  reserved_volume is in m³.
-        # Comparing them directly is a unit mismatch, so this pre-reservation
-        # volume check is intentionally skipped.  The definitive space enforcement
-        # happens in InventoryLedger#check_incoming_volume! at GRN confirmation
-        # time, which compares m³ against the stack's own volume capacity.
-        # A floor-area-based reservation check can be added in Phase 3 once
-        # reserved_area (m²) is tracked on SpaceReservation.
+        wh = target.warehouse
+        unless wh&.capacity_established?
+          raise ArgumentError, "Warehouse capacity must be established before reserving store space"
+        end
+
+        vol = reserved_volume.to_f
+        return if vol <= 0
+
+        remaining = target.available_volume_m3.to_f
+        return if vol <= remaining + 1e-6
+
+        raise ArgumentError,
+              "cannot reserve #{vol.round(4)} m³; only #{remaining.round(4)} m³ available in store #{target.name}"
       end
 
       def transition_order!(new_status, event_type, payload)

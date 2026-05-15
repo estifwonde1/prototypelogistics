@@ -24,16 +24,21 @@ module Cats
       has_many :stock_balances, class_name: "Cats::Warehouse::StockBalance", dependent: :destroy
       has_many :stock_reservations, class_name: "Cats::Warehouse::StockReservation", dependent: :destroy
 
+      include RequiresEstablishedCapacity
+
       validates :length, :width, :height, presence: true
       validates :length, :width, :height, numericality: { greater_than: 0 }
       validates :quantity, numericality: { greater_than_or_equal_to: 0 }
       validates :base_quantity, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
       validate :fits_inside_store
+      validate :fits_inside_store_capacity_mt
+      requires_warehouse_capacity_established warehouse_association: -> { store&.warehouse }
       validate :position_fits_inside_store, if: :layout_position_changed?
       validate :no_footprint_overlap_with_sibling_stacks
       validate :commodity_lock_respected, if: :commodity_id_changed?
       validate :respects_stacking_rules, if: :layout_position_changed?
 
+      before_validation :derive_max_capacity_mt
       before_save :sync_occupied_volume
 
       def footprint_area
@@ -69,6 +74,27 @@ module Cats
         return unless has_attribute?(:occupied_volume)
 
         self.occupied_volume = quantity.to_f.positive? ? volume : 0.0
+      end
+
+      def derive_max_capacity_mt
+        return unless has_attribute?(:max_capacity_mt)
+
+        self.max_capacity_mt = CapacityCalculator.mt_from_volume(volume)
+      end
+
+      def fits_inside_store_capacity_mt
+        return unless store.present?
+        return unless has_attribute?(:max_capacity_mt)
+        return unless store.has_attribute?(:allocated_capacity_mt)
+
+        sibling_mt = store.stacks.where.not(id: id).sum(:max_capacity_mt).to_f
+        total_mt = sibling_mt + max_capacity_mt.to_f
+        store_cap = store.allocated_capacity_mt.to_f
+        return if store_cap <= 0
+
+        return if total_mt <= store_cap + 1e-6
+
+        errors.add(:base, "Total stack capacity cannot exceed the store allocated capacity (MT)")
       end
 
       # A stack that holds goods (quantity > 0) cannot have its commodity changed

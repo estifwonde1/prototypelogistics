@@ -58,6 +58,7 @@ module Cats
         # ── Space check (receipts only) ──────────────────────────────────────
         # Only enforce when goods are being added (positive delta).  Issues and
         # adjustments that reduce quantity can never overflow the store.
+        ensure_warehouse_capacity_established! if quantity_delta.positive?
         check_incoming_volume!(stack, base_quantity_delta) if quantity_delta.positive?
         # ────────────────────────────────────────────────────────────────────
 
@@ -168,23 +169,27 @@ module Cats
       #
       # @param stack [Stack]  the locked stack row (already fetched)
       # @param incoming_base_qty [Numeric]  quantity in base unit (MT)
+      def ensure_warehouse_capacity_established!
+        return if warehouse.capacity_established?
+
+        raise Cats::Warehouse::InsufficientSpaceError,
+              "Warehouse capacity must be established before accepting commodities"
+      end
+
       def check_incoming_volume!(stack, incoming_base_qty)
         incoming_m3 = VolumeCalculator.call(
-          commodity:    item.commodity,
+          commodity: item.commodity,
           base_quantity: incoming_base_qty
         )
 
         if incoming_m3.nil?
-          Rails.logger.warn(
-            "[InventoryLedger] Skipping volume check for commodity #{item.commodity_id}: " \
-            "volume_per_metric_ton is not set."
-          )
-          return
+          raise Cats::Warehouse::InsufficientSpaceError,
+                "Commodity #{item.commodity_id} has no volume_per_metric_ton; " \
+                "cannot verify physical capacity for this receipt"
         end
 
-        # ── 1. Stack capacity check ──────────────────────────────────────────
-        # stack.volume is the physical container size (l × w × h).
-        # stack.occupied_volume is what is already in it (before this receipt).
+        incoming_mt = incoming_base_qty.to_f
+
         stack_remaining = stack.volume.to_f - stack.occupied_volume.to_f
         if incoming_m3 > stack_remaining + 1e-6
           raise Cats::Warehouse::InsufficientSpaceError,
@@ -193,18 +198,41 @@ module Cats
                 "(stack #{stack.code.presence || "##{stack.id}"})"
         end
 
-        # ── 2. Store available_space check ───────────────────────────────────
-        # Use the locked store row so concurrent receipts don't race past the
-        # check.  StoreOccupancyUpdater will refresh available_space after the
-        # stack save, but we need the pre-commit value here.
-        store = Store.lock.find_by(id: stack.store_id)
-        return unless store # defensive — store should always exist
+        if stack.max_capacity_mt.present?
+          stack_used_mt = stack.base_quantity.to_f
+          if stack_used_mt + incoming_mt > stack.max_capacity_mt.to_f + 1e-6
+            raise Cats::Warehouse::InsufficientSpaceError,
+                  "Insufficient stack capacity: incoming #{incoming_mt.round(4)} MT " \
+                  "exceeds remaining stack capacity " \
+                  "#{(stack.max_capacity_mt.to_f - stack_used_mt).round(4)} MT " \
+                  "(stack #{stack.code.presence || "##{stack.id}"})"
+          end
+        end
 
-        if incoming_m3 > store.available_space.to_f + 1e-6
+        store = Store.lock.find_by(id: stack.store_id)
+        return unless store
+
+        store_remaining_vol = if store.has_attribute?(:available_volume_m3)
+                                store.available_volume_m3.to_f
+                              else
+                                store.available_space.to_f
+                              end
+
+        if incoming_m3 > store_remaining_vol + 1e-6
           raise Cats::Warehouse::InsufficientSpaceError,
                 "Insufficient store capacity: incoming #{incoming_m3.round(4)} m³ " \
-                "exceeds store available space #{store.available_space.to_f.round(4)} m³ " \
+                "exceeds store available volume #{store_remaining_vol.round(4)} m³ " \
                 "(store #{store.name})"
+        end
+
+        wh_cap = warehouse.warehouse_capacity
+        return unless wh_cap&.capacity_established?
+
+        wh_usage = CapacityUsage.for_warehouse(warehouse)
+        if wh_usage.used_mt + incoming_mt > wh_usage.capacity_mt + 1e-6
+          raise Cats::Warehouse::InsufficientSpaceError,
+                "Insufficient warehouse capacity: incoming #{incoming_mt.round(4)} MT " \
+                "exceeds remaining warehouse capacity #{wh_usage.remaining_mt.round(4)} MT"
         end
       end
     end

@@ -48,6 +48,16 @@ import { LoadingState } from '../../components/common/LoadingState';
 import { useAuthStore } from '../../store/authStore';
 import { normalizeRoleSlug } from '../../contracts/warehouse';
 import type { Stack as StackType } from '../../types/stack';
+import {
+  mtFromVolume,
+  stackDimensionHints,
+  formatStackFootprintHint,
+  dimensionAxisStatus,
+  footprintStatus,
+  dimensionInputBorderStyle,
+  dimensionValidLabel,
+  type DimensionFieldStatus,
+} from '../../utils/capacityCalculator';
 
 /** Hub / receipt line unit for quantities on this RA (full name or abbreviation from API). */
 function raQuantityUnit(ra: ReceiptAuthorization): string {
@@ -650,6 +660,70 @@ export default function StackLayoutPage() {
     .filter((stack) => stack.stack_status === 'reserved')
     .reduce((sum, stack) => sum + stack.length * stack.width, 0);
 
+  const editingStackId = form.values.id ?? selectedStack?.id;
+  const stackDimHints = useMemo(() => {
+    if (!selectedStore) return null;
+    return stackDimensionHints(
+      selectedStore.length,
+      selectedStore.width,
+      selectedStore.height,
+      storeStacks,
+      editingStackId
+    );
+  }, [selectedStore, storeStacks, editingStackId]);
+
+  const stackFootprint = (form.values.length || 0) * (form.values.width || 0);
+  const stackVolumeM3 = stackFootprint * (form.values.height || 0);
+  const stackMaxMt = mtFromVolume(stackVolumeM3);
+
+  const stackLengthStatus: DimensionFieldStatus = stackDimHints
+    ? dimensionAxisStatus(form.values.length, stackDimHints.maxLengthM)
+    : 'empty';
+  const stackWidthStatus: DimensionFieldStatus = stackDimHints
+    ? dimensionAxisStatus(form.values.width, stackDimHints.maxWidthM)
+    : 'empty';
+  const stackHeightStatus: DimensionFieldStatus = stackDimHints
+    ? dimensionAxisStatus(form.values.height, stackDimHints.maxHeightM)
+    : 'empty';
+  const stackFloorStatus: DimensionFieldStatus = stackDimHints
+    ? footprintStatus(stackFootprint, stackDimHints.remainingFootprintSqm)
+    : 'empty';
+
+  const stackDimensionsValid =
+    stackLengthStatus === 'valid' &&
+    stackWidthStatus === 'valid' &&
+    stackHeightStatus === 'valid' &&
+    stackFloorStatus === 'valid';
+
+  const siblingStackMt = storeStacks
+    .filter((s) => s.id !== editingStackId)
+    .reduce((sum, s) => sum + Number(s.max_capacity_mt ?? mtFromVolume(s.length * s.width * s.height)), 0);
+  const storeAllocatedMt = Number(selectedStore?.allocated_capacity_mt) || 0;
+  const storeMtBudgetRemaining =
+    storeAllocatedMt > 0 ? Math.max(storeAllocatedMt - siblingStackMt, 0) : null;
+  const stackMtExceedsStore =
+    storeAllocatedMt > 0 &&
+    stackMaxMt > 0 &&
+    siblingStackMt + stackMaxMt > storeAllocatedMt + 1e-6;
+
+  const stackConfigCanSave =
+    !selectedStore || (stackDimensionsValid && !stackMtExceedsStore);
+
+  const stackLengthError =
+    stackLengthStatus === 'invalid'
+      ? `Length cannot exceed ${stackDimHints?.maxLengthM} m (store limit)`
+      : stackFloorStatus === 'invalid' && stackFootprint > 0
+        ? `Footprint exceeds ${stackDimHints?.remainingFootprintSqm.toLocaleString()} m² left in store`
+        : undefined;
+  const stackWidthError =
+    stackWidthStatus === 'invalid'
+      ? `Width cannot exceed ${stackDimHints?.maxWidthM} m (store limit)`
+      : undefined;
+  const stackHeightError =
+    stackHeightStatus === 'invalid'
+      ? `Height cannot exceed ${stackDimHints?.maxHeightM} m (store ceiling)`
+      : undefined;
+
   const boardScale = useMemo(() => {
     if (!selectedStore) return 1;
     const lengthScale = 860 / Math.max(selectedStore.length || 1, 1);
@@ -853,6 +927,24 @@ export default function StackLayoutPage() {
   const handleSubmit = (values: StackFormValues) => {
     if (!selectedStore) {
       upsertMutation.mutate(values);
+      return;
+    }
+
+    if (!stackDimensionsValid) {
+      notifications.show({
+        title: 'Dimensions out of range',
+        message: 'Stack length, width, and height must fit inside the store.',
+        color: 'red',
+      });
+      return;
+    }
+
+    if (stackMtExceedsStore) {
+      notifications.show({
+        title: 'Capacity exceeded',
+        message: `This stack would use ${stackMaxMt.toFixed(2)} MT but only ${storeMtBudgetRemaining?.toFixed(2) ?? '0'} MT remains in the store budget.`,
+        color: 'red',
+      });
       return;
     }
 
@@ -1554,29 +1646,113 @@ export default function StackLayoutPage() {
               }}
             />
 
+            {selectedStore && stackDimHints && (
+              <Alert color="gray" variant="light" title="Size limits for this store">
+                <Text size="sm">
+                  Store: {stackDimHints.storeLengthM} × {stackDimHints.storeWidthM} m floor,{' '}
+                  {stackDimHints.storeHeightM} m high.
+                </Text>
+                <Text size="sm" mt={4}>
+                  {formatStackFootprintHint(
+                    stackDimHints.remainingFootprintSqm,
+                    stackDimHints.maxLengthM,
+                    stackDimHints.maxWidthM
+                  )}
+                </Text>
+              </Alert>
+            )}
+
             <Group grow align="flex-start">
               <NumberInput
                 label="Length (m)"
                 decimalScale={2}
                 min={0}
-                styles={baseInputStyles}
+                placeholder={stackDimHints ? `Max ${stackDimHints.maxLengthM} m` : undefined}
+                description={stackLengthError ? undefined : dimensionValidLabel(stackLengthStatus)}
+                error={stackLengthError}
+                styles={{
+                  ...baseInputStyles,
+                  ...dimensionInputBorderStyle(stackLengthStatus),
+                }}
                 {...form.getInputProps('length')}
               />
               <NumberInput
                 label="Width (m)"
                 decimalScale={2}
                 min={0}
-                styles={baseInputStyles}
+                placeholder={stackDimHints ? `Max ${stackDimHints.maxWidthM} m` : undefined}
+                description={stackWidthError ? undefined : dimensionValidLabel(stackWidthStatus)}
+                error={stackWidthError}
+                styles={{
+                  ...baseInputStyles,
+                  ...dimensionInputBorderStyle(stackWidthStatus),
+                }}
                 {...form.getInputProps('width')}
               />
               <NumberInput
                 label="Height (m)"
                 decimalScale={2}
                 min={0}
-                styles={baseInputStyles}
+                placeholder={stackDimHints ? `Max ${stackDimHints.maxHeightM} m` : undefined}
+                description={stackHeightError ? undefined : dimensionValidLabel(stackHeightStatus)}
+                error={stackHeightError}
+                styles={{
+                  ...baseInputStyles,
+                  ...dimensionInputBorderStyle(stackHeightStatus),
+                }}
                 {...form.getInputProps('height')}
               />
             </Group>
+
+            {selectedStore && stackVolumeM3 > 0 && (
+              <SimpleGrid
+                cols={{ base: 1, sm: 3 }}
+                spacing="md"
+                style={{ background: '#f0f5ff', borderRadius: 12, padding: '12px 16px' }}
+              >
+                <div>
+                  <Text size="xs" fw={800} c="#5b6e8c" tt="uppercase" mb={2}>
+                    Volume
+                  </Text>
+                  <Text size="lg" fw={700} c="#1d3354">
+                    {stackVolumeM3.toFixed(2)}{' '}
+                    <Text span size="xs" c="dimmed">
+                      m³
+                    </Text>
+                  </Text>
+                </div>
+                <div>
+                  <Text size="xs" fw={800} c="#5b6e8c" tt="uppercase" mb={2}>
+                    Max capacity
+                  </Text>
+                  <Text size="lg" fw={700} c={stackMtExceedsStore ? 'red' : '#0d6e3f'}>
+                    {stackMaxMt.toFixed(2)}{' '}
+                    <Text span size="xs" c="dimmed">
+                      MT
+                    </Text>
+                  </Text>
+                  <Text size="xs" c="dimmed">System-calculated limit</Text>
+                </div>
+                <div>
+                  <Text size="xs" fw={800} c="#5b6e8c" tt="uppercase" mb={2}>
+                    Store MT budget
+                  </Text>
+                  <Text size="lg" fw={700} c="#1955a5">
+                    {storeMtBudgetRemaining != null
+                      ? `${storeMtBudgetRemaining.toFixed(2)} MT`
+                      : '—'}
+                  </Text>
+                  <Text size="xs" c="dimmed">Remaining for all stacks</Text>
+                </div>
+              </SimpleGrid>
+            )}
+
+            {stackMtExceedsStore && (
+              <Text size="sm" c="red">
+                Stack capacity ({stackMaxMt.toFixed(2)} MT) exceeds store remaining budget (
+                {storeMtBudgetRemaining?.toFixed(2)} MT).
+              </Text>
+            )}
 
             <Group grow align="flex-start">
               <NumberInput
@@ -1602,6 +1778,7 @@ export default function StackLayoutPage() {
                 size="md"
                 leftSection={<IconDeviceFloppy size={18} />}
                 loading={upsertMutation.isPending}
+                disabled={!stackConfigCanSave}
               >
                 Save Configuration
               </Button>

@@ -8,6 +8,10 @@ module Cats
 
       def call
         @grn.ensure_confirmable!
+        unless @grn.warehouse.capacity_established?
+          raise Cats::Warehouse::InsufficientSpaceError,
+                "Warehouse capacity must be established before confirming a GRN"
+        end
 
         Grn.transaction do
           old_status = @grn.status

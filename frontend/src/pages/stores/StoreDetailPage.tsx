@@ -31,6 +31,7 @@ import { getStacks } from '../../api/stacks';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { usePermission } from '../../hooks/usePermission';
+import { allocatedStoreMt, storeUsableVolumeM3 } from '../../utils/capacityCalculator';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -103,17 +104,19 @@ function StoreDetailPage() {
     : 0;
   const netArea = Math.max(storeArea - gangwayArea, 0);
 
-  // Option A — usable area = net area × warehouse usable_space_percentage
-  const usablePct: number = (warehouse?.capacity as any)?.usable_space_percentage ?? 75;
-  const usableAreaM2 = netArea * (usablePct / 100);
+  const floorAreaM2 = netArea;
 
-  // Option C — pro-rata MT estimate
-  const warehouseTotalAreaSqm: number | undefined = (warehouse?.capacity as any)?.total_area_sqm;
-  const warehouseUsableMt: number | undefined = (warehouse?.capacity as any)?.usable_storage_capacity_mt;
+  const warehouseUsableVolume = Number(warehouse?.capacity?.usable_volume_m3) || 0;
+  const warehouseUsableMt = Number(warehouse?.capacity?.usable_storage_capacity_mt) || 0;
+  const storeVolumeM3 = storeUsableVolumeM3(
+    store.length,
+    store.width,
+    store.height,
+    gangwayArea
+  );
   const proRataMt =
-    warehouseTotalAreaSqm && warehouseTotalAreaSqm > 0 && warehouseUsableMt && netArea > 0
-      ? (netArea / warehouseTotalAreaSqm) * warehouseUsableMt
-      : null;
+    allocatedStoreMt(storeVolumeM3, warehouseUsableVolume, warehouseUsableMt) ??
+    (store.allocated_capacity_mt != null ? Number(store.allocated_capacity_mt) : null);
 
   // Stack-level area breakdown
   // Allocated = stacks that are active or reserved (footprint l×w)
@@ -128,12 +131,10 @@ function StoreDetailPage() {
 
   const totalAllocatedAndReserved = allocatedArea + reservedArea;
 
-  // Available = usable area − (allocated + reserved)
-  const availableFromCapacity = Math.max(usableAreaM2 - totalAllocatedAndReserved, 0);
+  const availableFromCapacity = Math.max(floorAreaM2 - totalAllocatedAndReserved, 0);
 
-  // Ring progress percentage (cap at 100 for display)
-  const occupancyPct = usableAreaM2 > 0
-    ? Math.min((totalAllocatedAndReserved / usableAreaM2) * 100, 100)
+  const occupancyPct = floorAreaM2 > 0
+    ? Math.min((totalAllocatedAndReserved / floorAreaM2) * 100, 100)
     : 0;
 
   const occupancyColor =
@@ -249,7 +250,7 @@ function StoreDetailPage() {
                 </Stack>
               }
             />
-            <Text size="xs" c="dimmed">of usable area</Text>
+            <Text size="xs" c="dimmed">of floor area</Text>
           </Stack>
 
           {/* Capacity breakdown */}
@@ -257,16 +258,16 @@ function StoreDetailPage() {
 
             <Card withBorder padding="sm" radius="sm">
               <Group gap={4} mb={4}>
-                <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Usable Area</Text>
+                <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Floor Area</Text>
                 <Tooltip
-                  label={`Net floor area (${netArea.toFixed(1)} m²) × ${usablePct}% warehouse usable setting`}
-                  multiline w={240} withArrow
+                  label={`Net store floor (${netArea.toFixed(1)} m²). Warehouse usable % applies at warehouse level only.`}
+                  multiline w={260} withArrow
                 >
                   <IconInfoCircle size={13} style={{ color: 'var(--mantine-color-dimmed)', cursor: 'help' }} />
                 </Tooltip>
               </Group>
-              <Text size="xl" fw={700}>{usableAreaM2.toFixed(2)} <Text span size="sm" c="dimmed">m²</Text></Text>
-              <Text size="xs" c="dimmed">{usablePct}% of {netArea.toFixed(1)} m² net area</Text>
+              <Text size="xl" fw={700}>{floorAreaM2.toFixed(2)} <Text span size="sm" c="dimmed">m²</Text></Text>
+              <Text size="xs" c="dimmed">Net floor (gangway excluded)</Text>
             </Card>
 
             {proRataMt !== null && (
@@ -274,7 +275,7 @@ function StoreDetailPage() {
                 <Group gap={4} mb={4}>
                   <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Est. Capacity</Text>
                   <Tooltip
-                    label={`Pro-rata share of warehouse usable MT capacity.\nStore (${netArea.toFixed(1)} m²) ÷ Warehouse (${warehouseTotalAreaSqm?.toFixed(1)} m²) × ${warehouseUsableMt?.toFixed(1)} MT`}
+                    label={`Pro-rata share of warehouse usable MT capacity.\nStore volume (${storeVolumeM3.toFixed(1)} m³) ÷ Warehouse usable (${warehouseUsableVolume.toFixed(1)} m³) × ${warehouseUsableMt.toFixed(1)} MT`}
                     multiline w={280} withArrow
                   >
                     <IconInfoCircle size={13} style={{ color: 'var(--mantine-color-dimmed)', cursor: 'help' }} />
@@ -311,7 +312,7 @@ function StoreDetailPage() {
               <Group gap={4} mb={4}>
                 <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Available Area</Text>
                 <Tooltip
-                  label={`Usable area (${usableAreaM2.toFixed(1)} m²) − Allocated (${allocatedArea.toFixed(1)} m²) − Reserved (${reservedArea.toFixed(1)} m²)`}
+                  label={`Floor area (${floorAreaM2.toFixed(1)} m²) − Allocated (${allocatedArea.toFixed(1)} m²) − Reserved (${reservedArea.toFixed(1)} m²)`}
                   multiline w={280} withArrow
                 >
                   <IconInfoCircle size={13} style={{ color: 'var(--mantine-color-dimmed)', cursor: 'help' }} />

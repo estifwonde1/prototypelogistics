@@ -87,4 +87,21 @@ RSpec.describe "Cats Warehouse Stacks", type: :request do
     delete "/cats_warehouse/v1/stacks/#{first_id}", headers: headers
     expect(response).to have_http_status(:ok)
   end
+
+  it "allows warehouse manager to list stacks for a store in their warehouse" do
+    warehouse = create(:cats_warehouse_warehouse)
+    create(:cats_warehouse_warehouse_capacity, warehouse: warehouse, length_m: 100, width_m: 80, height_m: 10)
+    store = create(:cats_warehouse_store, warehouse: warehouse)
+    manager = create(:cats_core_user, role_name: "Warehouse Manager")
+    Cats::Warehouse::UserAssignment.create!(
+      user: manager,
+      role_name: "Warehouse Manager",
+      warehouse: warehouse
+    )
+
+    headers = { "Authorization" => "Bearer #{manager.signed_id(purpose: 'auth', expires_in: 1.hour)}" }
+    get "/cats_warehouse/v1/stacks", params: { store_id: store.id }, headers: headers
+
+    expect(response).to have_http_status(:ok)
+  end
 end

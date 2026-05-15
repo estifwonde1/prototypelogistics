@@ -40,9 +40,9 @@ module Cats
       # Validate store access for current user
       def validate_store_access!(store_id)
         access = AccessContext.new(user: current_user)
-        unless access.assigned_store_ids.include?(store_id)
-          raise Pundit::NotAuthorizedError, "Access denied to store #{store_id}"
-        end
+        return if access.can_access_store?(store_id)
+
+        raise Pundit::NotAuthorizedError, "Access denied to store #{store_id}"
       end
 
       # Validate hub access for current user

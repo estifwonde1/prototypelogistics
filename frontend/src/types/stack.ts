@@ -20,4 +20,8 @@ export interface Stack {
   unit_name?: string;
   unit_abbreviation?: string;
   reference?: string;
+  max_capacity_mt?: number;
+  used_capacity_mt?: number;
+  remaining_capacity_mt?: number;
+  utilization_pct?: number;
 }
