@@ -75,14 +75,24 @@ module Cats
       end
 
       def create?
-        admin? || hub_manager? || warehouse_manager? || receipt_authorizer?
+        return true if admin? || hub_manager? || receipt_authorizer?
+        return false unless warehouse_manager?
+
+        # Class-level authorize; controller enforces destination warehouse via create_for_warehouse?
+        warehouse_manager?
+      end
+
+      def create_for_warehouse?(warehouse_id)
+        return false if warehouse_id.blank?
+
+        access.can_create_receipt_authorization_for_warehouse?(warehouse_id)
       end
 
       def update?
         return false unless record.is_a?(ReceiptAuthorization)
         return false unless record.pending?
 
-        create?
+        can_mutate?
       end
 
       def cancel?
@@ -90,7 +100,7 @@ module Cats
         return false unless record.pending?
         return false if record.inspections.any?
 
-        create?
+        can_mutate?
       end
 
       def driver_confirm?
@@ -101,8 +111,20 @@ module Cats
 
       private
 
+      def access
+        @access ||= AccessContext.new(user: user)
+      end
+
+      def can_mutate?
+        return true if admin? || hub_manager? || receipt_authorizer?
+        return false unless warehouse_manager?
+        return false unless record.is_a?(ReceiptAuthorization)
+
+        access.can_create_receipt_authorization_for_warehouse?(record.warehouse_id)
+      end
+
       def receipt_authorizer?
-        AccessContext.new(user: user).receipt_authorizer?
+        access.receipt_authorizer?
       end
     end
   end

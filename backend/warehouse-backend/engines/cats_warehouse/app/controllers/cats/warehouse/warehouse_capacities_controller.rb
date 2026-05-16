@@ -26,11 +26,13 @@ module Cats
 
       def capacity_params
         params.require(:payload).permit(
-          :total_area_sqm,
-          :total_storage_capacity_mt,
+          :length_m,
+          :width_m,
+          :height_m,
           :no_of_stores,
           :construction_year,
-          :usable_space_percentage
+          :usable_space_percentage,
+          :ownership_type
         )
       end
     end

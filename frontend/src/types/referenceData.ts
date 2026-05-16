@@ -28,6 +28,7 @@ export interface CommodityReference {
   source_name?: string | null;
   category_id?: number | null;
   category_name?: string | null;
+  volume_per_metric_ton?: number;
 }
 
 export interface UnitReference {

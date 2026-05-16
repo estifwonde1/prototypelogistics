@@ -3,6 +3,8 @@ module Cats
     class Store < ApplicationRecord
       self.table_name = "cats_warehouse_stores"
 
+      include RequiresEstablishedCapacity
+
       belongs_to :warehouse, class_name: "Cats::Warehouse::Warehouse"
 
       has_many :stacks, class_name: "Cats::Warehouse::Stack", dependent: :destroy
@@ -19,6 +21,7 @@ module Cats
       validates :usable_space, :available_space, numericality: { greater_than_or_equal_to: 0 }
       validate :gangway_dimensions_are_valid
       validate :fits_inside_warehouse_capacity
+      requires_warehouse_capacity_established
 
       def footprint_area
         length.to_f * width.to_f
@@ -38,19 +41,50 @@ module Cats
         [footprint_area - gangway_area, 0].max
       end
 
+      def current_occupied_space
+        if stacks.loaded?
+          stacks.reject { |s| s.stack_status == "empty" }.sum(&:footprint_area).to_f
+        else
+          stacks.where.not(stack_status: "empty").sum("length * width").to_f
+        end
+      end
+
+      def recalculate_space!
+        StoreOccupancyUpdater.call(store: self)
+      end
+
       private
 
       def calculate_capacity_metrics
         return if length.blank? || width.blank? || height.blank?
 
-        previous_used_space = if persisted?
-                                self.class.find(id).then { |record| record.usable_space.to_f - record.available_space.to_f }
+        self.usable_space = usable_floor_area
+
+        self.usable_volume_m3 = CapacityCalculator.store_usable_volume_m3(self) if has_attribute?(:usable_volume_m3)
+
+        live_occupied_floor = if persisted?
+                                stacks.where.not(stack_status: "empty")
+                                      .sum("length * width")
+                                      .to_f
                               else
-                                0
+                                0.0
                               end
 
-        self.usable_space = usable_floor_area * height.to_f
-        self.available_space = [usable_space.to_f - previous_used_space, 0].max
+        self.available_space = [usable_space.to_f - live_occupied_floor, 0].max
+
+        if has_attribute?(:occupied_volume_m3)
+          live_occupied_vol = if persisted?
+                                stacks.where.not(stack_status: "empty").sum(:occupied_volume).to_f
+                              else
+                                0.0
+                              end
+          self.occupied_volume_m3 = live_occupied_vol
+          self.available_volume_m3 = [usable_volume_m3.to_f - live_occupied_vol, 0].max
+        end
+
+        if has_attribute?(:allocated_capacity_mt)
+          self.allocated_capacity_mt = CapacityCalculator.allocated_capacity_mt(self)
+        end
       end
 
       def gangway_dimensions_are_valid
@@ -67,18 +101,31 @@ module Cats
 
       def fits_inside_warehouse_capacity
         capacity = warehouse&.warehouse_capacity
-        return if capacity.blank?
+        return if capacity.blank? || !capacity.capacity_established?
 
-        sibling_stores = warehouse.stores.where.not(id: id)
-        total_area = sibling_stores.sum { |store| store.footprint_area } + footprint_area
-        total_capacity = sibling_stores.sum(&:usable_space).to_f + usable_space.to_f
+        if capacity.total_area_sqm.present?
+          sibling_area = warehouse.stores.where.not(id: id).to_a.sum(&:footprint_area)
+          total_area = sibling_area + footprint_area
 
-        if capacity.total_area_sqm.present? && total_area > capacity.total_area_sqm.to_f
-          errors.add(:base, "Total store area cannot exceed the warehouse total area")
+          if total_area > capacity.total_area_sqm.to_f
+            errors.add(:base, "Total store area cannot exceed the warehouse total area")
+          end
         end
 
-        if capacity.usable_storage_capacity_mt.present? && total_capacity > capacity.usable_storage_capacity_mt.to_f
-          errors.add(:base, "Total store capacity cannot exceed the warehouse usable capacity")
+        return unless has_attribute?(:usable_volume_m3) && capacity.usable_volume_m3.present?
+
+        sibling_vol = warehouse.stores.where.not(id: id).sum(:usable_volume_m3).to_f
+        total_vol = sibling_vol + usable_volume_m3.to_f
+        if total_vol > capacity.usable_volume_m3.to_f + 1e-6
+          errors.add(:base, "Total store volume cannot exceed the warehouse usable volume")
+        end
+
+        return unless has_attribute?(:allocated_capacity_mt) && capacity.usable_storage_capacity_mt.present?
+
+        sibling_mt = warehouse.stores.where.not(id: id).sum(:allocated_capacity_mt).to_f
+        total_mt = sibling_mt + allocated_capacity_mt.to_f
+        if total_mt > capacity.usable_storage_capacity_mt.to_f + 1e-6
+          errors.add(:base, "Total store capacity cannot exceed the warehouse storage capacity (MT)")
         end
       end
     end

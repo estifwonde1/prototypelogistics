@@ -7,6 +7,7 @@ module Cats
       rescue_from ActiveRecord::RecordInvalid, with: :render_record_invalid
       rescue_from ActionController::ParameterMissing, with: :render_bad_request
       rescue_from ArgumentError, with: :render_invalid_argument
+      rescue_from Cats::Warehouse::InsufficientSpaceError, with: :render_invalid_argument
       rescue_from Pundit::NotAuthorizedError, with: :render_forbidden
 
       private

@@ -22,6 +22,7 @@ export interface CreateCommodityPayload {
   package_unit_per_package_id?: number;
   source_type?: string;
   source_name?: string;
+  volume_per_metric_ton?: number;
 }
 
 export const getFacilityOptions = async (): Promise<FacilityOptions> => {

@@ -42,6 +42,13 @@ module Cats
             Rails.logger.info "Quantity: #{payload[:quantity]}"
             Rails.logger.info "Status: #{assignment_status}"
 
+            if payload[:warehouse_id].present?
+              wh = Warehouse.find(payload[:warehouse_id])
+              unless wh.capacity_established?
+                raise ArgumentError, "Warehouse #{wh.name} has no established capacity; assign after capacity is configured"
+              end
+            end
+
             created_assignments << ReceiptOrderAssignment.create!(
               receipt_order: @order,
               receipt_order_line: line,

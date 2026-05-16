@@ -19,13 +19,12 @@ module Cats
           scope = scope.where(store_id: store_ids)
         elsif params[:store_id].present?
           store_id = params[:store_id].to_i
-          
-          # Verify user has access to this store
-          access = AccessContext.new(user: current_user)
-          unless access.assigned_store_ids.include?(store_id)
+
+          # Warehouse managers see all stores in their warehouse(s), not only storekeeper assignments.
+          unless policy_scope(Store).exists?(id: store_id)
             return render_error("Access denied to store #{store_id}", status: :forbidden)
           end
-          
+
           scope = scope.where(store_id: store_id)
         end
         

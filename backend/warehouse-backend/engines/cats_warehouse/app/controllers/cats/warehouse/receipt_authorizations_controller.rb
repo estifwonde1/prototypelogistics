@@ -79,6 +79,14 @@ module Cats
           input_unit = Cats::Core::UnitOfMeasure.find(payload[:authorized_quantity_input_unit_id])
         end
 
+        destination_warehouse_id = resolve_ra_destination_warehouse_id(
+          receipt_order: receipt_order,
+          store: store,
+          assignment: assignment,
+          explicit_warehouse: explicit_wh
+        )
+        authorize_warehouse_for_ra_creation!(destination_warehouse_id)
+
         ra = ReceiptAuthorizationService.new(
           receipt_order:                    receipt_order,
           actor:                            current_user,
@@ -156,6 +164,30 @@ module Cats
       end
 
       private
+
+      def resolve_ra_destination_warehouse_id(receipt_order:, store:, assignment:, explicit_warehouse:)
+        if store.present?
+          return store.warehouse_id
+        end
+        if assignment&.warehouse_id.present?
+          return assignment.warehouse_id
+        end
+        if explicit_warehouse.present?
+          return explicit_warehouse.id
+        end
+
+        receipt_order.warehouse_id
+      end
+
+      def authorize_warehouse_for_ra_creation!(warehouse_id)
+        return if warehouse_id.blank?
+
+        policy = ReceiptAuthorizationPolicy.new(current_user, nil)
+        return if policy.create_for_warehouse?(warehouse_id)
+
+        raise Pundit::NotAuthorizedError,
+              "Only Hub Managers may authorize trucks for hub-backed warehouses"
+      end
 
       # Resolves a Transporter row: prefers +transporter_id+ when sent (legacy/API), otherwise finds or creates by +transporter_name+.
       def resolve_transporter_for_payload!(payload)

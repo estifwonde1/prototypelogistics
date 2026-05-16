@@ -508,7 +508,8 @@ commodities = [
       quantity: 1000,
       best_use_before: Date.today + 365,
       status: Cats::Core::Commodity::DRAFT,
-      arrival_status: Cats::Core::Commodity::AT_SOURCE
+      arrival_status: Cats::Core::Commodity::AT_SOURCE,
+      volume_per_metric_ton: 1.2
     }
   )
 end
@@ -770,8 +771,9 @@ warehouses.each_with_index do |warehouse, idx|
     Cats::Warehouse::WarehouseCapacity,
     { warehouse: warehouse },
     {
-      total_area_sqm: 10000 + idx * 500,
-      total_storage_capacity_mt: 100000 + idx * 1000,
+      length_m: 100,
+      width_m: 80,
+      height_m: 10,
       usable_space_percentage: 75,
       no_of_stores: 2,
       ownership_type: "Government"
@@ -812,8 +814,8 @@ stores = warehouses.flat_map do |warehouse|
       { code: "#{warehouse.code}-ST#{i}" },
       {
         name: "#{warehouse.name} Store #{i}",
-        length: 60,
-        width: 40,
+        length: 30,
+        width: 20,
         height: 10,
         has_gangway: false,
         temporary: false,
@@ -839,39 +841,10 @@ stores.each do |store|
   )
 end
 
-stacks = stores.flat_map.with_index do |store, idx|
-  # Move ALL existing stacks in this store out of the way before creating/updating
-  # seed stacks. This prevents footprint overlap errors from stacks created by
-  # previous seed runs with different code patterns (e.g. stk-kemis101).
-  # We use update_columns to skip validations, then place seed stacks at known
-  # non-overlapping positions.
-  seed_codes = (1..3).map { |n| "#{store.code}-S#{n}" }
-  non_seed_stacks = Cats::Warehouse::Stack.where(store: store).where.not(code: seed_codes)
-  non_seed_stacks.each_with_index do |stk, i|
-    stk.update_columns(start_x: 1 + ((i + 3) * 11), start_y: 21) # park far away, different row
-  end
-
-  # Reposition seed stacks to their correct non-overlapping positions
-  seed_codes.each_with_index do |code, i|
-    existing = Cats::Warehouse::Stack.find_by(code: code)
-    existing&.update_columns(start_x: 1 + (i * 11), start_y: 1)
-  end
-
-  commodities.sample(3).map.with_index do |_commodity, i|
-    find_or_create_with(
-      Cats::Warehouse::Stack,
-      { code: "#{store.code}-S#{i + 1}" },
-      {
-        length: 10,
-        width: 10,
-        height: 5,
-        start_x: 1 + (i * 11), # S1@x=1, S2@x=12, S3@x=23 — no overlap
-        start_y: 1,
-        store: store,
-        quantity: 0
-        # No commodity or unit — stacks are physical spaces, commodity assigned when goods arrive
-      }
-    )
+puts "Removing legacy seed stacks (user-created stacks are kept)..."
+stores.each do |store|
+  (1..3).each do |n|
+    Cats::Warehouse::Stack.where(store: store, code: "#{store.code}-S#{n}").find_each(&:destroy)
   end
 end
 

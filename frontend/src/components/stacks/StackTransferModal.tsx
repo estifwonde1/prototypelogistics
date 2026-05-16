@@ -13,7 +13,6 @@ import {
 import { IconAlertCircle } from '@tabler/icons-react';
 import type { Stack } from '../../types/stack';
 import { getStacks, transferStack } from '../../api/stacks';
-import { useAuthStore } from '../../store/authStore';
 
 interface StackTransferModalProps {
   opened: boolean;
@@ -42,24 +41,44 @@ const StackTransferModal: React.FC<StackTransferModalProps> = ({
       loadAvailableStacks();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opened]);
+  }, [opened, sourceStack.id, sourceStack.store_id]);
 
   const loadAvailableStacks = async () => {
     try {
-      // Get stacks filtered by warehouse context if user is a warehouse manager
-      const activeAssignment = useAuthStore.getState().activeAssignment;
-      const userWarehouseId = activeAssignment?.warehouse?.id;
-      
-      const stacks = userWarehouseId 
-        ? await getStacks({ warehouse_id: userWarehouseId })
-        : await getStacks();
-        
-      // Filter: same store, same commodity, not the source stack
+      // Load stacks in the source store only (authoritative destination list — avoids mismatched WM vs store scope).
+      const stacks = await getStacks({ store_id: sourceStack.store_id });
+
+      const cid = (v: Stack['commodity_id']) =>
+        v != null && v !== '' ? Number(v) : null;
+      const sourceCid = cid(sourceStack.commodity_id);
+
+      const nameMatch = (a?: string | null, b?: string | null) => {
+        const na = (a ?? '').trim().toLowerCase();
+        const nb = (b ?? '').trim().toLowerCase();
+        return Boolean(na && nb && na === nb);
+      };
+
+      const qty = (stack: Stack) => Number(stack.quantity) || 0;
+
+      /** Stack already carries the same commodity (by ID or resolved name). */
+      const isCompatibleDestination = (stack: Stack) => {
+        if (stack.id === sourceStack.id) return false;
+
+        const destCid = cid(stack.commodity_id);
+
+        if (sourceCid != null && destCid != null) return destCid === sourceCid;
+        return nameMatch(stack.commodity_name, sourceStack.commodity_name);
+      };
+
+      /** Reserved / vacant bay with no SKU on file — backend assigns commodity + unit from source on transfer-in. */
+      const isEmptyBay = (stack: Stack) =>
+        qty(stack) <= 0 && (stack.commodity_id == null || stack.commodity_id === '' || cid(stack.commodity_id) == null);
+
       const filtered = stacks.filter(
         (stack) =>
           stack.id !== sourceStack.id &&
           stack.store_id === sourceStack.store_id &&
-          stack.commodity_id === sourceStack.commodity_id
+          (isCompatibleDestination(stack) || isEmptyBay(stack))
       );
       setAvailableStacks(filtered);
     } catch (err) {
@@ -102,10 +121,13 @@ const StackTransferModal: React.FC<StackTransferModalProps> = ({
     }
   };
 
-  const stackOptions = availableStacks.map((stack) => ({
-    value: stack.id.toString(),
-    label: `${stack.code} - ${stack.commodity_name} (${stack.quantity} ${stack.unit_abbreviation})`,
-  }));
+  const stackOptions = availableStacks.map((stack) => {
+    const qtyN = Number(stack.quantity) || 0;
+    const head = `${stack.code} — ${stack.commodity_name?.trim() || 'Empty bay'}`;
+    const u = stack.unit_abbreviation?.trim();
+    const tail = qtyN > 0 && u ? `${qtyN.toLocaleString()} ${u}` : qtyN > 0 ? String(qtyN) : '0 (available)';
+    return { value: stack.id.toString(), label: `${head} (${tail})` };
+  });
 
   return (
     <Modal opened={opened} onClose={onClose} title="Transfer Stack" size="md" radius="xl" centered>
@@ -137,7 +159,8 @@ const StackTransferModal: React.FC<StackTransferModalProps> = ({
 
         {availableStacks.length === 0 ? (
           <Alert icon={<IconAlertCircle size={16} />} title="No Compatible Stacks" color="blue">
-            No compatible destination stacks found in this store. Destination stack must have the same commodity.
+            No compatible destination stacks in this store. Choose a stack that is empty (no stock / reserved bay) or already
+            holds the same commodity. If you expected another Beans stack here, refresh the list or confirm it is under the same store.
           </Alert>
         ) : (
           <>

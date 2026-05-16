@@ -62,6 +62,36 @@ RSpec.describe "Stack Transfer", type: :request do
       expect(destination_stack.quantity).to eq(80)
     end
 
+    it "allows transfer into an empty destination stack (nil commodity and unit)" do
+      empty_stack =
+        create(
+          :cats_warehouse_stack,
+          store: store,
+          commodity: nil,
+          unit: nil,
+          quantity: 0,
+          base_quantity: 0,
+        )
+
+      headers = auth_headers_for(storekeeper)
+
+      payload = {
+        destination_id: empty_stack.id,
+        quantity: 30,
+      }
+
+      post "/cats_warehouse/v1/stacks/#{source_stack.id}/transfer", params: payload, headers: headers
+
+      expect(response).to have_http_status(:ok)
+
+      empty_stack.reload
+      source_stack.reload
+      expect(empty_stack.commodity_id).to eq(commodity.id)
+      expect(empty_stack.unit_id).to eq(unit.id)
+      expect(empty_stack.quantity).to eq(30)
+      expect(source_stack.quantity).to eq(70)
+    end
+
     it "rejects transfer if destination is in different store" do
       other_store = create(:cats_warehouse_store, warehouse: warehouse)
       other_stack = create(:cats_warehouse_stack,

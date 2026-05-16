@@ -3,8 +3,8 @@ import type { Grn, GrnItem } from '../types/grn';
 import type { ApiResponse } from '../types/common';
 import { toCreateGrnRequest, type CreateGrnRequest } from '../contracts/documents';
 
-export const getGrns = async (): Promise<Grn[]> => {
-  const response = await apiClient.get<ApiResponse<Grn[]>>('/grns');
+export const getGrns = async (params?: { warehouse_id?: number }): Promise<Grn[]> => {
+  const response = await apiClient.get<ApiResponse<Grn[]>>('/grns', { params });
   return response.data.data;
 };
 

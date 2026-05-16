@@ -4,6 +4,7 @@ import type {
   WarehouseUpsertPayload,
   WarehouseAccess,
   WarehouseCapacity,
+  WarehouseCapacityPayload,
   WarehouseContacts,
   WarehouseInfra,
 } from '../types/warehouse';
@@ -81,7 +82,7 @@ export const updateWarehouseGps = async (
 
 export const updateWarehouseCapacity = async (
   id: number,
-  data: Partial<WarehouseCapacity>
+  data: WarehouseCapacityPayload
 ): Promise<WarehouseCapacity> => {
   const response = await apiClient.put<ApiResponse<WarehouseCapacity>>(
     `/warehouses/${id}/capacity`,

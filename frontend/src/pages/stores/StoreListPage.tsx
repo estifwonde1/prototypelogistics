@@ -289,7 +289,7 @@ function StoreListPage() {
                 <Table.Th>Name</Table.Th>
                 <Table.Th>Warehouse</Table.Th>
                 <Table.Th>Dimensions (L×W×H)</Table.Th>
-                <Table.Th>Usable Space</Table.Th>
+                <Table.Th>Floor Area</Table.Th>
                 <Table.Th>Available Space</Table.Th>
                 <Table.Th>Type</Table.Th>
                 {canManageStorekeepers && (
@@ -308,14 +308,18 @@ function StoreListPage() {
                 const canView = can("stores", "read");
 
                 return (
-                  <Table.Tr key={store.id}>
+                  <Table.Tr
+                    key={store.id}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => navigate(`/stores/${store.id}`)}
+                  >
                     <Table.Td>{store.code}</Table.Td>
                     <Table.Td>{store.name}</Table.Td>
                     <Table.Td>{warehouse?.name || "-"}</Table.Td>
                     <Table.Td>
                       {store.length}×{store.width}×{store.height}m
                     </Table.Td>
-                    <Table.Td>{store.usable_space} m³</Table.Td>
+                    <Table.Td>{store.usable_space} m²</Table.Td>
                     <Table.Td>{store.available_space} m³</Table.Td>
                     <Table.Td>
                       <Badge color={store.temporary ? "yellow" : "blue"}>

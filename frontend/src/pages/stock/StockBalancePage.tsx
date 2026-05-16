@@ -34,8 +34,8 @@ function StockBalancePage() {
   const [lotFilter, setLotFilter] = useState<string | null>(null);
 
   const { data: stockBalances = [], isLoading, error, refetch } = useQuery({
-    queryKey: ['stockBalances'],
-    queryFn: () => getStockBalances(),
+    queryKey: ['stockBalances', { warehouse_id: warehouseFilter ?? undefined }],
+    queryFn: () => getStockBalances({ warehouse_id: warehouseFilter ? Number(warehouseFilter) : undefined }),
     refetchOnMount: 'always',
   });
 
@@ -80,8 +80,6 @@ function StockBalancePage() {
     if (!stockBalances) return [];
 
     return stockBalances.filter((balance) => {
-      const matchesWarehouse = !warehouseFilter || balance.warehouse_id.toString() === warehouseFilter;
-      
       // Lot filter
       const matchesLot = !lotFilter || balance.inventory_lot_id?.toString() === lotFilter;
       
@@ -106,9 +104,9 @@ function StockBalancePage() {
         balance.store_name?.toLowerCase().includes(searchTerm) ||
         balance.store_code?.toLowerCase().includes(searchTerm) ||
         balance.stack_code?.toLowerCase().includes(searchTerm);
-      return matchesWarehouse && matchesLot && matchesExpiry && matchesSearch;
+      return matchesLot && matchesExpiry && matchesSearch;
     });
-  }, [stockBalances, warehouseFilter, lotFilter, showExpiringSoon, search]);
+  }, [stockBalances, lotFilter, showExpiringSoon, search]);
 
   // Group stock balances
   const groupedBalances = useMemo(() => {

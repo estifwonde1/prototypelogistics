@@ -5,7 +5,24 @@ module Cats
                  :commodity_name, :commodity_code, :store_name, :store_code, :warehouse_id,
                  :commodity_status, :stack_status, :quantity, :unit_id, :unit_name, :unit_abbreviation,
                  :base_unit_id, :base_unit_name, :base_quantity, :reference,
+                 :max_capacity_mt, :used_capacity_mt, :remaining_capacity_mt, :utilization_pct,
                  :created_at, :updated_at
+
+      def max_capacity_mt
+        object.max_capacity_mt
+      end
+
+      def used_capacity_mt
+        stack_usage.used_mt
+      end
+
+      def remaining_capacity_mt
+        stack_usage.remaining_mt
+      end
+
+      def utilization_pct
+        stack_usage.utilization_pct
+      end
 
       def commodity_id
         object.commodity_id || positive_stack_balance&.commodity_id
@@ -54,6 +71,10 @@ module Cats
       end
 
       private
+
+      def stack_usage
+        @stack_usage ||= CapacityUsage.for_stack(object)
+      end
 
       def positive_stack_balance
         return @positive_stack_balance if defined?(@positive_stack_balance)

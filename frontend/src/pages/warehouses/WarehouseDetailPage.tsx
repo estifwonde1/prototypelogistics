@@ -6,9 +6,10 @@ import {
   Modal, Anchor, Table, TextInput, NumberInput, Switch, Select, Divider, ActionIcon,
 } from '@mantine/core';
 import { IconEdit, IconTrash, IconArrowLeft, IconMapPin } from '@tabler/icons-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { previewWarehouseCapacity } from '../../utils/capacityCalculator';
 import {
-  getWarehouse, deleteWarehouse, updateWarehouseCapacity,
+  getWarehouse, deleteWarehouse, updateWarehouse, updateWarehouseCapacity,
   updateWarehouseAccess, updateWarehouseInfra, updateWarehouseContacts,
   updateWarehouseGps,
 } from '../../api/warehouses';
@@ -73,10 +74,26 @@ function WarehouseDetailPage() {
       return getStores();
     }
   });
-  const { data: stockBalances = [] } = useQuery({ queryKey: ['stockBalances'], queryFn: () => getStockBalances() });
-  const { data: grns } = useQuery({ queryKey: ['grns'], queryFn: () => getGrns() });
-  const { data: gins } = useQuery({ queryKey: ['gins'], queryFn: () => getGins() });
-  const { data: inspections } = useQuery({ queryKey: ['inspections'], queryFn: () => getInspections() });
+  const { data: stockBalances = [] } = useQuery({
+    queryKey: ['stockBalances', { warehouse_id: Number(id) }],
+    queryFn: () => getStockBalances({ warehouse_id: Number(id) }),
+    enabled: !!id,
+  });
+  const { data: grns } = useQuery({
+    queryKey: ['grns', { warehouse_id: Number(id) }],
+    queryFn: () => getGrns({ warehouse_id: Number(id) }),
+    enabled: !!id,
+  });
+  const { data: gins } = useQuery({
+    queryKey: ['gins', { warehouse_id: Number(id) }],
+    queryFn: () => getGins({ warehouse_id: Number(id) }),
+    enabled: !!id,
+  });
+  const { data: inspections } = useQuery({
+    queryKey: ['inspections', { warehouse_id: Number(id) }],
+    queryFn: () => getInspections({ warehouse_id: Number(id) }),
+    enabled: !!id,
+  });
   const { data: facilityOptions } = useQuery({
     queryKey: ['reference-data', 'facility-options'],
     queryFn: () => getFacilityOptions(),
@@ -99,13 +116,32 @@ function WarehouseDetailPage() {
 
   const capacityForm = useForm({
     initialValues: {
-      total_area_sqm: '' as number | '',
-      total_storage_capacity_mt: '' as number | '',
+      length_m: '' as number | '',
+      width_m: '' as number | '',
+      height_m: '' as number | '',
       construction_year: '' as number | '',
       ownership_type: '',
       usable_space_percentage: 75 as number,
     },
   });
+
+  const capacityPreview = useMemo(() => {
+    const l = capacityForm.values.length_m;
+    const w = capacityForm.values.width_m;
+    const h = capacityForm.values.height_m;
+    if (l === '' || w === '' || h === '') return null;
+    return previewWarehouseCapacity(
+      Number(l),
+      Number(w),
+      Number(h),
+      capacityForm.values.usable_space_percentage
+    );
+  }, [
+    capacityForm.values.length_m,
+    capacityForm.values.width_m,
+    capacityForm.values.height_m,
+    capacityForm.values.usable_space_percentage,
+  ]);
 
   const accessForm = useForm({
     initialValues: {
@@ -138,11 +174,12 @@ function WarehouseDetailPage() {
   useEffect(() => {
     if (!warehouse) return;
     capacityForm.setValues({
-      total_area_sqm: warehouse.capacity?.total_area_sqm ?? '',
-      total_storage_capacity_mt: warehouse.capacity?.total_storage_capacity_mt ?? '',
+      length_m: warehouse.capacity?.length_m ?? '',
+      width_m: warehouse.capacity?.width_m ?? '',
+      height_m: warehouse.capacity?.height_m ?? '',
       construction_year: warehouse.capacity?.construction_year ?? '',
       ownership_type: warehouse.ownership_type || '',
-      usable_space_percentage: (warehouse.capacity as any)?.usable_space_percentage ?? 75,
+      usable_space_percentage: warehouse.capacity?.usable_space_percentage ?? 75,
     });
     accessForm.setValues({
       has_loading_dock: !!warehouse.access?.has_loading_dock,
@@ -167,12 +204,22 @@ function WarehouseDetailPage() {
   }, [warehouse]);
 
   const updateCapacityMutation = useMutation({
-    mutationFn: (payload: typeof capacityForm.values) =>
-      updateWarehouseCapacity(Number(id), {
-        total_area_sqm: toNumber(payload.total_area_sqm),
-        total_storage_capacity_mt: toNumber(payload.total_storage_capacity_mt),
+    mutationFn: async (payload: typeof capacityForm.values) => {
+      // WarehouseCapacity fields — sent to PUT /warehouses/:id/capacity
+      await updateWarehouseCapacity(Number(id), {
+        length_m: toNumber(payload.length_m),
+        width_m: toNumber(payload.width_m),
+        height_m: toNumber(payload.height_m),
         construction_year: toNumber(payload.construction_year),
-      }),
+        usable_space_percentage: payload.usable_space_percentage,
+      });
+
+      // ownership_type lives on the Warehouse record itself, not on WarehouseCapacity.
+      // Only send the PATCH when the value has actually changed to avoid a redundant write.
+      if (payload.ownership_type && payload.ownership_type !== warehouse?.ownership_type) {
+        await updateWarehouse(Number(id), { ownership_type: payload.ownership_type });
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['warehouses', id] });
       notifications.show({ title: 'Success', message: 'Capacity updated', color: 'green' });
@@ -255,10 +302,10 @@ function WarehouseDetailPage() {
 
   const hub = hubs?.find((h) => h.id === warehouse?.hub_id);
   const warehouseStores = stores?.filter((s) => s.warehouse_id === Number(id));
-  const warehouseStock = stockBalances?.filter((sb) => sb.warehouse_id === Number(id));
-  const warehouseGrns = grns?.filter((g) => g.warehouse_id === Number(id))?.slice(0, 5);
-  const warehouseGins = gins?.filter((g) => g.warehouse_id === Number(id))?.slice(0, 5);
-  const warehouseInspections = inspections?.filter((i) => i.warehouse_id === Number(id))?.slice(0, 5);
+  const warehouseStock = stockBalances;
+  const warehouseGrns = grns?.slice(0, 5);
+  const warehouseGins = gins?.slice(0, 5);
+  const warehouseInspections = inspections?.slice(0, 5);
 
   const formatHierarchicalLevel = (value?: string) => {
     if (!value) return '-';
@@ -341,7 +388,7 @@ function WarehouseDetailPage() {
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
                   <Text size="sm" c="dimmed">Region</Text>
-                  <Text fw={500}>Addis Ababa</Text>
+                  <Text fw={500}>{warehouse.region_name || '-'}</Text>
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
                   <Text size="sm" c="dimmed">Subcity</Text>
@@ -417,16 +464,40 @@ function WarehouseDetailPage() {
             {warehouse.capacity ? (
               <Grid>
                 <Grid.Col span={{ base: 12, md: 6 }}>
-                  <Text size="sm" c="dimmed">Total Area (sqm)</Text>
-                  <Text fw={500}>{warehouse.capacity.total_area_sqm ?? '-'}</Text>
+                  <Text size="sm" c="dimmed">Dimensions (L × W × H m)</Text>
+                  <Text fw={500}>
+                    {warehouse.capacity.length_m != null
+                      ? `${warehouse.capacity.length_m} × ${warehouse.capacity.width_m} × ${warehouse.capacity.height_m}`
+                      : '—'}
+                  </Text>
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
-                  <Text size="sm" c="dimmed">Total Storage Capacity (MT)</Text>
-                  <Text fw={500}>{warehouse.capacity.total_storage_capacity_mt ?? '-'}</Text>
+                  <Text size="sm" c="dimmed">Floor footprint (m²)</Text>
+                  <Text fw={500}>{warehouse.capacity.total_area_sqm ?? '—'}</Text>
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
-                  <Text size="sm" c="dimmed">Usable Capacity (MT)</Text>
-                  <Text fw={500}>{warehouse.capacity.usable_storage_capacity_mt ?? '-'}</Text>
+                  <Text size="sm" c="dimmed">Usable volume (m³)</Text>
+                  <Text fw={500}>{warehouse.capacity.usable_volume_m3 ?? '—'}</Text>
+                </Grid.Col>
+                <Grid.Col span={{ base: 12, md: 6 }}>
+                  <Text size="sm" c="dimmed">Storage capacity (MT)</Text>
+                  <Text fw={500}>{warehouse.capacity.usable_storage_capacity_mt ?? '—'}</Text>
+                </Grid.Col>
+                <Grid.Col span={{ base: 12, md: 6 }}>
+                  <Text size="sm" c="dimmed">MT in use</Text>
+                  <Text fw={500} c="blue">{warehouse.capacity.used_capacity_mt ?? 0}</Text>
+                </Grid.Col>
+                <Grid.Col span={{ base: 12, md: 6 }}>
+                  <Text size="sm" c="dimmed">MT remaining</Text>
+                  <Text fw={500} c="green">{warehouse.capacity.remaining_capacity_mt ?? '—'}</Text>
+                </Grid.Col>
+                <Grid.Col span={{ base: 12, md: 6 }}>
+                  <Text size="sm" c="dimmed">Utilization</Text>
+                  <Text fw={500}>
+                    {warehouse.capacity.utilization_pct != null
+                      ? `${warehouse.capacity.utilization_pct}%`
+                      : '—'}
+                  </Text>
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
                   <Text size="sm" c="dimmed">Number of Stores</Text>
@@ -587,7 +658,7 @@ function WarehouseDetailPage() {
             {warehouseStores && warehouseStores.length > 0 ? (
               <Stack gap="sm">
                 {warehouseStores.map((store) => (
-                  <Card key={store.id} withBorder padding="sm" style={{ cursor: 'pointer' }} onClick={() => navigate(`/stores/${store.id}/edit`)}>
+                  <Card key={store.id} withBorder padding="sm" style={{ cursor: 'pointer' }} onClick={() => navigate(`/stores/${store.id}`)}>
                     <Group justify="space-between">
                       <div>
                         <Text fw={500}>{store.name}</Text>
@@ -731,10 +802,13 @@ function WarehouseDetailPage() {
       <Modal opened={capacityModalOpen} onClose={() => setCapacityModalOpen(false)} title="Edit Capacity" centered>
         <form onSubmit={capacityForm.onSubmit((values) => updateCapacityMutation.mutate(values))}>
           <Stack gap="md">
-            <NumberInput label="Total Area (sqm)" min={0} {...capacityForm.getInputProps('total_area_sqm')} />
-            <NumberInput label="Total Storage Capacity (MT)" min={0} {...capacityForm.getInputProps('total_storage_capacity_mt')} />
+            <Group grow>
+              <NumberInput label="Length (m)" min={0} decimalScale={2} {...capacityForm.getInputProps('length_m')} />
+              <NumberInput label="Width (m)" min={0} decimalScale={2} {...capacityForm.getInputProps('width_m')} />
+              <NumberInput label="Height (m)" min={0} decimalScale={2} {...capacityForm.getInputProps('height_m')} />
+            </Group>
             <div>
-              <Text size="sm" fw={500} mb={4}>Usable Capacity (calculated)</Text>
+              <Text size="sm" fw={500} mb={4}>Usable floor area %</Text>
               <Group gap="xs" align="center">
                 <ActionIcon
                   variant="default"
@@ -761,19 +835,19 @@ function WarehouseDetailPage() {
                 >
                   +
                 </ActionIcon>
-                <Text size="sm" c="dimmed">
-                  ={' '}
-                  {capacityForm.values.total_storage_capacity_mt !== ''
-                    ? (
-                        Number(capacityForm.values.total_storage_capacity_mt) *
-                        (capacityForm.values.usable_space_percentage / 100)
-                      ).toLocaleString(undefined, { maximumFractionDigits: 2 })
-                    : '—'}{' '}
-                  MT
-                </Text>
               </Group>
-              <Text size="xs" c="dimmed" mt={4}>Range: 70% – 80%</Text>
+              <Text size="xs" c="dimmed" mt={4}>Range: 70% – 80% of floor footprint</Text>
             </div>
+            {capacityPreview && (
+              <Card withBorder padding="sm" bg="gray.0">
+                <Text size="sm" fw={500} mb={4}>Calculated capacity (preview)</Text>
+                <Text size="sm">Footprint: {capacityPreview.footprintSqm.toLocaleString()} m²</Text>
+                <Text size="sm">Usable volume: {capacityPreview.usableVolumeM3.toLocaleString()} m³</Text>
+                <Text size="sm" fw={600} c="blue">
+                  Storage capacity: {capacityPreview.capacityMt.toLocaleString(undefined, { maximumFractionDigits: 2 })} MT
+                </Text>
+              </Card>
+            )}
             <TextInput
               label="Number of Stores"
               value={warehouseStores?.length?.toString() || '0'}

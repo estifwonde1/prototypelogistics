@@ -31,6 +31,7 @@ import { LoadingState } from '../../components/common/LoadingState';
 import { useAuthStore } from '../../store/authStore';
 import { normalizeRoleSlug } from '../../contracts/warehouse';
 import type { Stack as StackType } from '../../types/stack';
+import { mtFromVolume } from '../../utils/capacityCalculator';
 
 type ApiError = {
   error?: {
@@ -668,6 +669,61 @@ function StackFormPage() {
                     {...form.getInputProps('height')}
                   />
                 </Group>
+
+                {/* ── Capacity preview ── */}
+                {(() => {
+                  const selectedStore = stores.find(
+                    (s) => s.id.toString() === form.values.store_id
+                  );
+                  const l = form.values.length || 0;
+                  const w = form.values.width || 0;
+                  const h = form.values.height || 0;
+                  const stackVolume = l * w * h;
+                  const stackMaxMt = mtFromVolume(stackVolume);
+                  const storeRemaining = selectedStore?.remaining_capacity_mt;
+
+                  if (!selectedStore || stackVolume === 0) return null;
+
+                  return (
+                    <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md"
+                      style={{ background: '#f0f5ff', borderRadius: 12, padding: '12px 16px' }}
+                    >
+                      <div>
+                        <Text size="xs" fw={800} c="#5b6e8c" tt="uppercase" mb={2}>
+                          Volume
+                        </Text>
+                        <Text size="lg" fw={700} c="#1d3354">
+                          {stackVolume.toFixed(2)}{' '}
+                          <Text span size="xs" c="dimmed">m³</Text>
+                        </Text>
+                        <Text size="xs" c="dimmed">{l} × {w} × {h} m</Text>
+                      </div>
+
+                      <div>
+                        <Text size="xs" fw={800} c="#5b6e8c" tt="uppercase" mb={2}>
+                          Max capacity
+                        </Text>
+                        <Text size="lg" fw={700} c="#0d6e3f">
+                          {stackMaxMt.toFixed(2)}{' '}
+                          <Text span size="xs" c="dimmed">MT</Text>
+                        </Text>
+                        <Text size="xs" c="dimmed">System-calculated limit</Text>
+                      </div>
+
+                      <div>
+                        <Text size="xs" fw={800} c="#5b6e8c" tt="uppercase" mb={2}>
+                          Store remaining
+                        </Text>
+                        <Text size="lg" fw={700} c="#1955a5">
+                          {storeRemaining != null
+                            ? `${Number(storeRemaining).toFixed(2)} MT`
+                            : '—'}
+                        </Text>
+                        <Text size="xs" c="dimmed">Available in parent store</Text>
+                      </div>
+                    </SimpleGrid>
+                  );
+                })()}
               </Stack>
             </Card>
 

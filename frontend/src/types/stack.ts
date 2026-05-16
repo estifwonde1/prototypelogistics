@@ -6,7 +6,7 @@ export interface Stack {
   height: number;
   start_x: number;
   start_y: number;
-  commodity_id: number;
+  commodity_id: number | null;
   commodity_name?: string;
   commodity_code?: string;
   store_id: number;
@@ -20,4 +20,8 @@ export interface Stack {
   unit_name?: string;
   unit_abbreviation?: string;
   reference?: string;
+  max_capacity_mt?: number;
+  used_capacity_mt?: number;
+  remaining_capacity_mt?: number;
+  utilization_pct?: number;
 }

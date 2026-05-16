@@ -3,7 +3,9 @@ module Cats
     class GinsController < BaseController
       def index
         authorize Gin
-        render_resource(policy_scope(Gin).includes(:gin_items).order(created_at: :desc), each_serializer: GinSerializer)
+        scope = policy_scope(Gin).includes(:gin_items).order(created_at: :desc)
+        scope = scope.where(warehouse_id: params[:warehouse_id]) if params[:warehouse_id].present?
+        render_resource(scope, each_serializer: GinSerializer)
       end
 
       def show

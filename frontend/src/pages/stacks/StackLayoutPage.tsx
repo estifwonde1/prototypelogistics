@@ -48,6 +48,16 @@ import { LoadingState } from '../../components/common/LoadingState';
 import { useAuthStore } from '../../store/authStore';
 import { normalizeRoleSlug } from '../../contracts/warehouse';
 import type { Stack as StackType } from '../../types/stack';
+import {
+  mtFromVolume,
+  stackDimensionHints,
+  formatStackFootprintHint,
+  dimensionAxisStatus,
+  footprintStatus,
+  dimensionInputBorderStyle,
+  dimensionValidLabel,
+  type DimensionFieldStatus,
+} from '../../utils/capacityCalculator';
 
 /** Hub / receipt line unit for quantities on this RA (full name or abbreviation from API). */
 function raQuantityUnit(ra: ReceiptAuthorization): string {
@@ -72,6 +82,27 @@ function raLineToInputMultiplier(ra: ReceiptAuthorization): number {
   const line = Number(ra.authorized_quantity ?? 0);
   if (input > 0 && line > 0) return input / line;
   return 1;
+}
+
+/** True when the hub typed qty in a different unit than the receipt line (e.g. Kuntal vs MT). */
+function raUsesInputUnit(ra: ReceiptAuthorization): boolean {
+  const uLine = raQuantityUnit(ra);
+  const uDisp = raDisplayUnit(ra);
+  return Boolean(uDisp && uLine && uDisp !== uLine);
+}
+
+function raPrimaryUnit(ra: ReceiptAuthorization): string {
+  return raUsesInputUnit(ra) ? raDisplayUnit(ra) : raQuantityUnit(ra);
+}
+
+function convertRaLineToInput(value: number, ra: ReceiptAuthorization): number {
+  return raUsesInputUnit(ra) ? value * raLineToInputMultiplier(ra) : value;
+}
+
+function convertRaInputToLine(value: number, ra: ReceiptAuthorization): number {
+  if (!raUsesInputUnit(ra)) return value;
+  const m = raLineToInputMultiplier(ra);
+  return m > 0 ? value / m : value;
 }
 
 type StackFormValues = {
@@ -650,6 +681,70 @@ export default function StackLayoutPage() {
     .filter((stack) => stack.stack_status === 'reserved')
     .reduce((sum, stack) => sum + stack.length * stack.width, 0);
 
+  const editingStackId = form.values.id ?? selectedStack?.id;
+  const stackDimHints = useMemo(() => {
+    if (!selectedStore) return null;
+    return stackDimensionHints(
+      selectedStore.length,
+      selectedStore.width,
+      selectedStore.height,
+      storeStacks,
+      editingStackId
+    );
+  }, [selectedStore, storeStacks, editingStackId]);
+
+  const stackFootprint = (form.values.length || 0) * (form.values.width || 0);
+  const stackVolumeM3 = stackFootprint * (form.values.height || 0);
+  const stackMaxMt = mtFromVolume(stackVolumeM3);
+
+  const stackLengthStatus: DimensionFieldStatus = stackDimHints
+    ? dimensionAxisStatus(form.values.length, stackDimHints.maxLengthM)
+    : 'empty';
+  const stackWidthStatus: DimensionFieldStatus = stackDimHints
+    ? dimensionAxisStatus(form.values.width, stackDimHints.maxWidthM)
+    : 'empty';
+  const stackHeightStatus: DimensionFieldStatus = stackDimHints
+    ? dimensionAxisStatus(form.values.height, stackDimHints.maxHeightM)
+    : 'empty';
+  const stackFloorStatus: DimensionFieldStatus = stackDimHints
+    ? footprintStatus(stackFootprint, stackDimHints.remainingFootprintSqm)
+    : 'empty';
+
+  const stackDimensionsValid =
+    stackLengthStatus === 'valid' &&
+    stackWidthStatus === 'valid' &&
+    stackHeightStatus === 'valid' &&
+    stackFloorStatus === 'valid';
+
+  const siblingStackMt = storeStacks
+    .filter((s) => s.id !== editingStackId)
+    .reduce((sum, s) => sum + Number(s.max_capacity_mt ?? mtFromVolume(s.length * s.width * s.height)), 0);
+  const storeAllocatedMt = Number(selectedStore?.allocated_capacity_mt) || 0;
+  const storeMtBudgetRemaining =
+    storeAllocatedMt > 0 ? Math.max(storeAllocatedMt - siblingStackMt, 0) : null;
+  const stackMtExceedsStore =
+    storeAllocatedMt > 0 &&
+    stackMaxMt > 0 &&
+    siblingStackMt + stackMaxMt > storeAllocatedMt + 1e-6;
+
+  const stackConfigCanSave =
+    !selectedStore || (stackDimensionsValid && !stackMtExceedsStore);
+
+  const stackLengthError =
+    stackLengthStatus === 'invalid'
+      ? `Length cannot exceed ${stackDimHints?.maxLengthM} m (store limit)`
+      : stackFloorStatus === 'invalid' && stackFootprint > 0
+        ? `Footprint exceeds ${stackDimHints?.remainingFootprintSqm.toLocaleString()} m² left in store`
+        : undefined;
+  const stackWidthError =
+    stackWidthStatus === 'invalid'
+      ? `Width cannot exceed ${stackDimHints?.maxWidthM} m (store limit)`
+      : undefined;
+  const stackHeightError =
+    stackHeightStatus === 'invalid'
+      ? `Height cannot exceed ${stackDimHints?.maxHeightM} m (store ceiling)`
+      : undefined;
+
   const boardScale = useMemo(() => {
     if (!selectedStore) return 1;
     const lengthScale = 860 / Math.max(selectedStore.length || 1, 1);
@@ -853,6 +948,24 @@ export default function StackLayoutPage() {
   const handleSubmit = (values: StackFormValues) => {
     if (!selectedStore) {
       upsertMutation.mutate(values);
+      return;
+    }
+
+    if (!stackDimensionsValid) {
+      notifications.show({
+        title: 'Dimensions out of range',
+        message: 'Stack length, width, and height must fit inside the store.',
+        color: 'red',
+      });
+      return;
+    }
+
+    if (stackMtExceedsStore) {
+      notifications.show({
+        title: 'Capacity exceeded',
+        message: `This stack would use ${stackMaxMt.toFixed(2)} MT but only ${storeMtBudgetRemaining?.toFixed(2) ?? '0'} MT remains in the store budget.`,
+        color: 'red',
+      });
       return;
     }
 
@@ -1063,28 +1176,28 @@ export default function StackLayoutPage() {
             if (!selectedRA) return null;
             const uLine = raQuantityUnit(selectedRA);
             const uDisp = raDisplayUnit(selectedRA);
-            const mult = raLineToInputMultiplier(selectedRA);
+            const primaryUnit = raPrimaryUnit(selectedRA);
+            const useInputUnit = raUsesInputUnit(selectedRA);
             const totalToPlaceLine = Number(selectedRA.my_inspection?.total_received ?? selectedRA.authorized_quantity);
             const totalPlacedLine = Object.values(placements).reduce((s, q) => s + q, 0);
             const remainingLine = totalToPlaceLine - totalPlacedLine;
             const placedPct = totalToPlaceLine > 0 ? Math.min(100, (totalPlacedLine / totalToPlaceLine) * 100) : 0;
-            const lineToDispQty = (lineQty: number) => Number((lineQty * mult).toFixed(6));
-            const fmtDisp = (lineQty: number) =>
-              lineToDispQty(lineQty).toLocaleString(undefined, { maximumFractionDigits: 3 });
+            const fmtPrimary = (lineQty: number) =>
+              convertRaLineToInput(lineQty, selectedRA).toLocaleString(undefined, { maximumFractionDigits: 3 });
             return (
               <Card radius="xl" padding="lg" style={{ background: '#f0f7ff', border: '1px solid #bdd4f5' }}>
                 <Stack gap="sm">
                   <Group justify="space-between">
                     <Text size="sm" fw={700} c="#1d3354">Placement Progress</Text>
                     <Badge color={remainingLine === 0 ? 'green' : remainingLine < 0 ? 'red' : 'blue'} variant="light">
-                      {remainingLine === 0 ? 'All placed ✓' : remainingLine < 0 ? `Over by ${fmtDisp(Math.abs(remainingLine))}${uDisp ? ` ${uDisp}` : ''}` : `${fmtDisp(remainingLine)}${uDisp ? ` ${uDisp}` : ''} remaining`}
+                      {remainingLine === 0 ? 'All placed ✓' : remainingLine < 0 ? `Over by ${fmtPrimary(Math.abs(remainingLine))} ${primaryUnit}` : `${fmtPrimary(remainingLine)} ${primaryUnit} remaining`}
                     </Badge>
                   </Group>
                   <Progress value={placedPct} color={remainingLine < 0 ? 'red' : remainingLine === 0 ? 'green' : 'blue'} size="md" radius="xl" />
                   <Group gap="xl">
-                    <Text size="xs" c="dimmed">To place (received): <strong>{fmtDisp(totalToPlaceLine)}{uDisp ? ` ${uDisp}` : ''}</strong>{uDisp !== uLine && uLine ? <span> ({totalToPlaceLine.toLocaleString()} {uLine})</span> : null}</Text>
-                    <Text size="xs" c="dimmed">Placed: <strong>{fmtDisp(totalPlacedLine)}{uDisp ? ` ${uDisp}` : ''}</strong>{uDisp !== uLine && uLine ? <span> ({totalPlacedLine.toLocaleString()} {uLine})</span> : null}</Text>
-                    <Text size="xs" c="dimmed">Remaining: <strong>{fmtDisp(remainingLine)}{uDisp ? ` ${uDisp}` : ''}</strong>{uDisp !== uLine && uLine ? <span> ({remainingLine.toLocaleString()} {uLine})</span> : null}</Text>
+                    <Text size="xs" c="dimmed">To place (received): <strong>{fmtPrimary(totalToPlaceLine)} {primaryUnit}</strong>{useInputUnit && uLine ? <span> ({totalToPlaceLine.toLocaleString()} {uLine})</span> : null}</Text>
+                    <Text size="xs" c="dimmed">Placed: <strong>{fmtPrimary(totalPlacedLine)} {primaryUnit}</strong>{useInputUnit && uLine ? <span> ({totalPlacedLine.toLocaleString()} {uLine})</span> : null}</Text>
+                    <Text size="xs" c="dimmed">Remaining: <strong>{fmtPrimary(remainingLine)} {primaryUnit}</strong>{useInputUnit && uLine ? <span> ({remainingLine.toLocaleString()} {uLine})</span> : null}</Text>
                   </Group>
                   {Object.entries(placements).filter(([, q]) => q > 0).length > 0 ? (
                     <Stack gap={4}>
@@ -1095,7 +1208,7 @@ export default function StackLayoutPage() {
                         return (
                           <Group key={stackId} gap="xs">
                             <Text size="xs" style={{ fontFamily: 'monospace' }}>{stack?.code || `Stack #${stackId}`}</Text>
-                            <Text size="xs" c="blue" fw={600}>{fmtDisp(qtyLine)}{uDisp ? ` ${uDisp}` : ''}{uDisp !== uLine && uLine ? <span> ({qtyLine.toLocaleString()} {uLine})</span> : null}</Text>
+                            <Text size="xs" c="blue" fw={600}>{fmtPrimary(qtyLine)} {primaryUnit}{useInputUnit && uLine ? <span> ({qtyLine.toLocaleString()} {uLine})</span> : null}</Text>
                             <Button size="xs" variant="subtle" color="red" style={{ padding: '0 4px', height: 18 }} onClick={() => setPlacements(p => { const n = {...p}; delete n[stackId]; return n; })}>×</Button>
                           </Group>
                         );
@@ -1554,29 +1667,113 @@ export default function StackLayoutPage() {
               }}
             />
 
+            {selectedStore && stackDimHints && (
+              <Alert color="gray" variant="light" title="Size limits for this store">
+                <Text size="sm">
+                  Store: {stackDimHints.storeLengthM} × {stackDimHints.storeWidthM} m floor,{' '}
+                  {stackDimHints.storeHeightM} m high.
+                </Text>
+                <Text size="sm" mt={4}>
+                  {formatStackFootprintHint(
+                    stackDimHints.remainingFootprintSqm,
+                    stackDimHints.maxLengthM,
+                    stackDimHints.maxWidthM
+                  )}
+                </Text>
+              </Alert>
+            )}
+
             <Group grow align="flex-start">
               <NumberInput
                 label="Length (m)"
                 decimalScale={2}
                 min={0}
-                styles={baseInputStyles}
+                placeholder={stackDimHints ? `Max ${stackDimHints.maxLengthM} m` : undefined}
+                description={stackLengthError ? undefined : dimensionValidLabel(stackLengthStatus)}
+                error={stackLengthError}
+                styles={{
+                  ...baseInputStyles,
+                  ...dimensionInputBorderStyle(stackLengthStatus),
+                }}
                 {...form.getInputProps('length')}
               />
               <NumberInput
                 label="Width (m)"
                 decimalScale={2}
                 min={0}
-                styles={baseInputStyles}
+                placeholder={stackDimHints ? `Max ${stackDimHints.maxWidthM} m` : undefined}
+                description={stackWidthError ? undefined : dimensionValidLabel(stackWidthStatus)}
+                error={stackWidthError}
+                styles={{
+                  ...baseInputStyles,
+                  ...dimensionInputBorderStyle(stackWidthStatus),
+                }}
                 {...form.getInputProps('width')}
               />
               <NumberInput
                 label="Height (m)"
                 decimalScale={2}
                 min={0}
-                styles={baseInputStyles}
+                placeholder={stackDimHints ? `Max ${stackDimHints.maxHeightM} m` : undefined}
+                description={stackHeightError ? undefined : dimensionValidLabel(stackHeightStatus)}
+                error={stackHeightError}
+                styles={{
+                  ...baseInputStyles,
+                  ...dimensionInputBorderStyle(stackHeightStatus),
+                }}
                 {...form.getInputProps('height')}
               />
             </Group>
+
+            {selectedStore && stackVolumeM3 > 0 && (
+              <SimpleGrid
+                cols={{ base: 1, sm: 3 }}
+                spacing="md"
+                style={{ background: '#f0f5ff', borderRadius: 12, padding: '12px 16px' }}
+              >
+                <div>
+                  <Text size="xs" fw={800} c="#5b6e8c" tt="uppercase" mb={2}>
+                    Volume
+                  </Text>
+                  <Text size="lg" fw={700} c="#1d3354">
+                    {stackVolumeM3.toFixed(2)}{' '}
+                    <Text span size="xs" c="dimmed">
+                      m³
+                    </Text>
+                  </Text>
+                </div>
+                <div>
+                  <Text size="xs" fw={800} c="#5b6e8c" tt="uppercase" mb={2}>
+                    Max capacity
+                  </Text>
+                  <Text size="lg" fw={700} c={stackMtExceedsStore ? 'red' : '#0d6e3f'}>
+                    {stackMaxMt.toFixed(2)}{' '}
+                    <Text span size="xs" c="dimmed">
+                      MT
+                    </Text>
+                  </Text>
+                  <Text size="xs" c="dimmed">System-calculated limit</Text>
+                </div>
+                <div>
+                  <Text size="xs" fw={800} c="#5b6e8c" tt="uppercase" mb={2}>
+                    Store MT budget
+                  </Text>
+                  <Text size="lg" fw={700} c="#1955a5">
+                    {storeMtBudgetRemaining != null
+                      ? `${storeMtBudgetRemaining.toFixed(2)} MT`
+                      : '—'}
+                  </Text>
+                  <Text size="xs" c="dimmed">Remaining for all stacks</Text>
+                </div>
+              </SimpleGrid>
+            )}
+
+            {stackMtExceedsStore && (
+              <Text size="sm" c="red">
+                Stack capacity ({stackMaxMt.toFixed(2)} MT) exceeds store remaining budget (
+                {storeMtBudgetRemaining?.toFixed(2)} MT).
+              </Text>
+            )}
 
             <Group grow align="flex-start">
               <NumberInput
@@ -1602,6 +1799,7 @@ export default function StackLayoutPage() {
                 size="md"
                 leftSection={<IconDeviceFloppy size={18} />}
                 loading={upsertMutation.isPending}
+                disabled={!stackConfigCanSave}
               >
                 Save Configuration
               </Button>
@@ -1627,16 +1825,16 @@ export default function StackLayoutPage() {
         const selectedRA = activeRAsForStacking.find((ra) => String(ra.id) === selectedRAId);
         if (!selectedRA) return null;
         const uLine = raQuantityUnit(selectedRA);
-        const uDisp = raDisplayUnit(selectedRA);
-        const mult = raLineToInputMultiplier(selectedRA);
-        const totalToPlace = Number(selectedRA.my_inspection?.total_received ?? selectedRA.authorized_quantity);
-        const alreadyPlaced = Object.entries(placements)
+        const primaryUnit = raPrimaryUnit(selectedRA);
+        const useInputUnit = raUsesInputUnit(selectedRA);
+        const totalToPlaceLine = Number(selectedRA.my_inspection?.total_received ?? selectedRA.authorized_quantity);
+        const alreadyPlacedLine = Object.entries(placements)
           .filter(([sid]) => sid !== String(placementModalStack.id))
           .reduce((s, [, q]) => s + q, 0);
-        const maxForThisStack = Math.max(0, totalToPlace - alreadyPlaced);
-        const maxDisp = Number((maxForThisStack * mult).toFixed(6));
-        const currentQty = placements[String(placementModalStack.id)] || 0;
-        const currentDisp = Number((Number(currentQty) * mult).toFixed(6));
+        const maxForThisStackLine = Math.max(0, totalToPlaceLine - alreadyPlacedLine);
+        const maxForThisStackPrimary = convertRaLineToInput(maxForThisStackLine, selectedRA);
+        const currentQtyLine = placements[String(placementModalStack.id)] || 0;
+        const currentQtyPrimary = convertRaLineToInput(Number(currentQtyLine), selectedRA);
 
         // Check commodity compatibility
         const stackHasGoods = placementModalStack.quantity > 0 && placementModalStack.commodity_id;
@@ -1676,26 +1874,34 @@ export default function StackLayoutPage() {
               {!incompatible && (
                 <>
                   <NumberInput
-                    label={`Quantity to place${uLine ? ` (${uLine})` : ''}`}
-                    description={`Maximum for this stack: ${maxForThisStack.toLocaleString()}${uLine ? ` ${uLine}` : ''}${uDisp && uDisp !== uLine ? ` (≈ ${maxDisp.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${uDisp})` : ''}. Enter amounts in ${uLine || 'the receipt line unit'} — same as received quantity on file.`}
-                    value={currentQty || ''}
+                    label={`Quantity to place${primaryUnit ? ` (${primaryUnit})` : ''}`}
+                    description={
+                      useInputUnit && uLine
+                        ? `Maximum for this stack: ${maxForThisStackPrimary.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${primaryUnit} (${maxForThisStackLine.toLocaleString()} ${uLine}). Enter amounts in ${primaryUnit} — same unit you used when receiving goods.`
+                        : `Maximum for this stack: ${maxForThisStackLine.toLocaleString()}${uLine ? ` ${uLine}` : ''}. Enter amounts in the same unit as received on file.`
+                    }
+                    value={currentQtyPrimary || ''}
                     onChange={(val) => {
-                      const raw = Number(val) || 0;
-                      const qty = Math.min(raw, maxForThisStack);
-                      setPlacements(p => ({ ...p, [String(placementModalStack.id)]: qty }));
+                      const rawPrimary = Number(val) || 0;
+                      const cappedPrimary = Math.min(rawPrimary, maxForThisStackPrimary);
+                      const lineQty = convertRaInputToLine(cappedPrimary, selectedRA);
+                      setPlacements((p) => ({
+                        ...p,
+                        [String(placementModalStack.id)]: lineQty,
+                      }));
                     }}
                     min={0}
-                    max={maxForThisStack}
+                    max={maxForThisStackPrimary}
                     clampBehavior="strict"
                     decimalScale={3}
-                    disabled={maxForThisStack <= 0}
+                    disabled={maxForThisStackLine <= 0}
                   />
-                  {Number(currentQty) > 0 && uDisp && uDisp !== uLine ? (
+                  {useInputUnit && Number(currentQtyLine) > 0 && uLine ? (
                     <Text size="xs" c="dimmed">
-                      ≈ {currentDisp.toLocaleString(undefined, { maximumFractionDigits: 3 })} {uDisp}
+                      = {Number(currentQtyLine).toLocaleString(undefined, { maximumFractionDigits: 3 })} {uLine} (system record)
                     </Text>
                   ) : null}
-                  {maxForThisStack <= 0 && (
+                  {maxForThisStackLine <= 0 && (
                     <Text size="xs" c="orange">All goods have already been assigned to other stacks.</Text>
                   )}
                 </>

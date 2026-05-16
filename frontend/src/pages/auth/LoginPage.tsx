@@ -133,7 +133,7 @@ function LoginPage() {
   return (
     <Container size={420} my={100}>
       <Title ta="center" mb="md">
-        CATS Warehouse Management
+        DRiMS Warehouse Management
       </Title>
       <Title order={3} ta="center" mb="xl" c="dimmed">
         Sign in to your account

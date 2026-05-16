@@ -54,10 +54,16 @@ module Cats
         UserAssignment.where(user_id: user&.id, role_name: "Receipt Authorizer").pluck(:warehouse_id).compact
       end
 
+      def standalone_warehouse?(warehouse_id)
+        Warehouse.where(id: warehouse_id, hub_id: nil).exists?
+      end
+
       def can_create_receipt_authorization_for_warehouse?(warehouse_id)
         return true if admin?
         return true if hub_manager? && Warehouse.where(hub_id: assigned_hub_ids).exists?(id: warehouse_id)
-        return true if warehouse_manager? && assigned_warehouse_ids.include?(warehouse_id.to_i)
+        return true if warehouse_manager? &&
+          assigned_warehouse_ids.include?(warehouse_id.to_i) &&
+          standalone_warehouse?(warehouse_id)
         return true if receipt_authorizer? && (
           assigned_receipt_authorizer_warehouse_ids.include?(warehouse_id.to_i) ||
           Warehouse.where(hub_id: assigned_receipt_authorizer_hub_ids).exists?(id: warehouse_id)
@@ -146,6 +152,17 @@ module Cats
         return Stack.select(:id) if admin?
 
         Stack.where(store_id: accessible_store_ids).select(:id)
+      end
+
+      def can_access_store?(store_id)
+        return true if admin?
+
+        ids = accessible_store_ids
+        if ids.is_a?(ActiveRecord::Relation)
+          ids.where(id: store_id).exists?
+        else
+          Array(ids).map(&:to_i).include?(store_id.to_i)
+        end
       end
     end
   end

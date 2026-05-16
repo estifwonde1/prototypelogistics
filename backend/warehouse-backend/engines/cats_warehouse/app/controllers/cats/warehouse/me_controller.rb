@@ -23,7 +23,11 @@ module Cats
           id: a.id,
           role_name: a.role_name,
           hub: a.hub && { id: a.hub.id, name: a.hub.name },
-          warehouse: effective_warehouse && { id: effective_warehouse.id, name: effective_warehouse.name },
+          warehouse: effective_warehouse && {
+            id: effective_warehouse.id,
+            name: effective_warehouse.name,
+            hub_id: effective_warehouse.hub_id
+          },
           store: a.store && { id: a.store.id, name: a.store.name },
           location: a.location && { id: a.location.id, name: a.location.name, location_type: a.location.location_type }
         }

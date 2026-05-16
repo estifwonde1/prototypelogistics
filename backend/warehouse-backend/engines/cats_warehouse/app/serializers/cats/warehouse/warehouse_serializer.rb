@@ -1,8 +1,9 @@
 module Cats
   module Warehouse
     class WarehouseSerializer < ApplicationSerializer
-      attributes :id, :code, :name, :warehouse_type, :status, :description, :location_id, :location_name,
-                 :subcity_name, :woreda_name, :kebele_name, :kebele, :hub_id, :hub_name, :geo_id, :managed_under, :ownership_type,
+      attributes :id, :code, :name, :warehouse_type, :status, :operational, :operational_blockers,
+                 :description, :location_id, :location_name,
+                 :region_name, :subcity_name, :woreda_name, :kebele_name, :kebele, :hub_id, :hub_name, :geo_id, :managed_under, :ownership_type,
                  :rental_agreement_document, :created_at, :updated_at, :assigned_manager
 
       has_one :warehouse_capacity, serializer: WarehouseCapacitySerializer
@@ -10,6 +11,14 @@ module Cats
       has_one :warehouse_infra, serializer: WarehouseInfraSerializer
       has_one :warehouse_contacts, serializer: WarehouseContactsSerializer
       has_one :geo, serializer: GeoSerializer
+
+      def operational
+        object.operational?
+      end
+
+      def operational_blockers
+        object.operational_blockers
+      end
 
       def rental_agreement_document
         return unless object.rental_agreement_document.attached?
@@ -26,6 +35,10 @@ module Cats
 
       def location_name
         object.location&.name
+      end
+
+      def region_name
+        region_ancestor&.name
       end
 
       def subcity_name
@@ -66,6 +79,10 @@ module Cats
 
       def zone_ancestor
         location_ancestors.find { |location| location_type_matches?(location, :ZONE, "zone") }
+      end
+
+      def region_ancestor
+        location_ancestors.find { |location| location_type_matches?(location, :REGION, "region") }
       end
 
       def woreda_ancestor

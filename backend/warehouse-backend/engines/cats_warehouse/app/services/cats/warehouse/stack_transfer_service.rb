@@ -19,18 +19,33 @@ module Cats
 
       private
 
+      # Empty stacks often have no commodity/unit on the stack row until first putaway or transfer-in.
+      # Align destination with source before validating so storekeepers can move stock into RESERVED/empty bays.
+      def prepare_destination_to_receive_goods!
+        return unless source_stack.commodity_id.present? && source_stack.unit_id.present?
+
+        d = destination_stack
+        return if d.quantity.to_f.positive?
+
+        d.commodity_id = source_stack.commodity_id
+        d.unit_id = source_stack.unit_id
+        d.base_unit_id = source_stack.base_unit_id if d.respond_to?(:base_unit_id=) && source_stack.base_unit_id.present?
+      end
+
       def validate!
         # Validate same store
         unless source_stack.store_id == destination_stack.store_id
           raise ArgumentError, "Source and destination stacks must be in the same store"
         end
 
-        # Validate same commodity
+        prepare_destination_to_receive_goods!
+
+        # Validate same commodity (after adopting an empty destination)
         unless source_stack.commodity_id == destination_stack.commodity_id
           raise ArgumentError, "Source and destination stacks must have the same commodity"
         end
 
-        # Validate same unit
+        # Validate same unit (after adopting an empty destination)
         unless source_stack.unit_id == destination_stack.unit_id
           raise ArgumentError, "Source and destination stacks must have the same unit"
         end
@@ -70,6 +85,9 @@ module Cats
           # Update stock balances
           update_stock_balance(source_stack, -quantity)
           update_stock_balance(destination_stack, quantity)
+
+          # Recalculate store space after the transfer
+          StoreOccupancyUpdater.call(store_id: source_stack.store_id)
 
           # Create workflow event for audit trail
           create_workflow_event(transaction)

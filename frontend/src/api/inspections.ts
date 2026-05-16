@@ -3,8 +3,8 @@ import type { Inspection, InspectionItem } from '../types/inspection';
 import type { ApiResponse } from '../types/common';
 import { toCreateInspectionRequest, type CreateInspectionRequest } from '../contracts/documents';
 
-export const getInspections = async (): Promise<Inspection[]> => {
-  const response = await apiClient.get<ApiResponse<Inspection[]>>('/inspections');
+export const getInspections = async (params?: { warehouse_id?: number }): Promise<Inspection[]> => {
+  const response = await apiClient.get<ApiResponse<Inspection[]>>('/inspections', { params });
   return response.data.data;
 };
 

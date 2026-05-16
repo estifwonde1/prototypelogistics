@@ -413,21 +413,15 @@ function ReceiptWarehouseAssignmentModal({
                 ? Math.max(0, (preview?.lineRemainingBeforeRow ?? line.remaining) - validation.convertedQuantity)
                 : null;
             const warehouseOptionsForRow = warehouses.map((warehouse) => {
-              const pendingBeforeThisRow =
-                row.warehouse_id != null && warehouse.id === row.warehouse_id
-                  ? preview?.warehouseSpaceBeforeRow
-                  : Number.isFinite(warehouseSpaceByWarehouseId[warehouse.id])
-                    ? warehouseSpaceByWarehouseId[warehouse.id]
-                    : null;
-              const spaceLabel =
-                pendingBeforeThisRow != null
-                  ? `${pendingBeforeThisRow.toLocaleString()} available`
-                  : warehouse.capacity?.usable_storage_capacity_mt != null
-                    ? `${Number(warehouse.capacity.usable_storage_capacity_mt).toLocaleString()} usable cap.`
-                    : 'Available space unknown';
+              const established = warehouse.capacity?.capacity_established === true;
+              const remainingMt = Number(warehouse.capacity?.remaining_capacity_mt ?? 0);
+              const spaceLabel = !established
+                ? 'capacity not established'
+                : `${remainingMt.toLocaleString(undefined, { maximumFractionDigits: 2 })} MT remaining`;
               return {
                 value: String(warehouse.id),
                 label: `${warehouse.name} - ${spaceLabel}`,
+                disabled: !established,
               };
             });
             const lineOptionsForRow = lineMeta.map((lineOption) => {

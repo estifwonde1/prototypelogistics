@@ -6,7 +6,7 @@ export interface OfficerAssignment {
   id: number;
   role_name: string;
   hub?: { id: number; name: string } | null;
-  warehouse?: { id: number; name: string } | null;
+  warehouse?: { id: number; name: string; hub_id?: number | null } | null;
   store?: { id: number; name: string } | null;
   location?: { id: number; name: string; location_type: string } | null;
 }
