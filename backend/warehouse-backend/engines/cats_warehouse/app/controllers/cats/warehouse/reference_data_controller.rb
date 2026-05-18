@@ -310,11 +310,20 @@ module Cats
         stored_vpm = commodity.volume_per_metric_ton.to_f
         volume_per_metric_ton = stored_vpm.positive? ? stored_vpm : CommodityDensityResolver.default_density
 
+        allocated_quantity = Cats::Warehouse::ReceiptOrderLine
+          .where(commodity_id: commodity.id)
+          .sum(:quantity)
+          .to_f
+        batch_quantity = commodity.quantity.to_f + allocated_quantity
+        remaining_quantity = commodity.quantity.to_f
+
         {
           id: commodity.id,
           name: commodity_name || "Commodity ##{commodity.id}",
           batch_no: commodity[:batch_no],
-          quantity: commodity.quantity,
+          quantity: batch_quantity,
+          allocated_quantity: allocated_quantity,
+          remaining_quantity: remaining_quantity,
           unit_id: commodity.unit_of_measure_id,
           unit_name: commodity.unit_of_measure&.name,
           unit_abbreviation: commodity.unit_of_measure&.abbreviation,

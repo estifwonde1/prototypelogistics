@@ -6,7 +6,10 @@ module Cats
 
         # GET /admin/roles
         def index
-          roles = Cats::Core::Role.where(application_module_id: application_module.id).order(:name)
+          roles = Cats::Core::Role
+            .where(application_module_id: application_module.id)
+            .where.not(name: "Officer")
+            .order(:name)
           render_success(roles: roles.map { |r| role_payload(r) })
         end
 

@@ -1607,7 +1607,6 @@ function ReceiptOrderDetailPage() {
                       </Badge>
                     )}
                   </Tabs.Tab>
-                  <Tabs.Tab value="space-reservations">Space Reservations</Tabs.Tab>
                 </>
               ) : null}
               <Tabs.Tab value="workflow">Workflow Timeline</Tabs.Tab>

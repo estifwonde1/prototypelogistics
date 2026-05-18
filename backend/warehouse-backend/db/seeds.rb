@@ -44,7 +44,6 @@ roles = {
   warehouse_manager: find_or_create_with(Cats::Core::Role, { name: "Warehouse Manager", application_module: application_module }),
   store_keeper: find_or_create_with(Cats::Core::Role, { name: "Storekeeper", application_module: application_module }),
   receipt_authorizer: find_or_create_with(Cats::Core::Role, { name: "Receipt Authorizer", application_module: application_module }),
-  officer: find_or_create_with(Cats::Core::Role, { name: "Officer", application_module: application_module }),
   federal_officer: find_or_create_with(Cats::Core::Role, { name: "Federal Officer", application_module: application_module }),
   regional_officer: find_or_create_with(Cats::Core::Role, { name: "Regional Officer", application_module: application_module }),
   zonal_officer: find_or_create_with(Cats::Core::Role, { name: "Zonal Officer", application_module: application_module }),
@@ -170,19 +169,6 @@ store_keeper_user_2 = find_or_create_with(
   }
 )
 add_role(store_keeper_user_2, "Storekeeper")
-
-officer_user = find_or_create_with(
-  Cats::Core::User,
-  { email: "officer@example.com" },
-  {
-    first_name: "Abebe",
-    last_name: "Bikila",
-    password: "password123",
-    phone_number: "0911111119",
-    application_module: application_module
-  }
-)
-add_role(officer_user, "Officer")
 
 federal_officer_user = find_or_create_with(
   Cats::Core::User,
@@ -844,7 +830,19 @@ end
 puts "Removing legacy seed stacks (user-created stacks are kept)..."
 stores.each do |store|
   (1..3).each do |n|
-    Cats::Warehouse::Stack.where(store: store, code: "#{store.code}-S#{n}").find_each(&:destroy)
+    Cats::Warehouse::Stack.where(store: store, code: "#{store.code}-S#{n}").find_each do |stack|
+      sid = stack.id
+      # Clear all FK-constrained dependents before destroying the stack
+      ActiveRecord::Base.connection.execute("DELETE FROM cats_warehouse_gin_items WHERE stack_id = #{sid}")
+      ActiveRecord::Base.connection.execute("DELETE FROM cats_warehouse_grn_items WHERE stack_id = #{sid}")
+      ActiveRecord::Base.connection.execute("DELETE FROM cats_warehouse_stock_balances WHERE stack_id = #{sid}")
+      ActiveRecord::Base.connection.execute("DELETE FROM cats_warehouse_inventory_adjustments WHERE stack_id = #{sid}")
+      ActiveRecord::Base.connection.execute("DELETE FROM cats_warehouse_stack_reservations WHERE stack_id = #{sid}")
+      ActiveRecord::Base.connection.execute("DELETE FROM cats_warehouse_stack_transactions WHERE destination_id = #{sid} OR source_id = #{sid}")
+      ActiveRecord::Base.connection.execute("DELETE FROM cats_warehouse_stock_reservations WHERE stack_id = #{sid}")
+      ActiveRecord::Base.connection.execute("DELETE FROM cats_warehouse_transfer_requests WHERE source_stack_id = #{sid} OR destination_stack_id = #{sid}")
+      stack.destroy
+    end
   end
 end
 
@@ -871,13 +869,16 @@ grn_items = commodities.first(3).map.with_index do |commodity, idx|
       unit: commodity.unit_of_measure,
       quality_status: "Good",
       store: stores.first,
-      stack: stacks.first,
       line_reference_no: "SEED-GRN-ADD-001-#{idx}-#{commodity.id}"
     }
   )
 end
 
-Cats::Warehouse::GrnConfirmer.new(grn: grn, approved_by: warehouse_manager_user).call if grn.status != "confirmed"
+if grn.status != "confirmed"
+  # Clear any stale stack_id from previous seed runs to avoid capacity validation errors
+  grn.grn_items.where.not(stack_id: nil).update_all(stack_id: nil)
+  Cats::Warehouse::GrnConfirmer.new(grn: grn, approved_by: warehouse_manager_user).call
+end
 
 gin = find_or_create_with(
   Cats::Warehouse::Gin,
@@ -899,13 +900,15 @@ commodities.first(2).each_with_index do |commodity, idx|
     {
       quantity: 30 + idx * 10,
       unit: commodity.unit_of_measure,
-      store: stores.first,
-      stack: stacks.first
+      store: stores.first
     }
   )
 end
 
-Cats::Warehouse::GinConfirmer.new(gin: gin, approved_by: warehouse_manager_user).call if gin.status != "confirmed"
+if gin.status != "confirmed"
+  gin.gin_items.where.not(stack_id: nil).update_all(stack_id: nil)
+  Cats::Warehouse::GinConfirmer.new(gin: gin, approved_by: warehouse_manager_user).call
+end
 
 waybill = find_or_create_with(
   Cats::Warehouse::Waybill,
@@ -995,13 +998,7 @@ find_or_create_with(
   { user: store_keeper_user_2, store: stores.second },
   { role_name: "Storekeeper" }
 )
-warehouses.each do |warehouse|
-  find_or_create_with(
-    Cats::Warehouse::UserAssignment,
-    { user: officer_user, warehouse: warehouse },
-    { role_name: "Officer" }
-  )
-end
+
 
 ui_seed = Rails.root.join("db", "seeds", "ui.rb")
 load(ui_seed) if File.exist?(ui_seed)

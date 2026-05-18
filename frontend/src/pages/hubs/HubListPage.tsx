@@ -97,7 +97,7 @@ function HubListPage() {
           </Text>
         </div>
         {canCreate && (
-          <Button leftSection={<IconPlus size={16} />} onClick={() => navigate('/hubs/new')}>
+          <Button leftSection={<IconPlus size={16} />} onClick={() => navigate('/admin/setup/locations')}>
             Create Hub
           </Button>
         )}

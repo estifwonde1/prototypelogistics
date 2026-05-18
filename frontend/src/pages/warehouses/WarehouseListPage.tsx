@@ -134,7 +134,7 @@ function WarehouseListPage() {
         {canCreate && (
           <Button
             leftSection={<IconPlus size={16} />}
-            onClick={() => navigate('/warehouses/new')}
+            onClick={() => navigate('/admin/setup/locations')}
           >
             Create Warehouse
           </Button>
