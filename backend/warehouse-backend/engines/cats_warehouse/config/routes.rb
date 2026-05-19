@@ -1,7 +1,9 @@
 Cats::Warehouse::Engine.routes.draw do
   scope :v1 do
     post "auth/login", to: "auth#login"
-    get "me/assignments", to: "me#assignments"
+    get  "me/assignments",        to: "me#assignments"
+    post "me/switch_role",        to: "me#switch_role"
+    get  "me/storekeeper_stores", to: "me#storekeeper_stores"
 
     get "notifications", to: "notifications#index"
     get "notifications/unread_count", to: "notifications#unread_count"

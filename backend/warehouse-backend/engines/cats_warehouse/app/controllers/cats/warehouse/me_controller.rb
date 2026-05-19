@@ -12,7 +12,79 @@ module Cats
         render_success(assignments: scope.map { |a| assignment_payload(a) })
       end
 
+      # POST /v1/me/switch_role
+      # Records an audit event when the user switches their active role/workspace.
+      # The actual role state lives on the frontend; this endpoint only writes the audit log.
+      def switch_role
+        assignment_id = params.dig(:payload, :assignment_id)
+        from_role     = params.dig(:payload, :from_role).to_s.strip
+        to_role       = params.dig(:payload, :to_role).to_s.strip
+        facility_name = params.dig(:payload, :facility_name).to_s.strip
+
+        if assignment_id.blank? || to_role.blank?
+          return render_error("assignment_id and to_role are required", status: :unprocessable_entity)
+        end
+
+        # Verify the target assignment actually belongs to this user
+        assignment = UserAssignment.find_by(id: assignment_id, user_id: current_user.id)
+        unless assignment
+          return render_error("Assignment not found or does not belong to you", status: :not_found)
+        end
+
+        WorkflowEventRecorder.record!(
+          entity:      current_user,
+          event_type:  "role_switch",
+          actor:       current_user,
+          from_status: from_role.presence,
+          to_status:   to_role,
+          payload:     {
+            assignment_id: assignment.id,
+            facility_name: facility_name.presence || resolve_facility_name(assignment),
+            switched_at:   Time.current.iso8601
+          }
+        )
+
+        render_success({ switched: true, to_role: to_role })
+      end
+
+      # GET /v1/me/storekeeper_stores
+      # For a Warehouse Manager who also holds the Storekeeper role:
+      # returns the stores inside their managed warehouses so they can
+      # pick which store to operate as Storekeeper.
+      def storekeeper_stores
+        wm_warehouse_ids = UserAssignment
+          .where(user_id: current_user.id, role_name: "Warehouse Manager")
+          .pluck(:warehouse_id)
+          .compact
+
+        if wm_warehouse_ids.empty?
+          return render_success(stores: [])
+        end
+
+        stores = Store.includes(:warehouse)
+                      .where(warehouse_id: wm_warehouse_ids)
+                      .order(:name)
+
+        render_success(stores: stores.map { |s|
+          {
+            id:            s.id,
+            name:          s.name,
+            warehouse_id:  s.warehouse_id,
+            warehouse_name: s.warehouse&.name
+          }
+        })
+      end
+
       private
+
+      def resolve_facility_name(assignment)
+        return assignment.hub.name          if assignment.hub.present?
+        return assignment.warehouse.name    if assignment.warehouse.present?
+        return assignment.store.name        if assignment.store.present?
+        return assignment.location.name     if assignment.location.present?
+
+        "Federal"
+      end
 
       def assignment_payload(a)
         # For store-level storekeeper assignments, also include the parent warehouse

@@ -135,10 +135,12 @@ module Cats
 
       def accessible_store_ids
         return Store.select(:id) if admin?
-        # Storekeeper role takes precedence - they should only see their assigned stores
-        # even if they have other roles like Officer
-        return assigned_store_ids if storekeeper?
+        # Warehouse Manager and Hub Manager take precedence over Storekeeper.
+        # A user who holds both WM and Storekeeper roles must see all stores in
+        # their managed warehouses, not just their Storekeeper assignments.
         return Store.where(warehouse_id: accessible_warehouse_ids).select(:id) if hub_manager? || warehouse_manager?
+        # Storekeeper-only: restrict to assigned stores
+        return assigned_store_ids if storekeeper?
         return Store.where(warehouse_id: accessible_warehouse_ids).select(:id) if officer?
 
         []

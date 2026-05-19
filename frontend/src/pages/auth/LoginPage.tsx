@@ -133,7 +133,23 @@ function LoginPage() {
           setActiveAssignment(bestAssignment);
           navigate(getDefaultRouteForRole(roleSlug));
         } else {
-          // No officer roles found, but multiple other roles (e.g., manager + dispatcher)
+          // Try to restore the last active assignment from a previous session
+          const { lastActiveAssignmentId } = useAuthStore.getState();
+          const restoredAssignment = lastActiveAssignmentId
+            ? assignments.find(a => a.id === lastActiveAssignmentId) ?? null
+            : null;
+
+          if (restoredAssignment) {
+            const roleSlug = normalizeRoleSlug(restoredAssignment.role_name) as RoleSlug | null;
+            if (roleSlug) {
+              setAuth(response.token, response.user_id, roleSlug);
+              setActiveAssignment(restoredAssignment);
+              navigate(getDefaultRouteForRole(roleSlug));
+              return;
+            }
+          }
+
+          // No restorable session — show the role picker
           setActiveAssignment(null);
           navigate('/select-role', { state: { fromLogin: true } });
         }
