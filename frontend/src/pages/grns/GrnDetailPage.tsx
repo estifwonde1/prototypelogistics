@@ -26,8 +26,55 @@ import { notifications } from '@mantine/notifications';
 import { DocumentStatus } from '../../utils/constants';
 import { useRef, useState } from 'react';
 import type { ApiError } from '../../types/common';
+import type { Grn, GrnItem } from '../../types/grn';
 import { usePermission } from '../../hooks/usePermission';
 import { useAuthStore } from '../../store/authStore';
+
+function formatQuantity(value: number): string {
+  return value.toLocaleString(undefined, { maximumFractionDigits: 3 });
+}
+
+function raDisplayUnit(grn: Grn): string {
+  const inputName = (grn.ra_authorized_quantity_input_unit_name ?? '').trim();
+  const inputAbbr = (grn.ra_authorized_quantity_input_unit_abbreviation ?? '').trim();
+  return inputName || inputAbbr;
+}
+
+function raLineToInputMultiplier(grn: Grn): number | null {
+  const input = Number(grn.ra_authorized_quantity_input ?? 0);
+  const line = Number(grn.ra_authorized_quantity ?? 0);
+  if (input > 0 && line > 0) return input / line;
+  return null;
+}
+
+function itemDisplayQuantity(grn: Grn, item: GrnItem): number {
+  const multiplier = raLineToInputMultiplier(grn);
+  if (multiplier != null && raDisplayUnit(grn)) return Number(item.quantity) * multiplier;
+  return Number(item.quantity);
+}
+
+function itemDisplayUnit(grn: Grn, item: GrnItem): string {
+  return raDisplayUnit(grn) || item.unit_abbreviation || item.unit_name || String(item.unit_id);
+}
+
+function grnSourceType(grn: Grn): string {
+  return (grn.receipt_order?.source_type || grn.source_type || '').trim();
+}
+
+function sourceTypeMatches(sourceType: string, option: string): boolean {
+  const normalized = sourceType.toLowerCase();
+  return normalized.includes(option.toLowerCase());
+}
+
+function sourceCheckbox(sourceType: string, option: string): string {
+  return `<span class="cb${sourceTypeMatches(sourceType, option) ? ' checked' : ''}"></span>`;
+}
+
+function formatPrintValue(value: string | number | null | undefined): string {
+  if (value == null) return '___________';
+  const text = String(value).trim();
+  return text || '___________';
+}
 
 function GrnDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -98,25 +145,38 @@ function GrnDetailPage() {
     const warehouseName   = grn.warehouse_name || String(grn.warehouse_id);
     const warehouseNo     = grn.warehouse_code || String(grn.warehouse_id);
     const receivedBy      = grn.received_by_name || 'Store Keeper';
+    const sourceType      = grnSourceType(grn);
+    const sourceTypeLabel = sourceType || '___________';
+    const containerType   =
+      (grn.ra_packaging_unit_name || grn.ra_packaging_unit_abbreviation || '').trim() || '___________';
+    const numberOfBags    =
+      grn.ra_expected_packaging_units != null && Number(grn.ra_expected_packaging_units) > 0
+        ? formatQuantity(Number(grn.ra_expected_packaging_units))
+        : '___________';
+    const lostMultiplier  = raLineToInputMultiplier(grn) ?? 1;
+    const lostQuantity    = Number(grn.inspection_lost_quantity ?? 0) * lostMultiplier;
+    const lostUnit        = items[0] ? itemDisplayUnit(grn, items[0]) : '';
+    const lostCommodity   = `${formatQuantity(lostQuantity)}${lostUnit ? ` ${lostUnit}` : ''}`;
 
     const MIN_ROWS = 8;
     const filledRows = items.map((item, idx) => {
       // Qty Delivered = authorized quantity from RA (what was supposed to come)
       // Qty Accepted = quantity actually received (what's on the GRN item)
-      const qtyAccepted = item.quantity;
+      const qtyAccepted = itemDisplayQuantity(grn, item);
       // If single item and RA authorized quantity exists, use it as delivered
-      const qtyDelivered = (grn.ra_authorized_quantity && items.length === 1)
-        ? Number(grn.ra_authorized_quantity)
+      const qtyDelivered = (grn.ra_authorized_quantity_input && items.length === 1)
+        ? Number(grn.ra_authorized_quantity_input)
         : qtyAccepted;
+      const unit = itemDisplayUnit(grn, item);
       return `
       <tr>
         <td style="text-align:center">${idx + 1}</td>
         <td></td>
         <td>${item.commodity_name || item.commodity_code || String(item.commodity_id)}<br/>
             <span style="font-size:9px;color:#555">${item.line_reference_no || item.batch_no || ''}</span></td>
-        <td style="text-align:center">${item.unit_abbreviation || item.unit_name || ''}</td>
-        <td style="text-align:right">${Number(qtyDelivered).toLocaleString()}</td>
-        <td style="text-align:right">${Number(qtyAccepted).toLocaleString()}</td>
+        <td style="text-align:center">${unit}</td>
+        <td style="text-align:right">${formatQuantity(Number(qtyDelivered))}</td>
+        <td style="text-align:right">${formatQuantity(Number(qtyAccepted))}</td>
         <td></td><td></td><td></td><td></td><td></td>
       </tr>`;
     }).join('');
@@ -147,6 +207,8 @@ function GrnDetailPage() {
     .meta-value { border-bottom: 1px solid #000; min-width: 120px; display: inline-block; padding: 0 4px; }
     .source-row { display: flex; gap: 12px; font-size: 10px; margin: 4px 0 6px; flex-wrap: wrap; }
     .cb { width: 10px; height: 10px; border: 1px solid #000; display: inline-block; }
+    .cb.checked::after { content: "✓"; display: block; font-size: 10px; line-height: 9px; text-align: center; }
+    .source-selected { border-bottom: 1px solid #000; padding: 0 18px 0 4px; }
     .items-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
     .items-table th, .items-table td { border: 1px solid #000; padding: 3px 4px; font-size: 10px; text-align: left; }
     .items-table th { background: #f0f0f0; text-align: center; font-size: 9px; }
@@ -234,16 +296,17 @@ function GrnDetailPage() {
   </table>
 
   <div class="source-row">
-    <strong style="font-size:10px">የገቢው ምንጭ / Source</strong>
-    <span><span class="cb"></span> በግዢ / Purchase</span>
-    <span><span class="cb"></span> በብድር / Loan</span>
-    <span><span class="cb"></span> ተመላሽ / Return</span>
-    <span><span class="cb"></span> በአደራ / Custody</span>
-    <span><span class="cb"></span> በዕርዳታ / Aid</span>
-    <span><span class="cb"></span> በሌላ / Other</span>
-    <span><span class="cb"></span> በዝውውር / Transfer</span>
-    <span><span class="cb"></span> ፍሳሽ/ትርፍ / Surplus</span>
-    <span><span class="cb"></span> በልውውጥ / Exchange</span>
+    <strong style="font-size:10px">የግዢ ምንጭ / Source Type</strong>
+    <span class="source-selected">${sourceTypeLabel}</span>
+    <span>${sourceCheckbox(sourceType, 'Purchase')} በግዢ / Purchase</span>
+    <span>${sourceCheckbox(sourceType, 'Loan')} በብድር / Loan</span>
+    <span>${sourceCheckbox(sourceType, 'Return')} ተመላሽ / Return</span>
+    <span>${sourceCheckbox(sourceType, 'Custody')} በአደራ / Custody</span>
+    <span>${sourceCheckbox(sourceType, 'Aid')} በዕርዳታ / Aid</span>
+    <span>${sourceCheckbox(sourceType, 'Other')} በሌላ / Other</span>
+    <span>${sourceCheckbox(sourceType, 'Transfer')} በዝውውር / Transfer</span>
+    <span>${sourceCheckbox(sourceType, 'Surplus')} ፍሳሽ/ትርፍ / Surplus</span>
+    <span>${sourceCheckbox(sourceType, 'Exchange')} በልውውጥ / Exchange</span>
   </div>
 
   <table class="items-table">
@@ -268,8 +331,9 @@ function GrnDetailPage() {
 
   <div style="font-size:10px;margin:4px 0">
     <strong>ተጨማሪ መግለጫ፡- Additional Explanation</strong> &nbsp;
-    የመያዣው ዓይነት / Container Type: _____________________ &nbsp;&nbsp;
-    የመያዣው ቁጥር / Number of Containers: _____________________ &nbsp;&nbsp;
+    የመያዣው ዓይነት / Container Type: <span class="meta-value">${formatPrintValue(containerType)}</span> &nbsp;&nbsp;
+    የከረጢት ብዛት / No. of Bags: <span class="meta-value">${formatPrintValue(numberOfBags)}</span> &nbsp;&nbsp;
+    የጠፋ ምርት / Lost Commodity: <span class="meta-value">${lostCommodity}</span> &nbsp;&nbsp;
     በግሮስ / Gross: _____________________ &nbsp;&nbsp;
     በንጥር / Net: _____________________
   </div>
@@ -360,7 +424,7 @@ function GrnDetailPage() {
     (grn.can_confirm === true ||
       (grn.can_confirm === undefined && Boolean(warehouseInScope)));
 
-  const totalQuantity = (grn.grn_items ?? []).reduce((s, i) => s + i.quantity, 0);
+  const totalQuantity = (grn.grn_items ?? []).reduce((s, i) => s + itemDisplayQuantity(grn, i), 0);
 
   return (
     <Stack gap="md" ref={printRef}>
@@ -502,8 +566,8 @@ function GrnDetailPage() {
                         {item.line_reference_no || item.batch_no || '—'}
                       </Table.Td>
                       <Table.Td fw={700}>
-                        {item.quantity.toLocaleString()}
-                        {item.entered_quantity && item.entered_unit_name && (
+                        {formatQuantity(itemDisplayQuantity(grn, item))}
+                        {!raDisplayUnit(grn) && item.entered_quantity && item.entered_unit_name && (
                           <Text size="xs" c="dimmed" mt={4}>
                             <UomConversionDisplay
                               enteredQuantity={item.entered_quantity}
@@ -514,7 +578,7 @@ function GrnDetailPage() {
                           </Text>
                         )}
                       </Table.Td>
-                      <Table.Td>{item.unit_abbreviation || item.unit_name || item.unit_id}</Table.Td>
+                      <Table.Td>{itemDisplayUnit(grn, item)}</Table.Td>
                       <Table.Td>
                         <Badge
                           color={
@@ -554,7 +618,7 @@ function GrnDetailPage() {
               <Divider />
               <Group justify="flex-end" gap="xl">
                 <Text size="sm" c="dimmed">Total Items: <Text span fw={700} c="dark">{grn.grn_items.length}</Text></Text>
-                <Text size="sm" c="dimmed">Total Quantity: <Text span fw={700} c="dark">{totalQuantity.toLocaleString()}</Text></Text>
+                <Text size="sm" c="dimmed">Total Quantity: <Text span fw={700} c="dark">{formatQuantity(totalQuantity)}</Text></Text>
               </Group>
             </>
           )}

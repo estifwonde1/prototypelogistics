@@ -346,6 +346,8 @@ export default function StackLayoutPage() {
   const isWarehouseManager = roleSlug === 'warehouse_manager';
   const isStorekeeper = roleSlug === 'storekeeper';
   const isHubManager = roleSlug === 'hub_manager';
+  const driverArrivalRAId = searchParams.get('receipt_authorization_id');
+  const isDriverArrivalStacking = isStorekeeper && Boolean(driverArrivalRAId);
 
   /** Populated for storekeepers from /me/assignments (store-level includes parent warehouse). */
   const storekeeperWarehouseId =
@@ -429,16 +431,32 @@ export default function StackLayoutPage() {
           ? { warehouse_id: storekeeperWarehouseId }
           : {}),
       }),
-    enabled: isStorekeeper && (!!userStoreId || storekeeperWarehouseId != null),
+    enabled: isDriverArrivalStacking && (!!userStoreId || storekeeperWarehouseId != null),
     select: (data: ReceiptAuthorization[]) =>
       data.filter((ra) => ra.driver_confirmed_at && ra.grn_id && ra.grn_status === 'draft'),
   });
+
+  const driverArrivalRAsForStacking = isDriverArrivalStacking
+    ? activeRAsForStacking.filter((ra) => String(ra.id) === driverArrivalRAId)
+    : [];
+  const selectedDriverArrivalRA = driverArrivalRAsForStacking.find((ra) => String(ra.id) === selectedRAId);
+  const canPlaceDriverArrivalGoods = isDriverArrivalStacking && Boolean(selectedDriverArrivalRA);
+
+  useEffect(() => {
+    if (isDriverArrivalStacking) {
+      setSelectedRAId(driverArrivalRAId);
+      return;
+    }
+
+    setSelectedRAId(null);
+    setPlacements({});
+  }, [driverArrivalRAId, isDriverArrivalStacking]);
 
   // ── Finish Stacking mutation ──
   const finishStackingMutation = useMutation({
     mutationFn: async () => {
       if (!selectedRAId) throw new Error('No Receipt Authorization selected');
-      const selectedRA = activeRAsForStacking.find((ra) => String(ra.id) === selectedRAId);
+      const selectedRA = selectedDriverArrivalRA;
       if (!selectedRA) throw new Error('Receipt Authorization not found');
 
       // Use explicit placements entered by the storekeeper
@@ -463,6 +481,9 @@ export default function StackLayoutPage() {
       setFinishStackingModalOpen(false);
       setSelectedRAId(null);
       setPlacements({});
+      const next = new URLSearchParams(searchParams);
+      next.delete('receipt_authorization_id');
+      setSearchParams(next, { replace: true });
     },
     onError: (mutationError: AxiosError<{ error?: { message?: string } }>) => {
       notifications.show({
@@ -1100,7 +1121,7 @@ export default function StackLayoutPage() {
           </Group>
 
           {/* ── Receipt Authorization selector for storekeeper finish_stacking ── */}
-          {isStorekeeper && (
+          {isDriverArrivalStacking && (
             <Card
               radius="xl"
               padding="lg"
@@ -1117,22 +1138,19 @@ export default function StackLayoutPage() {
                   </Text>
                   <Select
                     placeholder={
-                      activeRAsForStacking.length === 0
-                        ? 'No active RAs with Draft GRN for your store'
-                        : 'Select the RA you are stacking for'
+                      driverArrivalRAsForStacking.length === 0
+                        ? 'No active RA with Draft GRN for this truck'
+                        : 'Receipt Authorization for this driver arrival'
                     }
-                    data={activeRAsForStacking.map((ra) => ({
+                    data={driverArrivalRAsForStacking.map((ra) => ({
                       value: String(ra.id),
                       label: `${ra.reference_no} — ${ra.driver_name} (${ra.truck_plate_number}) · GRN: ${ra.grn_reference_no || `#${ra.grn_id}`}`,
                     }))}
                     value={selectedRAId}
-                    onChange={(val) => {
-                      setSelectedRAId(val);
-                      setPlacements({}); // clear placements when switching RA
-                    }}
+                    onChange={() => undefined}
                     searchable
-                    clearable
-                    disabled={activeRAsForStacking.length === 0}
+                    clearable={false}
+                    disabled={driverArrivalRAsForStacking.length === 0}
                     styles={{
                       input: {
                         backgroundColor: '#eaf0ff',
@@ -1142,9 +1160,9 @@ export default function StackLayoutPage() {
                       },
                     }}
                   />
-                  {activeRAsForStacking.length === 0 && (
+                  {driverArrivalRAsForStacking.length === 0 && (
                     <Text size="xs" c="dimmed">
-                      Active RAs appear here after Driver Confirmation. Go to{' '}
+                      This driver arrival is not ready for stacking yet. Go to{' '}
                       <Text
                         component="a"
                         href="/storekeeper/receipt-authorizations"
@@ -1160,7 +1178,7 @@ export default function StackLayoutPage() {
                 <Button
                   color="green"
                   leftSection={<IconCheck size={16} />}
-                  disabled={!selectedRAId || Object.values(placements).every(q => q === 0)}
+                  disabled={!canPlaceDriverArrivalGoods || Object.values(placements).every(q => q === 0)}
                   onClick={() => setFinishStackingModalOpen(true)}
                   radius="md"
                 >
@@ -1171,8 +1189,8 @@ export default function StackLayoutPage() {
           )}
 
           {/* ── Placement progress panel ── */}
-          {isStorekeeper && selectedRAId && (() => {
-            const selectedRA = activeRAsForStacking.find((ra) => String(ra.id) === selectedRAId);
+          {canPlaceDriverArrivalGoods && (() => {
+            const selectedRA = selectedDriverArrivalRA;
             if (!selectedRA) return null;
             const uLine = raQuantityUnit(selectedRA);
             const uDisp = raDisplayUnit(selectedRA);
@@ -1419,7 +1437,7 @@ export default function StackLayoutPage() {
                               onClick={() => {
                                 if (editMode) {
                                   openEditor(stack);
-                                } else if (selectedRAId) {
+                                } else if (canPlaceDriverArrivalGoods) {
                                   setPlacementModalStack(stack);
                                 }
                               }}
@@ -1432,12 +1450,12 @@ export default function StackLayoutPage() {
                                 zIndex: stack.id,
                                 borderRadius: 10,
                                 border: `2px solid ${statusMeta.border}`,
-                                background: selectedRAId && !editMode ? (placements[String(stack.id)] > 0 ? '#1fbe84' : statusMeta.fill) : statusMeta.fill,
+                                background: canPlaceDriverArrivalGoods && !editMode ? (placements[String(stack.id)] > 0 ? '#1fbe84' : statusMeta.fill) : statusMeta.fill,
                                 color: statusMeta.color,
                                 padding: compactTile ? 2 : '8px 10px',
                                 textAlign: 'left',
                                 boxShadow: '0 8px 18px rgba(51, 76, 117, 0.10)',
-                                cursor: editMode ? 'pointer' : selectedRAId ? 'pointer' : 'default',
+                                cursor: editMode ? 'pointer' : canPlaceDriverArrivalGoods ? 'pointer' : 'default',
                                 opacity: editMode || stack.stack_status !== 'inactive' ? 1 : 0.92,
                               }}
                             >
@@ -1821,8 +1839,8 @@ export default function StackLayoutPage() {
       </Modal>
 
       {/* ── Placement Modal — click a stack to assign quantity ── */}
-      {placementModalStack && selectedRAId && (() => {
-        const selectedRA = activeRAsForStacking.find((ra) => String(ra.id) === selectedRAId);
+      {canPlaceDriverArrivalGoods && placementModalStack && (() => {
+        const selectedRA = selectedDriverArrivalRA;
         if (!selectedRA) return null;
         const uLine = raQuantityUnit(selectedRA);
         const primaryUnit = raPrimaryUnit(selectedRA);
@@ -1925,8 +1943,8 @@ export default function StackLayoutPage() {
         centered
       >
         <Stack gap="md">
-          {selectedRAId && (() => {
-            const ra = activeRAsForStacking.find((r) => String(r.id) === selectedRAId);
+          {canPlaceDriverArrivalGoods && (() => {
+            const ra = selectedDriverArrivalRA;
             return ra ? (
               <Alert color="blue" variant="light">
                 <Text size="sm" fw={600}>{ra.reference_no}</Text>
