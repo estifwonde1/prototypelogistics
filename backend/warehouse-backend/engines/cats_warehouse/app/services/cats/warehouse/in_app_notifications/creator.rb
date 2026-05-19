@@ -3,6 +3,7 @@ module Cats
     module InAppNotifications
       # Phase 2 recipient matrix (same pattern as phase 1; all rows include params["path"]):
       # - receipt_authorization.created / .cancelled → Warehouse Managers (RA warehouse) only
+      # - receipt_authorization.broadcast_to_storekeepers → all eligible storekeepers (single-store WH)
       # - receipt_authorization.assigned_to_storekeeper → assigned storekeeper
       # - receipt_authorization.driver_confirmed → WM (warehouse) + assigned storekeeper
       # - receipt_authorization.grn_confirmed → Hub Managers (order hub) + WM (RA warehouse)
@@ -81,6 +82,8 @@ module Cats
             rows_receipt_authorization_facility(@event)
           when "receipt_authorization.assigned_to_storekeeper"
             rows_receipt_authorization_assigned_to_storekeeper
+          when "receipt_authorization.broadcast_to_storekeepers"
+            rows_receipt_authorization_broadcast_to_storekeepers
           when "receipt_authorization.driver_confirmed"
             rows_receipt_authorization_driver_confirmed
           when "receipt_authorization.grn_confirmed"
@@ -227,6 +230,28 @@ module Cats
           }.compact
 
           [{ user: user, params: base.merge("path" => Paths.receipt_authorization(user, ra)) }]
+        end
+
+        def rows_receipt_authorization_broadcast_to_storekeepers
+          ra = ReceiptAuthorization.find_by(id: payload_value(:receipt_authorization_id))
+          return [] unless ra
+
+          ids = Array(payload_value(:storekeeper_user_ids)).map(&:to_i).uniq
+          return [] if ids.blank?
+
+          base = {
+            "receipt_authorization_id" => ra.id,
+            "receipt_order_id" => ra.receipt_order_id,
+            "warehouse_id" => ra.warehouse_id,
+            "store_id" => ra.store_id
+          }.compact
+
+          ids.filter_map do |uid|
+            user = Cats::Core::User.find_by(id: uid)
+            next unless user&.active?
+
+            { user: user, params: base.merge("path" => Paths.receipt_authorization(user, ra)) }
+          end
         end
 
         def rows_receipt_authorization_driver_confirmed

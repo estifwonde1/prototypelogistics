@@ -80,6 +80,8 @@ export interface ReceiptAuthorization {
   assigned_storekeeper_name?: string | null;
   assigned_storekeeper_at?: string | null;
   awaiting_storekeeper_assignment?: boolean;
+  /** True when the warehouse has one store — RAs go to all storekeepers without WM assignment. */
+  direct_to_storekeepers?: boolean;
 
   // Audit
   created_by_name?: string;

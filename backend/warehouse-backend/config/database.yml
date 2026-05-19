@@ -15,6 +15,14 @@ development:
     <<: *default
     database: <%= ENV.fetch("POSTGRES_DB", "cats_warehouse_development") %>
 
+test:
+  primary:
+    <<: *default
+    database: <%= ENV.fetch("POSTGRES_TEST_DB", "cats_warehouse_test") %>
+  cable:
+    <<: *default
+    database: <%= ENV.fetch("POSTGRES_TEST_DB", "cats_warehouse_test") %>
+
 production:
   primary:
     <<: *default
