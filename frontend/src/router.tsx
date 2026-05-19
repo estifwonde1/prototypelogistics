@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createBrowserRouter, Navigate } from 'react-router-dom';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import type { ComponentType, ReactNode } from 'react';
 import { Center, Loader } from '@mantine/core';
 import { useAuthStore } from './store/authStore';
@@ -11,6 +11,7 @@ import { RequireStandaloneWarehouseRa } from './components/common/RequireStandal
 import { getDefaultRouteForRole, type RoleSlug } from './contracts/warehouse';
 import {
   assignmentHasRequiredFacility,
+  effectiveActiveAssignment,
   needsWorkspaceSelection,
 } from './utils/workspaceSelection';
 
@@ -155,15 +156,27 @@ const EntryRoute = () => {
   const role = useAuthStore((state) => state.role);
   const assignments = useAuthStore((state) => state.assignments);
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const setActiveAssignment = useAuthStore((state) => state.setActiveAssignment);
+
+  useEffect(() => {
+    if (assignments.length !== 1) return;
+    const only = assignments[0];
+    if (!activeAssignment || activeAssignment.id !== only.id) {
+      setActiveAssignment(only);
+    }
+  }, [assignments, activeAssignment, setActiveAssignment]);
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
-  if (
-    needsWorkspaceSelection(assignments, activeAssignment) ||
-    !assignmentHasRequiredFacility(activeAssignment, role)
-  ) {
+  const workspace = effectiveActiveAssignment(assignments, activeAssignment);
+
+  if (assignments.length > 1 && needsWorkspaceSelection(assignments, activeAssignment)) {
+    return <Navigate to="/select-role" replace state={{ fromLogin: true }} />;
+  }
+
+  if (assignments.length > 0 && !assignmentHasRequiredFacility(workspace, role)) {
     return <Navigate to="/select-role" replace state={{ fromLogin: true }} />;
   }
 

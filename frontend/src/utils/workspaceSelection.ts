@@ -1,20 +1,23 @@
 import type { OfficerAssignment } from '../store/authStore';
 import { normalizeRoleSlug, type RoleSlug } from '../contracts/warehouse';
 
-/** True when the user must pick (or re-pick) a workspace before using the app. */
+/** Only users with multiple facility assignments use the role picker. */
 export function needsWorkspaceSelection(
   assignments: OfficerAssignment[],
   activeAssignment: OfficerAssignment | null
 ): boolean {
-  if (assignments.length === 0) return false;
-
-  if (assignments.length > 1) {
-    if (!activeAssignment) return true;
-    return !assignments.some((a) => a.id === activeAssignment.id);
-  }
-
+  if (assignments.length <= 1) return false;
   if (!activeAssignment) return true;
-  return activeAssignment.id !== assignments[0].id;
+  return !assignments.some((a) => a.id === activeAssignment.id);
+}
+
+/** Workspace used for facility checks (auto-select when there is only one assignment). */
+export function effectiveActiveAssignment(
+  assignments: OfficerAssignment[],
+  activeAssignment: OfficerAssignment | null
+): OfficerAssignment | null {
+  if (assignments.length === 1) return assignments[0];
+  return activeAssignment;
 }
 
 export function assignmentHasRequiredFacility(
@@ -36,7 +39,8 @@ export function assignmentHasRequiredFacility(
     case 'hub_manager':
       return !!assignment.hub?.id;
     case 'storekeeper':
-      return !!assignment.store?.id;
+      // Storekeepers may be assigned at warehouse level (all stores) or a single store.
+      return !!(assignment.store?.id || assignment.warehouse?.id);
     default:
       return true;
   }

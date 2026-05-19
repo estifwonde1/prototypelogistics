@@ -4,7 +4,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Container, Title, Paper, Button, Stack, Text, Group, Badge, SimpleGrid } from '@mantine/core';
 import { IconMapPin, IconBuilding, IconBuildingWarehouse, IconChevronRight } from '@tabler/icons-react';
 import { useAuthStore, type OfficerAssignment } from '../../store/authStore';
-import { getDefaultRouteForRole, getRoleLabel, type RoleSlug } from '../../contracts/warehouse';
+import {
+  getDefaultRouteForRole,
+  getRoleLabel,
+  normalizeRoleSlug,
+  type RoleSlug,
+} from '../../contracts/warehouse';
 
 export default function RoleSelectionPage() {
   const navigate = useNavigate();
@@ -16,15 +21,31 @@ export default function RoleSelectionPage() {
 
   const arrivedFromLogin = (location.state as { fromLogin?: boolean } | null)?.fromLogin === true;
 
+  // Single-assignment users should never stay on this screen.
+  useEffect(() => {
+    if (assignments.length === 0) {
+      clearAuth();
+      queryClient.clear();
+      navigate('/login', { replace: true });
+      return;
+    }
+    if (assignments.length === 1) {
+      const only = assignments[0];
+      setActiveAssignment(only);
+      const roleSlug = normalizeRoleSlug(only.role_name) as RoleSlug | null;
+      navigate(getDefaultRouteForRole(roleSlug), { replace: true });
+    }
+  }, [assignments, clearAuth, navigate, queryClient, setActiveAssignment]);
+
   const returnToLogin = () => {
     clearAuth();
     queryClient.clear();
     navigate('/login', { replace: true });
   };
 
-  // After login, browser Back must sign out and land on /login (not / or an empty dashboard).
+  // After login with multiple workspaces, browser Back signs out and returns to /login.
   useEffect(() => {
-    if (!arrivedFromLogin) return;
+    if (!arrivedFromLogin || assignments.length <= 1) return;
 
     window.history.pushState({ rolePickerTrap: true }, '', window.location.href);
 
@@ -36,12 +57,14 @@ export default function RoleSelectionPage() {
 
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
-  }, [arrivedFromLogin, clearAuth, queryClient, navigate]);
+  }, [arrivedFromLogin, assignments.length, clearAuth, queryClient, navigate]);
 
   const handleSelectRole = (assignment: OfficerAssignment) => {
+    const roleSlug = normalizeRoleSlug(assignment.role_name) as RoleSlug | null;
+    if (!roleSlug) return;
+
     setActiveAssignment(assignment);
-    const roleSlug = useAuthStore.getState().role;
-    navigate(getDefaultRouteForRole(roleSlug as RoleSlug), { replace: true });
+    navigate(getDefaultRouteForRole(roleSlug), { replace: true, state: {} });
   };
 
   const getFacilityName = (a: OfficerAssignment) => {

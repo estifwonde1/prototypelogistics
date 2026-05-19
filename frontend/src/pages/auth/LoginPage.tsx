@@ -34,6 +34,16 @@ function LoginPage() {
 
     const { assignments, activeAssignment, role } = useAuthStore.getState();
 
+    if (assignments.length === 1) {
+      const only = assignments[0];
+      if (!activeAssignment || activeAssignment.id !== only.id) {
+        setActiveAssignment(only);
+      }
+      const roleSlug = normalizeRoleSlug(only.role_name) ?? (role as RoleSlug | null);
+      navigate(getDefaultRouteForRole(roleSlug), { replace: true });
+      return;
+    }
+
     if (needsWorkspaceSelection(assignments, activeAssignment)) {
       navigate('/select-role', { replace: true, state: { fromLogin: true } });
       return;
