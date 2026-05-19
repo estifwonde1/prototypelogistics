@@ -827,28 +827,9 @@ stores.each do |store|
   )
 end
 
-puts "Cleaning up legacy seed-only stacks..."
-["SEED-STK-001"].each do |code|
-  Cats::Warehouse::Stack.where(code: code).find_each do |stack|
-    sid = stack.id
-    conn = ActiveRecord::Base.connection
-    [
-      ["cats_warehouse_gin_items",             "stack_id = #{sid}"],
-      ["cats_warehouse_grn_items",             "stack_id = #{sid}"],
-      ["cats_warehouse_stock_balances",        "stack_id = #{sid}"],
-      ["cats_warehouse_inventory_adjustments", "stack_id = #{sid}"],
-      ["cats_warehouse_stack_reservations",    "stack_id = #{sid}"],
-      ["cats_warehouse_stack_transactions",    "destination_id = #{sid} OR source_id = #{sid}"],
-      ["cats_warehouse_stock_reservations",    "stack_id = #{sid}"],
-      ["cats_warehouse_transfer_requests",     "source_stack_id = #{sid} OR destination_stack_id = #{sid}"],
-    ].each do |table, condition|
-      next unless conn.data_source_exists?(table)
-      conn.execute("DELETE FROM #{table} WHERE #{condition}")
-    end
-    stack.destroy
-    puts "  Removed legacy stack: #{code}"
-  end
-end
+puts "Cleaning up legacy seed-only stacks (user-created stacks are kept)..."
+removed = Cats::Warehouse::SeedStackCleanup.destroy_legacy_seed_stacks!
+puts "  Removed #{removed} legacy seed stack(s)."
 
 puts "Seeding receipts (GRN) and dispatches (GIN)..."
 grn = find_or_create_with(

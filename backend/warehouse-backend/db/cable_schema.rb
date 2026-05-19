@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_05_19_120000) do
+ActiveRecord::Schema[7.0].define(version: 2026_05_19_150000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1171,7 +1171,6 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_19_120000) do
     t.index ["dispatch_order_id"], name: "index_cats_warehouse_gins_on_dispatch_order_id"
     t.index ["generated_from_waybill_id"], name: "index_cats_warehouse_gins_on_generated_from_waybill_id"
     t.index ["issued_by_id"], name: "index_cats_warehouse_gins_on_issued_by_id"
-    t.index ["warehouse_id", "created_at"], name: "index_gins_on_warehouse_and_created_at"
     t.index ["warehouse_id"], name: "index_cats_warehouse_gins_on_warehouse_id"
   end
 
@@ -1223,7 +1222,6 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_19_120000) do
     t.index ["receipt_order_id"], name: "index_cats_warehouse_grns_on_receipt_order_id"
     t.index ["received_by_id"], name: "index_cats_warehouse_grns_on_received_by_id"
     t.index ["source_type", "source_id"], name: "index_cats_warehouse_grns_on_source"
-    t.index ["warehouse_id", "created_at"], name: "index_grns_on_warehouse_and_created_at"
     t.index ["warehouse_id"], name: "index_cats_warehouse_grns_on_warehouse_id"
   end
 
@@ -1362,38 +1360,24 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_19_120000) do
   end
 
   create_table "cats_warehouse_inventory_lots", force: :cascade do |t|
-    t.bigint "commodity_id", null: false
-    t.string "batch_no", null: false
-    t.date "expiry_date"
-    t.string "description"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
     t.bigint "warehouse_id"
+    t.bigint "commodity_id", null: false
     t.string "source_type"
     t.bigint "source_id"
     t.string "lot_code"
+    t.string "batch_no", null: false
+    t.date "expiry_date"
     t.date "manufactured_on"
     t.date "received_on"
-    t.string "status", default: "Active"
+    t.string "status", default: "Active", null: false
+    t.string "description"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
     t.index ["commodity_id"], name: "index_cats_warehouse_inventory_lots_on_commodity_id"
+    t.index ["source_type", "source_id"], name: "idx_cw_inventory_lots_source"
     t.index ["source_type", "source_id"], name: "index_cats_warehouse_inventory_lots_on_source"
     t.index ["warehouse_id", "commodity_id", "batch_no", "expiry_date"], name: "idx_lot_warehouse_commodity_batch_expiry", unique: true
     t.index ["warehouse_id"], name: "index_cats_warehouse_inventory_lots_on_warehouse_id"
-  end
-
-  create_table "cats_warehouse_notifications", force: :cascade do |t|
-    t.bigint "user_id", null: false
-    t.string "title", null: false
-    t.text "message"
-    t.string "event_type"
-    t.string "notifiable_type"
-    t.bigint "notifiable_id"
-    t.datetime "read_at"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["notifiable_type", "notifiable_id"], name: "index_cats_warehouse_notifications_on_notifiable"
-    t.index ["user_id", "read_at"], name: "index_notifications_on_user_and_read_at"
-    t.index ["user_id"], name: "index_cats_warehouse_notifications_on_user_id"
   end
 
   create_table "cats_warehouse_receipt_authorizations", force: :cascade do |t|
@@ -1714,11 +1698,11 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_19_120000) do
     t.bigint "from_unit_id", null: false
     t.bigint "to_unit_id", null: false
     t.decimal "multiplier", precision: 15, scale: 6, null: false
+    t.string "conversion_type"
+    t.boolean "active", default: true, null: false
     t.boolean "is_inter_unit", default: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.string "conversion_type"
-    t.boolean "active", default: true, null: false
     t.index ["commodity_id"], name: "index_cats_warehouse_uom_conversions_on_commodity_id"
     t.index ["from_unit_id"], name: "index_cats_warehouse_uom_conversions_on_from_unit_id"
     t.index ["to_unit_id"], name: "index_cats_warehouse_uom_conversions_on_to_unit_id"
@@ -1766,10 +1750,10 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_19_120000) do
     t.string "ownership_type"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.float "length_m"
-    t.float "width_m"
-    t.float "height_m"
     t.integer "usable_space_percentage", default: 75, null: false
+    t.decimal "length_m", precision: 15, scale: 4
+    t.decimal "width_m", precision: 15, scale: 4
+    t.decimal "height_m", precision: 15, scale: 4
     t.decimal "usable_volume_m3", precision: 15, scale: 4
     t.datetime "capacity_established_at"
     t.index ["warehouse_id"], name: "index_cats_warehouse_warehouse_capacity_on_warehouse_id"
@@ -1881,7 +1865,6 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_19_120000) do
     t.datetime "occurred_at", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["actor_id", "occurred_at"], name: "index_workflow_events_on_actor_and_occurred_at"
     t.index ["actor_id"], name: "idx_cw_workflow_actor"
     t.index ["entity_type", "entity_id", "occurred_at"], name: "idx_cw_workflow_events_entity_time"
     t.index ["event_type"], name: "index_cats_warehouse_workflow_events_on_event_type"
@@ -2119,7 +2102,6 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_19_120000) do
   add_foreign_key "cats_warehouse_inventory_adjustments", "cats_warehouse_stacks", column: "stack_id"
   add_foreign_key "cats_warehouse_inventory_lots", "cats_core_commodities", column: "commodity_id"
   add_foreign_key "cats_warehouse_inventory_lots", "cats_warehouse_warehouses", column: "warehouse_id"
-  add_foreign_key "cats_warehouse_notifications", "cats_core_users", column: "user_id"
   add_foreign_key "cats_warehouse_receipt_authorizations", "cats_core_transporters", column: "transporter_id"
   add_foreign_key "cats_warehouse_receipt_authorizations", "cats_core_unit_of_measures", column: "authorized_quantity_input_unit_id"
   add_foreign_key "cats_warehouse_receipt_authorizations", "cats_core_users", column: "assigned_storekeeper_by_id"
