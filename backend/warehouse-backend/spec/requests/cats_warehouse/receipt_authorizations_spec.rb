@@ -145,3 +145,76 @@ RSpec.describe "POST /cats_warehouse/v1/receipt_authorizations", type: :request 
     expect(body.dig("data", "warehouse_id")).to eq(hub_warehouse.id)
   end
 end
+
+RSpec.describe "GET /cats_warehouse/v1/receipt_authorizations", type: :request do
+  def auth_headers_for(user)
+    { "Authorization" => "Bearer #{user.signed_id(purpose: "auth", expires_in: 1.hour)}" }
+  end
+
+  let(:hub) { create(:cats_warehouse_hub) }
+  let(:wh_a) { create(:cats_warehouse_warehouse, hub: hub, name: "Bole Central Warehouse") }
+  let(:wh_b) { create(:cats_warehouse_warehouse, hub: hub, name: "asco") }
+  let(:wm) { create(:cats_core_user, role_name: "Warehouse Manager") }
+  let(:actor) { create(:cats_core_user, role_name: "Hub Manager") }
+  let(:commodity) { create(:cats_core_commodity) }
+  let(:unit) { commodity.unit_of_measure }
+  let(:transporter) { create(:cats_core_transporter) }
+
+  let(:receipt_order) do
+    Cats::Warehouse::ReceiptOrder.create!(
+      hub: hub,
+      created_by: actor,
+      status: Cats::Warehouse::ContractConstants::DOCUMENT_STATUSES[:assigned],
+      reference_no: "RO-INDEX-#{SecureRandom.hex(4)}",
+      received_date: Date.current
+    )
+  end
+
+  let(:receipt_line) do
+    Cats::Warehouse::ReceiptOrderLine.create!(
+      receipt_order: receipt_order,
+      commodity: commodity,
+      unit: unit,
+      quantity: 100,
+      line_reference_no: "RL-INDEX-#{SecureRandom.hex(4)}"
+    )
+  end
+
+  def build_ra(warehouse:)
+    Cats::Warehouse::ReceiptAuthorization.create!(
+      receipt_order: receipt_order,
+      receipt_order_line: receipt_line,
+      warehouse: warehouse,
+      transporter: transporter,
+      authorized_quantity: 10,
+      driver_name: "Driver",
+      driver_id_number: "ID-1",
+      truck_plate_number: "AA-1",
+      waybill_number: "WB-INDEX-#{SecureRandom.hex(4)}",
+      status: Cats::Warehouse::ReceiptAuthorization::PENDING,
+      reference_no: "RA-INDEX-#{SecureRandom.hex(4)}",
+      created_by: actor
+    )
+  end
+
+  before do
+    receipt_line
+    Cats::Warehouse::UserAssignment.create!(user: wm, warehouse: wh_a, role_name: "Warehouse Manager")
+    Cats::Warehouse::UserAssignment.create!(user: wm, warehouse: wh_b, role_name: "Warehouse Manager")
+  end
+
+  it "scopes receipt-order RAs to the active warehouse for warehouse managers" do
+    ra_a = build_ra(warehouse: wh_a)
+    ra_b = build_ra(warehouse: wh_b)
+
+    get "/cats_warehouse/v1/receipt_authorizations",
+        params: { receipt_order_id: receipt_order.id, warehouse_id: wh_a.id },
+        headers: auth_headers_for(wm),
+        as: :json
+
+    expect(response).to have_http_status(:ok)
+    ids = JSON.parse(response.body).fetch("data").map { |row| row["id"] }
+    expect(ids).to contain_exactly(ra_a.id)
+    expect(ids).not_to include(ra_b.id)
+  end
+end

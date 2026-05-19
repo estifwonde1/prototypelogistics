@@ -9,6 +9,10 @@ import { usePermission } from './hooks/usePermission';
 import { AccessDenied } from './components/common/AccessDenied';
 import { RequireStandaloneWarehouseRa } from './components/common/RequireStandaloneWarehouseRa';
 import { getDefaultRouteForRole, type RoleSlug } from './contracts/warehouse';
+import {
+  assignmentHasRequiredFacility,
+  needsWorkspaceSelection,
+} from './utils/workspaceSelection';
 
 const CHUNK_RELOAD_KEY = 'cats:chunk-reload-attempted';
 
@@ -149,9 +153,18 @@ const RequireAdmin = ({ children }: { children: ReactNode }) => {
 const EntryRoute = () => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated());
   const role = useAuthStore((state) => state.role);
+  const assignments = useAuthStore((state) => state.assignments);
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (
+    needsWorkspaceSelection(assignments, activeAssignment) ||
+    !assignmentHasRequiredFacility(activeAssignment, role)
+  ) {
+    return <Navigate to="/select-role" replace state={{ fromLogin: true }} />;
   }
 
   return <Navigate to={getDefaultRouteForRole((role as RoleSlug | null) ?? null)} replace />;

@@ -2,6 +2,10 @@ import { useLocation, Navigate, Outlet } from 'react-router-dom';
 import { usePermission } from '../../hooks/usePermission';
 import { useAuthStore } from '../../store/authStore';
 import { getDefaultRouteForRole, PATH_SEGMENT_TO_RESOURCE, type RoleSlug } from '../../contracts/warehouse';
+import {
+  assignmentHasRequiredFacility,
+  needsWorkspaceSelection,
+} from '../../utils/workspaceSelection';
 
 /**
  * Protects routes by role: if the current path maps to a resource the user
@@ -11,6 +15,17 @@ export function RouteGuard() {
   const location = useLocation();
   const { can } = usePermission();
   const roleFromStore = useAuthStore((state) => state.role);
+  const assignments = useAuthStore((state) => state.assignments);
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated());
+
+  if (
+    isAuthenticated &&
+    (needsWorkspaceSelection(assignments, activeAssignment) ||
+      !assignmentHasRequiredFacility(activeAssignment, roleFromStore))
+  ) {
+    return <Navigate to="/select-role" replace state={{ fromLogin: true }} />;
+  }
 
   const pathSegment = location.pathname.split('/').filter(Boolean)[0];
   if (pathSegment === 'admin') {

@@ -14,6 +14,7 @@ module Cats
 
         # Optional filters
         ras = ras.where(receipt_order_id: params[:receipt_order_id]) if params[:receipt_order_id].present?
+        ras = apply_receipt_order_viewer_warehouse_scope(ras)
         ras = ras.where(warehouse_id: params[:warehouse_id])         if params[:warehouse_id].present?
         if params[:store_id].present?
           sid = params[:store_id].to_i
@@ -164,6 +165,37 @@ module Cats
       end
 
       private
+
+      # On a shared receipt order, warehouse managers only act for their active warehouse.
+      # Without this, policy_scope can include every warehouse they are assigned to (or assigned on via ROA).
+      def apply_receipt_order_viewer_warehouse_scope(ras)
+        return ras unless params[:receipt_order_id].present?
+        return ras unless warehouse_manager?
+
+        wh_id = active_warehouse_id_for_receipt_order_view
+        if wh_id.blank?
+          # Multi-warehouse managers must pass warehouse_id (active warehouse context).
+          return ras.none if AccessContext.new(user: current_user).assigned_warehouse_ids.size > 1
+
+          return ras
+        end
+
+        access = AccessContext.new(user: current_user)
+        unless access.accessible_warehouse_ids.map(&:to_i).include?(wh_id)
+          raise Pundit::NotAuthorizedError, "Access denied to warehouse #{wh_id}"
+        end
+
+        ras.where(warehouse_id: wh_id)
+      end
+
+      def active_warehouse_id_for_receipt_order_view
+        return params[:warehouse_id].to_i if params[:warehouse_id].present?
+
+        assigned = AccessContext.new(user: current_user).assigned_warehouse_ids.map(&:to_i).uniq
+        return assigned.first if assigned.size == 1
+
+        nil
+      end
 
       def resolve_ra_destination_warehouse_id(receipt_order:, store:, assignment:, explicit_warehouse:)
         if store.present?

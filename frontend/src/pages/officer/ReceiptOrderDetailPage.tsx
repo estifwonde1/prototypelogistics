@@ -419,11 +419,28 @@ function ReceiptOrderDetailPage() {
   }, [routingOverrideEvents]);
 
   const receiptAuthorizationsQuery = useQuery({
-    queryKey: ['receipt_authorizations', { receipt_order_id: id }],
-    queryFn: () => getReceiptAuthorizations({ receipt_order_id: Number(id) }),
+    queryKey: [
+      'receipt_authorizations',
+      {
+        receipt_order_id: id,
+        warehouse_id: isWarehouseManager ? userWarehouseId : undefined,
+      },
+    ],
+    queryFn: () =>
+      getReceiptAuthorizations({
+        receipt_order_id: Number(id),
+        ...(isWarehouseManager && userWarehouseId ? { warehouse_id: userWarehouseId } : {}),
+      }),
     enabled: !!order && String(order.status || '').toLowerCase() !== 'draft',
   });
-  const receiptAuthorizations = (receiptAuthorizationsQuery.data as ReceiptAuthorization[]) || [];
+  const receiptAuthorizationsAll =
+    (receiptAuthorizationsQuery.data as ReceiptAuthorization[]) || [];
+  const receiptAuthorizations = useMemo(() => {
+    if (!isWarehouseManager || userWarehouseId == null) return receiptAuthorizationsAll;
+    return receiptAuthorizationsAll.filter(
+      (ra) => ra.warehouse_id != null && Number(ra.warehouse_id) === Number(userWarehouseId)
+    );
+  }, [receiptAuthorizationsAll, isWarehouseManager, userWarehouseId]);
 
   /**
    * Hide Assignments/RAs/reservations mainly for warehouse managers stuck on superseded hub plan rows —

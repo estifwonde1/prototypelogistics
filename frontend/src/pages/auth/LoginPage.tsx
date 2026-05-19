@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { isAxiosError } from 'axios';
 import { TextInput, PasswordInput, Button, Paper, Title, Container, Alert } from '@mantine/core';
 import { useForm } from '@mantine/form';
@@ -16,9 +16,11 @@ import {
   OFFICER_ROLE_SLUGS,
 } from '../../utils/constants';
 import type { ApiError } from '../../types/common';
+import { needsWorkspaceSelection } from '../../utils/workspaceSelection';
 
 function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const setAuth = useAuthStore((state) => state.setAuth);
   const setAssignments = useAuthStore((state) => state.setAssignments);
@@ -28,10 +30,17 @@ function LoginPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isAuthenticated) {
-      navigate(getDefaultRouteForRole((useAuthStore.getState().role as RoleSlug | null) ?? null), { replace: true });
+    if (!isAuthenticated || location.pathname !== '/login') return;
+
+    const { assignments, activeAssignment, role } = useAuthStore.getState();
+
+    if (needsWorkspaceSelection(assignments, activeAssignment)) {
+      navigate('/select-role', { replace: true, state: { fromLogin: true } });
+      return;
     }
-  }, [isAuthenticated, navigate]);
+
+    navigate(getDefaultRouteForRole((role as RoleSlug | null) ?? null), { replace: true });
+  }, [isAuthenticated, location.pathname, navigate]);
 
   const form = useForm({
     initialValues: {
@@ -115,8 +124,8 @@ function LoginPage() {
           navigate(getDefaultRouteForRole(roleSlug));
         } else {
           // No officer roles found, but multiple other roles (e.g., manager + dispatcher)
-          // Let the user choose
-          navigate('/select-role');
+          setActiveAssignment(null);
+          navigate('/select-role', { state: { fromLogin: true } });
         }
       }
     } catch (err: unknown) {

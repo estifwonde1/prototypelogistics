@@ -82,7 +82,7 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
   };
 
   const handleSwitchWorkspace = () => {
-    navigate('/select-role');
+    navigate('/select-role', { state: { fromSwitchWorkspace: true } });
   };
 
   return (

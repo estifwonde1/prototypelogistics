@@ -269,8 +269,19 @@ export default function ReceiptAuthorizationFormPage() {
   });
 
   const { data: orderRAs = [] } = useQuery({
-    queryKey: ['receipt_authorizations', { receipt_order_id: selectedOrder?.id, list: 'form' }],
-    queryFn: () => getReceiptAuthorizations({ receipt_order_id: selectedOrder?.id }),
+    queryKey: [
+      'receipt_authorizations',
+      {
+        receipt_order_id: selectedOrder?.id,
+        warehouse_id: scopedWarehouseId,
+        list: 'form',
+      },
+    ],
+    queryFn: () =>
+      getReceiptAuthorizations({
+        receipt_order_id: selectedOrder?.id,
+        ...(scopedWarehouseId ? { warehouse_id: scopedWarehouseId } : {}),
+      }),
     enabled: !!selectedOrder?.id,
   });
 

@@ -1,4 +1,6 @@
-import { useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Container, Title, Paper, Button, Stack, Text, Group, Badge, SimpleGrid } from '@mantine/core';
 import { IconMapPin, IconBuilding, IconBuildingWarehouse, IconChevronRight } from '@tabler/icons-react';
 import { useAuthStore, type OfficerAssignment } from '../../store/authStore';
@@ -6,8 +8,35 @@ import { getDefaultRouteForRole, getRoleLabel, type RoleSlug } from '../../contr
 
 export default function RoleSelectionPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const queryClient = useQueryClient();
   const assignments = useAuthStore((state) => state.assignments);
   const setActiveAssignment = useAuthStore((state) => state.setActiveAssignment);
+  const clearAuth = useAuthStore((state) => state.clearAuth);
+
+  const arrivedFromLogin = (location.state as { fromLogin?: boolean } | null)?.fromLogin === true;
+
+  const returnToLogin = () => {
+    clearAuth();
+    queryClient.clear();
+    navigate('/login', { replace: true });
+  };
+
+  // After login, browser Back must sign out and land on /login (not / or an empty dashboard).
+  useEffect(() => {
+    if (!arrivedFromLogin) return;
+
+    window.history.pushState({ rolePickerTrap: true }, '', window.location.href);
+
+    const onPopState = () => {
+      clearAuth();
+      queryClient.clear();
+      navigate('/login', { replace: true });
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [arrivedFromLogin, clearAuth, queryClient, navigate]);
 
   const handleSelectRole = (assignment: OfficerAssignment) => {
     setActiveAssignment(assignment);
@@ -88,7 +117,7 @@ export default function RoleSelectionPage() {
       </SimpleGrid>
 
       <Stack align="center" mt={50}>
-        <Button variant="subtle" color="gray" onClick={() => navigate('/login')}>
+        <Button variant="subtle" color="gray" onClick={returnToLogin}>
           Back to Login
         </Button>
       </Stack>
