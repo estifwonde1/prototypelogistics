@@ -11,12 +11,6 @@ def table_exists?(table_name)
   ActiveRecord::Base.connection.data_source_exists?(table_name)
 end
 
-def delete_from_table_if_exists(table, where_sql)
-  return unless table_exists?(table)
-
-  ActiveRecord::Base.connection.execute("DELETE FROM #{table} WHERE #{where_sql}")
-end
-
 def add_role(user, role_name)
   user.add_role(role_name)
   user
@@ -833,24 +827,9 @@ stores.each do |store|
   )
 end
 
-puts "Removing legacy seed stacks (user-created stacks are kept)..."
-stores.each do |store|
-  (1..3).each do |n|
-    Cats::Warehouse::Stack.where(store: store, code: "#{store.code}-S#{n}").find_each do |stack|
-      sid = stack.id
-      # Clear all FK-constrained dependents before destroying the stack
-      delete_from_table_if_exists("cats_warehouse_gin_items", "stack_id = #{sid}")
-      delete_from_table_if_exists("cats_warehouse_grn_items", "stack_id = #{sid}")
-      delete_from_table_if_exists("cats_warehouse_stock_balances", "stack_id = #{sid}")
-      delete_from_table_if_exists("cats_warehouse_inventory_adjustments", "stack_id = #{sid}")
-      delete_from_table_if_exists("cats_warehouse_stack_reservations", "stack_id = #{sid}")
-      delete_from_table_if_exists("cats_warehouse_stack_transactions", "destination_id = #{sid} OR source_id = #{sid}")
-      delete_from_table_if_exists("cats_warehouse_stock_reservations", "stack_id = #{sid}")
-      delete_from_table_if_exists("cats_warehouse_transfer_requests", "source_stack_id = #{sid} OR destination_stack_id = #{sid}")
-      stack.destroy
-    end
-  end
-end
+puts "Cleaning up legacy seed-only stacks (user-created stacks are kept)..."
+removed = Cats::Warehouse::SeedStackCleanup.destroy_legacy_seed_stacks!
+puts "  Removed #{removed} legacy seed stack(s)."
 
 puts "Seeding receipts (GRN) and dispatches (GIN)..."
 grn = find_or_create_with(
@@ -881,8 +860,6 @@ grn_items = commodities.first(3).map.with_index do |commodity, idx|
 end
 
 if grn.status != "confirmed"
-  # Clear any stale stack_id from previous seed runs to avoid capacity validation errors
-  grn.grn_items.where.not(stack_id: nil).update_all(stack_id: nil)
   Cats::Warehouse::GrnConfirmer.new(grn: grn, approved_by: warehouse_manager_user).call
 end
 
@@ -912,7 +889,6 @@ commodities.first(2).each_with_index do |commodity, idx|
 end
 
 if gin.status != "confirmed"
-  gin.gin_items.where.not(stack_id: nil).update_all(stack_id: nil)
   Cats::Warehouse::GinConfirmer.new(gin: gin, approved_by: warehouse_manager_user).call
 end
 
