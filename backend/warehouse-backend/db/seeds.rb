@@ -11,6 +11,12 @@ def table_exists?(table_name)
   ActiveRecord::Base.connection.data_source_exists?(table_name)
 end
 
+def delete_from_table_if_exists(table, where_sql)
+  return unless table_exists?(table)
+
+  ActiveRecord::Base.connection.execute("DELETE FROM #{table} WHERE #{where_sql}")
+end
+
 def add_role(user, role_name)
   user.add_role(role_name)
   user
@@ -833,14 +839,14 @@ stores.each do |store|
     Cats::Warehouse::Stack.where(store: store, code: "#{store.code}-S#{n}").find_each do |stack|
       sid = stack.id
       # Clear all FK-constrained dependents before destroying the stack
-      ActiveRecord::Base.connection.execute("DELETE FROM cats_warehouse_gin_items WHERE stack_id = #{sid}")
-      ActiveRecord::Base.connection.execute("DELETE FROM cats_warehouse_grn_items WHERE stack_id = #{sid}")
-      ActiveRecord::Base.connection.execute("DELETE FROM cats_warehouse_stock_balances WHERE stack_id = #{sid}")
-      ActiveRecord::Base.connection.execute("DELETE FROM cats_warehouse_inventory_adjustments WHERE stack_id = #{sid}")
-      ActiveRecord::Base.connection.execute("DELETE FROM cats_warehouse_stack_reservations WHERE stack_id = #{sid}")
-      ActiveRecord::Base.connection.execute("DELETE FROM cats_warehouse_stack_transactions WHERE destination_id = #{sid} OR source_id = #{sid}")
-      ActiveRecord::Base.connection.execute("DELETE FROM cats_warehouse_stock_reservations WHERE stack_id = #{sid}")
-      ActiveRecord::Base.connection.execute("DELETE FROM cats_warehouse_transfer_requests WHERE source_stack_id = #{sid} OR destination_stack_id = #{sid}")
+      delete_from_table_if_exists("cats_warehouse_gin_items", "stack_id = #{sid}")
+      delete_from_table_if_exists("cats_warehouse_grn_items", "stack_id = #{sid}")
+      delete_from_table_if_exists("cats_warehouse_stock_balances", "stack_id = #{sid}")
+      delete_from_table_if_exists("cats_warehouse_inventory_adjustments", "stack_id = #{sid}")
+      delete_from_table_if_exists("cats_warehouse_stack_reservations", "stack_id = #{sid}")
+      delete_from_table_if_exists("cats_warehouse_stack_transactions", "destination_id = #{sid} OR source_id = #{sid}")
+      delete_from_table_if_exists("cats_warehouse_stock_reservations", "stack_id = #{sid}")
+      delete_from_table_if_exists("cats_warehouse_transfer_requests", "source_stack_id = #{sid} OR destination_stack_id = #{sid}")
       stack.destroy
     end
   end
