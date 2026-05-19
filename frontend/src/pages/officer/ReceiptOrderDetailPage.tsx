@@ -252,6 +252,30 @@ function isReceiptAuthorizationWarehouseActive(ra: ReceiptAuthorization): boolea
   return String(ra.status ?? '').toLowerCase() !== 'cancelled';
 }
 
+function receiptAuthorizationDisplayUnit(ra: ReceiptAuthorization): string {
+  const inputName = (ra.authorized_quantity_input_unit_name ?? '').trim();
+  const inputAbbr = (ra.authorized_quantity_input_unit_abbreviation ?? '').trim();
+  const lineUnit = (
+    ra.unit_label ??
+    ra.unit_name ??
+    ra.unit_abbreviation ??
+    ''
+  ).trim();
+
+  return inputName || inputAbbr || lineUnit || 'kuntal';
+}
+
+function receiptAuthorizationDisplayQty(ra: ReceiptAuthorization): number {
+  const inputQty = Number(ra.authorized_quantity_input);
+  if (Number.isFinite(inputQty) && inputQty > 0) return inputQty;
+
+  return Number(ra.authorized_quantity ?? 0);
+}
+
+function formatReceiptAuthorizationQty(ra: ReceiptAuthorization): string {
+  return `${receiptAuthorizationDisplayQty(ra).toLocaleString()} ${receiptAuthorizationDisplayUnit(ra)}`;
+}
+
 /** Sum authorized_quantity on non-cancelled RAs for this warehouse (order line units). */
 function warehouseAuthorizedQtyFromReceiptAuthorizations(
   ras: ReceiptAuthorization[],
@@ -1823,7 +1847,6 @@ function ReceiptOrderDetailPage() {
                                       {showChangedPlanIndicator ? '— routed after plan updates' : ''}
                                     </Text>
                                     {rasForLine.map((ra) => {
-                                      const u = line.unit_name?.trim() || '';
                                       return (
                                         <Text key={ra.id} size="xs" c="violet.8">
                                           →{' '}
@@ -1831,8 +1854,7 @@ function ReceiptOrderDetailPage() {
                                           {ra.authorized_quantity != null ? (
                                             <>
                                               {' '}
-                                              ({Number(ra.authorized_quantity).toLocaleString()}
-                                              {u ? ` ${u}` : ''}
+                                              ({formatReceiptAuthorizationQty(ra)}
                                               ){ra.reference_no ? ` — ${ra.reference_no}` : ''}
                                             </>
                                           ) : null}
@@ -2650,7 +2672,7 @@ function ReceiptOrderDetailPage() {
                             </Table.Td>
                             <Table.Td>
                               <Text fw={600} size="sm">
-                                {Number(ra.authorized_quantity).toLocaleString()}
+                                {formatReceiptAuthorizationQty(ra)}
                               </Text>
                             </Table.Td>
                             <Table.Td>

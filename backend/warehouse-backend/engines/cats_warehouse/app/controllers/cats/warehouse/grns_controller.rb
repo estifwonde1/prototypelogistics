@@ -62,7 +62,12 @@ module Cats
         grn = Grn.includes(
           :warehouse, :grn_items,
           receipt_order: [:hub, :warehouse],
-          receipt_authorization: :transporter
+          generated_from_inspection: :inspection_items,
+          receipt_authorization: [
+            :transporter,
+            :authorized_quantity_input_unit,
+            { receipt_order_line: [:unit, :packaging_unit] }
+          ]
         ).find(grn.id)
         payload = ActiveModelSerializers::SerializableResource.new(
           grn,
