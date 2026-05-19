@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_05_19_150000) do
+ActiveRecord::Schema[7.0].define(version: 2026_05_21_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1532,6 +1532,8 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_19_150000) do
     t.bigint "base_unit_id"
     t.decimal "base_quantity", precision: 15, scale: 3
     t.bigint "receipt_authorization_id"
+    t.decimal "entered_quantity", precision: 15, scale: 3
+    t.decimal "package_count", precision: 15, scale: 4
     t.index ["base_unit_id"], name: "index_cats_warehouse_stack_transactions_on_base_unit_id"
     t.index ["destination_id"], name: "destination_on_cwst_indx"
     t.index ["entered_unit_id"], name: "index_cats_warehouse_stack_transactions_on_entered_unit_id"
@@ -1664,6 +1666,27 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_19_150000) do
     t.check_constraint "usable_space >= 0::numeric", name: "cw_stores_usable_space_non_negative"
   end
 
+  create_table "cats_warehouse_transfer_request_allocations", force: :cascade do |t|
+    t.bigint "transfer_request_id", null: false
+    t.string "action", null: false
+    t.decimal "quantity", precision: 15, scale: 3, null: false
+    t.bigint "entered_unit_id"
+    t.decimal "entered_quantity", precision: 15, scale: 3
+    t.decimal "package_count", precision: 15, scale: 4
+    t.bigint "destination_stack_id"
+    t.bigint "stack_transaction_id"
+    t.bigint "reviewed_by_id", null: false
+    t.text "notes"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["action"], name: "index_cw_tr_allocations_on_action"
+    t.index ["destination_stack_id"], name: "index_cw_tr_allocations_on_destination_stack_id"
+    t.index ["entered_unit_id"], name: "index_cw_tr_allocations_on_entered_unit_id"
+    t.index ["reviewed_by_id"], name: "index_cw_tr_allocations_on_reviewed_by_id"
+    t.index ["stack_transaction_id"], name: "index_cw_tr_allocations_on_stack_transaction_id"
+    t.index ["transfer_request_id"], name: "index_cw_tr_allocations_on_transfer_request_id"
+  end
+
   create_table "cats_warehouse_transfer_requests", force: :cascade do |t|
     t.bigint "source_store_id", null: false
     t.bigint "destination_store_id", null: false
@@ -1681,9 +1704,16 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_19_150000) do
     t.bigint "destination_stack_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "entered_unit_id"
+    t.decimal "entered_quantity", precision: 15, scale: 3
+    t.decimal "package_count", precision: 15, scale: 4
+    t.decimal "fulfilled_quantity", precision: 15, scale: 3, default: "0.0", null: false
+    t.decimal "rejected_quantity", precision: 15, scale: 3, default: "0.0", null: false
+    t.decimal "reserved_quantity", precision: 15, scale: 3, default: "0.0", null: false
     t.index ["commodity_id"], name: "index_cats_warehouse_transfer_requests_on_commodity_id"
     t.index ["destination_stack_id"], name: "index_cats_warehouse_transfer_requests_on_destination_stack_id"
     t.index ["destination_store_id"], name: "index_cats_warehouse_transfer_requests_on_destination_store_id"
+    t.index ["entered_unit_id"], name: "index_cw_transfer_requests_on_entered_unit_id"
     t.index ["requested_by_id"], name: "index_cats_warehouse_transfer_requests_on_requested_by_id"
     t.index ["reviewed_by_id"], name: "index_cats_warehouse_transfer_requests_on_reviewed_by_id"
     t.index ["source_stack_id"], name: "index_cats_warehouse_transfer_requests_on_source_stack_id"
@@ -2166,7 +2196,13 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_19_150000) do
   add_foreign_key "cats_warehouse_stock_reservations", "cats_warehouse_stores", column: "store_id"
   add_foreign_key "cats_warehouse_stock_reservations", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_stores", "cats_warehouse_warehouses", column: "warehouse_id"
+  add_foreign_key "cats_warehouse_transfer_request_allocations", "cats_core_unit_of_measures", column: "entered_unit_id"
+  add_foreign_key "cats_warehouse_transfer_request_allocations", "cats_core_users", column: "reviewed_by_id"
+  add_foreign_key "cats_warehouse_transfer_request_allocations", "cats_warehouse_stack_transactions", column: "stack_transaction_id"
+  add_foreign_key "cats_warehouse_transfer_request_allocations", "cats_warehouse_stacks", column: "destination_stack_id"
+  add_foreign_key "cats_warehouse_transfer_request_allocations", "cats_warehouse_transfer_requests", column: "transfer_request_id"
   add_foreign_key "cats_warehouse_transfer_requests", "cats_core_commodities", column: "commodity_id"
+  add_foreign_key "cats_warehouse_transfer_requests", "cats_core_unit_of_measures", column: "entered_unit_id"
   add_foreign_key "cats_warehouse_transfer_requests", "cats_core_unit_of_measures", column: "unit_id"
   add_foreign_key "cats_warehouse_transfer_requests", "cats_core_users", column: "requested_by_id"
   add_foreign_key "cats_warehouse_transfer_requests", "cats_core_users", column: "reviewed_by_id"

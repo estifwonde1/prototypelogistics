@@ -69,21 +69,18 @@ export function computePackagingPackagesHint(params: {
   }
 
   if (resolvedPkgUnitId == null) {
-    resolvedPkgUnitId = destUnitId ?? fallbackBatchUnitNumericId;
+    const kgUnit = units.find((u) => (u.abbreviation ?? '').toLowerCase() === 'kg');
+    resolvedPkgUnitId = kgUnit?.id ?? fallbackBatchUnitNumericId ?? null;
   }
   if (resolvedPkgUnitId == null) return null;
 
   let qtyInPkgUnit = qty;
+  const cid = commodityId ?? 0;
 
-  if (
-    destUnitId != null &&
-    resolvedPkgUnitId != null &&
-    destUnitId !== resolvedPkgUnitId &&
-    commodityId != null
-  ) {
-    let factor = findDirectedMultiplier(destUnitId, resolvedPkgUnitId, commodityId, uomConversions);
+  if (destUnitId != null && destUnitId !== resolvedPkgUnitId) {
+    let factor = findDirectedMultiplier(destUnitId, resolvedPkgUnitId, cid, uomConversions);
     if (factor == null) {
-      const reverse = findDirectedMultiplier(resolvedPkgUnitId, destUnitId, commodityId, uomConversions);
+      const reverse = findDirectedMultiplier(resolvedPkgUnitId, destUnitId, cid, uomConversions);
       if (reverse != null && reverse !== 0) factor = 1 / reverse;
     }
     if (factor == null) return null;
