@@ -5,10 +5,72 @@ module Cats
     class TransferRequestSerializer < ApplicationSerializer
       attributes :id, :reason, :status, :reviewed_at, :review_notes, :created_at, :updated_at,
                  :warehouse_id, :source_store, :destination_store, :source_stack, :destination_stack,
-                 :commodity, :unit, :requested_by, :reviewed_by, :quantity
+                 :commodity, :unit, :entered_unit, :entered_quantity, :package_count,
+                 :packaging_spec_label, :requested_by, :reviewed_by, :quantity,
+                 :fulfilled_quantity, :rejected_quantity, :remaining_quantity, :reserved_quantity,
+                 :allocations
 
       def quantity
         object.quantity.to_f
+      end
+
+      def fulfilled_quantity
+        object.fulfilled_quantity.to_f
+      end
+
+      def rejected_quantity
+        object.rejected_quantity.to_f
+      end
+
+      def remaining_quantity
+        object.remaining_quantity.to_f
+      end
+
+      def reserved_quantity
+        object.reserved_quantity.to_f
+      end
+
+      def allocations
+        object.allocations.order(created_at: :asc).map do |allocation|
+          TransferRequestAllocationSerializer.new(allocation).as_json
+        end
+      end
+
+      def entered_quantity
+        object.entered_quantity&.to_f
+      end
+
+      def package_count
+        object.package_count&.to_f
+      end
+
+      def entered_unit
+        return nil unless object.entered_unit.present?
+
+        {
+          id: object.entered_unit.id,
+          name: object.entered_unit.name || "",
+          abbreviation: object.entered_unit.abbreviation || ""
+        }
+      end
+
+      def packaging_spec_label
+        commodity = object.commodity
+        return nil unless commodity
+
+        size = commodity.try(:package_size)
+        return nil if size.blank? || size.to_f <= 0
+
+        container_unit = Cats::Core::UnitOfMeasure.find_by(id: commodity.package_unit_id) if commodity.package_unit_id.present?
+        per_pkg_unit = Cats::Core::UnitOfMeasure.find_by(id: commodity.package_unit_per_package_id) if commodity.package_unit_per_package_id.present?
+        container = container_unit&.name || container_unit&.abbreviation
+        per_pkg = per_pkg_unit&.abbreviation || per_pkg_unit&.name
+        return nil if container.blank?
+
+        parts = [size.to_f]
+        parts << per_pkg if per_pkg.present?
+        label = parts.join(" ")
+        "#{label} per #{container}"
       end
 
       def source_store
@@ -34,10 +96,16 @@ module Cats
       def source_stack
         return nil unless object.source_stack.present?
 
+        stack = object.source_stack
+        unit = stack.unit
+
         {
-          id: object.source_stack.id,
-          code: object.source_stack.code,
-          quantity: object.source_stack.quantity.to_f
+          id: stack.id,
+          code: stack.code,
+          quantity: stack.quantity.to_f,
+          unit_id: stack.unit_id,
+          unit_name: unit&.name,
+          unit_abbreviation: unit&.abbreviation
         }
       end
 

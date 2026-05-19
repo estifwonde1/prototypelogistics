@@ -2,49 +2,63 @@
 
 module Cats
   module Warehouse
-    class StackTransferService
-      attr_reader :source_stack, :destination_stack, :quantity, :user,
-                  :entered_unit_id, :entered_quantity, :package_count,
-                  :destination_credit_quantity
+    # Executes approved store-to-store transfer requests (cross-store).
+    class TransferRequestExecutor
+      attr_reader :transfer_request, :source_stack, :destination_stack, :user,
+                  :quantity, :entered_unit_id, :entered_quantity, :package_count,
+                  :destination_credit_quantity, :transaction
+
+      def self.call(**kwargs)
+        new(**kwargs).call
+      end
 
       def initialize(
-        source_stack:,
-        destination_stack:,
+        transfer_request:,
         user:,
+        destination_stack: nil,
         quantity: nil,
         entered_unit_id: nil,
         entered_quantity: nil,
         package_count: nil
       )
-        @source_stack = source_stack
-        @destination_stack = destination_stack
+        @transfer_request = transfer_request
         @user = user
-        @package_count = package_count.present? ? package_count.to_f : nil
+        @source_stack = transfer_request.source_stack.reload
+        @package_count = package_count.present? ? package_count.to_f : transfer_request.package_count
 
         resolved = TransferQuantityResolver.resolve(
           source_stack: source_stack,
-          quantity: quantity,
-          entered_unit_id: entered_unit_id,
-          entered_quantity: entered_quantity
+          quantity: quantity || transfer_request.quantity,
+          entered_unit_id: entered_unit_id || transfer_request.entered_unit_id,
+          entered_quantity: entered_quantity || transfer_request.entered_quantity
         )
         @quantity = resolved.canonical_quantity
         @entered_unit_id = resolved.entered_unit_id
         @entered_quantity = resolved.entered_quantity
+
+        @destination_stack =
+          destination_stack ||
+          StackMovementHelper.resolve_destination_stack_for_transfer_request(
+            transfer_request,
+            source_stack: source_stack
+          )
       end
 
       def call
         validate!
-        compute_destination_credit!
-        transfer!
+        destination_stack.reload
+        @destination_credit_quantity = StackMovementHelper.compute_destination_credit_quantity(
+          source_stack: source_stack,
+          destination_stack: destination_stack,
+          quantity_in_source_unit: quantity
+        )
+        execute!
+        self
       end
 
       private
 
       def validate!
-        unless source_stack.store_id == destination_stack.store_id
-          raise ArgumentError, "Source and destination stacks must be in the same store"
-        end
-
         unless source_stack.unit_id.present?
           raise ArgumentError, "Source stack has no unit of measure"
         end
@@ -67,6 +81,12 @@ module Cats
 
         StackMovementHelper.ensure_destination_unit!(source_stack: source_stack, destination_stack: destination_stack)
 
+        remaining = transfer_request.remaining_quantity
+        if quantity > remaining + TransferRequest::QTY_EPSILON
+          raise ArgumentError,
+                "Quantity (#{quantity}) exceeds remaining on request (#{remaining})"
+        end
+
         if source_stack.quantity < quantity
           raise ArgumentError,
                 "Insufficient quantity in source stack. Available: #{source_stack.quantity}, Requested: #{quantity}"
@@ -75,15 +95,7 @@ module Cats
         raise ArgumentError, "Transfer quantity must be greater than zero" if quantity <= 0
       end
 
-      def compute_destination_credit!
-        @destination_credit_quantity = StackMovementHelper.compute_destination_credit_quantity(
-          source_stack: source_stack,
-          destination_stack: destination_stack,
-          quantity_in_source_unit: quantity
-        )
-      end
-
-      def transfer!
+      def execute!
         ActiveRecord::Base.transaction do
           source_stack.quantity -= quantity
           source_stack.save!
@@ -99,7 +111,8 @@ module Cats
             transaction_date: Date.current,
             entered_unit_id: entered_unit_id,
             entered_quantity: entered_quantity,
-            package_count: package_count
+            package_count: package_count,
+            reference: transfer_request
           }
 
           if source_stack.base_unit_id.present?
@@ -107,25 +120,26 @@ module Cats
             transaction_attrs[:base_quantity] = quantity
           end
 
-          transaction = StackTransaction.create!(transaction_attrs)
+          @transaction = StackTransaction.create!(transaction_attrs)
 
           StackMovementHelper.update_stock_balance!(source_stack)
           StackMovementHelper.update_stock_balance!(destination_stack)
 
           StoreOccupancyUpdater.call(store_id: source_stack.store_id)
+          StoreOccupancyUpdater.call(store_id: destination_stack.store_id)
 
-          create_workflow_event(transaction)
-
-          transaction
+          create_workflow_event
         end
       end
 
-      def create_workflow_event(transaction)
+      def create_workflow_event
         WorkflowEvent.create!(
-          event_type: "stack_transfer",
+          entity: transfer_request,
+          event_type: "transfer_request_fulfillment",
           actor_id: user.id,
           occurred_at: Time.current,
-          metadata: {
+          payload: {
+            transfer_request_id: transfer_request.id,
             source_stack_id: source_stack.id,
             destination_stack_id: destination_stack.id,
             quantity: quantity,
@@ -139,7 +153,7 @@ module Cats
           }
         )
       rescue StandardError => e
-        Rails.logger.error("Failed to create workflow event: #{e.message}")
+        Rails.logger.error("Failed to create transfer request workflow event: #{e.message}")
       end
     end
   end
