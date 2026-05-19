@@ -21,6 +21,10 @@ module Cats
                  :my_inspection, :my_grn,
                  :grn_id, :grn_reference_no, :grn_status,
                  :created_by_name,
+                 :assigned_storekeeper_id,
+                 :assigned_storekeeper_name,
+                 :assigned_storekeeper_at,
+                 :awaiting_storekeeper_assignment,
                  :cancelled_at,
                  :created_at, :updated_at
 
@@ -233,6 +237,17 @@ module Cats
         return nil unless user
 
         [user.first_name, user.last_name].compact.join(" ").presence || user.email
+      end
+
+      def assigned_storekeeper_name
+        user = object.assigned_storekeeper
+        return nil unless user
+
+        [user.first_name, user.last_name].compact.join(" ").presence || user.email
+      end
+
+      def awaiting_storekeeper_assignment
+        object.assigned_storekeeper_id.blank?
       end
 
       private

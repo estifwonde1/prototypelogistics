@@ -1615,7 +1615,7 @@ function ReceiptOrderDetailPage() {
             <>
               {!legacyPlanHiddenForViewer ? (
                 <>
-                  <Tabs.Tab value="assignments">Assignments</Tabs.Tab>
+                  <Tabs.Tab value="assignments">Assignment Plan</Tabs.Tab>
                   <Tabs.Tab value="receipt-authorizations">
                     Receipt Authorizations
                     {receiptAuthorizations.length > 0 && (
@@ -1694,7 +1694,7 @@ function ReceiptOrderDetailPage() {
                 </SimpleGrid>
                 {legacyPlanHiddenForViewer ? (
                   <Alert color="orange" title="Receipt plan was updated">
-                    Assignments, receipt authorizations, and space reservations for this order are hidden because routing
+                    Assignment plan, receipt authorizations, and space reservations for this order are hidden because routing
                     diverged from the original plan. Use the workflow timeline for the audit trail.
                   </Alert>
                 ) : null}

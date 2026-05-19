@@ -84,8 +84,12 @@ Cats::Warehouse::Engine.routes.draw do
       post :finish_stacking, on: :member
     end
     resources :receipt_authorizations, only: [ :index, :show, :create, :update ] do
+      collection do
+        get :assignable_storekeepers
+      end
       post :cancel, on: :member
       post :driver_confirm, on: :member
+      post :assign_storekeeper, on: :member
     end
     resources :storekeeper_assignments, only: [ :index ] do
       collection do

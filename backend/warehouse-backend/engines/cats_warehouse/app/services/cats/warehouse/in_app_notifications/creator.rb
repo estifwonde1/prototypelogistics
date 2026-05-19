@@ -2,8 +2,9 @@ module Cats
   module Warehouse
     module InAppNotifications
       # Phase 2 recipient matrix (same pattern as phase 1; all rows include params["path"]):
-      # - receipt_authorization.created / .cancelled → Warehouse Managers (RA warehouse) + Storekeepers (RA store)
-      # - receipt_authorization.driver_confirmed → WM (warehouse) + Storekeepers (store)
+      # - receipt_authorization.created / .cancelled → Warehouse Managers (RA warehouse) only
+      # - receipt_authorization.assigned_to_storekeeper → assigned storekeeper
+      # - receipt_authorization.driver_confirmed → WM (warehouse) + assigned storekeeper
       # - receipt_authorization.grn_confirmed → Hub Managers (order hub) + WM (RA warehouse)
       # - inspection.confirmed → WM (inspection warehouse); Hub Managers + RO stakeholders if receipt_order;
       #   Storekeepers if linked receipt_authorization
@@ -78,6 +79,8 @@ module Cats
             rows_receipt_authorization_plan_deviated
           when "receipt_authorization.created", "receipt_authorization.cancelled"
             rows_receipt_authorization_facility(@event)
+          when "receipt_authorization.assigned_to_storekeeper"
+            rows_receipt_authorization_assigned_to_storekeeper
           when "receipt_authorization.driver_confirmed"
             rows_receipt_authorization_driver_confirmed
           when "receipt_authorization.grn_confirmed"
@@ -195,7 +198,6 @@ module Cats
           sid = ra.store_id
           users = {}
           facility_users(role_name: "Warehouse Manager", warehouse_id: wid).each { |u| users[u.id] = u } if wid.present?
-          facility_users(role_name: "Storekeeper", store_id: sid).each { |u| users[u.id] = u } if sid.present?
 
           base = {
             "receipt_authorization_id" => ra.id,
@@ -207,13 +209,36 @@ module Cats
           users.values.map { |u| { user: u, params: base.merge("path" => Paths.receipt_authorization(u, ra)) } }
         end
 
+        def rows_receipt_authorization_assigned_to_storekeeper
+          ra = ReceiptAuthorization.find_by(id: payload_value(:receipt_authorization_id))
+          return [] unless ra
+
+          sk_id = payload_value(:storekeeper_user_id) || ra.assigned_storekeeper_id
+          return [] if sk_id.blank?
+
+          user = Cats::Core::User.find_by(id: sk_id)
+          return [] unless user&.active?
+
+          base = {
+            "receipt_authorization_id" => ra.id,
+            "receipt_order_id" => ra.receipt_order_id,
+            "warehouse_id" => ra.warehouse_id,
+            "store_id" => ra.store_id
+          }.compact
+
+          [{ user: user, params: base.merge("path" => Paths.receipt_authorization(user, ra)) }]
+        end
+
         def rows_receipt_authorization_driver_confirmed
           ra = ReceiptAuthorization.find_by(id: payload_value(:receipt_authorization_id))
           return [] unless ra&.warehouse
 
           users = {}
           facility_users(role_name: "Warehouse Manager", warehouse_id: ra.warehouse_id).each { |u| users[u.id] = u }
-          facility_users(role_name: "Storekeeper", store_id: ra.store_id).each { |u| users[u.id] = u } if ra.store_id.present?
+          if ra.assigned_storekeeper_id.present?
+            sk = Cats::Core::User.find_by(id: ra.assigned_storekeeper_id)
+            users[sk.id] = sk if sk&.active?
+          end
 
           base = {
             "receipt_authorization_id" => ra.id,
@@ -383,6 +408,8 @@ module Cats
               "/hub/receipt-authorizations/#{ra.id}"
             elsif user&.has_role?("Storekeeper")
               "/storekeeper/receipt-authorizations/#{ra.id}"
+            elsif user&.has_role?("Warehouse Manager")
+              "/warehouse/receipt-authorizations/#{ra.id}"
             else
               "/receipt-orders/#{ra.receipt_order_id}"
             end

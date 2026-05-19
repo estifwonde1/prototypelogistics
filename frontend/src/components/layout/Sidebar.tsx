@@ -54,7 +54,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
     ? OFFICER_ROLE_SLUGS.includes(roleSlug)
     : false;
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
-  const { isStandaloneWarehouse: wmCanUseRa } = useWarehouseManagerRaAccess();
+  const { canAccessRaWorkspace: wmCanAccessRa } = useWarehouseManagerRaAccess();
 
   const isFullAccess = roleSlug === 'federal_officer' || roleSlug === 'officer';
 
@@ -264,7 +264,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
           path: "/receipts",
           resource: "receipt_orders",
         },
-        ...(wmCanUseRa
+        ...(wmCanAccessRa
           ? [
               {
                 label: "Receipt Authorizations",
@@ -468,7 +468,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
     }
 
     return [];
-  }, [isAdmin, role, isOfficerRole, isFullAccess, activeAssignment, wmCanUseRa]);
+  }, [isAdmin, role, isOfficerRole, isFullAccess, activeAssignment, wmCanAccessRa]);
 
   const filterGroupItems = (group: NavGroup) => ({
     ...group,

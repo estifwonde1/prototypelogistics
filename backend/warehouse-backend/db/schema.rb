@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_05_18_000001) do
+ActiveRecord::Schema[7.0].define(version: 2026_05_19_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1403,6 +1403,10 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_18_000001) do
     t.bigint "receipt_order_line_id"
     t.decimal "authorized_quantity_input", precision: 15, scale: 6
     t.bigint "authorized_quantity_input_unit_id"
+    t.bigint "assigned_storekeeper_id"
+    t.bigint "assigned_storekeeper_by_id"
+    t.datetime "assigned_storekeeper_at"
+    t.index ["assigned_storekeeper_id"], name: "idx_cw_ra_on_assigned_storekeeper_id"
     t.index ["authorized_quantity_input_unit_id"], name: "idx_cw_ra_auth_qty_input_unit"
     t.index ["cancelled_by_id"], name: "idx_cw_ra_on_cancelled_by"
     t.index ["created_by_id"], name: "index_cats_warehouse_receipt_authorizations_on_created_by_id"
@@ -2100,6 +2104,8 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_18_000001) do
   add_foreign_key "cats_warehouse_inventory_lots", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_receipt_authorizations", "cats_core_transporters", column: "transporter_id"
   add_foreign_key "cats_warehouse_receipt_authorizations", "cats_core_unit_of_measures", column: "authorized_quantity_input_unit_id"
+  add_foreign_key "cats_warehouse_receipt_authorizations", "cats_core_users", column: "assigned_storekeeper_by_id"
+  add_foreign_key "cats_warehouse_receipt_authorizations", "cats_core_users", column: "assigned_storekeeper_id"
   add_foreign_key "cats_warehouse_receipt_authorizations", "cats_core_users", column: "cancelled_by_id"
   add_foreign_key "cats_warehouse_receipt_authorizations", "cats_core_users", column: "created_by_id"
   add_foreign_key "cats_warehouse_receipt_authorizations", "cats_core_users", column: "driver_confirmed_by_id"

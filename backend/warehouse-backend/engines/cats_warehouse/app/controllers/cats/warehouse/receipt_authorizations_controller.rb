@@ -8,7 +8,9 @@ module Cats
                 :receipt_order,
                 { receipt_order_line: %i[commodity unit packaging_unit] },
                 :store, :warehouse, :transporter,
-                :created_by, :driver_confirmed_by, :inspections, :grns
+                :created_by, :driver_confirmed_by,
+                :assigned_storekeeper, :assigned_storekeeper_by,
+                :inspections, :grns
               )
               .order(created_at: :desc)
 
@@ -32,6 +34,9 @@ module Cats
             end
         end
         ras = ras.where(status: params[:status])                     if params[:status].present?
+        if ActiveModel::Type::Boolean.new.cast(params[:awaiting_storekeeper])
+          ras = ras.where(assigned_storekeeper_id: nil)
+        end
 
         render_resource(ras, each_serializer: ReceiptAuthorizationSerializer)
       end
@@ -42,7 +47,9 @@ module Cats
                :receipt_order,
                { receipt_order_line: %i[commodity unit packaging_unit] },
                :store, :warehouse, :transporter,
-               :created_by, :driver_confirmed_by, :inspections, :grns
+               :created_by, :driver_confirmed_by,
+               :assigned_storekeeper, :assigned_storekeeper_by,
+               :inspections, :grns
              )
              .find(params[:id])
         authorize ra
@@ -162,6 +169,52 @@ module Cats
           inspection_id: params[:inspection_id].presence
         ).call
         render_resource(ra.reload, serializer: ReceiptAuthorizationSerializer)
+      end
+
+      def assign_storekeeper
+        ra = policy_scope(ReceiptAuthorization).find(params[:id])
+        authorize ra, :assign_storekeeper?
+
+        payload = assign_storekeeper_params
+        ra = ReceiptAuthorizationStorekeeperAssigner.call(
+          receipt_authorization: ra,
+          actor:                 current_user,
+          storekeeper_user_id:   payload[:storekeeper_user_id],
+          store_id:              payload[:store_id]
+        )
+
+        render_resource(ra, serializer: ReceiptAuthorizationSerializer)
+      end
+
+      def assignable_storekeepers
+        authorize ReceiptAuthorization, :assignable_storekeepers?
+        warehouse_id = params[:warehouse_id].presence&.to_i
+        raise ArgumentError, "warehouse_id is required" if warehouse_id.blank?
+
+        access = AccessContext.new(user: current_user)
+        unless access.accessible_warehouse_ids.map(&:to_i).include?(warehouse_id)
+          raise Pundit::NotAuthorizedError, "Access denied to warehouse #{warehouse_id}"
+        end
+
+        store_ids = Store.where(warehouse_id: warehouse_id).pluck(:id)
+        assignments = UserAssignment
+                        .includes(:user, :store)
+                        .where(role_name: "Storekeeper")
+                        .where("warehouse_id = ? OR store_id IN (?)", warehouse_id, store_ids.presence || [0])
+
+        users = assignments.map(&:user).compact.uniq(&:id)
+        payload = users.map do |user|
+          ua = assignments.find { |a| a.user_id == user.id }
+          {
+            id: user.id,
+            name: [user.first_name, user.last_name].compact.join(" ").presence || user.email,
+            email: user.email,
+            store_id: ua&.store_id,
+            store_name: ua&.store&.name
+          }
+        end
+
+        render_success(storekeepers: payload)
       end
 
       private
@@ -284,6 +337,10 @@ module Cats
           :truck_plate_number,
           :waybill_number
         )
+      end
+
+      def assign_storekeeper_params
+        params.require(:payload).permit(:storekeeper_user_id, :store_id)
       end
     end
   end
