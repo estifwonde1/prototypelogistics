@@ -18,6 +18,10 @@ module Cats
           { title: "Receipt authorization created", body: "A new receipt authorization was created for your facility." }
         when "receipt_authorization.cancelled"
           { title: "Receipt authorization cancelled", body: "A receipt authorization was cancelled." }
+        when "receipt_authorization.assigned_to_storekeeper"
+          { title: "Receipt authorization assigned", body: "A receipt authorization was assigned to you." }
+        when "receipt_authorization.broadcast_to_storekeepers"
+          { title: "Driver arrival", body: "A truck is arriving at your store. Open Driver Arrivals to record receipt." }
         when "receipt_authorization.driver_confirmed"
           { title: "Driver confirmed delivery", body: "Driver confirmation was recorded; draft GRN is ready." }
         when "receipt_authorization.grn_confirmed"

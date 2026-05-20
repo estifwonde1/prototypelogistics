@@ -56,16 +56,23 @@ export default function ReceiptAuthorizationListPage() {
 
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [warehouseFilter, setWarehouseFilter] = useState<string | null>(null);
+  const [awaitingAssignmentOnly, setAwaitingAssignmentOnly] = useState(false);
 
   const { data: ras = [], isLoading, error, refetch } = useQuery({
     queryKey: [
       'receipt_authorizations',
-      { status: statusFilter, hub_id: userHubId, warehouse_id: scopedWarehouseId },
+      {
+        status: statusFilter,
+        hub_id: userHubId,
+        warehouse_id: scopedWarehouseId,
+        awaiting_storekeeper: awaitingAssignmentOnly,
+      },
     ],
     queryFn: () =>
       getReceiptAuthorizations({
         ...(statusFilter ? { status: statusFilter as ReceiptAuthorization['status'] } : {}),
         ...(scopedWarehouseId ? { warehouse_id: scopedWarehouseId } : {}),
+        ...(awaitingAssignmentOnly ? { awaiting_storekeeper: true } : {}),
       }),
   });
 
@@ -151,6 +158,18 @@ export default function ReceiptAuthorizationListPage() {
           w={220}
           disabled={warehouseOptions.length === 0}
         />
+        {isWarehouseManager && (
+          <Select
+            placeholder="Assignment status"
+            data={[
+              { value: 'all', label: 'All assignments' },
+              { value: 'awaiting', label: 'Awaiting storekeeper' },
+            ]}
+            value={awaitingAssignmentOnly ? 'awaiting' : 'all'}
+            onChange={(v) => setAwaitingAssignmentOnly(v === 'awaiting')}
+            w={220}
+          />
+        )}
       </Group>
 
       {/* Table */}
@@ -167,6 +186,7 @@ export default function ReceiptAuthorizationListPage() {
                 <Table.Th>Status</Table.Th>
                 <Table.Th>Warehouse</Table.Th>
                 <Table.Th>Store</Table.Th>
+                {isWarehouseManager && <Table.Th>Storekeeper</Table.Th>}
                 <Table.Th>Authorized Qty</Table.Th>
                 <Table.Th>Driver Name</Table.Th>
                 <Table.Th>Truck Plate</Table.Th>
@@ -194,6 +214,21 @@ export default function ReceiptAuthorizationListPage() {
                   <Table.Td>
                     <Text size="sm">{ra.store_name || (ra.store_id != null ? `Store #${ra.store_id}` : '—')}</Text>
                   </Table.Td>
+                  {isWarehouseManager && (
+                    <Table.Td>
+                      {ra.direct_to_storekeepers ? (
+                        <Badge color="teal" variant="light" size="sm">
+                          Direct to storekeepers
+                        </Badge>
+                      ) : ra.awaiting_storekeeper_assignment ? (
+                        <Badge color="orange" variant="light" size="sm">
+                          Awaiting storekeeper
+                        </Badge>
+                      ) : (
+                        <Text size="sm">{ra.assigned_storekeeper_name || '—'}</Text>
+                      )}
+                    </Table.Td>
+                  )}
                   <Table.Td>
                     <Text size="sm" fw={600}>
                       {raDisplayQty(ra).toLocaleString()} {raDisplayUnit(ra)}

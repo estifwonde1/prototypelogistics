@@ -32,7 +32,6 @@ const ROLE_OPTIONS = [
   'Hub Manager',
   'Warehouse Manager',
   'Storekeeper',
-  'Officer',
   'Federal Officer',
   'Regional Officer',
   'Zonal Officer',

@@ -609,6 +609,12 @@ function ReceiptOrderFormPage() {
                     </Text>
                   </div>
                   <div>
+                    <Text size="xs" c="dimmed" fw={600} tt="uppercase">Allocated Quantity</Text>
+                    <Text fw={700} size="sm" c="orange">
+                      {totalAssignedInBatchUnit.toLocaleString(undefined, { maximumFractionDigits: 4 })} {unitLabel}
+                    </Text>
+                  </div>
+                  <div>
                     <Text size="xs" c="dimmed" fw={600} tt="uppercase">Remaining</Text>
                     <Text
                       fw={700}

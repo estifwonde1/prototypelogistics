@@ -75,11 +75,27 @@ export interface ReceiptAuthorization {
   grn_reference_no?: string | null;
   grn_status?: string | null;
 
+  // Storekeeper assignment
+  assigned_storekeeper_id?: number | null;
+  assigned_storekeeper_name?: string | null;
+  assigned_storekeeper_at?: string | null;
+  awaiting_storekeeper_assignment?: boolean;
+  /** True when the warehouse has one store — RAs go to all storekeepers without WM assignment. */
+  direct_to_storekeepers?: boolean;
+
   // Audit
   created_by_name?: string;
   cancelled_at?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface AssignableStorekeeper {
+  id: number;
+  name: string;
+  email: string;
+  store_id?: number | null;
+  store_name?: string | null;
 }
 
 export interface CreateReceiptAuthorizationPayload {
@@ -126,6 +142,7 @@ export interface ReceiptAuthorizationFilters {
   warehouse_id?: number;
   store_id?: number;
   status?: 'pending' | 'active' | 'closed' | 'cancelled';
+  awaiting_storekeeper?: boolean;
 }
 
 // ── API functions ─────────────────────────────────────────────────────────
@@ -166,5 +183,25 @@ export async function cancelReceiptAuthorization(id: number): Promise<ReceiptAut
 export async function driverConfirm(id: number, inspectionId?: number): Promise<ReceiptAuthorization> {
   const body = inspectionId ? { inspection_id: inspectionId } : {};
   const response = await apiClient.post(`/receipt_authorizations/${id}/driver_confirm`, body);
+  return (response.data.data || response.data) as ReceiptAuthorization;
+}
+
+export async function getAssignableStorekeepers(
+  warehouseId: number
+): Promise<AssignableStorekeeper[]> {
+  const response = await apiClient.get('/receipt_authorizations/assignable_storekeepers', {
+    params: { warehouse_id: warehouseId },
+  });
+  const data = response.data.data ?? response.data;
+  return (data.storekeepers ?? []) as AssignableStorekeeper[];
+}
+
+export async function assignStorekeeperToRa(
+  id: number,
+  payload: { storekeeper_user_id: number; store_id?: number | null }
+): Promise<ReceiptAuthorization> {
+  const response = await apiClient.post(`/receipt_authorizations/${id}/assign_storekeeper`, {
+    payload,
+  });
   return (response.data.data || response.data) as ReceiptAuthorization;
 }

@@ -47,7 +47,21 @@ export function convertQuantityToTargetUnit(
   commodityId: number,
   conversions: UomConversion[]
 ): number | null {
+  if (fromUnitId === toUnitId) return Number(quantity.toFixed(6));
+
   const mult = findDirectedMultiplier(fromUnitId, toUnitId, commodityId, conversions);
-  if (mult == null) return null;
-  return Number((quantity * mult).toFixed(6));
+  if (mult != null) return Number((quantity * mult).toFixed(6));
+
+  // Mirror backend UomConversionResolver: use inverse edge when forward is missing.
+  const inverse = findDirectedMultiplier(toUnitId, fromUnitId, commodityId, conversions);
+  if (inverse != null && inverse !== 0) {
+    return Number((quantity / inverse).toFixed(6));
+  }
+
+  return null;
+}
+
+/** Commodity id for conversion lookups — global edges use null commodity_id in DB. */
+export function conversionCommodityId(commodityId: number | null | undefined): number {
+  return commodityId ?? 0;
 }

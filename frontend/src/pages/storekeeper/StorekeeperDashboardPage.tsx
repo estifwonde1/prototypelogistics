@@ -46,7 +46,11 @@ export default function StorekeeperDashboardPage() {
   const navigate = useNavigate();
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
   const storeId = activeAssignment?.store?.id;
-  const storeName = activeAssignment?.store?.name ?? 'Unknown Store';
+  const warehouseId = activeAssignment?.warehouse?.id;
+  const storeName =
+    activeAssignment?.store?.name ??
+    activeAssignment?.warehouse?.name ??
+    'Unknown Store';
   const roleLabel = getRoleLabel(activeAssignment?.role_name);
 
   const [searchValue, setSearchValue] = useState('');
@@ -55,15 +59,19 @@ export default function StorekeeperDashboardPage() {
   const [showSearchModal, setShowSearchModal] = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['storekeeper_dashboard', { store_id: storeId }],
+    queryKey: ['storekeeper_dashboard', { store_id: storeId, warehouse_id: warehouseId }],
     queryFn: () => getStorekeeperDashboardData(storeId),
+    enabled: !!(storeId || warehouseId),
   });
 
-  // 1. Inventory scoped to store
+  // 1. Inventory scoped to store (warehouse-level storekeepers see all stores via dashboard API)
   const { data: stockBalances, isLoading: stockLoading } = useQuery({
-    queryKey: ['stock_balances', { store_id: storeId }],
-    queryFn: () => getStockBalances({ store_id: storeId }),
-    enabled: !!storeId,
+    queryKey: ['stock_balances', { store_id: storeId, warehouse_id: warehouseId }],
+    queryFn: () =>
+      storeId
+        ? getStockBalances({ store_id: storeId })
+        : getStockBalances({ warehouse_id: warehouseId! }),
+    enabled: !!(storeId || warehouseId),
   });
 
   const searchMutation = useMutation({

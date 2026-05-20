@@ -77,14 +77,11 @@ function myStatusColor(status: ReturnType<typeof getMyStatus>): string {
 export default function StorekeeperRAListPage() {
   const navigate = useNavigate();
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
-  const warehouseId = activeAssignment?.warehouse?.id;
   const storeId = activeAssignment?.store?.id;
 
-  // Fetch ALL RAs for this warehouse (pending + active) — storekeeper decides which to take
   const { data: allRAs = [], isLoading, error, refetch } = useQuery({
-    queryKey: ['receipt_authorizations', { warehouse_id: warehouseId }],
-    queryFn: () => getReceiptAuthorizations({ warehouse_id: warehouseId }),
-    enabled: !!warehouseId,
+    queryKey: ['receipt_authorizations', 'storekeeper_assigned'],
+    queryFn: () => getReceiptAuthorizations(),
   });
 
   if (isLoading) return <LoadingState message="Loading driver arrivals..." />;
@@ -111,7 +108,7 @@ export default function StorekeeperRAListPage() {
       </Group>
 
       <Text c="dimmed">
-        Trucks arriving at your warehouse. Record what you receive, confirm the driver, then stack the goods.
+        Receipt authorizations assigned to you. Record what you receive, confirm the driver, then stack the goods.
       </Text>
 
       {/* Summary */}
@@ -276,8 +273,8 @@ export default function StorekeeperRAListPage() {
       )}
 
       {activeRAs.length === 0 && (
-        <Alert color="blue" title="No incoming trucks">
-          There are no pending truck deliveries for your warehouse at this time.
+        <Alert color="blue" title="No driver arrivals">
+          You have no incoming trucks right now. New arrivals appear here when a receipt authorization is created for your warehouse or assigned to you by your warehouse manager.
         </Alert>
       )}
     </Stack>

@@ -3,120 +3,121 @@
 module Cats
   module Warehouse
     class StackTransferService
-      attr_reader :source_stack, :destination_stack, :quantity, :user
+      attr_reader :source_stack, :destination_stack, :quantity, :user,
+                  :entered_unit_id, :entered_quantity, :package_count,
+                  :destination_credit_quantity
 
-      def initialize(source_stack:, destination_stack:, quantity:, user:)
+      def initialize(
+        source_stack:,
+        destination_stack:,
+        user:,
+        quantity: nil,
+        entered_unit_id: nil,
+        entered_quantity: nil,
+        package_count: nil
+      )
         @source_stack = source_stack
         @destination_stack = destination_stack
-        @quantity = quantity.to_f
         @user = user
+        @package_count = package_count.present? ? package_count.to_f : nil
+
+        resolved = TransferQuantityResolver.resolve(
+          source_stack: source_stack,
+          quantity: quantity,
+          entered_unit_id: entered_unit_id,
+          entered_quantity: entered_quantity
+        )
+        @quantity = resolved.canonical_quantity
+        @entered_unit_id = resolved.entered_unit_id
+        @entered_quantity = resolved.entered_quantity
       end
 
       def call
         validate!
+        compute_destination_credit!
         transfer!
       end
 
       private
 
-      # Empty stacks often have no commodity/unit on the stack row until first putaway or transfer-in.
-      # Align destination with source before validating so storekeepers can move stock into RESERVED/empty bays.
-      def prepare_destination_to_receive_goods!
-        return unless source_stack.commodity_id.present? && source_stack.unit_id.present?
-
-        d = destination_stack
-        return if d.quantity.to_f.positive?
-
-        d.commodity_id = source_stack.commodity_id
-        d.unit_id = source_stack.unit_id
-        d.base_unit_id = source_stack.base_unit_id if d.respond_to?(:base_unit_id=) && source_stack.base_unit_id.present?
-      end
-
       def validate!
-        # Validate same store
         unless source_stack.store_id == destination_stack.store_id
           raise ArgumentError, "Source and destination stacks must be in the same store"
         end
 
-        prepare_destination_to_receive_goods!
+        unless source_stack.unit_id.present?
+          raise ArgumentError, "Source stack has no unit of measure"
+        end
 
-        # Validate same commodity (after adopting an empty destination)
-        unless source_stack.commodity_id == destination_stack.commodity_id
+        StackMovementHelper.prepare_destination_to_receive_goods!(
+          source_stack: source_stack,
+          destination_stack: destination_stack
+        )
+
+        if StackMovementHelper.destination_has_different_commodity_with_stock?(
+          source_stack: source_stack,
+          destination_stack: destination_stack
+        )
+          raise ArgumentError, "Destination stack holds a different commodity. Choose an empty bay or matching stack."
+        end
+
+        unless StackMovementHelper.same_commodity?(source_stack: source_stack, destination_stack: destination_stack)
           raise ArgumentError, "Source and destination stacks must have the same commodity"
         end
 
-        # Validate same unit (after adopting an empty destination)
-        unless source_stack.unit_id == destination_stack.unit_id
-          raise ArgumentError, "Source and destination stacks must have the same unit"
-        end
+        StackMovementHelper.ensure_destination_unit!(source_stack: source_stack, destination_stack: destination_stack)
 
-        # Validate sufficient quantity
         if source_stack.quantity < quantity
-          raise ArgumentError, "Insufficient quantity in source stack. Available: #{source_stack.quantity}, Requested: #{quantity}"
+          raise ArgumentError,
+                "Insufficient quantity in source stack. Available: #{source_stack.quantity}, Requested: #{quantity}"
         end
 
-        # Validate positive quantity
-        if quantity <= 0
-          raise ArgumentError, "Transfer quantity must be greater than zero"
-        end
+        raise ArgumentError, "Transfer quantity must be greater than zero" if quantity <= 0
+      end
+
+      def compute_destination_credit!
+        @destination_credit_quantity = StackMovementHelper.compute_destination_credit_quantity(
+          source_stack: source_stack,
+          destination_stack: destination_stack,
+          quantity_in_source_unit: quantity
+        )
       end
 
       def transfer!
         ActiveRecord::Base.transaction do
-          # Debit source stack
           source_stack.quantity -= quantity
           source_stack.save!
 
-          # Credit destination stack
-          destination_stack.quantity += quantity
+          destination_stack.quantity += destination_credit_quantity
           destination_stack.save!
 
-          # Create stack transaction
           transaction_attrs = {
             source: source_stack,
             destination: destination_stack,
             quantity: quantity,
             unit: source_stack.unit,
-            transaction_date: Time.current
+            transaction_date: Date.current,
+            entered_unit_id: entered_unit_id,
+            entered_quantity: entered_quantity,
+            package_count: package_count
           }
+
+          if source_stack.base_unit_id.present?
+            transaction_attrs[:base_unit_id] = source_stack.base_unit_id
+            transaction_attrs[:base_quantity] = quantity
+          end
 
           transaction = StackTransaction.create!(transaction_attrs)
 
-          # Update stock balances
-          update_stock_balance(source_stack, -quantity)
-          update_stock_balance(destination_stack, quantity)
+          StackMovementHelper.update_stock_balance!(source_stack)
+          StackMovementHelper.update_stock_balance!(destination_stack)
 
-          # Recalculate store space after the transfer
           StoreOccupancyUpdater.call(store_id: source_stack.store_id)
 
-          # Create workflow event for audit trail
           create_workflow_event(transaction)
 
           transaction
         end
-      end
-
-      def conversion_factor
-        # If base_unit is present, calculate conversion factor
-        return 1.0 unless source_stack.base_unit.present?
-
-        # This should ideally come from a UOM conversion table
-        # For now, we'll use a simple 1:1 ratio
-        1.0
-      end
-
-      def update_stock_balance(stack, quantity_change)
-        balance = StockBalance.find_or_initialize_by(
-          stack: stack,
-          commodity: stack.commodity,
-          store: stack.store,
-          warehouse: stack.store.warehouse,
-          unit: stack.unit
-        )
-
-        balance.quantity ||= stack.quantity
-        balance.quantity = stack.quantity # Use the updated stack quantity directly
-        balance.save!
       end
 
       def create_workflow_event(transaction)
@@ -129,11 +130,15 @@ module Cats
             destination_stack_id: destination_stack.id,
             quantity: quantity,
             unit_id: source_stack.unit_id,
+            destination_quantity: destination_credit_quantity,
+            destination_unit_id: destination_stack.unit_id,
+            entered_unit_id: entered_unit_id,
+            entered_quantity: entered_quantity,
+            package_count: package_count,
             transaction_id: transaction.id
           }
         )
       rescue StandardError => e
-        # Log error but don't fail the transaction
         Rails.logger.error("Failed to create workflow event: #{e.message}")
       end
     end

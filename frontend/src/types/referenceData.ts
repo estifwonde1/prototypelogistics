@@ -16,6 +16,8 @@ export interface CommodityReference {
   code?: string | null;
   batch_no?: string | null;
   quantity?: number | null;
+  allocated_quantity?: number | null;
+  remaining_quantity?: number | null;
   unit_id?: number | null;
   unit_name?: string | null;
   unit_abbreviation?: string | null;

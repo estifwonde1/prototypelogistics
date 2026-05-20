@@ -34,22 +34,18 @@ module Cats
           # Some users can carry multiple roles; inspection flow must use the storekeeper
           # visibility rules when acting as storekeeper.
           if access.storekeeper?
-            store_ids = access.assigned_store_ids
-            return scope.none if store_ids.blank?
-
-            warehouse_ids =
-              Store.where(id: store_ids).where.not(warehouse_id: nil).distinct.pluck(:warehouse_id)
             tbl = ReceiptAuthorization.table_name
-
-            if warehouse_ids.blank?
-              return scope.where(store_id: store_ids)
+            single_store_wh_ids = SingleStoreWarehouse.single_store_warehouse_ids_for_user(access)
+            assigned_scope = scope.where(assigned_storekeeper_id: user.id)
+            if single_store_wh_ids.empty?
+              return assigned_scope
             end
 
-            return scope.where(
-              "#{tbl}.store_id IN (?) OR (#{tbl}.store_id IS NULL AND #{tbl}.warehouse_id IN (?))",
-              store_ids,
-              warehouse_ids
+            open_scope = scope.where(
+              "#{tbl}.assigned_storekeeper_id IS NULL AND #{tbl}.warehouse_id IN (?)",
+              single_store_wh_ids
             )
+            return assigned_scope.or(open_scope)
           end
 
           if access.officer?
@@ -103,10 +99,35 @@ module Cats
         can_mutate?
       end
 
+      def assignable_storekeepers?
+        index?
+      end
+
+      def assign_storekeeper?
+        return false unless record.is_a?(ReceiptAuthorization)
+        return false if SingleStoreWarehouse.single_store?(record.warehouse_id)
+        return false unless access.warehouse_manager?
+
+        wh_ids = access.assigned_warehouse_ids.map(&:to_i)
+        return false unless wh_ids.include?(record.warehouse_id.to_i)
+
+        return false unless record.pending? || record.active?
+        return false if record.inspections.exists?
+
+        true
+      end
+
       def driver_confirm?
         return false unless record.is_a?(ReceiptAuthorization)
+        return true if admin?
 
-        admin? || storekeeper?
+        return false unless access.storekeeper?
+
+        return true if record.assigned_storekeeper_id == user.id
+
+        record.assigned_storekeeper_id.blank? &&
+          SingleStoreWarehouse.single_store?(record.warehouse_id) &&
+          SingleStoreWarehouse.storekeeper_eligible?(user_id: user.id, warehouse_id: record.warehouse_id)
       end
 
       private

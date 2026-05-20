@@ -498,7 +498,7 @@ function CommodityFormPage() {
 
       <Card padding="lg">
         <Stack gap="md">
-          <Title order={3}>Create New Commodity</Title>
+          <Title order={3}>Create New Commodity Batch</Title>
 
           <Select
             label="Commodity Name"
@@ -818,7 +818,9 @@ function CommodityFormPage() {
                             <Table.Th>Batch No</Table.Th>
                             <Table.Th>Source Type</Table.Th>
                             <Table.Th>Source Name</Table.Th>
-                            <Table.Th>Quantity</Table.Th>
+                            <Table.Th>Batch Quantity</Table.Th>
+                            <Table.Th>Allocated Quantity</Table.Th>
+                            <Table.Th>Remaining Quantity</Table.Th>
                             <Table.Th>Unit</Table.Th>
                             <Table.Th>Packaging</Table.Th>
                             <Table.Th>Packaged Qty</Table.Th>
@@ -877,6 +879,28 @@ function CommodityFormPage() {
                                 <Table.Td>
                                   <Text size="sm" fw={500}>
                                     {batch.quantity?.toLocaleString() ?? "—"}
+                                  </Text>
+                                </Table.Td>
+                                <Table.Td>
+                                  <Text size="sm" fw={500} c="orange">
+                                    {batch.allocated_quantity != null
+                                      ? batch.allocated_quantity.toLocaleString()
+                                      : "—"}
+                                  </Text>
+                                </Table.Td>
+                                <Table.Td>
+                                  <Text
+                                    size="sm"
+                                    fw={500}
+                                    c={
+                                      batch.remaining_quantity != null && batch.remaining_quantity < 0
+                                        ? "red"
+                                        : "blue"
+                                    }
+                                  >
+                                    {batch.remaining_quantity != null
+                                      ? batch.remaining_quantity.toLocaleString()
+                                      : "—"}
                                   </Text>
                                 </Table.Td>
                                 <Table.Td>

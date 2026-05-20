@@ -8,12 +8,15 @@ module Cats
                 :receipt_order,
                 { receipt_order_line: %i[commodity unit packaging_unit] },
                 :store, :warehouse, :transporter,
-                :created_by, :driver_confirmed_by, :inspections, :grns
+                :created_by, :driver_confirmed_by,
+                :assigned_storekeeper, :assigned_storekeeper_by,
+                :inspections, :grns
               )
               .order(created_at: :desc)
 
         # Optional filters
         ras = ras.where(receipt_order_id: params[:receipt_order_id]) if params[:receipt_order_id].present?
+        ras = apply_receipt_order_viewer_warehouse_scope(ras)
         ras = ras.where(warehouse_id: params[:warehouse_id])         if params[:warehouse_id].present?
         if params[:store_id].present?
           sid = params[:store_id].to_i
@@ -31,6 +34,9 @@ module Cats
             end
         end
         ras = ras.where(status: params[:status])                     if params[:status].present?
+        if ActiveModel::Type::Boolean.new.cast(params[:awaiting_storekeeper])
+          ras = ras.where(assigned_storekeeper_id: nil)
+        end
 
         render_resource(ras, each_serializer: ReceiptAuthorizationSerializer)
       end
@@ -41,7 +47,9 @@ module Cats
                :receipt_order,
                { receipt_order_line: %i[commodity unit packaging_unit] },
                :store, :warehouse, :transporter,
-               :created_by, :driver_confirmed_by, :inspections, :grns
+               :created_by, :driver_confirmed_by,
+               :assigned_storekeeper, :assigned_storekeeper_by,
+               :inspections, :grns
              )
              .find(params[:id])
         authorize ra
@@ -163,7 +171,84 @@ module Cats
         render_resource(ra.reload, serializer: ReceiptAuthorizationSerializer)
       end
 
+      def assign_storekeeper
+        ra = policy_scope(ReceiptAuthorization).find(params[:id])
+        authorize ra, :assign_storekeeper?
+
+        payload = assign_storekeeper_params
+        ra = ReceiptAuthorizationStorekeeperAssigner.call(
+          receipt_authorization: ra,
+          actor:                 current_user,
+          storekeeper_user_id:   payload[:storekeeper_user_id],
+          store_id:              payload[:store_id]
+        )
+
+        render_resource(ra, serializer: ReceiptAuthorizationSerializer)
+      end
+
+      def assignable_storekeepers
+        authorize ReceiptAuthorization, :assignable_storekeepers?
+        warehouse_id = params[:warehouse_id].presence&.to_i
+        raise ArgumentError, "warehouse_id is required" if warehouse_id.blank?
+
+        access = AccessContext.new(user: current_user)
+        unless access.accessible_warehouse_ids.map(&:to_i).include?(warehouse_id)
+          raise Pundit::NotAuthorizedError, "Access denied to warehouse #{warehouse_id}"
+        end
+
+        store_ids = Store.where(warehouse_id: warehouse_id).pluck(:id)
+        assignments = UserAssignment
+                        .includes(:user, :store)
+                        .where(role_name: "Storekeeper")
+                        .where("warehouse_id = ? OR store_id IN (?)", warehouse_id, store_ids.presence || [0])
+
+        users = assignments.map(&:user).compact.uniq(&:id)
+        payload = users.map do |user|
+          ua = assignments.find { |a| a.user_id == user.id }
+          {
+            id: user.id,
+            name: [user.first_name, user.last_name].compact.join(" ").presence || user.email,
+            email: user.email,
+            store_id: ua&.store_id,
+            store_name: ua&.store&.name
+          }
+        end
+
+        render_success(storekeepers: payload)
+      end
+
       private
+
+      # On a shared receipt order, warehouse managers only act for their active warehouse.
+      # Without this, policy_scope can include every warehouse they are assigned to (or assigned on via ROA).
+      def apply_receipt_order_viewer_warehouse_scope(ras)
+        return ras unless params[:receipt_order_id].present?
+        return ras unless warehouse_manager?
+
+        wh_id = active_warehouse_id_for_receipt_order_view
+        if wh_id.blank?
+          # Multi-warehouse managers must pass warehouse_id (active warehouse context).
+          return ras.none if AccessContext.new(user: current_user).assigned_warehouse_ids.size > 1
+
+          return ras
+        end
+
+        access = AccessContext.new(user: current_user)
+        unless access.accessible_warehouse_ids.map(&:to_i).include?(wh_id)
+          raise Pundit::NotAuthorizedError, "Access denied to warehouse #{wh_id}"
+        end
+
+        ras.where(warehouse_id: wh_id)
+      end
+
+      def active_warehouse_id_for_receipt_order_view
+        return params[:warehouse_id].to_i if params[:warehouse_id].present?
+
+        assigned = AccessContext.new(user: current_user).assigned_warehouse_ids.map(&:to_i).uniq
+        return assigned.first if assigned.size == 1
+
+        nil
+      end
 
       def resolve_ra_destination_warehouse_id(receipt_order:, store:, assignment:, explicit_warehouse:)
         if store.present?
@@ -252,6 +337,10 @@ module Cats
           :truck_plate_number,
           :waybill_number
         )
+      end
+
+      def assign_storekeeper_params
+        params.require(:payload).permit(:storekeeper_user_id, :store_id)
       end
     end
   end

@@ -223,6 +223,10 @@ module Cats
           record = model.find_or_initialize_by(attrs)
           record.save! if record.new_record?
           record
+        rescue ActiveRecord::RecordNotUnique
+          # Race condition: another request inserted the same row between our
+          # find and our save. Re-query to return the existing record.
+          model.find_by!(attrs)
         end
 
         def sync_hub_manager_contacts!(user, hub_id)
