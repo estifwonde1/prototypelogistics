@@ -4,6 +4,7 @@ import type { BinCardEntry } from '../types/reports';
 
 export interface BinCardFilters {
   store_id?: number;
+  warehouse_id?: number;
   stack_id?: number;
   /** Comma-separated or repeated param; backend accepts both */
   stack_ids?: number[] | string;
@@ -26,5 +27,12 @@ export const getBinCardReport = async (filters: BinCardFilters = {}): Promise<Bi
     params.stack_ids = stack_ids;
   }
   const response = await apiClient.get<ApiResponse<BinCardEntry[]>>('/reports/bin_card', { params });
+  return response.data.data;
+};
+
+export type StockCardFilters = Omit<BinCardFilters, 'stack_id' | 'stack_ids' | 'include_null_inventory_lot' | 'omit_lot_filter'>;
+
+export const getStockCardReport = async (filters: StockCardFilters = {}): Promise<BinCardEntry[]> => {
+  const response = await apiClient.get<ApiResponse<BinCardEntry[]>>('/reports/stock_card', { params: filters });
   return response.data.data;
 };

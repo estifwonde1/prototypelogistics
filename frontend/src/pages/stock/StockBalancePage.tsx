@@ -1,37 +1,121 @@
-import { useState, useMemo } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Stack,
-  Title,
-  Text,
-  Group,
-  TextInput,
-  Table,
-  Select,
+  Alert,
+  Badge,
+  Button,
   Card,
-  SimpleGrid,
+  Collapse,
+  Divider,
+  Group,
   SegmentedControl,
+  Select,
+  SimpleGrid,
+  Stack,
+  Table,
+  Text,
+  TextInput,
+  Title,
 } from '@mantine/core';
-import { IconSearch, IconPackage, IconBuilding, IconBox } from '@tabler/icons-react';
+import {
+  IconChevronDown,
+  IconChevronRight,
+  IconHistory,
+  IconPackage,
+  IconSearch,
+  IconStack2,
+} from '@tabler/icons-react';
 import { getStockBalances } from '../../api/stockBalances';
 import { getWarehouses } from '../../api/warehouses';
-import { getInventoryLots } from '../../api/referenceData';
+import { getStockCardReport } from '../../api/reports';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
 import { ExpiryBadge } from '../../components/common/ExpiryBadge';
-import { UomConversionDisplay } from '../../components/common/UomConversionDisplay';
 import { useAuthStore } from '../../store/authStore';
 import { normalizeRoleSlug } from '../../contracts/warehouse';
+import type { StockBalance } from '../../types/stockBalance';
+import type { BinCardEntry } from '../../types/reports';
 
-type GroupByOption = 'none' | 'warehouse' | 'commodity';
+type ViewMode = 'cards' | 'table';
+
+interface BatchStock {
+  key: string;
+  commodityId: number;
+  commodityName: string;
+  batchNo: string;
+  inventoryLotId?: number | null;
+  expiryDate?: string | null;
+  rows: StockBalance[];
+  totals: Map<string, number>;
+}
+
+interface CommodityStock {
+  commodityId: number;
+  commodityName: string;
+  batches: BatchStock[];
+  totals: Map<string, number>;
+}
+
+function unitLabel(row?: Partial<StockBalance | BinCardEntry> | null) {
+  return row?.unit_abbreviation || row?.unit_name || row?.base_unit_name || 'unit';
+}
+
+function balanceBatchKey(row: StockBalance) {
+  if (row.inventory_lot_id) return `lot:${row.inventory_lot_id}`;
+  const batch = row.lot_batch_no || row.batch_no || row.commodity_batch_no;
+  return batch ? `batch:${batch}` : `no-batch:${row.commodity_id}:${row.unit_id}`;
+}
+
+function batchLabel(row: StockBalance) {
+  return row.lot_batch_no || row.batch_no || row.commodity_batch_no || 'No batch recorded';
+}
+
+function expiryValue(row: StockBalance) {
+  return row.lot_expiry_date || row.expiry_date || null;
+}
+
+function addTotal(map: Map<string, number>, unit: string, qty: number) {
+  map.set(unit, (map.get(unit) ?? 0) + qty);
+}
+
+function formatTotals(map: Map<string, number>) {
+  const parts = [...map.entries()].map(([unit, qty]) => `${Number(qty).toLocaleString()} ${unit}`);
+  return parts.length ? parts.join(' / ') : '0';
+}
+
+function historyDirection(row: BinCardEntry) {
+  if (row.source_id && row.destination_id) return 'transfer';
+  if (row.destination_id) return 'in';
+  if (row.source_id) return 'out';
+  return 'move';
+}
+
+function referenceLabel(row: BinCardEntry) {
+  const doc = row.reference_type?.replace('Cats::Warehouse::', '');
+  return [doc, row.reference_no].filter(Boolean).join(' / ') || '-';
+}
+
+function txDisplayQty(row: BinCardEntry) {
+  const qty = row.entered_quantity ?? row.quantity;
+  const unit = row.entered_unit_name || row.unit_abbreviation || row.unit_name || row.base_unit_name || '';
+  return `${Number(qty || 0).toLocaleString()} ${unit}`.trim();
+}
 
 function StockBalancePage() {
   const [search, setSearch] = useState('');
   const [warehouseFilter, setWarehouseFilter] = useState<string | null>(null);
-  const [groupBy, setGroupBy] = useState<GroupByOption>('none');
+  const [viewMode, setViewMode] = useState<ViewMode>('cards');
   const [showExpiringSoon, setShowExpiringSoon] = useState(false);
-  const [lotFilter, setLotFilter] = useState<string | null>(null);
+  const [expandedCommodities, setExpandedCommodities] = useState<Set<number>>(new Set());
+  const [selectedCommodityId, setSelectedCommodityId] = useState<number | null>(null);
+  const [selectedBatchKey, setSelectedBatchKey] = useState<string | null>(null);
+
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const persistedRole = useAuthStore((state) => state.role);
+  const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || persistedRole);
+  const userHubId = activeAssignment?.hub?.id;
+  const isHubManager = roleSlug === 'hub_manager';
 
   const { data: stockBalances = [], isLoading, error, refetch } = useQuery({
     queryKey: ['stockBalances', { warehouse_id: warehouseFilter ?? undefined }],
@@ -39,335 +123,424 @@ function StockBalancePage() {
     refetchOnMount: 'always',
   });
 
-  // Get active assignment context for filtering
-  const activeAssignment = useAuthStore((state) => state.activeAssignment);
-  const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || useAuthStore((state) => state.role));
-  const userHubId = activeAssignment?.hub?.id;
-  const isHubManager = roleSlug === 'hub_manager';
-
   const { data: warehouses = [] } = useQuery({
     queryKey: ['warehouses', { hub_id: isHubManager ? userHubId : undefined }],
-    queryFn: () => {
-      if (isHubManager && userHubId) {
-        return getWarehouses({ hub_id: userHubId });
-      }
-      return getWarehouses();
-    },
+    queryFn: () => (isHubManager && userHubId ? getWarehouses({ hub_id: userHubId }) : getWarehouses()),
   });
 
-  const { data: inventoryLots = [] } = useQuery({
-    queryKey: ['reference-data', 'inventory_lots'],
-    queryFn: () => getInventoryLots(),
-  });
-
-  // Calculate summary statistics
-  const stats = useMemo(() => {
-    if (!stockBalances) return { totalQuantity: 0, warehouseCount: 0, commodityCount: 0 };
-
-    const totalQuantity = stockBalances.reduce((sum, balance) => sum + balance.quantity, 0);
-    const uniqueWarehouses = new Set(stockBalances.map((b) => b.warehouse_id));
-    const uniqueCommodities = new Set(stockBalances.map((b) => b.commodity_id));
-
-    return {
-      totalQuantity,
-      warehouseCount: uniqueWarehouses.size,
-      commodityCount: uniqueCommodities.size,
-    };
-  }, [stockBalances]);
-
-  // Filter stock balances
   const filteredBalances = useMemo(() => {
-    if (!stockBalances) return [];
-
+    const term = search.trim().toLowerCase();
     return stockBalances.filter((balance) => {
-      // Lot filter
-      const matchesLot = !lotFilter || balance.inventory_lot_id?.toString() === lotFilter;
-      
-      // Expiring soon filter (within 30 days)
-      const matchesExpiry = !showExpiringSoon || (balance.expiry_date && (() => {
-        const expiry = new Date(balance.expiry_date);
-        const today = new Date();
-        const daysUntilExpiry = Math.floor((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        return daysUntilExpiry >= 0 && daysUntilExpiry <= 30;
-      })());
-      
-      const searchTerm = search.trim().toLowerCase();
+      const exp = expiryValue(balance);
+      const matchesExpiry =
+        !showExpiringSoon ||
+        (exp &&
+          (() => {
+            const expiry = new Date(exp);
+            const today = new Date();
+            const days = Math.floor((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            return days >= 0 && days <= 30;
+          })());
+
       const matchesSearch =
-        searchTerm === '' ||
-        balance.commodity_id.toString().includes(searchTerm) ||
-        balance.warehouse_id.toString().includes(searchTerm) ||
-        balance.commodity_name?.toLowerCase().includes(searchTerm) ||
-        balance.commodity_batch_no?.toLowerCase().includes(searchTerm) ||
-        balance.batch_no?.toLowerCase().includes(searchTerm) ||
-        balance.warehouse_name?.toLowerCase().includes(searchTerm) ||
-        balance.warehouse_code?.toLowerCase().includes(searchTerm) ||
-        balance.store_name?.toLowerCase().includes(searchTerm) ||
-        balance.store_code?.toLowerCase().includes(searchTerm) ||
-        balance.stack_code?.toLowerCase().includes(searchTerm);
-      return matchesLot && matchesExpiry && matchesSearch;
+        !term ||
+        [
+          balance.commodity_name,
+          balance.commodity_batch_no,
+          balance.lot_batch_no,
+          balance.batch_no,
+          balance.warehouse_name,
+          balance.store_name,
+          balance.stack_code,
+          balance.unit_name,
+          balance.unit_abbreviation,
+        ].some((value) => String(value ?? '').toLowerCase().includes(term));
+
+      return matchesExpiry && matchesSearch;
     });
-  }, [stockBalances, lotFilter, showExpiringSoon, search]);
+  }, [stockBalances, search, showExpiringSoon]);
 
-  // Group stock balances
-  const groupedBalances = useMemo(() => {
-    if (groupBy === 'none') return null;
+  const commodityGroups = useMemo((): CommodityStock[] => {
+    const byCommodity = new Map<number, StockBalance[]>();
+    for (const row of filteredBalances) {
+      if (!byCommodity.has(row.commodity_id)) byCommodity.set(row.commodity_id, []);
+      byCommodity.get(row.commodity_id)!.push(row);
+    }
 
-    const groups = new Map<number, typeof filteredBalances>();
+    return [...byCommodity.entries()]
+      .map(([commodityId, rows]) => {
+        const byBatch = new Map<string, StockBalance[]>();
+        const totals = new Map<string, number>();
 
-    filteredBalances.forEach((balance) => {
-      const key = groupBy === 'warehouse' ? balance.warehouse_id : balance.commodity_id;
-      if (!groups.has(key)) {
-        groups.set(key, []);
-      }
-      groups.get(key)!.push(balance);
-    });
+        for (const row of rows) {
+          const unit = unitLabel(row);
+          addTotal(totals, unit, Number(row.quantity || 0));
+          const key = balanceBatchKey(row);
+          if (!byBatch.has(key)) byBatch.set(key, []);
+          byBatch.get(key)!.push(row);
+        }
 
-    return groups;
-  }, [filteredBalances, groupBy]);
+        const batches = [...byBatch.entries()]
+          .map(([key, batchRows]) => {
+            const row0 = batchRows[0];
+            const batchTotals = new Map<string, number>();
+            for (const row of batchRows) addTotal(batchTotals, unitLabel(row), Number(row.quantity || 0));
 
-  const warehouseOptions = warehouses?.map((warehouse) => ({
-    value: warehouse.id.toString(),
-    label: `${warehouse.name} (${warehouse.code})`,
+            return {
+              key,
+              commodityId,
+              commodityName: row0.commodity_name || `Commodity #${commodityId}`,
+              batchNo: batchLabel(row0),
+              inventoryLotId: row0.inventory_lot_id,
+              expiryDate: expiryValue(row0),
+              rows: batchRows,
+              totals: batchTotals,
+            };
+          })
+          .sort((a, b) => a.batchNo.localeCompare(b.batchNo));
+
+        return {
+          commodityId,
+          commodityName: rows[0]?.commodity_name || `Commodity #${commodityId}`,
+          batches,
+          totals,
+        };
+      })
+      .sort((a, b) => a.commodityName.localeCompare(b.commodityName));
+  }, [filteredBalances]);
+
+  const selectedCommodity = commodityGroups.find((group) => group.commodityId === selectedCommodityId) ?? null;
+  const selectedBatch = selectedCommodity?.batches.find((batch) => batch.key === selectedBatchKey) ?? null;
+
+  const { data: historyRows = [], isLoading: historyLoading } = useQuery({
+    queryKey: [
+      'reports',
+      'stock-card',
+      {
+        commodity_id: selectedCommodityId,
+        warehouse_id: warehouseFilter,
+        inventory_lot_id: selectedBatch?.inventoryLotId,
+        batch_no: selectedBatch && !selectedBatch.inventoryLotId ? selectedBatch.batchNo : undefined,
+      },
+    ],
+    queryFn: () =>
+      getStockCardReport({
+        commodity_id: selectedCommodityId ?? undefined,
+        warehouse_id: warehouseFilter ? Number(warehouseFilter) : undefined,
+        inventory_lot_id: selectedBatch?.inventoryLotId ?? undefined,
+        batch_no: selectedBatch && !selectedBatch.inventoryLotId && selectedBatch.batchNo !== 'No batch recorded' ? selectedBatch.batchNo : undefined,
+      }),
+    enabled: !!selectedCommodityId,
+  });
+
+  const historyWithBalance = useMemo(() => {
+    let running = 0;
+    return [...historyRows]
+      .sort((a, b) => new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime() || a.id - b.id)
+      .map((row) => {
+        const direction = historyDirection(row);
+        const signed = direction === 'in' ? Number(row.base_quantity ?? row.quantity ?? 0) : direction === 'out' ? -Number(row.base_quantity ?? row.quantity ?? 0) : 0;
+        running += signed;
+        return { ...row, direction, running: Math.max(0, running) };
+      });
+  }, [historyRows]);
+
+  const warehouseOptions = warehouses.map((warehouse) => ({
+    value: String(warehouse.id),
+    label: `${warehouse.name}${warehouse.code ? ` (${warehouse.code})` : ''}`,
   }));
 
-  const lotOptions = inventoryLots.map((lot) => ({
-    value: lot.id.toString(),
-    label: lot.display_name || `${lot.batch_no} - Exp: ${new Date(lot.expiry_date).toLocaleDateString()}`,
-  }));
+  const stats = useMemo(() => {
+    const commodityCount = commodityGroups.length;
+    const batchCount = commodityGroups.reduce((sum, group) => sum + group.batches.length, 0);
+    const unitTotals = new Map<string, number>();
+    for (const group of commodityGroups) {
+      for (const [unit, qty] of group.totals) addTotal(unitTotals, unit, qty);
+    }
+    return { commodityCount, batchCount, unitTotals };
+  }, [commodityGroups]);
 
-  if (isLoading) {
-    return <LoadingState message="Loading stock balances..." />;
-  }
+  if (isLoading) return <LoadingState message="Loading stock cards..." />;
+  if (error) return <ErrorState message="Failed to load stock cards. Please try again." onRetry={() => refetch()} />;
 
-  if (error) {
-    return (
-      <ErrorState
-        message="Failed to load stock balances. Please try again."
-        onRetry={() => refetch()}
-      />
-    );
-  }
-
-  const renderTable = (balances: typeof filteredBalances, title?: string) => (
-    <div>
-      {title && (
-        <Title order={4} mb="sm">
-          {title}
-        </Title>
-      )}
-      <Table.ScrollContainer minWidth={1200}>
-        <Table striped highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Warehouse</Table.Th>
-              <Table.Th>Store</Table.Th>
-              <Table.Th>Stack</Table.Th>
-              <Table.Th>Commodity</Table.Th>
-              <Table.Th>Quantity</Table.Th>
-              <Table.Th>Unit</Table.Th>
-              <Table.Th>Batch/Expiry</Table.Th>
+  const renderRowsTable = (rows: StockBalance[]) => (
+    <Table.ScrollContainer minWidth={1100}>
+      <Table striped highlightOnHover>
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>Commodity</Table.Th>
+            <Table.Th>Batch / expiry</Table.Th>
+            <Table.Th>Warehouse</Table.Th>
+            <Table.Th>Store</Table.Th>
+            <Table.Th>Stack</Table.Th>
+            <Table.Th style={{ textAlign: 'right' }}>Current quantity</Table.Th>
+            <Table.Th>Unit</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {rows.map((row) => (
+            <Table.Tr key={row.id}>
+              <Table.Td>{row.commodity_name || row.commodity_id}</Table.Td>
+              <Table.Td>
+                <Stack gap={3}>
+                  <Text size="sm" style={{ fontFamily: 'monospace' }}>{batchLabel(row)}</Text>
+                  {expiryValue(row) ? <ExpiryBadge expiryDate={expiryValue(row)!} size="xs" /> : null}
+                </Stack>
+              </Table.Td>
+              <Table.Td>{row.warehouse_name || row.warehouse_id}</Table.Td>
+              <Table.Td>{row.store_name || row.store_id || '-'}</Table.Td>
+              <Table.Td>{row.stack_code || row.stack_id || '-'}</Table.Td>
+              <Table.Td style={{ textAlign: 'right', fontWeight: 700 }}>{Number(row.quantity).toLocaleString()}</Table.Td>
+              <Table.Td>{unitLabel(row)}</Table.Td>
             </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {balances.map((balance) => (
-              <Table.Tr key={balance.id}>
-                <Table.Td>
-                  {balance.warehouse_name
-                    ? `${balance.warehouse_name}${balance.warehouse_code ? ` (${balance.warehouse_code})` : ''}`
-                    : balance.warehouse_id}
-                </Table.Td>
-                <Table.Td>
-                  {balance.store_name
-                    ? `${balance.store_name}${balance.store_code ? ` (${balance.store_code})` : ''}`
-                    : balance.store_id || '-'}
-                </Table.Td>
-                <Table.Td>{balance.stack_code || balance.stack_id || '-'}</Table.Td>
-                <Table.Td>{balance.commodity_name || balance.commodity_batch_no || balance.commodity_id}</Table.Td>
-                <Table.Td style={{ fontWeight: 600 }}>
-                  {balance.quantity.toLocaleString()}
-                  {balance.entered_quantity && balance.entered_unit_name && (
-                    <Text size="xs" c="dimmed" mt={4}>
-                      <UomConversionDisplay
-                        enteredQuantity={balance.entered_quantity}
-                        enteredUnit={balance.entered_unit_name}
-                        baseQuantity={balance.base_quantity || balance.quantity}
-                        baseUnit={balance.base_unit_name || balance.unit_abbreviation || balance.unit_name || ''}
-                      />
-                    </Text>
-                  )}
-                </Table.Td>
-                <Table.Td>{balance.unit_abbreviation || balance.unit_name || balance.unit_id}</Table.Td>
-                <Table.Td>
-                  {balance.batch_no || balance.expiry_date ? (
-                    <Stack gap="xs">
-                      {balance.batch_no && (
-                        <Text size="sm" fw={500}>
-                          {balance.batch_no}
-                        </Text>
-                      )}
-                      {balance.expiry_date && <ExpiryBadge expiryDate={balance.expiry_date} size="sm" />}
-                    </Stack>
-                  ) : (
-                    <Text c="dimmed">-</Text>
-                  )}
-                </Table.Td>
-              </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
-      </Table.ScrollContainer>
-    </div>
+          ))}
+        </Table.Tbody>
+      </Table>
+    </Table.ScrollContainer>
   );
+
+  const renderHistoryPanel = () => {
+    if (!selectedCommodity) return null;
+
+    return (
+      <Card withBorder padding="md" radius="md" bg="blue.0">
+        <Group justify="space-between" mb="sm" align="flex-start">
+          <div>
+            <Title order={4}>
+              History - {selectedCommodity.commodityName}
+              {selectedBatch ? ` / ${selectedBatch.batchNo}` : ''}
+            </Title>
+            <Text size="sm" c="dimmed">
+              Quantities use the unit recorded on each movement. Transfers are shown separately and do not change the commodity total.
+            </Text>
+          </div>
+          <Button
+            variant="default"
+            size="xs"
+            onClick={() => {
+              setSelectedCommodityId(null);
+              setSelectedBatchKey(null);
+            }}
+          >
+            Close
+          </Button>
+        </Group>
+
+        {historyLoading ? (
+          <LoadingState message="Loading commodity history..." />
+        ) : historyWithBalance.length === 0 ? (
+          <Alert color="gray">No movement history found for this selection.</Alert>
+        ) : (
+          <Table.ScrollContainer minWidth={1100}>
+            <Table striped highlightOnHover withTableBorder>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Date</Table.Th>
+                  <Table.Th>Batch</Table.Th>
+                  <Table.Th>Movement</Table.Th>
+                  <Table.Th style={{ textAlign: 'right' }}>In</Table.Th>
+                  <Table.Th style={{ textAlign: 'right' }}>Out</Table.Th>
+                  <Table.Th style={{ textAlign: 'right' }}>Running base balance</Table.Th>
+                  <Table.Th>Stack</Table.Th>
+                  <Table.Th>Reference</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {historyWithBalance.map((row) => {
+                  const dir = row.direction;
+                  const stackLabel =
+                    dir === 'in'
+                      ? row.destination_stack_code || row.destination_id || '-'
+                      : row.source_stack_code || row.source_id || '-';
+                  return (
+                    <Table.Tr key={row.id}>
+                      <Table.Td>{new Date(row.transaction_date).toLocaleDateString()}</Table.Td>
+                      <Table.Td style={{ fontFamily: 'monospace', fontSize: 12 }}>
+                        {row.batch_no || (row.inventory_lot_id ? `Lot #${row.inventory_lot_id}` : 'No batch recorded')}
+                      </Table.Td>
+                      <Table.Td>
+                        <Badge color={dir === 'in' ? 'green' : dir === 'out' ? 'red' : 'blue'} variant="light">
+                          {dir === 'transfer' ? 'Transfer' : dir === 'in' ? 'In' : 'Out'}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td style={{ textAlign: 'right', color: 'var(--mantine-color-green-7)', fontWeight: 700 }}>
+                        {dir === 'in' ? txDisplayQty(row) : '-'}
+                      </Table.Td>
+                      <Table.Td style={{ textAlign: 'right', color: 'var(--mantine-color-red-7)', fontWeight: 700 }}>
+                        {dir === 'out' ? txDisplayQty(row) : '-'}
+                      </Table.Td>
+                      <Table.Td style={{ textAlign: 'right', fontWeight: 700 }}>
+                        {Number(row.running).toLocaleString()} {row.base_unit_name || row.unit_abbreviation || row.unit_name || ''}
+                      </Table.Td>
+                      <Table.Td>{stackLabel}</Table.Td>
+                      <Table.Td style={{ fontFamily: 'monospace', fontSize: 12 }}>{referenceLabel(row)}</Table.Td>
+                    </Table.Tr>
+                  );
+                })}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        )}
+      </Card>
+    );
+  };
 
   return (
     <Stack gap="md">
-      <Group justify="space-between">
+      <Group justify="space-between" align="flex-start">
         <div>
-          <Title order={2}>Stock Balances</Title>
+          <Title order={2}>Stock Card</Title>
           <Text c="dimmed" size="sm">
-            View current inventory levels across warehouses
+            Commodity history by batch. Zero balances stay visible so past stock does not disappear.
           </Text>
         </div>
+        <SegmentedControl
+          value={viewMode}
+          onChange={(value) => setViewMode(value as ViewMode)}
+          data={[
+            { label: 'Cards', value: 'cards' },
+            { label: 'Table', value: 'table' },
+          ]}
+        />
       </Group>
 
-      {/* Summary Cards */}
-      <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
-        <Card shadow="sm" padding="lg" radius="md" withBorder>
-          <Group>
-            <IconPackage size={32} color="var(--mantine-color-blue-6)" />
-            <div>
-              <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                Total Stock
-              </Text>
-              <Text size="xl" fw={700}>
-                {stats.totalQuantity.toLocaleString()}
-              </Text>
-              <Text size="xs" c="dimmed" maw={280}>
-                Sum of all line quantities (all commodities; kg and l are added as plain numbers — use search / Group by
-                for one commodity).
-              </Text>
-            </div>
-          </Group>
+      <SimpleGrid cols={{ base: 1, sm: 3 }}>
+        <Card withBorder padding="md" radius="md">
+          <Text size="xs" c="dimmed" fw={700} tt="uppercase">Commodities</Text>
+          <Text size="xl" fw={800}>{stats.commodityCount}</Text>
         </Card>
-
-        <Card shadow="sm" padding="lg" radius="md" withBorder>
-          <Group>
-            <IconBuilding size={32} color="var(--mantine-color-green-6)" />
-            <div>
-              <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                Warehouses
-              </Text>
-              <Text size="xl" fw={700}>
-                {stats.warehouseCount}
-              </Text>
-            </div>
-          </Group>
+        <Card withBorder padding="md" radius="md">
+          <Text size="xs" c="dimmed" fw={700} tt="uppercase">Batches</Text>
+          <Text size="xl" fw={800}>{stats.batchCount}</Text>
         </Card>
-
-        <Card shadow="sm" padding="lg" radius="md" withBorder>
-          <Group>
-            <IconBox size={32} color="var(--mantine-color-orange-6)" />
-            <div>
-              <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                Commodities
-              </Text>
-              <Text size="xl" fw={700}>
-                {stats.commodityCount}
-              </Text>
-            </div>
-          </Group>
+        <Card withBorder padding="md" radius="md">
+          <Text size="xs" c="dimmed" fw={700} tt="uppercase">Current stock by unit</Text>
+          <Text size="lg" fw={800}>{formatTotals(stats.unitTotals)}</Text>
+          <Text size="xs" c="dimmed">Units are not mixed unless the ledger already stores a converted base quantity.</Text>
         </Card>
       </SimpleGrid>
 
-      {/* Filters */}
       <Group>
         <TextInput
-          placeholder="Search by commodity, warehouse, store, or stack..."
+          placeholder="Search commodity, batch, warehouse, store, or stack"
           leftSection={<IconSearch size={16} />}
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ flex: 1, maxWidth: 400 }}
+          onChange={(event) => setSearch(event.currentTarget.value)}
+          style={{ flex: 1, minWidth: 280 }}
         />
         <Select
           placeholder="Filter by warehouse"
-          data={warehouseOptions || []}
+          data={warehouseOptions}
           value={warehouseFilter}
-          onChange={setWarehouseFilter}
-          clearable
-          style={{ width: 250 }}
-        />
-        <Select
-          placeholder="Filter by lot"
-          data={lotOptions}
-          value={lotFilter}
-          onChange={setLotFilter}
+          onChange={(value) => {
+            setWarehouseFilter(value);
+            setSelectedCommodityId(null);
+            setSelectedBatchKey(null);
+          }}
           clearable
           searchable
-          style={{ width: 250 }}
+          w={280}
         />
         <SegmentedControl
           value={showExpiringSoon ? 'expiring' : 'all'}
           onChange={(value) => setShowExpiringSoon(value === 'expiring')}
           data={[
-            { label: 'All Stock', value: 'all' },
-            { label: 'Expiring Soon', value: 'expiring' },
+            { label: 'All', value: 'all' },
+            { label: 'Expiring soon', value: 'expiring' },
           ]}
         />
       </Group>
 
-      {/* Group By Control */}
-      <Group>
-        <Text size="sm" fw={500}>
-          Group by:
-        </Text>
-        <SegmentedControl
-          value={groupBy}
-          onChange={(value) => setGroupBy(value as GroupByOption)}
-          data={[
-            { label: 'None', value: 'none' },
-            { label: 'Warehouse', value: 'warehouse' },
-            { label: 'Commodity', value: 'commodity' },
-          ]}
-        />
-      </Group>
-
-      {/* Data Display */}
       {filteredBalances.length === 0 ? (
-        <EmptyState
-          title="No stock balances found"
-          description={
-            search || warehouseFilter
-              ? 'Try adjusting your filters'
-              : 'No stock balances available'
-          }
-        />
-      ) : groupedBalances ? (
-        <Stack gap="xl">
-          {Array.from(groupedBalances.entries()).map(([key, balances]) => {
-            const warehouse = warehouses?.find((w) => w.id === key);
-            const title =
-              groupBy === 'warehouse'
-                ? warehouse
-                  ? `${warehouse.name} (${warehouse.code})`
-                  : `Warehouse ID: ${key}`
-                : balances[0]?.commodity_name || balances[0]?.commodity_batch_no || `Commodity ID: ${key}`;
-            const totalQty = balances.reduce((sum, b) => sum + b.quantity, 0);
+        <EmptyState title="No stock cards found" description="No commodity balances match the current filters." />
+      ) : viewMode === 'table' ? (
+        renderRowsTable(filteredBalances)
+      ) : (
+        <Stack gap="sm">
+          {commodityGroups.map((commodity) => {
+            const isExpanded = expandedCommodities.has(commodity.commodityId);
             return (
-              <Card key={key} shadow="sm" padding="lg" radius="md" withBorder>
-                <Group justify="space-between" mb="md">
-                  <Title order={4}>{title}</Title>
-                  <Text size="sm" c="dimmed">
-                    Total: {totalQty.toLocaleString()} units
-                  </Text>
+              <Card key={commodity.commodityId} withBorder padding="md" radius="md">
+                <Group
+                  justify="space-between"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    setExpandedCommodities((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(commodity.commodityId)) next.delete(commodity.commodityId);
+                      else next.add(commodity.commodityId);
+                      return next;
+                    });
+                  }}
+                >
+                  <Group gap="sm">
+                    {isExpanded ? <IconChevronDown size={18} /> : <IconChevronRight size={18} />}
+                    <IconPackage size={22} color="var(--mantine-color-orange-6)" />
+                    <div>
+                      <Text fw={800}>{commodity.commodityName}</Text>
+                      <Text size="xs" c="dimmed">
+                        {commodity.batches.length} batch{commodity.batches.length === 1 ? '' : 'es'}
+                      </Text>
+                    </div>
+                  </Group>
+                  <Badge size="lg" variant="light" color="blue">{formatTotals(commodity.totals)}</Badge>
                 </Group>
-                {renderTable(balances)}
+
+                <Collapse in={isExpanded}>
+                  <Divider my="sm" />
+                  <Stack gap="xs">
+                    {commodity.batches.map((batch) => {
+                      const isSelectedHistory =
+                        selectedCommodityId === commodity.commodityId && selectedBatchKey === batch.key;
+
+                      return (
+                        <Fragment key={batch.key}>
+                          <Card withBorder padding="sm" radius="sm" bg="gray.0">
+                            <Group justify="space-between">
+                              <Group gap="sm">
+                                <IconStack2 size={18} color="var(--mantine-color-blue-6)" />
+                                <div>
+                                  <Group gap="xs">
+                                    <Text fw={700} style={{ fontFamily: 'monospace' }}>{batch.batchNo}</Text>
+                                    {batch.expiryDate ? <ExpiryBadge expiryDate={batch.expiryDate} size="xs" /> : null}
+                                  </Group>
+                                  <Text size="xs" c="dimmed">
+                                    {batch.rows.length} location row{batch.rows.length === 1 ? '' : 's'} - stacks:{' '}
+                                    {batch.rows.map((row) => row.stack_code || `#${row.stack_id || '-'}`).join(', ')}
+                                  </Text>
+                                </div>
+                              </Group>
+                              <Group gap="sm">
+                                <Badge variant="light" color={formatTotals(batch.totals).startsWith('0 ') ? 'gray' : 'green'}>
+                                  {formatTotals(batch.totals)}
+                                </Badge>
+                                <Button
+                                  size="xs"
+                                  variant={isSelectedHistory ? 'filled' : 'subtle'}
+                                  leftSection={<IconHistory size={14} />}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setSelectedCommodityId(commodity.commodityId);
+                                    setSelectedBatchKey(batch.key);
+                                  }}
+                                >
+                                  History
+                                </Button>
+                              </Group>
+                            </Group>
+                          </Card>
+                          {isSelectedHistory ? renderHistoryPanel() : null}
+                        </Fragment>
+                      );
+                    })}
+                  </Stack>
+                </Collapse>
               </Card>
             );
           })}
         </Stack>
-      ) : (
-        renderTable(filteredBalances)
       )}
+
     </Stack>
   );
 }

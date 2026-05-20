@@ -122,5 +122,6 @@ Cats::Warehouse::Engine.routes.draw do
     end
 
     get "reports/bin_card", to: "reports#bin_card"
+    get "reports/stock_card", to: "reports#stock_card"
   end
 end
