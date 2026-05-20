@@ -216,7 +216,11 @@ export default function ReceiptAuthorizationListPage() {
                   </Table.Td>
                   {isWarehouseManager && (
                     <Table.Td>
-                      {ra.awaiting_storekeeper_assignment ? (
+                      {ra.direct_to_storekeepers ? (
+                        <Badge color="teal" variant="light" size="sm">
+                          Direct to storekeepers
+                        </Badge>
+                      ) : ra.awaiting_storekeeper_assignment ? (
                         <Badge color="orange" variant="light" size="sm">
                           Awaiting storekeeper
                         </Badge>

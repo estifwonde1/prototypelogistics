@@ -171,6 +171,35 @@ RSpec.describe Cats::Warehouse::ReceiptAuthorizationPolicy, type: :policy do
       expect(scope_a.where(id: ra.id)).to exist
       expect(scope_b.where(id: ra.id)).not_to exist
     end
+
+    context "when warehouse has a single store" do
+      let!(:sole_store) { create(:cats_warehouse_store, warehouse: warehouse) }
+      let!(:open_ra) do
+        Cats::Warehouse::ReceiptAuthorization.create!(
+          receipt_order: receipt_order,
+          receipt_order_line: receipt_line,
+          warehouse: warehouse,
+          store: sole_store,
+          transporter: transporter,
+          authorized_quantity: 10,
+          driver_name: "Driver",
+          driver_id_number: "ID-1",
+          truck_plate_number: "AA-1",
+          waybill_number: "WB-OPEN-#{SecureRandom.hex(4)}",
+          status: Cats::Warehouse::ReceiptAuthorization::PENDING,
+          reference_no: "RA-OPEN-#{SecureRandom.hex(4)}",
+          created_by: hm
+        )
+      end
+
+      it "includes unassigned RAs for all eligible storekeepers" do
+        scope_a = described_class::Scope.new(sk_a, Cats::Warehouse::ReceiptAuthorization.all).resolve
+        scope_b = described_class::Scope.new(sk_b, Cats::Warehouse::ReceiptAuthorization.all).resolve
+
+        expect(scope_a.where(id: open_ra.id)).to exist
+        expect(scope_b.where(id: open_ra.id)).to exist
+      end
+    end
   end
 
   describe "#assign_storekeeper?" do
@@ -239,6 +268,15 @@ RSpec.describe Cats::Warehouse::ReceiptAuthorizationPolicy, type: :policy do
       policy = described_class.new(other_wm, ra)
       expect(policy.assign_storekeeper?).to be(false)
     end
+
+    context "when warehouse has a single store" do
+      let!(:sole_store) { create(:cats_warehouse_store, warehouse: warehouse) }
+
+      it "denies manual assignment" do
+        policy = described_class.new(wm, ra)
+        expect(policy.assign_storekeeper?).to be(false)
+      end
+    end
   end
 
   describe "#driver_confirm?" do
@@ -294,6 +332,37 @@ RSpec.describe Cats::Warehouse::ReceiptAuthorizationPolicy, type: :policy do
     it "allows only the assigned storekeeper" do
       expect(described_class.new(sk, ra).driver_confirm?).to be(true)
       expect(described_class.new(other_sk, ra).driver_confirm?).to be(false)
+    end
+
+    context "when warehouse has a single store and RA is unassigned" do
+      let!(:sole_store) { create(:cats_warehouse_store, warehouse: warehouse) }
+      let(:open_ra) do
+        Cats::Warehouse::ReceiptAuthorization.create!(
+          receipt_order: receipt_order,
+          receipt_order_line: receipt_line,
+          warehouse: warehouse,
+          store: sole_store,
+          transporter: transporter,
+          authorized_quantity: 10,
+          driver_name: "Driver",
+          driver_id_number: "ID-1",
+          truck_plate_number: "AA-1",
+          waybill_number: "WB-DC-OPEN-#{SecureRandom.hex(4)}",
+          status: Cats::Warehouse::ReceiptAuthorization::ACTIVE,
+          reference_no: "RA-DC-OPEN-#{SecureRandom.hex(4)}",
+          created_by: hm
+        )
+      end
+
+      before do
+        Cats::Warehouse::UserAssignment.create!(user: sk, warehouse: warehouse, role_name: "Storekeeper")
+        Cats::Warehouse::UserAssignment.create!(user: other_sk, warehouse: warehouse, role_name: "Storekeeper")
+      end
+
+      it "allows any eligible storekeeper before claim" do
+        expect(described_class.new(sk, open_ra).driver_confirm?).to be(true)
+        expect(described_class.new(other_sk, open_ra).driver_confirm?).to be(true)
+      end
     end
   end
 

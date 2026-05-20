@@ -273,8 +273,8 @@ export default function StorekeeperRAListPage() {
       )}
 
       {activeRAs.length === 0 && (
-        <Alert color="blue" title="No assigned deliveries">
-          You have no receipt authorizations assigned to you right now. Your warehouse manager will assign trucks when they arrive.
+        <Alert color="blue" title="No driver arrivals">
+          You have no incoming trucks right now. New arrivals appear here when a receipt authorization is created for your warehouse or assigned to you by your warehouse manager.
         </Alert>
       )}
     </Stack>

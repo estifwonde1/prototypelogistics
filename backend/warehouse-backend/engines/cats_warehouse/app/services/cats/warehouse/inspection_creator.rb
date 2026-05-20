@@ -38,6 +38,15 @@ module Cats
             receipt_authorization_id: @receipt_authorization_id
           )
 
+          # Single-store warehouses: first storekeeper to record claims the RA.
+          if ra && ra.assigned_storekeeper_id.blank? && SingleStoreWarehouse.single_store?(ra.warehouse_id)
+            ra.update!(
+              assigned_storekeeper_id:    @inspector.id,
+              assigned_storekeeper_by_id: @inspector.id,
+              assigned_storekeeper_at:    Time.current
+            )
+          end
+
           # Transition RA from Pending → Active on the first inspection.
           # Subsequent inspections (from other storekeepers) keep it Active.
           if ra && ra.pending?

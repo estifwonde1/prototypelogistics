@@ -25,6 +25,7 @@ module Cats
                  :assigned_storekeeper_name,
                  :assigned_storekeeper_at,
                  :awaiting_storekeeper_assignment,
+                 :direct_to_storekeepers,
                  :cancelled_at,
                  :created_at, :updated_at
 
@@ -247,7 +248,13 @@ module Cats
       end
 
       def awaiting_storekeeper_assignment
+        return false if direct_to_storekeepers
+
         object.assigned_storekeeper_id.blank?
+      end
+
+      def direct_to_storekeepers
+        SingleStoreWarehouse.single_store?(object.warehouse_id)
       end
 
       private

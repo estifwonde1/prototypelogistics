@@ -88,10 +88,14 @@ module Cats
             )
           end
 
-          enqueue_notification("receipt_authorization.created",
-                               receipt_authorization_id: ra.id,
-                               store_id:                 ra.store_id,
-                               warehouse_id:             ra.warehouse_id)
+          broadcasted_to_storekeepers = maybe_broadcast_to_storekeepers!(ra, warehouse: warehouse)
+
+          unless broadcasted_to_storekeepers
+            enqueue_notification("receipt_authorization.created",
+                                 receipt_authorization_id: ra.id,
+                                 store_id:                 ra.store_id,
+                                 warehouse_id:             ra.warehouse_id)
+          end
 
           deliver_plan_change_notifications!(
             receipt_authorization: ra,
@@ -610,6 +614,29 @@ module Cats
           ref = "WB-#{SecureRandom.hex(4).upcase}"
           break ref unless ReceiptAuthorization.exists?(waybill_number: ref)
         end
+      end
+
+      def maybe_broadcast_to_storekeepers!(ra, warehouse:)
+        return false unless SingleStoreWarehouse.single_store?(warehouse.id)
+
+        sole_store_id = SingleStoreWarehouse.sole_store_id(warehouse.id)
+        if ra.store_id.blank? && sole_store_id.present?
+          ra.update!(store_id: sole_store_id)
+        end
+
+        storekeeper_ids = SingleStoreWarehouse.eligible_storekeeper_user_ids(warehouse.id)
+        return false if storekeeper_ids.blank?
+
+        enqueue_notification(
+          "receipt_authorization.broadcast_to_storekeepers",
+          receipt_authorization_id: ra.id,
+          receipt_order_id:         ra.receipt_order_id,
+          warehouse_id:             warehouse.id,
+          store_id:                 ra.store_id,
+          storekeeper_user_ids:     storekeeper_ids
+        )
+
+        true
       end
 
       def enqueue_notification(event, payload)

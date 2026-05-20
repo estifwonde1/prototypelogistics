@@ -34,7 +34,18 @@ module Cats
           # Some users can carry multiple roles; inspection flow must use the storekeeper
           # visibility rules when acting as storekeeper.
           if access.storekeeper?
-            return scope.where(assigned_storekeeper_id: user.id)
+            tbl = ReceiptAuthorization.table_name
+            single_store_wh_ids = SingleStoreWarehouse.single_store_warehouse_ids_for_user(access)
+            assigned_scope = scope.where(assigned_storekeeper_id: user.id)
+            if single_store_wh_ids.empty?
+              return assigned_scope
+            end
+
+            open_scope = scope.where(
+              "#{tbl}.assigned_storekeeper_id IS NULL AND #{tbl}.warehouse_id IN (?)",
+              single_store_wh_ids
+            )
+            return assigned_scope.or(open_scope)
           end
 
           if access.officer?
@@ -94,6 +105,7 @@ module Cats
 
       def assign_storekeeper?
         return false unless record.is_a?(ReceiptAuthorization)
+        return false if SingleStoreWarehouse.single_store?(record.warehouse_id)
         return false unless access.warehouse_manager?
 
         wh_ids = access.assigned_warehouse_ids.map(&:to_i)
@@ -111,7 +123,11 @@ module Cats
 
         return false unless access.storekeeper?
 
-        record.assigned_storekeeper_id == user.id
+        return true if record.assigned_storekeeper_id == user.id
+
+        record.assigned_storekeeper_id.blank? &&
+          SingleStoreWarehouse.single_store?(record.warehouse_id) &&
+          SingleStoreWarehouse.storekeeper_eligible?(user_id: user.id, warehouse_id: record.warehouse_id)
       end
 
       private

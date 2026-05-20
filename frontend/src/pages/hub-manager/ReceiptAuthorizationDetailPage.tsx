@@ -158,8 +158,12 @@ export default function ReceiptAuthorizationDetailPage() {
     ra.status === 'pending' &&
     !ra.inspection_id &&
     (isAdmin || isHubManager || (isWM && wmCanCreateRa));
+  const directToStorekeepers = !!ra.direct_to_storekeepers;
   const canManageAssignment =
-    isWM && (ra.status === 'pending' || ra.status === 'active') && !ra.inspection_id;
+    isWM &&
+    !directToStorekeepers &&
+    (ra.status === 'pending' || ra.status === 'active') &&
+    !ra.inspection_id;
   const awaitingAssignment = !!ra.awaiting_storekeeper_assignment;
   const showAssignBlock =
     canManageAssignment && (awaitingAssignment || showReassign);
@@ -235,7 +239,13 @@ export default function ReceiptAuthorizationDetailPage() {
         </Alert>
       )}
 
-      {isWM && (
+      {isWM && directToStorekeepers && (
+        <Alert color="teal" icon={<IconTruck size={16} />}>
+          This warehouse has a single store. All storekeepers were notified automatically — no manual assignment is required.
+        </Alert>
+      )}
+
+      {isWM && !directToStorekeepers && (
         <Card shadow="sm" padding="lg" radius="md" withBorder>
           <Stack gap="sm">
             <Text fw={700} size="sm" tt="uppercase" c="dimmed">
