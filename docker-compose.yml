@@ -5,17 +5,13 @@ services:
     build:
       context: ./backend/warehouse-backend
       dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
     environment:
       - DATABASE_URL=${DATABASE_URL:-postgres://postgres:password@db:5432/warehouse_production}
       - RAILS_ENV=production
       - RAILS_MASTER_KEY=${RAILS_MASTER_KEY}
-      - RAILS_FORCE_SSL=${RAILS_FORCE_SSL:-false}
       - POSTGRES_HOST=db
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=password
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:4000,http://127.0.0.1:4000}
     networks:
       - app-network
     depends_on:
@@ -27,9 +23,6 @@ services:
       dockerfile: Dockerfile
       args:
         - VITE_API_URL=${VITE_API_URL:-http://localhost:3000}
-        - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:3000/cats_warehouse/v1}
-    ports:
-      - "4000:3000"
     networks:
       - app-network
     depends_on:

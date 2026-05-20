@@ -4,3 +4,6 @@ cats_warehouse-main (1)/
 # OS / editor
 .DS_Store
 Thumbs.db
+
+# Local Docker Compose development overrides
+docker-compose.override.yml
