@@ -14,6 +14,9 @@ development:
   cable:
     <<: *default
     database: <%= ENV.fetch("POSTGRES_DB", "cats_warehouse_development") %>
+  queue:
+    <<: *default
+    database: <%= ENV.fetch("POSTGRES_QUEUE_DB", "cats_warehouse_development") %>
 
 production:
   primary:
@@ -22,3 +25,7 @@ production:
   cable:
     <<: *default
     database: <%= ENV.fetch("POSTGRES_DB", "cats_warehouse_development") %>
+  queue:
+    <<: *default
+    url: <%= ENV.fetch("QUEUE_DATABASE_URL", nil) %>
+    database: <%= ENV.fetch("POSTGRES_QUEUE_DB", ENV.fetch("POSTGRES_DB", "cats_warehouse_development")) %>

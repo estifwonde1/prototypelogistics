@@ -8,6 +8,7 @@ import { getAssignments, bulkUpdateAssignments, deleteAssignment } from '../../.
 import { getHubsForAssignment, getKebeles, getRegions, getWarehousesForAssignment, getWoredas, getZones } from '../../../api/locations';
 import { LoadingState } from '../../../components/common/LoadingState';
 import { ErrorState } from '../../../components/common/ErrorState';
+import { dedupOptions } from '../../../utils/dedup';
 
 const ROLE_OPTIONS = [
   'Hub Manager',
@@ -126,7 +127,7 @@ export default function UserAssignmentsPage() {
   });
 
   const locationOptions = useMemo(
-    () => locations?.map((l) => ({ value: String(l.id), label: l.name })) || [],
+    () => dedupOptions(locations?.map((l) => ({ value: String(l.id), label: l.name })) || []),
     [locations]
   );
 
@@ -194,7 +195,7 @@ export default function UserAssignmentsPage() {
         <Select
           label="User"
           placeholder="Select user"
-          data={users?.map((u) => ({ value: String(u.id), label: `${u.first_name} ${u.last_name}` })) || []}
+          data={dedupOptions(users?.map((u) => ({ value: String(u.id), label: `${u.first_name} ${u.last_name}` })) || [])}
           value={userId}
           onChange={setUserId}
           w={320}
@@ -203,7 +204,7 @@ export default function UserAssignmentsPage() {
           <Select
             label="Region"
             placeholder="Select region"
-            data={regions?.map((r) => ({ value: String(r.id), label: r.name })) || []}
+            data={dedupOptions(regions?.map((r) => ({ value: String(r.id), label: r.name })) || [])}
             value={regionId}
             onChange={(value) => {
               setRegionId(value);
@@ -218,7 +219,7 @@ export default function UserAssignmentsPage() {
           <Select
             label="Zone"
             placeholder="Select zone"
-            data={zones?.map((z) => ({ value: String(z.id), label: z.name })) || []}
+            data={dedupOptions(zones?.map((z) => ({ value: String(z.id), label: z.name })) || [])}
             value={zoneId}
             onChange={(value) => {
               setZoneId(value);
@@ -233,7 +234,7 @@ export default function UserAssignmentsPage() {
           <Select
             label="Woreda"
             placeholder="Select woreda"
-            data={woredas?.map((w) => ({ value: String(w.id), label: w.name })) || []}
+            data={dedupOptions(woredas?.map((w) => ({ value: String(w.id), label: w.name })) || [])}
             value={woredaId}
             onChange={(value) => {
               setWoredaId(value);

@@ -22,6 +22,7 @@ import { getHub } from '../../../api/hubs';
 import { getKebeles, getRegions, getWoredas, getZones } from '../../../api/locations';
 import { ErrorState } from '../../../components/common/ErrorState';
 import { LoadingState } from '../../../components/common/LoadingState';
+import { dedupOptions } from '../../../utils/dedup';
 import { RentalAgreementUpload } from '../../../components/common/RentalAgreementUpload';
 import {
   resolveLocationContextByLocationId,
@@ -227,17 +228,17 @@ export default function WarehouseSetupPage() {
   });
 
   const regionOptions = useMemo(
-    () => regions?.map((region) => ({ value: String(region.id), label: region.name })) || [],
+    () => dedupOptions(regions?.map((region) => ({ value: String(region.id), label: region.name })) || []),
     [regions]
   );
 
   const zoneOptions = useMemo(
-    () => zones?.map((zone) => ({ value: String(zone.id), label: zone.name })) || [],
+    () => dedupOptions(zones?.map((zone) => ({ value: String(zone.id), label: zone.name })) || []),
     [zones]
   );
 
   const woredaOptions = useMemo(
-    () => woredas?.map((woreda) => ({ value: String(woreda.id), label: woreda.name })) || [],
+    () => dedupOptions(woredas?.map((woreda) => ({ value: String(woreda.id), label: woreda.name })) || []),
     [woredas]
   );
 
@@ -245,18 +246,18 @@ export default function WarehouseSetupPage() {
     const context = hubId ? inheritedContext : inheritedContextFromQuery;
     if (!context?.zoneId || !context.subcityName) return zoneOptions;
     if (zoneOptions.some((option) => option.value === String(context.zoneId))) return zoneOptions;
-    return [{ value: String(context.zoneId), label: context.subcityName }, ...zoneOptions];
+    return dedupOptions([{ value: String(context.zoneId), label: context.subcityName }, ...zoneOptions]);
   }, [hubId, inheritedContext, inheritedContextFromQuery, zoneOptions]);
 
   const displayedWoredaOptions = useMemo(() => {
     const context = hubId ? inheritedContext : inheritedContextFromQuery;
     if (!context?.woredaId || !context.woredaName) return woredaOptions;
     if (woredaOptions.some((option) => option.value === String(context.woredaId))) return woredaOptions;
-    return [{ value: String(context.woredaId), label: context.woredaName }, ...woredaOptions];
+    return dedupOptions([{ value: String(context.woredaId), label: context.woredaName }, ...woredaOptions]);
   }, [hubId, inheritedContext, inheritedContextFromQuery, woredaOptions]);
 
   const kebeleOptions = useMemo(
-    () => kebeles?.map((kebele) => ({ value: String(kebele.id), label: kebele.name })) || [],
+    () => dedupOptions(kebeles?.map((kebele) => ({ value: String(kebele.id), label: kebele.name })) || []),
     [kebeles]
   );
 

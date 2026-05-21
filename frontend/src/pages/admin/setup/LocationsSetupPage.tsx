@@ -7,6 +7,7 @@ import { notifications } from '@mantine/notifications';
 import { createLocation, getKebeles, getRegions, getZones, getWoredas } from '../../../api/locations';
 import { LoadingState } from '../../../components/common/LoadingState';
 import { ErrorState } from '../../../components/common/ErrorState';
+import { dedupBy, dedupOptions } from '../../../utils/dedup';
 
 const DEFAULT_REGION_NAME = 'Addis Ababa';
 
@@ -86,16 +87,24 @@ export default function LocationsSetupPage() {
   }, [kebeles, kebeleId, kebeleInputValue]);
 
   const regionOptions = useMemo(
-    () => regions?.map((r) => ({ value: String(r.id), label: r.name })) || [],
+    () => dedupOptions(regions?.map((r) => ({ value: String(r.id), label: r.name })) || []),
     [regions]
   );
 
   const zoneOptions = useMemo(
-    () => zones?.map((z) => ({ value: String(z.id), label: z.name })) || [],
+    () => dedupOptions(zones?.map((z) => ({ value: String(z.id), label: z.name })) || []),
     [zones]
   );
+
+  const woredaOptions = useMemo(
+    () => dedupOptions(woredas?.map((w) => ({ value: String(w.id), label: w.name })) || []),
+    [woredas]
+  );
+
+  // Since Autocomplete uses the string labels directly as options, we must guarantee
+  // unique labels to avoid duplicate option errors.
   const kebeleOptions = useMemo(
-    () => kebeles?.map((kebele) => ({ value: String(kebele.id), label: kebele.name })) || [],
+    () => dedupBy(kebeles?.map((kebele) => ({ value: String(kebele.id), label: kebele.name })) || [], (o) => o.label),
     [kebeles]
   );
 
@@ -213,7 +222,7 @@ export default function LocationsSetupPage() {
           />
           <Select
             label="Woreda"
-            data={woredas?.map((w) => ({ value: String(w.id), label: w.name })) || []}
+            data={woredaOptions}
             value={woredaId}
             onChange={(value) => {
               setWoredaId(value);

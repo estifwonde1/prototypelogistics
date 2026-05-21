@@ -21,6 +21,7 @@ import { createHub } from '../../../api/hubs';
 import { getKebeles, getRegions, getZones, getWoredas } from '../../../api/locations';
 import { LoadingState } from '../../../components/common/LoadingState';
 import { ErrorState } from '../../../components/common/ErrorState';
+import { dedupOptions } from '../../../utils/dedup';
 import { resolveLocationContextFromQuery } from '../../../utils/locationContext';
 
 const DEFAULT_REGION_NAME = 'Addis Ababa';
@@ -164,32 +165,32 @@ export default function HubSetupPage() {
   });
 
   const regionOptions = useMemo(
-    () => regions?.map((r) => ({ value: String(r.id), label: r.name })) || [],
+    () => dedupOptions(regions?.map((r) => ({ value: String(r.id), label: r.name })) || []),
     [regions]
   );
   const zoneOptions = useMemo(
-    () => zones?.map((z) => ({ value: String(z.id), label: z.name })) || [],
+    () => dedupOptions(zones?.map((z) => ({ value: String(z.id), label: z.name })) || []),
     [zones]
   );
   const woredaOptions = useMemo(
-    () => woredas?.map((w) => ({ value: String(w.id), label: w.name })) || [],
+    () => dedupOptions(woredas?.map((w) => ({ value: String(w.id), label: w.name })) || []),
     [woredas]
   );
   const kebeleOptions = useMemo(
-    () => kebeles?.map((k) => ({ value: String(k.id), label: k.name })) || [],
+    () => dedupOptions(kebeles?.map((k) => ({ value: String(k.id), label: k.name })) || []),
     [kebeles]
   );
 
   const displayedZoneOptions = useMemo(() => {
     if (!isInheritedFromLocationPage || !inheritedContext.zoneId || !inheritedContext.subcityName) return zoneOptions;
     if (zoneOptions.some((option) => option.value === String(inheritedContext.zoneId))) return zoneOptions;
-    return [{ value: String(inheritedContext.zoneId), label: inheritedContext.subcityName }, ...zoneOptions];
+    return dedupOptions([{ value: String(inheritedContext.zoneId), label: inheritedContext.subcityName }, ...zoneOptions]);
   }, [isInheritedFromLocationPage, inheritedContext, zoneOptions]);
 
   const displayedWoredaOptions = useMemo(() => {
     if (!isInheritedFromLocationPage || !inheritedContext.woredaId || !inheritedContext.woredaName) return woredaOptions;
     if (woredaOptions.some((option) => option.value === String(inheritedContext.woredaId))) return woredaOptions;
-    return [{ value: String(inheritedContext.woredaId), label: inheritedContext.woredaName }, ...woredaOptions];
+    return dedupOptions([{ value: String(inheritedContext.woredaId), label: inheritedContext.woredaName }, ...woredaOptions]);
   }, [isInheritedFromLocationPage, inheritedContext, woredaOptions]);
 
   const selectedKebeleName =
