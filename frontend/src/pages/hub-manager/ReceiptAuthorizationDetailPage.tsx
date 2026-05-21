@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
@@ -11,6 +12,7 @@ import {
   Badge,
   SimpleGrid,
   Alert,
+  Select,
 } from '@mantine/core';
 import { IconAlertCircle, IconCheck, IconTruck } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
@@ -18,6 +20,8 @@ import {
   getReceiptAuthorization,
   cancelReceiptAuthorization,
   driverConfirm,
+  getAssignableStorekeepers,
+  assignStorekeeperToRa,
 } from '../../api/receiptAuthorizations';
 import type { ReceiptAuthorization } from '../../api/receiptAuthorizations';
 import { useAuthStore } from '../../store/authStore';
@@ -64,6 +68,9 @@ export default function ReceiptAuthorizationDetailPage() {
   const isWM          = roleSlug === 'warehouse_manager';
   const isAdmin       = roleSlug === 'admin' || roleSlug === 'superadmin';
   const { canCreateRa: wmCanCreateRa } = useWarehouseManagerRaAccess();
+  const [selectedStorekeeperId, setSelectedStorekeeperId] = useState<string | null>(null);
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
+  const [showReassign, setShowReassign] = useState(false);
 
   const { data: ra, isLoading, error, refetch } = useQuery({
     queryKey: ['receipt_authorizations', id],
@@ -81,6 +88,44 @@ export default function ReceiptAuthorizationDetailPage() {
       notifications.show({
         title: 'Error',
         message: (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) || 'Failed to cancel',
+        color: 'red',
+      });
+    },
+  });
+
+  const warehouseIdForAssign = ra?.warehouse_id;
+
+  const { data: assignableStorekeepers = [], isLoading: storekeepersLoading } = useQuery({
+    queryKey: ['assignable_storekeepers', warehouseIdForAssign],
+    queryFn: () => getAssignableStorekeepers(warehouseIdForAssign!),
+    enabled: isWM && !!warehouseIdForAssign && !!ra,
+  });
+
+  const assignMutation = useMutation({
+    mutationFn: () =>
+      assignStorekeeperToRa(Number(id), {
+        storekeeper_user_id: Number(selectedStorekeeperId),
+        ...(selectedStoreId ? { store_id: Number(selectedStoreId) } : {}),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['receipt_authorizations'] });
+      queryClient.invalidateQueries({ queryKey: ['receipt_authorizations', id] });
+      setSelectedStorekeeperId(null);
+      setSelectedStoreId(null);
+      setShowReassign(false);
+      notifications.show({
+        title: 'Storekeeper assigned',
+        message: 'The assigned storekeeper has been notified.',
+        color: 'green',
+      });
+      refetch();
+    },
+    onError: (error: unknown) => {
+      notifications.show({
+        title: 'Error',
+        message:
+          (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) ||
+          'Failed to assign storekeeper',
         color: 'red',
       });
     },
@@ -113,6 +158,28 @@ export default function ReceiptAuthorizationDetailPage() {
     ra.status === 'pending' &&
     !ra.inspection_id &&
     (isAdmin || isHubManager || (isWM && wmCanCreateRa));
+  const directToStorekeepers = !!ra.direct_to_storekeepers;
+  const canManageAssignment =
+    isWM &&
+    !directToStorekeepers &&
+    (ra.status === 'pending' || ra.status === 'active') &&
+    !ra.inspection_id;
+  const awaitingAssignment = !!ra.awaiting_storekeeper_assignment;
+  const showAssignBlock =
+    canManageAssignment && (awaitingAssignment || showReassign);
+  const canReassign =
+    canManageAssignment && !awaitingAssignment && !!ra.assigned_storekeeper_id;
+  const storekeeperOptions = assignableStorekeepers.map((sk) => ({
+    value: String(sk.id),
+    label: sk.store_name ? `${sk.name} (${sk.store_name})` : sk.name,
+  }));
+  const storeOptions = Array.from(
+    new Map(
+      assignableStorekeepers
+        .filter((sk) => sk.store_id != null)
+        .map((sk) => [String(sk.store_id), sk.store_name || `Store #${sk.store_id}`])
+    ).entries()
+  ).map(([value, label]) => ({ value, label }));
   const canDriverConfirm = (isStorekeeper || isAdmin) && ra.status === 'active' && !ra.driver_confirmed_at;
   const backPath = isStorekeeper
     ? '/storekeeper/assignments'
@@ -170,6 +237,74 @@ export default function ReceiptAuthorizationDetailPage() {
           Driver confirmed delivery. GRN <strong>{ra.grn_reference_no}</strong> has been created in Draft status.
           {ra.grn_status === 'confirmed' && ' Stacking is complete — GRN is confirmed.'}
         </Alert>
+      )}
+
+      {isWM && directToStorekeepers && (
+        <Alert color="teal" icon={<IconTruck size={16} />}>
+          This warehouse has a single store. All storekeepers were notified automatically — no manual assignment is required.
+        </Alert>
+      )}
+
+      {isWM && !directToStorekeepers && (
+        <Card shadow="sm" padding="lg" radius="md" withBorder>
+          <Stack gap="sm">
+            <Text fw={700} size="sm" tt="uppercase" c="dimmed">
+              Storekeeper assignment
+            </Text>
+            {!awaitingAssignment && ra.assigned_storekeeper_name && !showReassign && (
+              <Group justify="space-between">
+                <Text>
+                  Assigned to <strong>{ra.assigned_storekeeper_name}</strong>
+                  {ra.assigned_storekeeper_at
+                    ? ` on ${new Date(ra.assigned_storekeeper_at).toLocaleString()}`
+                    : ''}
+                </Text>
+                {canReassign && (
+                  <Button variant="light" size="xs" onClick={() => setShowReassign(true)}>
+                    Reassign
+                  </Button>
+                )}
+              </Group>
+            )}
+            {showAssignBlock && (
+              <Stack gap="xs">
+                <Select
+                  label="Storekeeper"
+                  placeholder={storekeepersLoading ? 'Loading…' : 'Select storekeeper'}
+                  data={storekeeperOptions}
+                  value={selectedStorekeeperId}
+                  onChange={setSelectedStorekeeperId}
+                  searchable
+                  disabled={storekeepersLoading || storekeeperOptions.length === 0}
+                />
+                {storeOptions.length > 0 && (
+                  <Select
+                    label="Store (optional)"
+                    placeholder="Use storekeeper default"
+                    data={storeOptions}
+                    value={selectedStoreId}
+                    onChange={setSelectedStoreId}
+                    clearable
+                  />
+                )}
+                <Group>
+                  <Button
+                    onClick={() => assignMutation.mutate()}
+                    loading={assignMutation.isPending}
+                    disabled={!selectedStorekeeperId}
+                  >
+                    {awaitingAssignment ? 'Assign storekeeper' : 'Save assignment'}
+                  </Button>
+                  {!awaitingAssignment && (
+                    <Button variant="default" onClick={() => setShowReassign(false)}>
+                      Cancel
+                    </Button>
+                  )}
+                </Group>
+              </Stack>
+            )}
+          </Stack>
+        </Card>
       )}
 
       {/* Order & Destination */}

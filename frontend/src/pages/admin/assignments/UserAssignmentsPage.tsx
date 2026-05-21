@@ -14,7 +14,6 @@ const ROLE_OPTIONS = [
   'Hub Manager',
   'Warehouse Manager',
   'Storekeeper',
-  'Officer',
   'Federal Officer',
   'Regional Officer',
   'Zonal Officer',
@@ -44,7 +43,7 @@ export default function UserAssignmentsPage() {
   const isWoredaOfficer = roleName === 'Woreda Officer';
   const isKebeleOfficer = roleName === 'Kebele Officer';
   const isFederalOfficer = roleName === 'Federal Officer';
-  const isWarehouseRole = roleName === 'Warehouse Manager' || roleName === 'Storekeeper' || roleName === 'Officer' || roleName === 'Quality Assurance' || roleName === 'Receipt Authorizer';
+  const isWarehouseRole = roleName === 'Warehouse Manager' || roleName === 'Storekeeper' || roleName === 'Quality Assurance' || roleName === 'Receipt Authorizer';
   const canAssign = !!roleName && !!userId && !isFederalOfficer;
 
   const { data: regions } = useQuery({
@@ -78,7 +77,6 @@ export default function UserAssignmentsPage() {
       if (roleName === 'Hub Manager') return getHubsForAssignment();
       if (roleName === 'Warehouse Manager') return getWarehousesForAssignment();
       if (roleName === 'Storekeeper') return getWarehousesForAssignment(); // Admin assigns storekeepers to warehouses
-      if (roleName === 'Officer') return getWarehousesForAssignment();
       if (roleName === 'Quality Assurance') return getWarehousesForAssignment();
       if (roleName === 'Receipt Authorizer') return getWarehousesForAssignment();
       if (isRegionalOfficer) return getRegions();
@@ -142,7 +140,7 @@ export default function UserAssignmentsPage() {
       .filter((assignment) => assignment.user?.id === selectedUserId)
       .map((assignment) => {
         if (roleName === 'Hub Manager') return assignment.hub?.id;
-        if (roleName === 'Warehouse Manager' || roleName === 'Storekeeper' || roleName === 'Officer' || roleName === 'Quality Assurance' || roleName === 'Receipt Authorizer') return assignment.warehouse?.id;
+        if (roleName === 'Warehouse Manager' || roleName === 'Storekeeper' || roleName === 'Quality Assurance' || roleName === 'Receipt Authorizer') return assignment.warehouse?.id;
         if (isRegionalOfficer || isZonalOfficer || isWoredaOfficer || isKebeleOfficer) {
           return assignment.location?.id;
         }
@@ -160,7 +158,6 @@ export default function UserAssignmentsPage() {
     if (roleName === 'Hub Manager') payload.hub_ids = selectedIds.map(Number);
     if (roleName === 'Warehouse Manager') payload.warehouse_ids = selectedIds.map(Number);
     if (roleName === 'Storekeeper') payload.warehouse_ids = selectedIds.map(Number); // Admin assigns storekeepers to warehouses
-    if (roleName === 'Officer') payload.warehouse_ids = selectedIds.map(Number);
     if (roleName === 'Quality Assurance') payload.warehouse_ids = selectedIds.map(Number);
     if (roleName === 'Receipt Authorizer') payload.warehouse_ids = selectedIds.map(Number);
     if (isRegionalOfficer || isZonalOfficer || isWoredaOfficer || isKebeleOfficer) {

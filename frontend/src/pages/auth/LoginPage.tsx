@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { isAxiosError } from 'axios';
 import { TextInput, PasswordInput, Button, Paper, Title, Container, Alert } from '@mantine/core';
 import { useForm } from '@mantine/form';
@@ -16,9 +16,11 @@ import {
   OFFICER_ROLE_SLUGS,
 } from '../../utils/constants';
 import type { ApiError } from '../../types/common';
+import { needsWorkspaceSelection } from '../../utils/workspaceSelection';
 
 function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const setAuth = useAuthStore((state) => state.setAuth);
   const setAssignments = useAuthStore((state) => state.setAssignments);
@@ -28,10 +30,27 @@ function LoginPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isAuthenticated) {
-      navigate(getDefaultRouteForRole((useAuthStore.getState().role as RoleSlug | null) ?? null), { replace: true });
+    if (!isAuthenticated || location.pathname !== '/login') return;
+
+    const { assignments, activeAssignment, role } = useAuthStore.getState();
+
+    if (assignments.length === 1) {
+      const only = assignments[0];
+      if (!activeAssignment || activeAssignment.id !== only.id) {
+        setActiveAssignment(only);
+      }
+      const roleSlug = normalizeRoleSlug(only.role_name) ?? (role as RoleSlug | null);
+      navigate(getDefaultRouteForRole(roleSlug), { replace: true });
+      return;
     }
-  }, [isAuthenticated, navigate]);
+
+    if (needsWorkspaceSelection(assignments, activeAssignment)) {
+      navigate('/select-role', { replace: true, state: { fromLogin: true } });
+      return;
+    }
+
+    navigate(getDefaultRouteForRole((role as RoleSlug | null) ?? null), { replace: true });
+  }, [isAuthenticated, location.pathname, navigate]);
 
   const form = useForm({
     initialValues: {
@@ -114,9 +133,25 @@ function LoginPage() {
           setActiveAssignment(bestAssignment);
           navigate(getDefaultRouteForRole(roleSlug));
         } else {
-          // No officer roles found, but multiple other roles (e.g., manager + dispatcher)
-          // Let the user choose
-          navigate('/select-role');
+          // Try to restore the last active assignment from a previous session
+          const { lastActiveAssignmentId } = useAuthStore.getState();
+          const restoredAssignment = lastActiveAssignmentId
+            ? assignments.find(a => a.id === lastActiveAssignmentId) ?? null
+            : null;
+
+          if (restoredAssignment) {
+            const roleSlug = normalizeRoleSlug(restoredAssignment.role_name) as RoleSlug | null;
+            if (roleSlug) {
+              setAuth(response.token, response.user_id, roleSlug);
+              setActiveAssignment(restoredAssignment);
+              navigate(getDefaultRouteForRole(roleSlug));
+              return;
+            }
+          }
+
+          // No restorable session — show the role picker
+          setActiveAssignment(null);
+          navigate('/select-role', { state: { fromLogin: true } });
         }
       }
     } catch (err: unknown) {

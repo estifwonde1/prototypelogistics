@@ -8,11 +8,8 @@ import {
   IconStack2,
   IconChartBar,
   IconFileImport,
-  IconFileExport,
   IconUsers,
   IconUserCheck,
-  IconMapPins,
-  IconBuildingSkyscraper,
   IconInbox,
   IconTruck,
   IconReportAnalytics,
@@ -57,7 +54,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
     ? OFFICER_ROLE_SLUGS.includes(roleSlug)
     : false;
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
-  const { isStandaloneWarehouse: wmCanUseRa } = useWarehouseManagerRaAccess();
+  const { canAccessRaWorkspace: wmCanAccessRa } = useWarehouseManagerRaAccess();
 
   const isFullAccess = roleSlug === 'federal_officer' || roleSlug === 'officer';
 
@@ -97,21 +94,6 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
     {
       label: "Setup",
       items: [
-        {
-          label: "Locations",
-          icon: <IconMapPins size={20} />,
-          path: "/admin/setup/locations",
-        },
-        {
-          label: "Create Hub",
-          icon: <IconBuildingSkyscraper size={20} />,
-          path: "/admin/setup/hubs",
-        },
-        {
-          label: "Create Warehouse",
-          icon: <IconBuildingWarehouse size={20} />,
-          path: "/admin/setup/warehouses",
-        },
         {
           label: "Commodities",
           icon: <IconBox size={20} />,
@@ -167,34 +149,10 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
           resource: "grns",
         },
         {
-          label: "GIN",
-          icon: <IconFileExport size={20} />,
-          path: "/gins",
-          resource: "gins",
-        },
-        {
           label: "Receipts",
           icon: <IconInbox size={20} />,
           path: "/receipts",
           resource: "receipts",
-        },
-        {
-          label: "Dispatches",
-          icon: <IconTruck size={20} />,
-          path: "/dispatches",
-          resource: "dispatches",
-        },
-        {
-          label: "Inspections",
-          icon: <IconUserCheck size={20} />,
-          path: "/inspections",
-          resource: "inspections",
-        },
-        {
-          label: "Waybills",
-          icon: <IconTruck size={20} />,
-          path: "/waybills",
-          resource: "waybills",
         },
       ],
     },
@@ -263,35 +221,6 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               path: "/hub/receipt-authorizations",
               resource: "receipt_authorizations",
             },
-            {
-              label: "Dispatches",
-              icon: <IconTruck size={20} />,
-              path: "/dispatches",
-              resource: "dispatches",
-            },
-          ],
-        },
-        {
-          label: "Hub Operations",
-          items: [
-            {
-              label: "GRN",
-              icon: <IconFileImport size={20} />,
-              path: "/grns",
-              resource: "grns",
-            },
-            {
-              label: "GIN",
-              icon: <IconFileExport size={20} />,
-              path: "/gins",
-              resource: "gins",
-            },
-            {
-              label: "Waybills",
-              icon: <IconTruck size={20} />,
-              path: "/waybills",
-              resource: "waybills",
-            },
           ],
         },
       ];
@@ -335,7 +264,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
           path: "/receipts",
           resource: "receipt_orders",
         },
-        ...(wmCanUseRa
+        ...(wmCanAccessRa
           ? [
               {
                 label: "Receipt Authorizations",
@@ -345,12 +274,6 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               },
             ]
           : []),
-        {
-          label: "Dispatches",
-          icon: <IconTruck size={20} />,
-          path: "/dispatches",
-          resource: "dispatches",
-        },
       ];
 
       return [
@@ -366,24 +289,6 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               icon: <IconFileImport size={20} />,
               path: "/grns",
               resource: "grns",
-            },
-            {
-              label: "GIN",
-              icon: <IconFileExport size={20} />,
-              path: "/gins",
-              resource: "gins",
-            },
-            {
-              label: "Inspections",
-              icon: <IconUserCheck size={20} />,
-              path: "/inspections",
-              resource: "inspections",
-            },
-            {
-              label: "Waybills",
-              icon: <IconTruck size={20} />,
-              path: "/waybills",
-              resource: "waybills",
             },
             {
               label: "Stock Balances",
@@ -465,18 +370,6 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               path: "/grns",
               resource: "grns",
             },
-            {
-              label: "GIN",
-              icon: <IconFileExport size={20} />,
-              path: "/gins",
-              resource: "gins",
-            },
-            {
-              label: "Dispatches",
-              icon: <IconTruck size={20} />,
-              path: "/dispatches",
-              resource: "dispatches",
-            },
           ],
         },
         {
@@ -525,12 +418,6 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
                 resource: "receipt_orders",
               },
               {
-                label: "Dispatch Orders",
-                icon: <IconFileExport size={20} />,
-                path: "/officer/dispatch-orders",
-                resource: "dispatch_orders",
-              },
-              {
                 label: "Commodities",
                 icon: <IconBox size={20} />,
                 path: "/officer/commodities/new",
@@ -570,12 +457,6 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               resource: "receipt_orders",
             },
             {
-              label: "Dispatch Orders",
-              icon: <IconFileExport size={20} />,
-              path: "/officer/dispatch-orders",
-              resource: "dispatch_orders",
-            },
-            {
               label: "Commodities",
               icon: <IconBox size={20} />,
               path: "/officer/commodities/new",
@@ -587,7 +468,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
     }
 
     return [];
-  }, [isAdmin, role, isOfficerRole, isFullAccess, activeAssignment, wmCanUseRa]);
+  }, [isAdmin, role, isOfficerRole, isFullAccess, activeAssignment, wmCanAccessRa]);
 
   const filterGroupItems = (group: NavGroup) => ({
     ...group,

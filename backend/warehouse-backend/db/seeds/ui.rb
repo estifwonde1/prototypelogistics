@@ -17,7 +17,6 @@ roles = {
   hub_manager: find_or_create_with(Cats::Core::Role, { name: "Hub Manager", application_module: application_module }),
   warehouse_manager: find_or_create_with(Cats::Core::Role, { name: "Warehouse Manager", application_module: application_module }),
   store_keeper: find_or_create_with(Cats::Core::Role, { name: "Storekeeper", application_module: application_module }),
-  officer: find_or_create_with(Cats::Core::Role, { name: "Officer", application_module: application_module }),
   federal_officer: find_or_create_with(Cats::Core::Role, { name: "Federal Officer", application_module: application_module }),
   regional_officer: find_or_create_with(Cats::Core::Role, { name: "Regional Officer", application_module: application_module }),
   zonal_officer: find_or_create_with(Cats::Core::Role, { name: "Zonal Officer", application_module: application_module }),
@@ -138,7 +137,6 @@ find_or_create_with(Cats::Core::RoleMenu, { role: roles[:store_keeper], menu: op
 find_or_create_with(Cats::Core::RoleMenu, { role: roles[:store_keeper], menu: assignments_menu })
 find_or_create_with(Cats::Core::RoleMenu, { role: roles[:store_keeper], menu: documents_menu })
 find_or_create_with(Cats::Core::RoleMenu, { role: roles[:store_keeper], menu: report_menu })
-find_or_create_with(Cats::Core::RoleMenu, { role: roles[:officer], menu: officer_operations_menu })
 find_or_create_with(Cats::Core::RoleMenu, { role: roles[:federal_officer], menu: officer_operations_menu })
 find_or_create_with(Cats::Core::RoleMenu, { role: roles[:regional_officer], menu: officer_overview_menu })
 find_or_create_with(Cats::Core::RoleMenu, { role: roles[:regional_officer], menu: officer_orders_menu })
@@ -162,7 +160,6 @@ find_or_create_with(Cats::Core::RoleMenu, { role: roles[:superadmin], menu: assi
 find_or_create_with(Cats::Core::RoleMenu, { role: roles[:superadmin], menu: documents_menu })
 find_or_create_with(Cats::Core::RoleMenu, { role: roles[:superadmin], menu: officer_overview_menu })
 find_or_create_with(Cats::Core::RoleMenu, { role: roles[:superadmin], menu: officer_orders_menu })
-find_or_create_with(Cats::Core::RoleMenu, { role: roles[:officer], menu: officer_operations_menu })
 
 # Sync role-menu item joins for every role/menu assignment to avoid missing menu items
 Cats::Core::RoleMenu.includes(:menu).find_each do |role_menu|

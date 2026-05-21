@@ -3,11 +3,8 @@ import {
   Modal,
   Button,
   Select,
-  TextInput,
   Textarea,
   Stack as MantineStack,
-  Text,
-  Box,
   Group,
   Alert,
 } from '@mantine/core';
@@ -17,6 +14,8 @@ import type { Store } from '../../types/store';
 import { getStores } from '../../api/stores';
 import { createTransferRequest } from '../../api/transferRequests';
 import { useAuthStore } from '../../store/authStore';
+import { useStackTransferForm } from '../../hooks/useStackTransferForm';
+import StackTransferQuantitySection from './StackTransferQuantitySection';
 
 interface TransferRequestModalProps {
   opened: boolean;
@@ -32,15 +31,15 @@ const TransferRequestModal: React.FC<TransferRequestModalProps> = ({
   onSuccess,
 }) => {
   const [destinationStoreId, setDestinationStoreId] = useState<string | null>(null);
-  const [quantity, setQuantity] = useState<string>('');
   const [reason, setReason] = useState<string>('');
   const [availableStores, setAvailableStores] = useState<Store[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const transferForm = useStackTransferForm(sourceStack, opened);
+
   useEffect(() => {
     if (opened) {
-      setQuantity('');
       setDestinationStoreId(null);
       setReason('');
       setError(null);
@@ -51,29 +50,18 @@ const TransferRequestModal: React.FC<TransferRequestModalProps> = ({
 
   const loadAvailableStores = async () => {
     try {
-      // Get stores filtered by warehouse context if user is a warehouse manager
       const activeAssignment = useAuthStore.getState().activeAssignment;
       const userWarehouseId = activeAssignment?.warehouse?.id;
-      
-      const stores = userWarehouseId 
+
+      const stores = userWarehouseId
         ? await getStores({ warehouse_id: userWarehouseId })
         : await getStores();
-        
-      console.log('All stores:', stores);
-      console.log('Source stack:', sourceStack);
-      console.log('Source stack store_id:', sourceStack.store_id);
-      console.log('Source stack warehouse_id:', sourceStack.warehouse_id);
-      
-      // Filter: different store, same warehouse
+
       const filtered = stores.filter(
-        (store) => {
-          const isDifferentStore = store.id !== sourceStack.store_id;
-          const isSameWarehouse = store.warehouse_id === sourceStack.warehouse_id;
-          console.log(`Store ${store.name}: isDifferentStore=${isDifferentStore}, isSameWarehouse=${isSameWarehouse}`);
-          return isDifferentStore && isSameWarehouse;
-        }
+        (store) =>
+          store.id !== sourceStack.store_id &&
+          store.warehouse_id === sourceStack.warehouse_id
       );
-      console.log('Filtered stores:', filtered);
       setAvailableStores(filtered);
     } catch (err) {
       console.error('Failed to load stores:', err);
@@ -82,19 +70,20 @@ const TransferRequestModal: React.FC<TransferRequestModalProps> = ({
   };
 
   const handleSubmit = async () => {
-    if (!destinationStoreId || !quantity || !reason.trim()) {
+    if (!destinationStoreId || !reason.trim()) {
       setError('Please fill in all fields');
       return;
     }
 
-    const quantityNum = parseFloat(quantity);
-    if (isNaN(quantityNum) || quantityNum <= 0) {
-      setError('Quantity must be a positive number');
+    const validationError = transferForm.validate();
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
-    if (quantityNum > sourceStack.quantity) {
-      setError(`Quantity cannot exceed available quantity (${sourceStack.quantity})`);
+    const payload = transferForm.buildSubmitPayload();
+    if (!payload) {
+      setError('Unable to build transfer payload');
       return;
     }
 
@@ -104,14 +93,15 @@ const TransferRequestModal: React.FC<TransferRequestModalProps> = ({
     try {
       await createTransferRequest({
         source_stack_id: sourceStack.id,
-        destination_store_id: parseInt(destinationStoreId),
-        quantity: quantityNum,
+        destination_store_id: parseInt(destinationStoreId, 10),
         reason: reason.trim(),
+        ...payload,
       });
       onSuccess();
       onClose();
-    } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Failed to create transfer request');
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { error?: { message?: string } } } };
+      setError(axiosErr.response?.data?.error?.message || 'Failed to create transfer request');
     } finally {
       setLoading(false);
     }
@@ -132,24 +122,7 @@ const TransferRequestModal: React.FC<TransferRequestModalProps> = ({
       centered
     >
       <MantineStack gap="md">
-        {/* Source Stack Info */}
-        <Box p="md" style={{ backgroundColor: '#f8f9fa', borderRadius: 8 }}>
-          <Text size="sm" fw={700} c="dimmed" mb="xs">
-            Source Stack
-          </Text>
-          <Text size="sm">
-            <strong>Code:</strong> {sourceStack.code}
-          </Text>
-          <Text size="sm">
-            <strong>Commodity:</strong> {sourceStack.commodity_name}
-          </Text>
-          <Text size="sm">
-            <strong>Store:</strong> {sourceStack.store_name}
-          </Text>
-          <Text size="sm">
-            <strong>Available Quantity:</strong> {sourceStack.quantity} {sourceStack.unit_abbreviation}
-          </Text>
-        </Box>
+        <StackTransferQuantitySection sourceStack={sourceStack} form={transferForm} />
 
         {error && (
           <Alert icon={<IconAlertCircle size={16} />} title="Error" color="red">
@@ -164,7 +137,7 @@ const TransferRequestModal: React.FC<TransferRequestModalProps> = ({
         ) : (
           <>
             <Select
-              label="Destination Store"
+              label="Destination store"
               placeholder="Select destination store"
               data={storeOptions}
               value={destinationStoreId}
@@ -173,20 +146,8 @@ const TransferRequestModal: React.FC<TransferRequestModalProps> = ({
               searchable
             />
 
-            <TextInput
-              label="Quantity to Transfer"
-              type="number"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              required
-              min={0}
-              max={sourceStack.quantity}
-              step={0.001}
-              description={`Maximum: ${sourceStack.quantity} ${sourceStack.unit_abbreviation}`}
-            />
-
             <Textarea
-              label="Reason for Transfer"
+              label="Reason for transfer"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               required
@@ -200,13 +161,15 @@ const TransferRequestModal: React.FC<TransferRequestModalProps> = ({
           <Button variant="light" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
-          <Button
-            onClick={handleSubmit}
-            loading={loading}
-            disabled={availableStores.length === 0}
-          >
-            Submit Request
-          </Button>
+          {transferForm.canSubmit && (
+            <Button
+              onClick={handleSubmit}
+              loading={loading}
+              disabled={availableStores.length === 0 || !destinationStoreId || !reason.trim()}
+            >
+              Submit Request
+            </Button>
+          )}
         </Group>
       </MantineStack>
     </Modal>

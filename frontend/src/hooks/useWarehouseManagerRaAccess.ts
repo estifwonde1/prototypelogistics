@@ -67,7 +67,9 @@ export function useWarehouseManagerRaAccess() {
   return {
     isWarehouseManager,
     isStandaloneWarehouse,
-    canAccessRaWorkspace: !isWarehouseManager || isStandaloneWarehouse,
+    /** All warehouse managers may open the RA list/detail to assign storekeepers. */
+    canAccessRaWorkspace: isWarehouseManager,
+    /** Create/edit/cancel RAs only at standalone (non-hub) warehouses. */
     canCreateRa: isStandaloneWarehouse,
     isResolving,
     hubIdResolved,

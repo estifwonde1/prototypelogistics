@@ -62,7 +62,6 @@ module Cats
         authorize source_stack, :transfer?
 
         destination_stack = Stack.find(params[:destination_id])
-        quantity = params[:quantity].to_f
 
         # Verify destination stack is in the same store
         unless destination_stack.store_id == source_stack.store_id
@@ -77,8 +76,11 @@ module Cats
         service = StackTransferService.new(
           source_stack: source_stack,
           destination_stack: destination_stack,
-          quantity: quantity,
-          user: current_user
+          user: current_user,
+          quantity: params[:quantity],
+          entered_unit_id: params[:entered_unit_id],
+          entered_quantity: params[:entered_quantity],
+          package_count: params[:package_count]
         )
 
         transaction = service.call
@@ -89,8 +91,13 @@ module Cats
             id: transaction.id,
             source_stack_id: source_stack.id,
             destination_stack_id: destination_stack.id,
-            quantity: quantity,
-            unit_id: source_stack.unit_id
+            quantity: service.quantity,
+            unit_id: source_stack.unit_id,
+            destination_quantity: service.destination_credit_quantity,
+            destination_unit_id: destination_stack.unit_id,
+            entered_unit_id: service.entered_unit_id,
+            entered_quantity: service.entered_quantity,
+            package_count: service.package_count
           }
         )
       rescue ArgumentError => e

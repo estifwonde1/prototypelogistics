@@ -4,15 +4,18 @@ module Cats
   module Warehouse
     class TransferRequestsController < BaseController
       include FilterValidation
-      
+
       def index
         authorize TransferRequest
-        
-        requests = policy_scope(TransferRequest)
-          .includes(:source_store, :destination_store, :source_stack, :destination_stack, :commodity, :unit, :requested_by, :reviewed_by)
-          .order(created_at: :desc)
 
-        # Filter by status if provided (with validation)
+        requests = policy_scope(TransferRequest)
+                   .includes(:source_store, :destination_store, :source_stack, :destination_stack,
+                             :commodity, :unit, :entered_unit, :requested_by, :reviewed_by,
+                             allocations: [:entered_unit, :destination_stack, :stack_transaction, :reviewed_by,
+                                           { destination_stack: :store },
+                                           { transfer_request: :source_stack }])
+                   .order(created_at: :desc)
+
         begin
           status = validate_status_param(:status, TransferRequest::STATUSES)
           requests = requests.where(status: status) if status.present?
@@ -24,7 +27,13 @@ module Cats
       end
 
       def show
-        request = policy_scope(TransferRequest).find(params[:id])
+        request = policy_scope(TransferRequest)
+                  .includes(:source_store, :destination_store, :source_stack, :destination_stack,
+                            :commodity, :unit, :entered_unit, :requested_by, :reviewed_by,
+                            allocations: [:entered_unit, :destination_stack, :stack_transaction, :reviewed_by,
+                                          { destination_stack: :store },
+                                          { transfer_request: :source_stack }])
+                  .find(params[:id])
         authorize request
         render_resource(request, serializer: TransferRequestSerializer)
       end
@@ -35,76 +44,109 @@ module Cats
         source_stack = Stack.find(params[:source_stack_id])
         destination_store = Store.find(params[:destination_store_id])
 
-        # Verify user has access to source stack
         unless policy_scope(Stack).exists?(id: source_stack.id)
           return render_error("You don't have access to the source stack", status: :forbidden)
         end
 
-        # Verify stores are in the same warehouse
         unless source_stack.store.warehouse_id == destination_store.warehouse_id
           return render_error("Stores must be in the same warehouse", status: :unprocessable_entity)
         end
 
-        transfer_request = TransferRequest.new(
-          source_store: source_stack.store,
-          destination_store: destination_store,
+        resolved = TransferQuantityResolver.resolve(
           source_stack: source_stack,
-          commodity: source_stack.commodity,
-          unit: source_stack.unit,
           quantity: params[:quantity],
-          reason: params[:reason],
-          requested_by: current_user,
-          warehouse: source_stack.store.warehouse,
-          status: "Pending"
+          entered_unit_id: params[:entered_unit_id],
+          entered_quantity: params[:entered_quantity]
         )
 
-        if transfer_request.save
-          render_resource(transfer_request, status: :created, serializer: TransferRequestSerializer)
-        else
-          render_error(transfer_request.errors.full_messages.to_sentence, status: :unprocessable_entity)
+        package_count = params[:package_count].present? ? params[:package_count].to_f : nil
+
+        transfer_request = nil
+        ActiveRecord::Base.transaction do
+          transfer_request = TransferRequest.create!(
+            source_store: source_stack.store,
+            destination_store: destination_store,
+            source_stack: source_stack,
+            commodity: source_stack.commodity,
+            unit: source_stack.unit,
+            quantity: resolved.canonical_quantity,
+            entered_unit_id: resolved.entered_unit_id,
+            entered_quantity: resolved.entered_quantity,
+            package_count: package_count,
+            reason: params[:reason],
+            requested_by: current_user,
+            warehouse: source_stack.store.warehouse,
+            status: "Pending"
+          )
+
+          TransferRequestStockHold.reserve!(transfer_request)
         end
+
+        render_resource(transfer_request.reload, status: :created, serializer: TransferRequestSerializer)
+      rescue ArgumentError => e
+        render_error(e.message, status: :unprocessable_entity)
+      rescue ActiveRecord::RecordInvalid => e
+        render_error(e.record.errors.full_messages.to_sentence, status: :unprocessable_entity)
       end
 
       def approve
-        # Use pessimistic locking to prevent race conditions
         transfer_request = policy_scope(TransferRequest).lock.find(params[:id])
         authorize transfer_request, :approve?
 
-        # Log current status for debugging
-        Rails.logger.info("Attempting to approve transfer request #{transfer_request.id} with status: #{transfer_request.status}")
-
-        destination_stack_id = params[:destination_stack_id]
-        destination_stack = nil
-
-        # If destination stack provided, verify it exists and is in the destination store
-        if destination_stack_id.present?
-          destination_stack = Stack.find_by(id: destination_stack_id)
-          unless destination_stack.present?
-            return render_error("Destination stack not found", status: :not_found)
-          end
-
-          unless destination_stack.store_id == transfer_request.destination_store_id
-            return render_error("Destination stack must be in the destination store", status: :unprocessable_entity)
-          end
-
-          unless destination_stack.commodity_id == transfer_request.commodity_id
-            return render_error("Destination stack must have the same commodity", status: :unprocessable_entity)
-          end
+        unless transfer_request.open?
+          return render_error(
+            "Request is not open for fulfillment (status: #{transfer_request.status})",
+            status: :unprocessable_entity
+          )
         end
 
-        # Wrap in transaction to ensure atomicity
+        destination_stack = resolve_approval_destination_stack(transfer_request)
+        tranche = resolve_approval_tranche!(transfer_request)
+
+        result = nil
         ActiveRecord::Base.transaction do
           transfer_request.approve!(
             current_user,
-            destination_stack_id: destination_stack_id,
+            destination_stack_id: destination_stack&.id,
             notes: params[:notes]
           )
 
-          # Always execute the transfer (auto-create destination stack if not provided)
-          execute_transfer(transfer_request)
+          result = TransferRequestExecutor.call(
+            transfer_request: transfer_request.reload,
+            user: current_user,
+            destination_stack: destination_stack,
+            quantity: tranche[:canonical_quantity],
+            entered_unit_id: tranche[:entered_unit_id],
+            entered_quantity: tranche[:entered_quantity],
+            package_count: tranche[:package_count]
+          )
+
+          TransferRequestStockHold.consume_for_transfer!(
+            transfer_request.reload,
+            tranche[:canonical_quantity]
+          )
+
+          create_allocation!(
+            transfer_request: transfer_request,
+            action: "fulfillment",
+            quantity: tranche[:canonical_quantity],
+            entered_unit_id: tranche[:entered_unit_id],
+            entered_quantity: tranche[:entered_quantity],
+            package_count: tranche[:package_count],
+            destination_stack: result.destination_stack,
+            stack_transaction: result.transaction,
+            notes: params[:notes]
+          )
+
+          transfer_request.record_fulfillment!(
+            tranche[:canonical_quantity],
+            reviewed_by_user: current_user,
+            notes: params[:notes],
+            destination_stack_id: result.destination_stack&.id
+          )
         end
 
-        render_resource(transfer_request, serializer: TransferRequestSerializer)
+        render_resource(transfer_request.reload, serializer: TransferRequestSerializer)
       rescue Pundit::NotAuthorizedError, ActiveRecord::RecordNotFound => e
         raise e
       rescue StandardError => e
@@ -114,16 +156,41 @@ module Cats
       end
 
       def reject
-        transfer_request = policy_scope(TransferRequest).find(params[:id])
+        transfer_request = policy_scope(TransferRequest).lock.find(params[:id])
         authorize transfer_request, :reject?
 
         unless params[:notes].present?
           return render_error("Rejection notes are required", status: :unprocessable_entity)
         end
 
-        transfer_request.reject!(current_user, notes: params[:notes])
+        unless transfer_request.open?
+          return render_error(
+            "Request is not open for rejection (status: #{transfer_request.status})",
+            status: :unprocessable_entity
+          )
+        end
 
-        render_resource(transfer_request, serializer: TransferRequestSerializer)
+        reject_qty = resolve_rejection_quantity!(transfer_request)
+
+        ActiveRecord::Base.transaction do
+          create_allocation!(
+            transfer_request: transfer_request,
+            action: "rejection",
+            quantity: reject_qty,
+            notes: params[:notes]
+          )
+
+          TransferRequestStockHold.release!(transfer_request.reload, reject_qty)
+
+          if transfer_request.fulfilled_quantity.to_f <= TransferRequest::QTY_EPSILON &&
+             reject_qty >= transfer_request.quantity.to_f - TransferRequest::QTY_EPSILON
+            transfer_request.reject_all!(current_user, notes: params[:notes])
+          else
+            transfer_request.record_rejection!(reject_qty, reviewed_by_user: current_user, notes: params[:notes])
+          end
+        end
+
+        render_resource(transfer_request.reload, serializer: TransferRequestSerializer)
       rescue Pundit::NotAuthorizedError, ActiveRecord::RecordNotFound => e
         raise e
       rescue StandardError => e
@@ -132,90 +199,88 @@ module Cats
 
       private
 
-      def execute_transfer(transfer_request)
-        source_stack = transfer_request.source_stack
-        destination_stack = transfer_request.destination_stack
+      def resolve_approval_destination_stack(transfer_request)
+        destination_stack_id = params[:destination_stack_id]
+        return nil if destination_stack_id.blank?
 
-        # Create destination stack if not provided (auto-select/create)
+        destination_stack = Stack.find_by(id: destination_stack_id)
         unless destination_stack.present?
-          # Try to find an existing stack with same commodity in destination store
-          destination_stack = Stack.find_by(
-            store: transfer_request.destination_store,
-            commodity: transfer_request.commodity,
-            unit: transfer_request.unit
-          )
-
-          # If no existing stack found, create a new one
-          unless destination_stack.present?
-            destination_stack = Stack.create!(
-              store: transfer_request.destination_store,
-              commodity: transfer_request.commodity,
-              unit: transfer_request.unit,
-              quantity: 0,
-              length: source_stack.length,
-              width: source_stack.width,
-              height: source_stack.height,
-              code: "#{transfer_request.destination_store.code}-#{transfer_request.commodity.batch_no}-#{Time.current.to_i}"
-            )
-          end
-
-          transfer_request.update!(destination_stack: destination_stack)
+          raise ArgumentError, "Destination stack not found"
         end
 
-        # Debit source stack
-        source_stack.quantity -= transfer_request.quantity
-        source_stack.save!
+        unless destination_stack.store_id == transfer_request.destination_store_id
+          raise ArgumentError, "Destination stack must be in the destination store"
+        end
 
-        # Credit destination stack
-        destination_stack.quantity += transfer_request.quantity
-        destination_stack.save!
+        if destination_stack.quantity.to_f.positive? &&
+           destination_stack.commodity_id.present? &&
+           destination_stack.commodity_id != transfer_request.commodity_id
+          raise ArgumentError,
+                "Destination stack holds a different commodity. Choose an empty bay or matching stack."
+        end
 
-        # Create stack transaction
-        StackTransaction.create!(
-          source: source_stack,
-          destination: destination_stack,
-          quantity: transfer_request.quantity,
-          unit: transfer_request.unit,
-          transaction_date: Time.current,
-          reference: transfer_request
-        )
-
-        # Update stock balances
-        update_stock_balance(source_stack, -transfer_request.quantity)
-        update_stock_balance(destination_stack, transfer_request.quantity)
-
-        # Mark request as completed
-        transfer_request.complete!
-
-        # Create workflow event
-        WorkflowEvent.create!(
-          entity: transfer_request,
-          event_type: "transfer_request_completed",
-          actor_id: current_user.id,
-          occurred_at: Time.current,
-          payload: {
-            transfer_request_id: transfer_request.id,
-            source_stack_id: source_stack.id,
-            destination_stack_id: destination_stack.id,
-            quantity: transfer_request.quantity
-          }
-        )
-      rescue StandardError => e
-        Rails.logger.error("Failed to execute transfer: #{e.message}")
-        raise
+        destination_stack
       end
 
-      def update_stock_balance(stack, quantity_change)
-        balance = StockBalance.find_or_initialize_by(
-          stack: stack,
-          commodity: stack.commodity,
-          store: stack.store,
-          warehouse: stack.store.warehouse,
-          unit: stack.unit
+      def resolve_approval_tranche!(transfer_request)
+        source_stack = transfer_request.source_stack
+
+        unless approval_override_params?
+          raise ArgumentError, "Quantity is required for each fulfillment"
+        end
+
+        resolved = TransferQuantityResolver.resolve(
+          source_stack: source_stack,
+          quantity: params[:quantity],
+          entered_unit_id: params[:entered_unit_id],
+          entered_quantity: params[:entered_quantity]
         )
 
-        balance.quantity = stack.quantity # Use the updated stack quantity directly
-        balance.save!
+        package_count = params[:package_count].present? ? params[:package_count].to_f : nil
+
+        {
+          canonical_quantity: resolved.canonical_quantity,
+          entered_unit_id: resolved.entered_unit_id,
+          entered_quantity: resolved.entered_quantity,
+          package_count: package_count
+        }
+      end
+
+      def resolve_rejection_quantity!(transfer_request)
+        remaining = transfer_request.remaining_quantity
+        return remaining unless params[:quantity].present? || params[:entered_quantity].present?
+
+        source_stack = transfer_request.source_stack
+        resolved = TransferQuantityResolver.resolve(
+          source_stack: source_stack,
+          quantity: params[:quantity],
+          entered_unit_id: params[:entered_unit_id] || transfer_request.entered_unit_id,
+          entered_quantity: params[:entered_quantity]
+        )
+        resolved.canonical_quantity
+      end
+
+      def approval_override_params?
+        params[:entered_unit_id].present? ||
+          params[:entered_quantity].present? ||
+          params[:quantity].present? ||
+          params[:package_count].present?
+      end
+
+      def create_allocation!(transfer_request:, action:, quantity:, notes: nil,
+                             entered_unit_id: nil, entered_quantity: nil, package_count: nil,
+                             destination_stack: nil, stack_transaction: nil)
+        transfer_request.allocations.create!(
+          action: action,
+          quantity: quantity,
+          entered_unit_id: entered_unit_id,
+          entered_quantity: entered_quantity,
+          package_count: package_count,
+          destination_stack: destination_stack,
+          stack_transaction: stack_transaction,
+          reviewed_by: current_user,
+          notes: notes
+        )
       end
     end
   end

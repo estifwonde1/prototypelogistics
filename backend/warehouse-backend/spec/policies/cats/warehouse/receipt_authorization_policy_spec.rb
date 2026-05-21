@@ -109,6 +109,263 @@ RSpec.describe Cats::Warehouse::ReceiptAuthorizationPolicy, type: :policy do
     )
   end
 
+  describe "storekeeper scope" do
+    let(:hub) { create(:cats_warehouse_hub) }
+    let(:warehouse) { create(:cats_warehouse_warehouse, hub: hub) }
+    let(:store) { create(:cats_warehouse_store, warehouse: warehouse) }
+    let(:sk_a) { create(:cats_core_user, role_name: "Storekeeper") }
+    let(:sk_b) { create(:cats_core_user, role_name: "Storekeeper") }
+    let(:hm) { create(:cats_core_user, role_name: "Hub Manager") }
+    let(:commodity) { create(:cats_core_commodity) }
+    let(:unit) { commodity.unit_of_measure }
+    let(:transporter) { create(:cats_core_transporter) }
+
+    let(:receipt_order) do
+      Cats::Warehouse::ReceiptOrder.create!(
+        hub: hub,
+        created_by: hm,
+        status: Cats::Warehouse::ContractConstants::DOCUMENT_STATUSES[:assigned],
+        reference_no: "RO-SK-#{SecureRandom.hex(4)}",
+        received_date: Date.current
+      )
+    end
+
+    let(:receipt_line) do
+      Cats::Warehouse::ReceiptOrderLine.create!(
+        receipt_order: receipt_order,
+        commodity: commodity,
+        unit: unit,
+        quantity: 100,
+        line_reference_no: "RL-SK-#{SecureRandom.hex(4)}"
+      )
+    end
+
+    let!(:ra) do
+      Cats::Warehouse::ReceiptAuthorization.create!(
+        receipt_order: receipt_order,
+        receipt_order_line: receipt_line,
+        warehouse: warehouse,
+        transporter: transporter,
+        authorized_quantity: 10,
+        driver_name: "Driver",
+        driver_id_number: "ID-1",
+        truck_plate_number: "AA-1",
+        waybill_number: "WB-SK-#{SecureRandom.hex(4)}",
+        status: Cats::Warehouse::ReceiptAuthorization::PENDING,
+        reference_no: "RA-SK-#{SecureRandom.hex(4)}",
+        created_by: hm,
+        assigned_storekeeper_id: sk_a.id
+      )
+    end
+
+    before do
+      receipt_line
+      Cats::Warehouse::UserAssignment.create!(user: sk_a, warehouse: warehouse, role_name: "Storekeeper")
+      Cats::Warehouse::UserAssignment.create!(user: sk_b, warehouse: warehouse, role_name: "Storekeeper")
+    end
+
+    it "returns only RAs assigned to the storekeeper" do
+      scope_a = described_class::Scope.new(sk_a, Cats::Warehouse::ReceiptAuthorization.all).resolve
+      scope_b = described_class::Scope.new(sk_b, Cats::Warehouse::ReceiptAuthorization.all).resolve
+
+      expect(scope_a.where(id: ra.id)).to exist
+      expect(scope_b.where(id: ra.id)).not_to exist
+    end
+
+    context "when warehouse has a single store" do
+      let!(:sole_store) { create(:cats_warehouse_store, warehouse: warehouse) }
+      let!(:open_ra) do
+        Cats::Warehouse::ReceiptAuthorization.create!(
+          receipt_order: receipt_order,
+          receipt_order_line: receipt_line,
+          warehouse: warehouse,
+          store: sole_store,
+          transporter: transporter,
+          authorized_quantity: 10,
+          driver_name: "Driver",
+          driver_id_number: "ID-1",
+          truck_plate_number: "AA-1",
+          waybill_number: "WB-OPEN-#{SecureRandom.hex(4)}",
+          status: Cats::Warehouse::ReceiptAuthorization::PENDING,
+          reference_no: "RA-OPEN-#{SecureRandom.hex(4)}",
+          created_by: hm
+        )
+      end
+
+      it "includes unassigned RAs for all eligible storekeepers" do
+        scope_a = described_class::Scope.new(sk_a, Cats::Warehouse::ReceiptAuthorization.all).resolve
+        scope_b = described_class::Scope.new(sk_b, Cats::Warehouse::ReceiptAuthorization.all).resolve
+
+        expect(scope_a.where(id: open_ra.id)).to exist
+        expect(scope_b.where(id: open_ra.id)).to exist
+      end
+    end
+  end
+
+  describe "#assign_storekeeper?" do
+    let(:hub) { create(:cats_warehouse_hub) }
+    let(:warehouse) { create(:cats_warehouse_warehouse, hub: hub) }
+    let(:wm) { create(:cats_core_user, role_name: "Warehouse Manager") }
+    let(:other_wm) { create(:cats_core_user, role_name: "Warehouse Manager") }
+    let(:hm) { create(:cats_core_user, role_name: "Hub Manager") }
+    let(:commodity) { create(:cats_core_commodity) }
+    let(:unit) { commodity.unit_of_measure }
+    let(:transporter) { create(:cats_core_transporter) }
+
+    let(:receipt_order) do
+      Cats::Warehouse::ReceiptOrder.create!(
+        hub: hub,
+        created_by: hm,
+        status: Cats::Warehouse::ContractConstants::DOCUMENT_STATUSES[:assigned],
+        reference_no: "RO-ASN-#{SecureRandom.hex(4)}",
+        received_date: Date.current
+      )
+    end
+
+    let(:receipt_line) do
+      Cats::Warehouse::ReceiptOrderLine.create!(
+        receipt_order: receipt_order,
+        commodity: commodity,
+        unit: unit,
+        quantity: 100,
+        line_reference_no: "RL-ASN-#{SecureRandom.hex(4)}"
+      )
+    end
+
+    let(:ra) do
+      Cats::Warehouse::ReceiptAuthorization.create!(
+        receipt_order: receipt_order,
+        receipt_order_line: receipt_line,
+        warehouse: warehouse,
+        transporter: transporter,
+        authorized_quantity: 10,
+        driver_name: "Driver",
+        driver_id_number: "ID-1",
+        truck_plate_number: "AA-1",
+        waybill_number: "WB-ASN-#{SecureRandom.hex(4)}",
+        status: Cats::Warehouse::ReceiptAuthorization::PENDING,
+        reference_no: "RA-ASN-#{SecureRandom.hex(4)}",
+        created_by: hm
+      )
+    end
+
+    before do
+      receipt_line
+      Cats::Warehouse::UserAssignment.create!(user: wm, warehouse: warehouse, role_name: "Warehouse Manager")
+      Cats::Warehouse::UserAssignment.create!(
+        user: other_wm,
+        warehouse: create(:cats_warehouse_warehouse, hub: hub),
+        role_name: "Warehouse Manager"
+      )
+    end
+
+    it "allows warehouse manager at the RA warehouse while pending" do
+      policy = described_class.new(wm, ra)
+      expect(policy.assign_storekeeper?).to be(true)
+    end
+
+    it "denies warehouse manager at a different warehouse" do
+      policy = described_class.new(other_wm, ra)
+      expect(policy.assign_storekeeper?).to be(false)
+    end
+
+    context "when warehouse has a single store" do
+      let!(:sole_store) { create(:cats_warehouse_store, warehouse: warehouse) }
+
+      it "denies manual assignment" do
+        policy = described_class.new(wm, ra)
+        expect(policy.assign_storekeeper?).to be(false)
+      end
+    end
+  end
+
+  describe "#driver_confirm?" do
+    let(:hub) { create(:cats_warehouse_hub) }
+    let(:warehouse) { create(:cats_warehouse_warehouse, hub: hub) }
+    let(:sk) { create(:cats_core_user, role_name: "Storekeeper") }
+    let(:other_sk) { create(:cats_core_user, role_name: "Storekeeper") }
+    let(:hm) { create(:cats_core_user, role_name: "Hub Manager") }
+    let(:commodity) { create(:cats_core_commodity) }
+    let(:unit) { commodity.unit_of_measure }
+    let(:transporter) { create(:cats_core_transporter) }
+
+    let(:receipt_order) do
+      Cats::Warehouse::ReceiptOrder.create!(
+        hub: hub,
+        created_by: hm,
+        status: Cats::Warehouse::ContractConstants::DOCUMENT_STATUSES[:assigned],
+        reference_no: "RO-DC-#{SecureRandom.hex(4)}",
+        received_date: Date.current
+      )
+    end
+
+    let(:receipt_line) do
+      Cats::Warehouse::ReceiptOrderLine.create!(
+        receipt_order: receipt_order,
+        commodity: commodity,
+        unit: unit,
+        quantity: 100,
+        line_reference_no: "RL-DC-#{SecureRandom.hex(4)}"
+      )
+    end
+
+    let(:ra) do
+      Cats::Warehouse::ReceiptAuthorization.create!(
+        receipt_order: receipt_order,
+        receipt_order_line: receipt_line,
+        warehouse: warehouse,
+        transporter: transporter,
+        authorized_quantity: 10,
+        driver_name: "Driver",
+        driver_id_number: "ID-1",
+        truck_plate_number: "AA-1",
+        waybill_number: "WB-DC-#{SecureRandom.hex(4)}",
+        status: Cats::Warehouse::ReceiptAuthorization::ACTIVE,
+        reference_no: "RA-DC-#{SecureRandom.hex(4)}",
+        created_by: hm,
+        assigned_storekeeper_id: sk.id
+      )
+    end
+
+    before { receipt_line }
+
+    it "allows only the assigned storekeeper" do
+      expect(described_class.new(sk, ra).driver_confirm?).to be(true)
+      expect(described_class.new(other_sk, ra).driver_confirm?).to be(false)
+    end
+
+    context "when warehouse has a single store and RA is unassigned" do
+      let!(:sole_store) { create(:cats_warehouse_store, warehouse: warehouse) }
+      let(:open_ra) do
+        Cats::Warehouse::ReceiptAuthorization.create!(
+          receipt_order: receipt_order,
+          receipt_order_line: receipt_line,
+          warehouse: warehouse,
+          store: sole_store,
+          transporter: transporter,
+          authorized_quantity: 10,
+          driver_name: "Driver",
+          driver_id_number: "ID-1",
+          truck_plate_number: "AA-1",
+          waybill_number: "WB-DC-OPEN-#{SecureRandom.hex(4)}",
+          status: Cats::Warehouse::ReceiptAuthorization::ACTIVE,
+          reference_no: "RA-DC-OPEN-#{SecureRandom.hex(4)}",
+          created_by: hm
+        )
+      end
+
+      before do
+        Cats::Warehouse::UserAssignment.create!(user: sk, warehouse: warehouse, role_name: "Storekeeper")
+        Cats::Warehouse::UserAssignment.create!(user: other_sk, warehouse: warehouse, role_name: "Storekeeper")
+      end
+
+      it "allows any eligible storekeeper before claim" do
+        expect(described_class.new(sk, open_ra).driver_confirm?).to be(true)
+        expect(described_class.new(other_sk, open_ra).driver_confirm?).to be(true)
+      end
+    end
+  end
+
   describe "#create_for_warehouse?" do
     it "allows Hub Manager for warehouses under their hub" do
       policy = described_class.new(hm, nil)

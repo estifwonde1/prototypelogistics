@@ -17,6 +17,8 @@ interface AuthState {
   role: string | null;
   assignments: OfficerAssignment[];
   activeAssignment: OfficerAssignment | null;
+  /** Persisted so the next login can restore the last used workspace. */
+  lastActiveAssignmentId: number | null;
   setAuth: (token: string, userId: number, role: string | null) => void;
   setAssignments: (assignments: OfficerAssignment[]) => void;
   setActiveAssignment: (assignment: OfficerAssignment | null) => void;
@@ -32,10 +34,27 @@ export const useAuthStore = create<AuthState>()(
       role: null,
       assignments: [],
       activeAssignment: null,
+      lastActiveAssignmentId: null,
       setAuth: (token, userId, role) => set({ token, userId, role }),
       setAssignments: (assignments) => set({ assignments }),
-      setActiveAssignment: (activeAssignment) => set({ activeAssignment, role: activeAssignment?.role_name ? normalizeRoleSlug(activeAssignment.role_name) : null }),
-      clearAuth: () => set({ token: null, userId: null, role: null, assignments: [], activeAssignment: null }),
+      setActiveAssignment: (activeAssignment) =>
+        set({
+          activeAssignment,
+          role: activeAssignment?.role_name
+            ? normalizeRoleSlug(activeAssignment.role_name)
+            : null,
+          // Remember this assignment id so the next login can restore it
+          lastActiveAssignmentId: activeAssignment?.id ?? null,
+        }),
+      clearAuth: () =>
+        set({
+          token: null,
+          userId: null,
+          role: null,
+          assignments: [],
+          activeAssignment: null,
+          // Intentionally keep lastActiveAssignmentId so next login can restore it
+        }),
       isAuthenticated: () => !!get().token,
     }),
     {

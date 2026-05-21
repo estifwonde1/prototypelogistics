@@ -32,6 +32,14 @@ export interface Grn {
   ra_truck_plate_number?: string | null;
   ra_waybill_number?: string | null;
   ra_authorized_quantity?: number | null;
+  ra_authorized_quantity_input?: number | null;
+  ra_authorized_quantity_input_unit_id?: number | null;
+  ra_authorized_quantity_input_unit_name?: string | null;
+  ra_authorized_quantity_input_unit_abbreviation?: string | null;
+  ra_packaging_unit_name?: string | null;
+  ra_packaging_unit_abbreviation?: string | null;
+  ra_expected_packaging_units?: number | null;
+  inspection_lost_quantity?: number | null;
 }
 
 export interface GrnItem {

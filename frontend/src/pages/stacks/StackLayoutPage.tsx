@@ -249,6 +249,26 @@ function isStackPositionedOnFloor(s: StackType): boolean {
   );
 }
 
+/** Footprint must fit inside the store floor (after wall clearance). */
+function isStackWithinStoreFloor(
+  s: StackType,
+  storeLength: number,
+  storeWidth: number,
+  wallClearance = 1
+): boolean {
+  if (!isStackPositionedOnFloor(s)) return false;
+  const sx = Number(s.start_x);
+  const sy = Number(s.start_y);
+  const sl = Number(s.length);
+  const sw = Number(s.width);
+  return (
+    sx >= wallClearance - STACK_LAYOUT_EPS &&
+    sy >= wallClearance - STACK_LAYOUT_EPS &&
+    sx + sl <= storeLength - wallClearance + STACK_LAYOUT_EPS &&
+    sy + sw <= storeWidth - wallClearance + STACK_LAYOUT_EPS
+  );
+}
+
 function firstOverlappingStack(
   stacks: StackType[],
   footprint: { start_x: number; start_y: number; length: number; width: number },
@@ -346,6 +366,8 @@ export default function StackLayoutPage() {
   const isWarehouseManager = roleSlug === 'warehouse_manager';
   const isStorekeeper = roleSlug === 'storekeeper';
   const isHubManager = roleSlug === 'hub_manager';
+  const driverArrivalRAId = searchParams.get('receipt_authorization_id');
+  const isDriverArrivalStacking = isStorekeeper && Boolean(driverArrivalRAId);
 
   /** Populated for storekeepers from /me/assignments (store-level includes parent warehouse). */
   const storekeeperWarehouseId =
@@ -374,23 +396,32 @@ export default function StackLayoutPage() {
     },
   });
 
+  const effectivePickerStoreId = sanitizeStoreIdParam(storeId);
+  const resolvedStoreIdEarly =
+    effectivePickerStoreId ||
+    (isStorekeeper && userStoreId ? String(userStoreId) : null);
+
+  const stacksFetchParams = useMemo(() => {
+    if (resolvedStoreIdEarly) {
+      return { store_id: Number(resolvedStoreIdEarly) };
+    }
+    if (isWarehouseManager && userWarehouseId) {
+      return { warehouse_id: userWarehouseId };
+    }
+    if (isStorekeeper && storekeeperWarehouseId != null) {
+      return { warehouse_id: storekeeperWarehouseId };
+    }
+    return {};
+  }, [resolvedStoreIdEarly, isWarehouseManager, userWarehouseId, isStorekeeper, storekeeperWarehouseId]);
+
   const { data: stacks, isLoading, error, refetch } = useQuery({
-    queryKey: ['stacks', { 
-      warehouse_id: isWarehouseManager ? userWarehouseId : undefined,
-      store_id: isStorekeeper ? userStoreId : undefined,
-      hub_id: isHubManager ? userHubId : undefined 
-    }],
-    queryFn: () => {
-      if (isWarehouseManager && userWarehouseId) {
-        return getStacks({ warehouse_id: userWarehouseId });
-      } else if (isStorekeeper && userStoreId) {
-        return getStacks({ store_id: userStoreId });
-      } else if (isHubManager && userHubId) {
-        // For hub managers, get stacks from warehouses in their hub
-        return getStacks(); // Backend should handle hub-level filtering
-      }
-      return getStacks();
-    },
+    queryKey: ['stacks', stacksFetchParams],
+    queryFn: () => getStacks(stacksFetchParams),
+    enabled:
+      Boolean(resolvedStoreIdEarly) ||
+      Boolean(userWarehouseId) ||
+      storekeeperWarehouseId != null ||
+      isHubManager,
   });
 
   /** Same payload as Officer → Commodities (batches / core commodity rows). */
@@ -429,16 +460,32 @@ export default function StackLayoutPage() {
           ? { warehouse_id: storekeeperWarehouseId }
           : {}),
       }),
-    enabled: isStorekeeper && (!!userStoreId || storekeeperWarehouseId != null),
+    enabled: isDriverArrivalStacking && (!!userStoreId || storekeeperWarehouseId != null),
     select: (data: ReceiptAuthorization[]) =>
       data.filter((ra) => ra.driver_confirmed_at && ra.grn_id && ra.grn_status === 'draft'),
   });
+
+  const driverArrivalRAsForStacking = isDriverArrivalStacking
+    ? activeRAsForStacking.filter((ra) => String(ra.id) === driverArrivalRAId)
+    : [];
+  const selectedDriverArrivalRA = driverArrivalRAsForStacking.find((ra) => String(ra.id) === selectedRAId);
+  const canPlaceDriverArrivalGoods = isDriverArrivalStacking && Boolean(selectedDriverArrivalRA);
+
+  useEffect(() => {
+    if (isDriverArrivalStacking) {
+      setSelectedRAId(driverArrivalRAId);
+      return;
+    }
+
+    setSelectedRAId(null);
+    setPlacements({});
+  }, [driverArrivalRAId, isDriverArrivalStacking]);
 
   // ── Finish Stacking mutation ──
   const finishStackingMutation = useMutation({
     mutationFn: async () => {
       if (!selectedRAId) throw new Error('No Receipt Authorization selected');
-      const selectedRA = activeRAsForStacking.find((ra) => String(ra.id) === selectedRAId);
+      const selectedRA = selectedDriverArrivalRA;
       if (!selectedRA) throw new Error('Receipt Authorization not found');
 
       // Use explicit placements entered by the storekeeper
@@ -463,6 +510,9 @@ export default function StackLayoutPage() {
       setFinishStackingModalOpen(false);
       setSelectedRAId(null);
       setPlacements({});
+      const next = new URLSearchParams(searchParams);
+      next.delete('receipt_authorization_id');
+      setSearchParams(next, { replace: true });
     },
     onError: (mutationError: AxiosError<{ error?: { message?: string } }>) => {
       notifications.show({
@@ -474,10 +524,9 @@ export default function StackLayoutPage() {
     },
   });
 
-  const effectivePickerStoreId = sanitizeStoreIdParam(storeId);
   const resolvedStoreId =
-    effectivePickerStoreId ||
-    (isStorekeeper && userStoreId ? String(userStoreId) : stores && stores.length > 0 ? String(stores[0].id) : null);
+    resolvedStoreIdEarly ||
+    (stores && stores.length > 0 ? String(stores[0].id) : null);
 
   const selectedStoreFromList = useMemo(
     () => stores?.find((store) => String(store.id) === resolvedStoreId) || null,
@@ -501,8 +550,23 @@ export default function StackLayoutPage() {
   const selectedStore = selectedStoreFromList ?? fallbackStore ?? null;
 
   const storeStacks = useMemo(() => {
+    if (!resolvedStoreId) return stacks || [];
     return stacks?.filter((stack) => String(stack.store_id) === resolvedStoreId) || [];
   }, [resolvedStoreId, stacks]);
+
+  const boardStacks = useMemo(() => {
+    if (!selectedStore) return [];
+    const sl = Number(selectedStore.length);
+    const sw = Number(selectedStore.width);
+    return storeStacks.filter((s) => isStackWithinStoreFloor(s, sl, sw));
+  }, [storeStacks, selectedStore]);
+
+  const stacksNeedingPlacement = useMemo(() => {
+    if (!selectedStore) return storeStacks;
+    const sl = Number(selectedStore.length);
+    const sw = Number(selectedStore.width);
+    return storeStacks.filter((s) => !isStackWithinStoreFloor(s, sl, sw));
+  }, [storeStacks, selectedStore]);
 
   const form = useForm<StackFormValues>({
     initialValues: createInitialValues(storeId),
@@ -688,10 +752,10 @@ export default function StackLayoutPage() {
       selectedStore.length,
       selectedStore.width,
       selectedStore.height,
-      storeStacks,
+      boardStacks,
       editingStackId
     );
-  }, [selectedStore, storeStacks, editingStackId]);
+  }, [selectedStore, boardStacks, editingStackId]);
 
   const stackFootprint = (form.values.length || 0) * (form.values.width || 0);
   const stackVolumeM3 = stackFootprint * (form.values.height || 0);
@@ -781,8 +845,8 @@ export default function StackLayoutPage() {
         length: stack.length,
         width: stack.width,
         height: stack.height,
-        start_x: stack.start_x,
-        start_y: stack.start_y,
+        start_x: stack.start_x ?? 1,
+        start_y: stack.start_y ?? 1,
         quantity: stack.quantity,
         unit_id: String(stack.unit_id || ''),
         store_id: String(stack.store_id),
@@ -828,7 +892,7 @@ export default function StackLayoutPage() {
       return;
     }
 
-    const overlap = firstOverlappingStack(storeStacks, { start_x: startX, start_y: startY, length, width });
+    const overlap = firstOverlappingStack(boardStacks, { start_x: startX, start_y: startY, length, width });
     if (overlap) {
       notifications.show({
         title: 'Overlaps another stack',
@@ -989,7 +1053,7 @@ export default function StackLayoutPage() {
     }
 
     const overlap = firstOverlappingStack(
-      storeStacks,
+      boardStacks,
       { start_x: sx, start_y: sy, length: len, width: wid },
       values.id
     );
@@ -1100,7 +1164,7 @@ export default function StackLayoutPage() {
           </Group>
 
           {/* ── Receipt Authorization selector for storekeeper finish_stacking ── */}
-          {isStorekeeper && (
+          {isDriverArrivalStacking && (
             <Card
               radius="xl"
               padding="lg"
@@ -1117,22 +1181,19 @@ export default function StackLayoutPage() {
                   </Text>
                   <Select
                     placeholder={
-                      activeRAsForStacking.length === 0
-                        ? 'No active RAs with Draft GRN for your store'
-                        : 'Select the RA you are stacking for'
+                      driverArrivalRAsForStacking.length === 0
+                        ? 'No active RA with Draft GRN for this truck'
+                        : 'Receipt Authorization for this driver arrival'
                     }
-                    data={activeRAsForStacking.map((ra) => ({
+                    data={driverArrivalRAsForStacking.map((ra) => ({
                       value: String(ra.id),
                       label: `${ra.reference_no} — ${ra.driver_name} (${ra.truck_plate_number}) · GRN: ${ra.grn_reference_no || `#${ra.grn_id}`}`,
                     }))}
                     value={selectedRAId}
-                    onChange={(val) => {
-                      setSelectedRAId(val);
-                      setPlacements({}); // clear placements when switching RA
-                    }}
+                    onChange={() => undefined}
                     searchable
-                    clearable
-                    disabled={activeRAsForStacking.length === 0}
+                    clearable={false}
+                    disabled={driverArrivalRAsForStacking.length === 0}
                     styles={{
                       input: {
                         backgroundColor: '#eaf0ff',
@@ -1142,9 +1203,9 @@ export default function StackLayoutPage() {
                       },
                     }}
                   />
-                  {activeRAsForStacking.length === 0 && (
+                  {driverArrivalRAsForStacking.length === 0 && (
                     <Text size="xs" c="dimmed">
-                      Active RAs appear here after Driver Confirmation. Go to{' '}
+                      This driver arrival is not ready for stacking yet. Go to{' '}
                       <Text
                         component="a"
                         href="/storekeeper/receipt-authorizations"
@@ -1160,7 +1221,7 @@ export default function StackLayoutPage() {
                 <Button
                   color="green"
                   leftSection={<IconCheck size={16} />}
-                  disabled={!selectedRAId || Object.values(placements).every(q => q === 0)}
+                  disabled={!canPlaceDriverArrivalGoods || Object.values(placements).every(q => q === 0)}
                   onClick={() => setFinishStackingModalOpen(true)}
                   radius="md"
                 >
@@ -1171,8 +1232,8 @@ export default function StackLayoutPage() {
           )}
 
           {/* ── Placement progress panel ── */}
-          {isStorekeeper && selectedRAId && (() => {
-            const selectedRA = activeRAsForStacking.find((ra) => String(ra.id) === selectedRAId);
+          {canPlaceDriverArrivalGoods && (() => {
+            const selectedRA = selectedDriverArrivalRA;
             if (!selectedRA) return null;
             const uLine = raQuantityUnit(selectedRA);
             const uDisp = raDisplayUnit(selectedRA);
@@ -1221,6 +1282,71 @@ export default function StackLayoutPage() {
               </Card>
             );
           })()}
+
+          {stacksNeedingPlacement.length > 0 && selectedStore && (
+            <Card
+              radius="xl"
+              padding="lg"
+              style={{
+                background: '#fff8e6',
+                border: '1px solid #f5d78e',
+              }}
+            >
+              <Stack gap="sm">
+                <Text size="sm" fw={700} c="#7a5b00">
+                  {stacksNeedingPlacement.length} stack(s) not visible on the floor plan
+                </Text>
+                <Text size="xs" c="dimmed">
+                  These stacks have no position or coordinates outside this store (
+                  {numberFormatter.format(selectedStore.length)} m ×{' '}
+                  {numberFormatter.format(selectedStore.width)} m). Place them on the board below
+                  or use Edit Layout.
+                </Text>
+                <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="sm">
+                  {stacksNeedingPlacement.map((stack) => {
+                    const statusMeta = getStatusMeta(stack.stack_status);
+                    const hasCoords =
+                      stack.start_x != null &&
+                      stack.start_y != null &&
+                      !isStackWithinStoreFloor(
+                        stack,
+                        Number(selectedStore.length),
+                        Number(selectedStore.width)
+                      );
+                    return (
+                      <Card key={stack.id} padding="sm" withBorder radius="md">
+                        <Group justify="space-between" wrap="nowrap" align="flex-start">
+                          <div>
+                            <Text size="sm" fw={700} style={{ fontFamily: 'monospace' }}>
+                              {stack.code}
+                            </Text>
+                            <Badge size="xs" variant="light" color="orange" mt={4}>
+                              {statusMeta.label}
+                            </Badge>
+                            <Text size="xs" c="dimmed" mt={4}>
+                              {hasCoords
+                                ? `Position X:${stack.start_x} Y:${stack.start_y} is outside the store`
+                                : 'No floor position yet'}
+                            </Text>
+                          </div>
+                          <Button
+                            size="xs"
+                            variant="light"
+                            onClick={() => {
+                              setEditMode(true);
+                              openEditor(stack);
+                            }}
+                          >
+                            Place on floor
+                          </Button>
+                        </Group>
+                      </Card>
+                    );
+                  })}
+                </SimpleGrid>
+              </Stack>
+            </Card>
+          )}
 
           <Card
             radius="xl"
@@ -1397,7 +1523,7 @@ export default function StackLayoutPage() {
                         {numberFormatter.format(selectedStore.width)} meters
                       </div>
 
-                      {storeStacks.map((stack) => {
+                      {boardStacks.map((stack) => {
                         const statusMeta = getStatusMeta(stack.stack_status);
                         const rawLeft = Number(stack.start_x ?? 0) * boardScale;
                         const rawTop = Number(stack.start_y ?? 0) * boardScale;
@@ -1419,7 +1545,7 @@ export default function StackLayoutPage() {
                               onClick={() => {
                                 if (editMode) {
                                   openEditor(stack);
-                                } else if (selectedRAId) {
+                                } else if (canPlaceDriverArrivalGoods) {
                                   setPlacementModalStack(stack);
                                 }
                               }}
@@ -1432,12 +1558,12 @@ export default function StackLayoutPage() {
                                 zIndex: stack.id,
                                 borderRadius: 10,
                                 border: `2px solid ${statusMeta.border}`,
-                                background: selectedRAId && !editMode ? (placements[String(stack.id)] > 0 ? '#1fbe84' : statusMeta.fill) : statusMeta.fill,
+                                background: canPlaceDriverArrivalGoods && !editMode ? (placements[String(stack.id)] > 0 ? '#1fbe84' : statusMeta.fill) : statusMeta.fill,
                                 color: statusMeta.color,
                                 padding: compactTile ? 2 : '8px 10px',
                                 textAlign: 'left',
                                 boxShadow: '0 8px 18px rgba(51, 76, 117, 0.10)',
-                                cursor: editMode ? 'pointer' : selectedRAId ? 'pointer' : 'default',
+                                cursor: editMode ? 'pointer' : canPlaceDriverArrivalGoods ? 'pointer' : 'default',
                                 opacity: editMode || stack.stack_status !== 'inactive' ? 1 : 0.92,
                               }}
                             >
@@ -1481,7 +1607,7 @@ export default function StackLayoutPage() {
                         />
                       )}
 
-                      {storeStacks.length === 0 && (
+                      {boardStacks.length === 0 && (
                         <div
                           style={{
                             position: 'absolute',
@@ -1493,9 +1619,13 @@ export default function StackLayoutPage() {
                             justifyContent: 'center',
                             color: '#7d8ea8',
                             fontWeight: 700,
+                            textAlign: 'center',
+                            padding: 16,
                           }}
                         >
-                          No stacks positioned for this store yet.
+                          {storeStacks.length === 0
+                            ? 'No stacks for this store yet. Use Edit Layout to draw stacks.'
+                            : 'No stacks on the floor plan yet — see the list above to place them.'}
                         </div>
                       )}
                     </div>
@@ -1821,8 +1951,8 @@ export default function StackLayoutPage() {
       </Modal>
 
       {/* ── Placement Modal — click a stack to assign quantity ── */}
-      {placementModalStack && selectedRAId && (() => {
-        const selectedRA = activeRAsForStacking.find((ra) => String(ra.id) === selectedRAId);
+      {canPlaceDriverArrivalGoods && placementModalStack && (() => {
+        const selectedRA = selectedDriverArrivalRA;
         if (!selectedRA) return null;
         const uLine = raQuantityUnit(selectedRA);
         const primaryUnit = raPrimaryUnit(selectedRA);
@@ -1925,8 +2055,8 @@ export default function StackLayoutPage() {
         centered
       >
         <Stack gap="md">
-          {selectedRAId && (() => {
-            const ra = activeRAsForStacking.find((r) => String(r.id) === selectedRAId);
+          {canPlaceDriverArrivalGoods && (() => {
+            const ra = selectedDriverArrivalRA;
             return ra ? (
               <Alert color="blue" variant="light">
                 <Text size="sm" fw={600}>{ra.reference_no}</Text>

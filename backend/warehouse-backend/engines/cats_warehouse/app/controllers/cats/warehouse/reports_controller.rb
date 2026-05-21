@@ -96,7 +96,103 @@ module Cats
         render_resource(scope.order(transaction_date: :desc, id: :desc), each_serializer: StackTransactionSerializer)
       end
 
+      def stock_card
+        authorize StackTransaction, :index?, policy_class: StackTransactionPolicy
+
+        scope = policy_scope(StackTransaction)
+                  .includes(:unit, :entered_unit, :base_unit, :inventory_lot, :source, :destination, :reference)
+
+        begin
+          scope = apply_stock_card_facility_filters(scope)
+          date_range = validate_date_range
+          scope = scope.where(transaction_date: date_range) if date_range
+
+          commodity_id = params[:commodity_id].present? ? validate_id_param(:commodity_id) : nil
+          inventory_lot_id = params[:inventory_lot_id].present? ? validate_id_param(:inventory_lot_id) : nil
+          batch_no = params[:batch_no].to_s.strip.presence
+
+          transactions = scope.order(transaction_date: :asc, id: :asc).to_a
+
+          if inventory_lot_id.present?
+            lot = InventoryLot.find_by(id: inventory_lot_id)
+            raise ArgumentError, "inventory_lot not found" unless lot
+            raise ArgumentError, "inventory_lot does not match commodity_id" if commodity_id.present? && lot.commodity_id != commodity_id
+
+            transactions = transactions.select { |tx| tx.inventory_lot_id == inventory_lot_id }
+          end
+
+          if commodity_id.present?
+            transactions = transactions.select { |tx| stock_card_transaction_commodity_id(tx) == commodity_id }
+          end
+
+          if batch_no.present?
+            transactions = transactions.select do |tx|
+              tx.inventory_lot&.batch_no.to_s.strip.casecmp?(batch_no)
+            end
+          end
+        rescue ArgumentError => e
+          return render_error(e.message, status: :bad_request)
+        rescue Pundit::NotAuthorizedError => e
+          return render_error(e.message, status: :forbidden)
+        end
+
+        render_resource(transactions.reverse, each_serializer: StackTransactionSerializer)
+      end
+
       private
+
+      def apply_stock_card_facility_filters(scope)
+        if params[:store_id].present?
+          store_id = validate_id_param(:store_id)
+          validate_store_access!(store_id)
+          stack_ids = Stack.where(store_id: store_id).select(:id)
+          return scope.where(source_id: stack_ids).or(scope.where(destination_id: stack_ids))
+        end
+
+        if params[:warehouse_id].present?
+          warehouse_id = validate_id_param(:warehouse_id)
+          unless policy_scope(Warehouse).exists?(id: warehouse_id)
+            raise Pundit::NotAuthorizedError, "Access denied to warehouse #{warehouse_id}"
+          end
+
+          stack_ids = Stack.joins(:store).where(cats_warehouse_stores: { warehouse_id: warehouse_id }).select(:id)
+          return scope.where(source_id: stack_ids).or(scope.where(destination_id: stack_ids))
+        end
+
+        scope
+      end
+
+      def stock_card_transaction_commodity_id(transaction)
+        stock_card_reference_item(transaction)&.commodity_id.presence ||
+          transaction.inventory_lot&.commodity_id.presence ||
+          transaction.destination&.commodity_id.presence ||
+          transaction.source&.commodity_id
+      end
+
+      def stock_card_reference_item(transaction)
+        reference = transaction.reference
+
+        case reference
+        when Grn
+          items = reference.grn_items
+          items.find_by(stack_id: transaction.destination_id, unit_id: transaction.unit_id) ||
+            items.find_by(stack_id: transaction.destination_id) ||
+            items.find_by(stack_id: transaction.source_id, unit_id: transaction.unit_id) ||
+            items.find_by(stack_id: transaction.source_id) ||
+            items.find_by(unit_id: transaction.unit_id) ||
+            items.first
+        when Gin
+          items = reference.gin_items
+          items.find_by(stack_id: transaction.source_id, unit_id: transaction.unit_id) ||
+            items.find_by(stack_id: transaction.source_id) ||
+            items.find_by(unit_id: transaction.unit_id) ||
+            items.first
+        when Inspection
+          reference.inspection_items.find_by(
+            commodity_id: transaction.destination&.commodity_id || transaction.source&.commodity_id
+          )
+        end
+      end
 
       # Returns nil (no lot filter), [] (no matching lots / forced empty), or [id, ...]
       def resolve_bin_card_lot_ids(omit_lot_filter: false)

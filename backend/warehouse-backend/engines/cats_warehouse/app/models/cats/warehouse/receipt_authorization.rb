@@ -27,6 +27,10 @@ module Cats
                                             foreign_key: :driver_confirmed_by_id
       belongs_to :cancelled_by,             class_name: "Cats::Core::User", optional: true,
                                             foreign_key: :cancelled_by_id
+      belongs_to :assigned_storekeeper,    class_name: "Cats::Core::User", optional: true,
+                                            foreign_key: :assigned_storekeeper_id
+      belongs_to :assigned_storekeeper_by, class_name: "Cats::Core::User", optional: true,
+                                            foreign_key: :assigned_storekeeper_by_id
 
       has_many :inspections, class_name: "Cats::Warehouse::Inspection",
                foreign_key: :receipt_authorization_id, dependent: :nullify
@@ -47,6 +51,10 @@ module Cats
       def active?    = status == ACTIVE
       def closed?    = status == CLOSED
       def cancelled? = status == CANCELLED
+
+      def assigned_to_storekeeper?
+        assigned_storekeeper_id.present?
+      end
 
       def generated_inspection_grns_confirmed?
         inspection_rows = inspections.includes(:auto_generated_grn).to_a

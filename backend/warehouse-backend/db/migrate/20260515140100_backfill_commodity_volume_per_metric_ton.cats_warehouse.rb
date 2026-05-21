@@ -1,2 +1,2 @@
 # This migration was copied from the cats_warehouse engine.
-require_relative "../../engines/cats_warehouse/db/migrate/20260515140100_backfill_commodity_volume_per_metric_ton"
+load File.expand_path("../../engines/cats_warehouse/db/migrate/20260515140100_backfill_commodity_volume_per_metric_ton.rb", __dir__)

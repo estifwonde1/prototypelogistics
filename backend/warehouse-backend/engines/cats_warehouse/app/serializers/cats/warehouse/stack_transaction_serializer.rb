@@ -3,6 +3,7 @@ module Cats
     class StackTransactionSerializer < ApplicationSerializer
       attributes :id, :source_id, :destination_id, :transaction_date, :quantity, :unit_id, :status,
                  :inventory_lot_id, :batch_no, :expiry_date, :entered_unit_id, :entered_unit_name,
+                 :entered_quantity,
                  :base_unit_id, :base_unit_name, :base_quantity,
                  :reference_type, :reference_id, :created_at, :updated_at, :source_stack_code,
                  :destination_stack_code, :source_store_id, :destination_store_id, :source_store_name,

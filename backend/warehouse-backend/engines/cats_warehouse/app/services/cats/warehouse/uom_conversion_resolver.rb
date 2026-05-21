@@ -52,6 +52,57 @@ module Cats
         )
         (quantity.to_f * multi).round(3)
       end
+
+      # Like +convert+ but raises when units differ and no conversion path exists.
+      def self.convert!(quantity, from_unit_id:, to_unit_id:, commodity_id: nil)
+        return quantity.to_f.round(3) if from_unit_id.to_i == to_unit_id.to_i
+
+        multi = multiplier_strict(
+          from_unit_id: from_unit_id,
+          to_unit_id: to_unit_id,
+          commodity_id: commodity_id
+        )
+        unless multi
+          raise ArgumentError,
+                "No unit conversion from unit #{from_unit_id} to unit #{to_unit_id} for this commodity"
+        end
+
+        (quantity.to_f * multi).round(3)
+      end
+
+      def self.multiplier_strict(from_unit_id:, to_unit_id:, commodity_id: nil)
+        return 1.0 if from_unit_id.to_i == to_unit_id.to_i
+
+        conversion = UomConversion.active_only.find_by(
+          commodity_id: commodity_id,
+          from_unit_id: from_unit_id,
+          to_unit_id: to_unit_id
+        )
+        return conversion.multiplier.to_f if conversion
+
+        conversion = UomConversion.active_only.find_by(
+          commodity_id: nil,
+          from_unit_id: from_unit_id,
+          to_unit_id: to_unit_id
+        )
+        return conversion.multiplier.to_f if conversion
+
+        inverse = UomConversion.active_only.find_by(
+          commodity_id: commodity_id,
+          from_unit_id: to_unit_id,
+          to_unit_id: from_unit_id
+        )
+        return 1.0 / inverse.multiplier.to_f if inverse
+
+        inverse = UomConversion.active_only.find_by(
+          commodity_id: nil,
+          from_unit_id: to_unit_id,
+          to_unit_id: from_unit_id
+        )
+        return 1.0 / inverse.multiplier.to_f if inverse
+
+        nil
+      end
     end
   end
 end
