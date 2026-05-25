@@ -79,9 +79,15 @@ export default function StorekeeperRAListPage() {
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
   const storeId = activeAssignment?.store?.id;
 
+  const warehouseId = activeAssignment?.warehouse?.id;
+
   const { data: allRAs = [], isLoading, error, refetch } = useQuery({
-    queryKey: ['receipt_authorizations', 'storekeeper_assigned'],
-    queryFn: () => getReceiptAuthorizations(),
+    queryKey: ['receipt_authorizations', 'storekeeper_assigned', { store_id: storeId, warehouse_id: warehouseId }],
+    queryFn: () =>
+      getReceiptAuthorizations({
+        ...(storeId ? { store_id: storeId } : {}),
+        ...(warehouseId ? { warehouse_id: warehouseId } : {}),
+      }),
   });
 
   if (isLoading) return <LoadingState message="Loading driver arrivals..." />;
@@ -178,17 +184,9 @@ export default function StorekeeperRAListPage() {
                         rightSection={<IconArrowRight size={14} />}
                         onClick={() => {
                           if (myStatus === 'driver_confirmed' || myStatus === 'stacking') {
-                            const params = new URLSearchParams();
-                            params.set('receipt_authorization_id', String(ra.id));
-                            const targetStore = storeId ?? ra.store_id;
-                            if (
-                              targetStore != null &&
-                              Number.isFinite(Number(targetStore)) &&
-                              Number(targetStore) > 0
-                            ) {
-                              params.set('store_id', String(targetStore));
-                            }
-                            navigate(`/stacks/layout?${params.toString()}`);
+                            navigate(
+                              `/stacks/layout?receipt_authorization_id=${encodeURIComponent(String(ra.id))}`
+                            );
                           } else {
                             navigate(`/storekeeper/receipt-authorizations/${ra.id}`);
                           }

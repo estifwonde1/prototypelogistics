@@ -7,58 +7,96 @@ module Cats
 
           return scope.all if access.admin?
 
-          if access.hub_manager?
-            hub_ids = access.assigned_hub_ids
-            warehouse_ids = Warehouse.where(hub_id: hub_ids).pluck(:id)
-            return scope.where(warehouse_id: warehouse_ids)
-          end
+          # Users may hold multiple roles (e.g. Warehouse Manager + Storekeeper). Union each
+          # role's visibility so storekeeper notifications and WM lists both work.
+          parts = []
+          parts << hub_manager_scope(access) if access.hub_manager?
+          parts << warehouse_manager_scope(access) if access.warehouse_manager?
+          parts << storekeeper_scope(access) if access.storekeeper?
+          parts << officer_scope(access) if access.officer?
+          parts << receipt_authorizer_scope(access) if access.receipt_authorizer?
 
-          if access.warehouse_manager?
-            role_wh_ids = Array(access.assigned_warehouse_ids).map(&:to_i).uniq
-            roa_t       = ReceiptOrderAssignment.table_name
-            assignee_wh_ids =
-              ReceiptOrderAssignment
-                .where(assigned_to_id: user.id)
-                .where.not(warehouse_id: nil)
-                .where.not("LOWER(TRIM(#{roa_t}.status)) = ?", "rejected")
-                .distinct
-                .pluck(:warehouse_id)
-                .map(&:to_i)
-            visible_wh_ids = (role_wh_ids + assignee_wh_ids).uniq
-            return scope.none if visible_wh_ids.empty?
+          return scope.none if parts.empty?
+          return parts.first if parts.length == 1
 
-            return scope.where(warehouse_id: visible_wh_ids)
-          end
+          parts.reduce { |combined, part| combined.or(part) }
+        end
 
-          # IMPORTANT: prioritize storekeeper scope before officer/other role scopes.
-          # Some users can carry multiple roles; inspection flow must use the storekeeper
-          # visibility rules when acting as storekeeper.
-          if access.storekeeper?
-            tbl = ReceiptAuthorization.table_name
-            single_store_wh_ids = SingleStoreWarehouse.single_store_warehouse_ids_for_user(access)
-            assigned_scope = scope.where(assigned_storekeeper_id: user.id)
-            if single_store_wh_ids.empty?
-              return assigned_scope
+        private
+
+        def hub_manager_scope(access)
+          hub_ids = access.assigned_hub_ids
+          warehouse_ids = Warehouse.where(hub_id: hub_ids).pluck(:id)
+          scope.where(warehouse_id: warehouse_ids)
+        end
+
+        def warehouse_manager_scope(access)
+          role_wh_ids = Array(access.assigned_warehouse_ids).map(&:to_i).uniq
+          roa_t       = ReceiptOrderAssignment.table_name
+          assignee_wh_ids =
+            ReceiptOrderAssignment
+              .where(assigned_to_id: user.id)
+              .where.not(warehouse_id: nil)
+              .where.not("LOWER(TRIM(#{roa_t}.status)) = ?", "rejected")
+              .distinct
+              .pluck(:warehouse_id)
+              .map(&:to_i)
+          visible_wh_ids = (role_wh_ids + assignee_wh_ids).uniq
+          return scope.none if visible_wh_ids.empty?
+
+          scope.where(warehouse_id: visible_wh_ids)
+        end
+
+        def storekeeper_scope(access)
+          tbl = ReceiptAuthorization.table_name
+          sk_wh_ids = storekeeper_warehouse_ids_for_user
+          return scope.none if sk_wh_ids.empty?
+
+          eligible_wh_ids =
+            sk_wh_ids.select do |wid|
+              SingleStoreWarehouse.storekeeper_eligible?(user_id: user.id, warehouse_id: wid)
             end
+          return scope.none if eligible_wh_ids.empty?
 
-            open_scope = scope.where(
-              "#{tbl}.assigned_storekeeper_id IS NULL AND #{tbl}.warehouse_id IN (?)",
-              single_store_wh_ids
-            )
-            return assigned_scope.or(open_scope)
-          end
+          assigned_ids = scope.where(assigned_storekeeper_id: user.id).select(:id)
+          open_ids = scope.where(
+            "#{tbl}.assigned_storekeeper_id IS NULL AND #{tbl}.warehouse_id IN (?)",
+            eligible_wh_ids
+          ).select(:id)
 
-          if access.officer?
-            return scope.where(warehouse_id: access.accessible_warehouse_ids)
-          end
+          scope.where(id: assigned_ids).or(scope.where(id: open_ids))
+        end
 
-          if access.receipt_authorizer?
-            wh_ids = access.assigned_receipt_authorizer_warehouse_ids
-            hub_wh_ids = Warehouse.where(hub_id: access.assigned_receipt_authorizer_hub_ids).pluck(:id)
-            return scope.where(warehouse_id: (wh_ids + hub_wh_ids).uniq)
-          end
+        # Do not use AccessContext#accessible_warehouse_ids here — it prefers Hub/WM roles
+        # and returns [] or the wrong warehouses when the user also holds those roles.
+        def storekeeper_warehouse_ids_for_user
+          direct_wh = UserAssignment.where(user_id: user.id, role_name: "Storekeeper").pluck(:warehouse_id).compact.map(&:to_i)
+          direct_store_ids = UserAssignment.where(user_id: user.id, role_name: "Storekeeper").pluck(:store_id).compact.map(&:to_i)
+          store_wh =
+            if direct_store_ids.present?
+              Store.where(id: direct_store_ids).distinct.pluck(:warehouse_id).map(&:to_i)
+            else
+              []
+            end
+          (direct_wh + store_wh).uniq
+        end
 
-          scope.none
+        def officer_scope(_access)
+          wh_ids =
+            if _access.officer_full_access?
+              Warehouse.pluck(:id)
+            else
+              Warehouse.where(location_id: _access.officer_location_scope_ids).pluck(:id)
+            end
+          return scope.none if wh_ids.empty?
+
+          scope.where(warehouse_id: wh_ids)
+        end
+
+        def receipt_authorizer_scope(access)
+          wh_ids = access.assigned_receipt_authorizer_warehouse_ids
+          hub_wh_ids = Warehouse.where(hub_id: access.assigned_receipt_authorizer_hub_ids).pluck(:id)
+          scope.where(warehouse_id: (wh_ids + hub_wh_ids).uniq)
         end
       end
 
@@ -67,7 +105,9 @@ module Cats
       end
 
       def show?
-        index?
+        return false unless record.is_a?(ReceiptAuthorization)
+
+        Scope.new(user, ReceiptAuthorization.all).resolve.where(id: record.id).exists?
       end
 
       def create?
@@ -126,7 +166,6 @@ module Cats
         return true if record.assigned_storekeeper_id == user.id
 
         record.assigned_storekeeper_id.blank? &&
-          SingleStoreWarehouse.single_store?(record.warehouse_id) &&
           SingleStoreWarehouse.storekeeper_eligible?(user_id: user.id, warehouse_id: record.warehouse_id)
       end
 

@@ -497,7 +497,7 @@ module Cats
           raise ArgumentError, "Receipt Authorization not found for this order" unless ra
           raise ArgumentError, "Receipt Authorization must be Active to finish stacking" unless ra.active?
 
-          grn = ra.grns.where(status: "draft").order(created_at: :desc).first
+          grn = draft_grn_for_finish_stacking(ra)
           raise ArgumentError, "No Draft GRN found for this Receipt Authorization. Complete Driver Confirm first." unless grn
           raise ArgumentError, "GRN must be in Draft status" unless grn.status.to_s.downcase == "draft"
 
@@ -674,6 +674,17 @@ module Cats
       end
 
       private
+
+      # Each storekeeper gets their own draft GRN via driver confirm; finish must use theirs, not the latest on the RA.
+      def draft_grn_for_finish_stacking(ra)
+        inspection = ra.inspections.find_by(inspector_id: current_user.id)
+        if inspection&.auto_generated_grn_id.present?
+          grn = Grn.find_by(id: inspection.auto_generated_grn_id)
+          return grn if grn&.status.to_s.downcase == "draft"
+        end
+
+        ra.grns.where(status: "draft").order(created_at: :desc).first
+      end
 
       def order_detail_includes
         [

@@ -590,17 +590,9 @@ export default function StorekeeperRADetailPage() {
                   variant="light"
                   color="cyan"
                   onClick={() => {
-                    const params = new URLSearchParams();
-                    params.set('receipt_authorization_id', String(ra.id));
-                    const targetStore = storeId ?? ra.store_id;
-                    if (
-                      targetStore != null &&
-                      Number.isFinite(Number(targetStore)) &&
-                      Number(targetStore) > 0
-                    ) {
-                      params.set('store_id', String(targetStore));
-                    }
-                    navigate(`/stacks/layout?${params.toString()}`);
+                    navigate(
+                      `/stacks/layout?receipt_authorization_id=${encodeURIComponent(String(ra.id))}`
+                    );
                   }}
                 >
                   Go to Stacking

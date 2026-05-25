@@ -84,12 +84,8 @@ module Cats
         warehouse_ids = storekeeper_warehouse_ids
         warehouse_store_ids = warehouse_ids.present? ? Store.where(warehouse_id: warehouse_ids).pluck(:id) : []
         
-        # Merge both: if user has specific store assignments, use those; otherwise use warehouse-level expansion
-        if direct_store_ids.present?
-          direct_store_ids
-        else
-          warehouse_store_ids
-        end
+        # Merge both: union direct store assignments and expanded warehouse-level store assignments
+        (direct_store_ids + warehouse_store_ids).uniq
       end
 
       def assigned_officer_warehouse_ids

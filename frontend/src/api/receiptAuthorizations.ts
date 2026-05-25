@@ -145,6 +145,11 @@ export interface ReceiptAuthorizationFilters {
   awaiting_storekeeper?: boolean;
 }
 
+/** True when the current user has completed driver confirm and has a draft GRN to stack. */
+export function isRaReadyForStacking(ra: ReceiptAuthorization): boolean {
+  return ra.my_grn?.status?.toLowerCase() === 'draft';
+}
+
 // ── API functions ─────────────────────────────────────────────────────────
 
 export async function getReceiptAuthorizations(

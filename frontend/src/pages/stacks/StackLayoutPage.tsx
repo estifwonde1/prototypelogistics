@@ -40,13 +40,18 @@ import { getStore, getStores } from '../../api/stores';
 import { getCommodityReferences, getUnitReferences } from '../../api/referenceData';
 import { getCommodityDefinitions } from '../../api/commodityDefinitions';
 import type { CommodityDefinition } from '../../api/commodityDefinitions';
-import { getReceiptAuthorizations } from '../../api/receiptAuthorizations';
+import {
+  getReceiptAuthorization,
+  getReceiptAuthorizations,
+  isRaReadyForStacking,
+} from '../../api/receiptAuthorizations';
 import type { ReceiptAuthorization } from '../../api/receiptAuthorizations';
 import { finishStacking, startStacking } from '../../api/receiptOrders';
 import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
 import { useAuthStore } from '../../store/authStore';
 import { normalizeRoleSlug } from '../../contracts/warehouse';
+import { pickAccessibleStoreId } from '../../utils/stackLayoutStore';
 import type { Stack as StackType } from '../../types/stack';
 import {
   mtFromVolume,
@@ -396,14 +401,77 @@ export default function StackLayoutPage() {
     },
   });
 
+  const { data: driverArrivalRAById } = useQuery({
+    queryKey: ['receipt_authorization', driverArrivalRAId],
+    queryFn: () => getReceiptAuthorization(Number(driverArrivalRAId)),
+    enabled: isDriverArrivalStacking && Boolean(driverArrivalRAId),
+  });
+
   const effectivePickerStoreId = sanitizeStoreIdParam(storeId);
+  const accessibleStoreIds = useMemo(() => stores.map((s) => s.id), [stores]);
+
+  const validatedStoreIdNum = useMemo(() => {
+    if (storesLoading) return null;
+    return pickAccessibleStoreId(
+      [
+        effectivePickerStoreId ? Number(effectivePickerStoreId) : null,
+        userStoreId ?? null,
+        isDriverArrivalStacking && driverArrivalRAById?.store_id != null
+          ? driverArrivalRAById.store_id
+          : null,
+      ],
+      accessibleStoreIds
+    );
+  }, [
+    storesLoading,
+    accessibleStoreIds,
+    effectivePickerStoreId,
+    userStoreId,
+    isDriverArrivalStacking,
+    driverArrivalRAById?.store_id,
+  ]);
+
   const resolvedStoreIdEarly =
-    effectivePickerStoreId ||
-    (isStorekeeper && userStoreId ? String(userStoreId) : null);
+    validatedStoreIdNum != null ? String(validatedStoreIdNum) : null;
+
+  // Drop stale store_id from URL/state (e.g. deleted store or old assignment).
+  useEffect(() => {
+    if (storesLoading) return;
+
+    const rawUrl = searchParams.get('store_id');
+    const sanitizedUrl = sanitizeStoreIdParam(rawUrl);
+    const urlInvalid =
+      sanitizedUrl != null &&
+      !accessibleStoreIds.includes(Number(sanitizedUrl));
+
+    const stateInvalid =
+      storeId != null &&
+      sanitizeStoreIdParam(storeId) != null &&
+      !accessibleStoreIds.includes(Number(storeId));
+
+    if (!urlInvalid && !stateInvalid) return;
+
+    const nextId =
+      validatedStoreIdNum != null ? String(validatedStoreIdNum) : null;
+
+    if (storeId !== nextId) setStoreId(nextId);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('store_id');
+    if (nextId) next.set('store_id', nextId);
+    setSearchParams(next, { replace: true });
+  }, [
+    storesLoading,
+    accessibleStoreIds,
+    validatedStoreIdNum,
+    searchParams,
+    setSearchParams,
+    storeId,
+  ]);
 
   const stacksFetchParams = useMemo(() => {
-    if (resolvedStoreIdEarly) {
-      return { store_id: Number(resolvedStoreIdEarly) };
+    if (!storesLoading && validatedStoreIdNum != null) {
+      return { store_id: validatedStoreIdNum };
     }
     if (isWarehouseManager && userWarehouseId) {
       return { warehouse_id: userWarehouseId };
@@ -412,16 +480,24 @@ export default function StackLayoutPage() {
       return { warehouse_id: storekeeperWarehouseId };
     }
     return {};
-  }, [resolvedStoreIdEarly, isWarehouseManager, userWarehouseId, isStorekeeper, storekeeperWarehouseId]);
+  }, [
+    storesLoading,
+    validatedStoreIdNum,
+    isWarehouseManager,
+    userWarehouseId,
+    isStorekeeper,
+    storekeeperWarehouseId,
+  ]);
 
   const { data: stacks, isLoading, error, refetch } = useQuery({
     queryKey: ['stacks', stacksFetchParams],
     queryFn: () => getStacks(stacksFetchParams),
     enabled:
-      Boolean(resolvedStoreIdEarly) ||
-      Boolean(userWarehouseId) ||
-      storekeeperWarehouseId != null ||
-      isHubManager,
+      !storesLoading &&
+      (Boolean(validatedStoreIdNum) ||
+        Boolean(userWarehouseId) ||
+        storekeeperWarehouseId != null ||
+        isHubManager),
   });
 
   /** Same payload as Officer → Commodities (batches / core commodity rows). */
@@ -461,13 +537,24 @@ export default function StackLayoutPage() {
           : {}),
       }),
     enabled: isDriverArrivalStacking && (!!userStoreId || storekeeperWarehouseId != null),
-    select: (data: ReceiptAuthorization[]) =>
-      data.filter((ra) => ra.driver_confirmed_at && ra.grn_id && ra.grn_status === 'draft'),
+    select: (data: ReceiptAuthorization[]) => data.filter(isRaReadyForStacking),
   });
 
   const driverArrivalRAsForStacking = isDriverArrivalStacking
-    ? activeRAsForStacking.filter((ra) => String(ra.id) === driverArrivalRAId)
+    ? (() => {
+        const fromList = activeRAsForStacking.filter((ra) => String(ra.id) === driverArrivalRAId);
+        if (fromList.length > 0) return fromList;
+        if (
+          driverArrivalRAById &&
+          String(driverArrivalRAById.id) === driverArrivalRAId &&
+          isRaReadyForStacking(driverArrivalRAById)
+        ) {
+          return [driverArrivalRAById];
+        }
+        return [];
+      })()
     : [];
+
   const selectedDriverArrivalRA = driverArrivalRAsForStacking.find((ra) => String(ra.id) === selectedRAId);
   const canPlaceDriverArrivalGoods = isDriverArrivalStacking && Boolean(selectedDriverArrivalRA);
 
@@ -538,7 +625,8 @@ export default function StackLayoutPage() {
     Boolean(resolvedStoreId) &&
     !Number.isNaN(resolvedStoreIdNum) &&
     !storesLoading &&
-    !selectedStoreFromList;
+    !selectedStoreFromList &&
+    accessibleStoreIds.includes(resolvedStoreIdNum);
 
   const { data: fallbackStore, isLoading: fallbackStoreLoading } = useQuery({
     queryKey: ['store', resolvedStoreId],

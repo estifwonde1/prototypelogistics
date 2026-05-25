@@ -42,7 +42,7 @@ module Cats
       end
 
       def show
-        ra = policy_scope(ReceiptAuthorization)
+        ra = ReceiptAuthorization
              .includes(
                :receipt_order,
                { receipt_order_line: %i[commodity unit packaging_unit] },

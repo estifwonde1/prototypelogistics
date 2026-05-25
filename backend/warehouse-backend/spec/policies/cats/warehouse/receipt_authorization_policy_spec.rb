@@ -172,6 +172,110 @@ RSpec.describe Cats::Warehouse::ReceiptAuthorizationPolicy, type: :policy do
       expect(scope_b.where(id: ra.id)).not_to exist
     end
 
+    context "when storekeepers are assigned to specific stores" do
+      let(:store_b) { create(:cats_warehouse_store, warehouse: warehouse) }
+      let!(:ra_store_b) do
+        Cats::Warehouse::ReceiptAuthorization.create!(
+          receipt_order: receipt_order,
+          receipt_order_line: receipt_line,
+          warehouse: warehouse,
+          store: store_b,
+          transporter: transporter,
+          authorized_quantity: 10,
+          driver_name: "Driver",
+          driver_id_number: "ID-1",
+          truck_plate_number: "AA-1",
+          waybill_number: "WB-SK-B-#{SecureRandom.hex(4)}",
+          status: Cats::Warehouse::ReceiptAuthorization::PENDING,
+          reference_no: "RA-SK-B-#{SecureRandom.hex(4)}",
+          created_by: hm,
+          assigned_storekeeper_id: sk_b.id
+        )
+      end
+
+      before do
+        Cats::Warehouse::UserAssignment.where(user: sk_a, role_name: "Storekeeper").delete_all
+        Cats::Warehouse::UserAssignment.where(user: sk_b, role_name: "Storekeeper").delete_all
+        Cats::Warehouse::UserAssignment.create!(user: sk_a, store: store, role_name: "Storekeeper")
+        Cats::Warehouse::UserAssignment.create!(user: sk_b, store: store_b, role_name: "Storekeeper")
+      end
+
+      it "limits assigned RAs to the assigned storekeeper (not by store on the RA row)" do
+        scope_a = described_class::Scope.new(sk_a, Cats::Warehouse::ReceiptAuthorization.all).resolve
+        scope_b = described_class::Scope.new(sk_b, Cats::Warehouse::ReceiptAuthorization.all).resolve
+
+        expect(scope_a.where(id: ra.id)).to exist
+        expect(scope_a.where(id: ra_store_b.id)).not_to exist
+        expect(scope_b.where(id: ra_store_b.id)).to exist
+        expect(scope_b.where(id: ra.id)).not_to exist
+      end
+    end
+
+    context "when warehouse has multiple stores and RA is unassigned" do
+      let!(:store_a) { create(:cats_warehouse_store, warehouse: warehouse) }
+      let!(:store_b) { create(:cats_warehouse_store, warehouse: warehouse) }
+      let!(:open_ra) do
+        Cats::Warehouse::ReceiptAuthorization.create!(
+          receipt_order: receipt_order,
+          receipt_order_line: receipt_line,
+          warehouse: warehouse,
+          store: store_a,
+          transporter: transporter,
+          authorized_quantity: 10,
+          driver_name: "Driver",
+          driver_id_number: "ID-1",
+          truck_plate_number: "AA-1",
+          waybill_number: "WB-MULTI-#{SecureRandom.hex(4)}",
+          status: Cats::Warehouse::ReceiptAuthorization::PENDING,
+          reference_no: "RA-MULTI-#{SecureRandom.hex(4)}",
+          created_by: hm
+        )
+      end
+
+      before do
+        Cats::Warehouse::UserAssignment.where(user: sk_a, role_name: "Storekeeper").delete_all
+        Cats::Warehouse::UserAssignment.create!(user: sk_a, store: store_a, role_name: "Storekeeper")
+      end
+
+      it "shows unassigned RAs for the storekeeper's store at multi-store warehouses" do
+        scope_a = described_class::Scope.new(sk_a, Cats::Warehouse::ReceiptAuthorization.all).resolve
+        expect(scope_a.where(id: open_ra.id)).to exist
+      end
+    end
+
+    context "when user is both warehouse manager and storekeeper at a standalone warehouse" do
+      let(:standalone_wh) { create(:cats_warehouse_warehouse, hub: nil) }
+      let!(:sole_store) { create(:cats_warehouse_store, warehouse: standalone_wh) }
+      let(:wm_sk) { create(:cats_core_user, role_name: "Warehouse Manager") }
+      let!(:standalone_open_ra) do
+        Cats::Warehouse::ReceiptAuthorization.create!(
+          receipt_order: receipt_order,
+          receipt_order_line: receipt_line,
+          warehouse: standalone_wh,
+          store: sole_store,
+          transporter: transporter,
+          authorized_quantity: 10,
+          driver_name: "Driver",
+          driver_id_number: "ID-1",
+          truck_plate_number: "AA-1",
+          waybill_number: "WB-STANDALONE-#{SecureRandom.hex(4)}",
+          status: Cats::Warehouse::ReceiptAuthorization::PENDING,
+          reference_no: "RA-STANDALONE-#{SecureRandom.hex(4)}",
+          created_by: hm
+        )
+      end
+
+      before do
+        Cats::Warehouse::UserAssignment.create!(user: wm_sk, warehouse: standalone_wh, role_name: "Warehouse Manager")
+        Cats::Warehouse::UserAssignment.create!(user: wm_sk, warehouse: standalone_wh, role_name: "Storekeeper")
+      end
+
+      it "includes unassigned RAs via the storekeeper branch of the union scope" do
+        resolved = described_class::Scope.new(wm_sk, Cats::Warehouse::ReceiptAuthorization.all).resolve
+        expect(resolved.where(id: standalone_open_ra.id)).to exist
+      end
+    end
+
     context "when warehouse has a single store" do
       let!(:sole_store) { create(:cats_warehouse_store, warehouse: warehouse) }
       let!(:open_ra) do

@@ -556,11 +556,9 @@ function ReceiptOrderDetailPage() {
     if (!order) return false;
     if (legacyPlanHiddenForViewer) return false;
     if (isOfficerRole) return false;
-    // Storekeepers should not reserve space — that's the warehouse manager's job
-    if (roleSlug === 'storekeeper') return false;
-    if (
-      !['admin', 'superadmin', 'warehouse_manager'].includes(roleSlug || '')
-    ) {
+    // Storekeepers and warehouse managers do not reserve space from this page
+    if (roleSlug === 'storekeeper' || isWarehouseManager) return false;
+    if (!['admin', 'superadmin'].includes(roleSlug || '')) {
       return false;
     }
 
@@ -570,7 +568,7 @@ function ReceiptOrderDetailPage() {
     const { totalOrdered, remaining } = reservationTotals;
     if (totalOrdered <= 0) return false;
     return remaining > 1e-6;
-  }, [order, isOfficerRole, roleSlug, reservationTotals, legacyPlanHiddenForViewer]);
+  }, [order, isOfficerRole, isWarehouseManager, roleSlug, reservationTotals, legacyPlanHiddenForViewer]);
 
   const showOfficerSpaceReservationHint = useMemo(() => {
     if (!order) return false;
@@ -1472,7 +1470,11 @@ function ReceiptOrderDetailPage() {
   const hasCompletedInspection = inspections.some(
     (i) => String(i.status || '').toLowerCase() === 'confirmed'
   );
-  const canCreateGrn = can('grns', 'create') && !!order && !isDraft &&
+  const canCreateGrn =
+    can('grns', 'create') &&
+    !!order &&
+    !isDraft &&
+    !isWarehouseManager &&
     (roleSlug !== 'storekeeper' || hasCompletedInspection);
   const canUpdateOrder = can('receipt_orders', 'update');
   const canDeleteOrder = can('receipt_orders', 'delete');
