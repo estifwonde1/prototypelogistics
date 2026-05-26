@@ -196,6 +196,11 @@ module Cats
         authorize order, :workflow?
 
         render_success(
+          id: order.id,
+          reference_no: order.reference_no,
+          plan_reference: order.plan_reference,
+          status: order.status,
+          officer_level: order.officer_level,
           workflow_events: ActiveModelSerializers::SerializableResource.new(
             order.workflow_events.includes(:actor).order(occurred_at: :asc, id: :asc),
             each_serializer: WorkflowEventSerializer

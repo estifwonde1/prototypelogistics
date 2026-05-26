@@ -10,6 +10,7 @@ module Cats
 
       belongs_to :warehouse, serializer: LookupOptionSerializer
       has_many :dispatch_order_authorization_stores, serializer: DispatchOrderAuthorizationStoreSerializer
+      has_many :dispatch_order_authorization_executions, serializer: DispatchOrderAuthorizationExecutionSerializer
 
       def status_label
         object.status.to_s.titleize

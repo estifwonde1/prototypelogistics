@@ -22,6 +22,16 @@ module Cats
         shortage = [remaining - @quantity, 0].max
         raise ArgumentError, "shortage_reason is required when dispatching less than authorized" if shortage.positive? && @shortage_reason.blank?
 
+        commodity = @store_row.commodity
+        base_unit_id = commodity.unit_of_measure_id
+        input_unit_id = @authorization.authorized_quantity_input_unit_id || base_unit_id
+        base_qty = UomConversionResolver.convert!(
+          @quantity,
+          from_unit_id: input_unit_id,
+          to_unit_id: base_unit_id,
+          commodity_id: commodity.id
+        )
+
         DispatchOrderAuthorizationExecution.transaction do
           execution = DispatchOrderAuthorizationExecution.create!(
             dispatch_order_authorization: @authorization,
@@ -29,7 +39,7 @@ module Cats
             storekeeper: @actor,
             commodity_id: @store_row.commodity_id,
             quantity: @quantity,
-            base_quantity: @quantity,
+            base_quantity: base_qty,
             authorized_quantity: @store_row.authorized_quantity,
             shortage_quantity: shortage,
             shortage_reason: @shortage_reason,
@@ -74,7 +84,7 @@ module Cats
           warehouse: @authorization.warehouse,
           commodity: execution.commodity,
           quantity: execution.quantity,
-          unit_id: @store_row.commodity.unit_of_measure_id,
+          unit_id: @authorization.authorized_quantity_input_unit_id || execution.commodity.unit_of_measure_id,
           reference_order: @authorization.dispatch_order,
           execution_id: execution.id
         ).call

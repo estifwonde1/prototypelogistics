@@ -5,6 +5,8 @@ module Cats
         authorize Gin
         scope = policy_scope(Gin).includes(:gin_items).order(created_at: :desc)
         scope = scope.where(warehouse_id: params[:warehouse_id]) if params[:warehouse_id].present?
+        scope = scope.where(dispatch_order_id: params[:dispatch_order_id]) if params[:dispatch_order_id].present?
+        scope = scope.where(dispatch_order_authorization_id: params[:dispatch_order_authorization_id]) if params[:dispatch_order_authorization_id].present?
         render_resource(scope, each_serializer: GinSerializer)
       end
 
@@ -38,9 +40,9 @@ module Cats
         allocations = Array(params.require(:payload).permit(allocations: [:stack_id, :quantity, :commodity_id, :commodity_grade, :gin_item_id])[:allocations])
         GinStackAllocationValidator.new(gin: gin, allocations: allocations).call
 
-        Gin.transaction do
-          allocations.each do |row|
-            DispatchStackAllocation.create!(
+        created = Gin.transaction do
+          allocations.map do |row|
+            alloc = DispatchStackAllocation.create!(
               gin: gin,
               stack_id: row[:stack_id],
               quantity: row[:quantity],
@@ -50,10 +52,12 @@ module Cats
 
             item = gin.gin_items.find_by(commodity_id: row[:commodity_id]) || gin.gin_items.first
             item&.update!(stack_id: row[:stack_id])
+
+            alloc
           end
         end
 
-        render_success(gin_id: gin.id, allocations_count: allocations.size)
+        render_resource(created, each_serializer: DispatchStackAllocationSerializer)
       end
 
       def confirm

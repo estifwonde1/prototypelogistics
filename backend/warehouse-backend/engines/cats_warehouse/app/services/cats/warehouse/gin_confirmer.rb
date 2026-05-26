@@ -53,7 +53,7 @@ module Cats
 
           if @gin.dispatch_order_authorization.present?
             auth = @gin.dispatch_order_authorization
-            auth.update!(status: DispatchOrderAuthorization::COMPLETED) if auth.remaining_quantity.to_f <= 0
+            complete_authorization_if_done!(auth)
             DispatchOrderStatusAggregator.call(@gin.dispatch_order) if @gin.dispatch_order.present?
           elsif @gin.dispatch_order.present?
             order_old_status = @gin.dispatch_order.status
@@ -102,6 +102,36 @@ module Cats
 
       def enqueue_notification(event, payload)
         NotificationFanout.deliver(event, payload)
+      end
+
+      # Mark all draft executions linked to this GIN's authorization as confirmed,
+      # then check whether the authorization itself is fully done.
+      # An authorization is complete when every store row has remaining_quantity == 0
+      # (either fully dispatched or shortage accepted).
+      def complete_authorization_if_done!(auth)
+        # Confirm any draft executions that belong to this authorization
+        auth.dispatch_order_authorization_executions
+            .where(status: DispatchOrderAuthorizationExecution::DRAFT)
+            .update_all(status: DispatchOrderAuthorizationExecution::CONFIRMED)
+
+        # Authorization is complete when no store row has remaining quantity
+        all_stores_done = auth.dispatch_order_authorization_stores
+                              .where("remaining_quantity > 0.0001")
+                              .none?
+
+        return unless all_stores_done || auth.remaining_quantity.to_f <= 0.001
+
+        return if auth.completed?
+
+        auth.update!(status: DispatchOrderAuthorization::COMPLETED)
+        WorkflowEventRecorder.record!(
+          entity: auth,
+          event_type: "dispatch_order_authorization.completed",
+          actor: @approved_by || @gin.approved_by,
+          from_status: DispatchOrderAuthorization::IN_PROGRESS,
+          to_status: DispatchOrderAuthorization::COMPLETED,
+          payload: { gin_id: @gin.id }
+        )
       end
     end
   end

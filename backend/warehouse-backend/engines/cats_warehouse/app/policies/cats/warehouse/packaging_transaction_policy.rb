@@ -16,8 +16,16 @@ module Cats
         admin? || warehouse_manager? || hub_manager? || storekeeper?
       end
 
+      def show?
+        index?
+      end
+
       def create?
         index?
+      end
+
+      def void?
+        admin? || warehouse_manager? || hub_manager?
       end
     end
   end

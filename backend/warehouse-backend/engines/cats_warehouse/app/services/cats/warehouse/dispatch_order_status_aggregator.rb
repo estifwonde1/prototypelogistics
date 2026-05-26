@@ -21,7 +21,7 @@ module Cats
           update_order_status!(ContractConstants::DOCUMENT_STATUSES[:completed])
         elsif auths.any? { |a| a.status == DispatchOrderAuthorization::IN_PROGRESS }
           update_order_status!(ContractConstants::DOCUMENT_STATUSES[:in_progress])
-        elsif auths.any? { |a| a.remaining_quantity.to_f.positive? && a.dispatched_quantity_positive?(a) }
+        elsif auths.any? { |a| a.remaining_quantity.to_f.positive? && a.dispatch_order_authorization_stores.sum(:dispatched_quantity).to_f.positive? }
           update_order_status!(ContractConstants::DOCUMENT_STATUSES[:partially_dispatched])
         elsif fully_authorized?(auths)
           update_order_status!(ContractConstants::DOCUMENT_STATUSES[:fully_authorized])

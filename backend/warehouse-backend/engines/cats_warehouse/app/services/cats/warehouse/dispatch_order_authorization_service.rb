@@ -25,7 +25,7 @@ module Cats
 
         apply_transport_record_defaults!
 
-        input_unit_id = @input_unit&.id || @warehouse.id && default_unit_id
+        input_unit_id = @input_unit&.id || default_unit_id
         base_unit_id = default_base_unit_id
         authorized_base = UomConversionResolver.convert!(
           @authorized_quantity,
@@ -34,12 +34,8 @@ module Cats
           commodity_id: primary_commodity_id
         )
 
-        DispatchOrderAuthorizationQuantityLedger.validate!(
-          dispatch_order: @order,
-          warehouse: @warehouse,
-          commodity_id: primary_commodity_id,
-          additional_base_quantity: authorized_base
-        )
+        # Validate quantity ledger per commodity across all store splits
+        validate_quantity_ledger_per_commodity!(authorized_base)
 
         DispatchOrderAuthorization.transaction do
           auth = DispatchOrderAuthorization.create!(
@@ -167,6 +163,31 @@ module Cats
           ContractConstants::DOCUMENT_STATUSES[:partially_authorized],
           ContractConstants::DOCUMENT_STATUSES[:fully_authorized]
         ].include?(@order.status)
+      end
+
+      # Validate that the sum of authorized quantities per commodity does not exceed
+      # the source-allocated quantity for this warehouse. For multi-commodity store splits,
+      # each commodity is checked independently.
+      def validate_quantity_ledger_per_commodity!(authorized_base)
+        commodity_ids = @store_splits.map { |s| s[:commodity_id] }.compact.uniq
+        commodity_ids = [primary_commodity_id] if commodity_ids.empty?
+
+        commodity_ids.each do |cid|
+          # Sum base quantity for this commodity from store splits
+          split_base = @store_splits
+            .select { |s| s[:commodity_id].to_i == cid.to_i }
+            .sum { |s| (s[:base_quantity] || s[:authorized_quantity]).to_f }
+
+          # Fall back to proportional share of authorized_base when no per-commodity splits
+          qty = split_base.positive? ? split_base : authorized_base
+
+          DispatchOrderAuthorizationQuantityLedger.validate!(
+            dispatch_order: @order,
+            warehouse: @warehouse,
+            commodity_id: cid,
+            additional_base_quantity: qty
+          )
+        end
       end
 
       def apply_transport_record_defaults!

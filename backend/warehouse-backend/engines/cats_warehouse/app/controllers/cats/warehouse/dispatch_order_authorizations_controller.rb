@@ -26,7 +26,11 @@ module Cats
       end
 
       def show
-        auth = policy_scope(DispatchOrderAuthorization).find(params[:id])
+        auth = policy_scope(DispatchOrderAuthorization)
+                 .includes(:warehouse, :transporter, :dispatch_order,
+                           :dispatch_order_authorization_stores,
+                           :dispatch_order_authorization_executions)
+                 .find(params[:id])
         authorize auth
         render_resource(auth, serializer: DispatchOrderAuthorizationSerializer)
       end
@@ -88,6 +92,26 @@ module Cats
         ).call
 
         render_resource(execution, status: :created, serializer: DispatchOrderAuthorizationExecutionSerializer)
+      end
+
+      def list_executions
+        auth = policy_scope(DispatchOrderAuthorization).find(params[:id])
+        authorize auth, :show?
+
+        scope = auth.dispatch_order_authorization_executions.order(created_at: :asc)
+        scope = scope.where(status: params[:status]) if params[:status].present?
+
+        render_resource(scope, each_serializer: DispatchOrderAuthorizationExecutionSerializer)
+      end
+
+      def confirm_execution
+        auth = policy_scope(DispatchOrderAuthorization).find(params[:id])
+        authorize auth, :create_execution?
+
+        execution = auth.dispatch_order_authorization_executions.find(params[:execution_id])
+        DispatchOrderAuthorizationExecutionConfirmer.new(execution: execution, actor: current_user).call
+
+        render_resource(execution.reload, serializer: DispatchOrderAuthorizationExecutionSerializer)
       end
 
       private

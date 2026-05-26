@@ -128,11 +128,15 @@ Cats::Warehouse::Engine.routes.draw do
       member do
         post :confirm
         post :driver_confirm
+        get  :executions, action: :list_executions
         post :executions
+        post "executions/:execution_id/confirm", action: :confirm_execution
       end
     end
 
-    resources :packaging_transactions, only: [ :index, :create ]
+    resources :packaging_transactions, only: [ :index, :show, :create ] do
+      post :void, on: :member
+    end
 
     get "reference_data/commodity_grades", to: "reference_data#commodity_grades"
 
