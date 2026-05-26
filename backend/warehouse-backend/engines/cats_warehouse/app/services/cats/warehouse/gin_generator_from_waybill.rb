@@ -9,7 +9,7 @@ module Cats
       def call
         return @waybill.auto_generated_gin if @waybill.auto_generated_gin.present?
 
-        warehouse = @waybill.dispatch_order&.warehouse || Warehouse.find_by!(location_id: @waybill.source_location_id)
+        warehouse = resolve_warehouse
 
         gin = GinCreator.new(
           warehouse: warehouse,
@@ -33,6 +33,16 @@ module Cats
       end
 
       private
+
+      def resolve_warehouse
+        auth = @waybill.dispatch_order_authorization
+        return auth.warehouse if auth.present?
+
+        order_wh = @waybill.dispatch_order&.warehouse
+        return order_wh if order_wh.present?
+
+        Warehouse.find_by!(location_id: @waybill.source_location_id)
+      end
 
       def build_items
         @waybill.waybill_items.map do |item|

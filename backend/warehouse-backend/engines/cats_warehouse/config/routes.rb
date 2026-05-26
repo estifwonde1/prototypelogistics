@@ -104,17 +104,46 @@ Cats::Warehouse::Engine.routes.draw do
       end
     end
     resources :dispatch_orders, only: [ :index, :show, :create, :update ] do
-      post :confirm, on: :member
-      post :assign, on: :member
-      post :reserve_stock, on: :member
-      get :workflow, on: :member
+      collection do
+        get "lookups/source_warehouses", to: "dispatch_orders/lookups#source_warehouses"
+        get "lookups/destinations", to: "dispatch_orders/lookups#destinations"
+      end
+      member do
+        post :confirm
+        post :self_approve
+        post :assign
+        post :reserve_stock
+        get :workflow
+        post :receive
+        post :transport_record
+        patch :transport_record, action: :update_transport_record
+      end
     end
+
+    resources :dispatch_order_authorizations, only: [ :index, :show, :create ] do
+      collection do
+        get "lookups/stores", to: "dispatch_order_authorizations/lookups#stores"
+        get "lookups/stacks", to: "dispatch_order_authorizations/lookups#stacks"
+      end
+      member do
+        post :confirm
+        post :driver_confirm
+        post :executions
+      end
+    end
+
+    resources :packaging_transactions, only: [ :index, :create ]
+
+    get "reference_data/commodity_grades", to: "reference_data#commodity_grades"
 
     resources :grns, only: [ :index, :show, :create ] do
       post :confirm, on: :member
     end
     resources :gins, only: [ :index, :show, :create ] do
-      post :confirm, on: :member
+      member do
+        post :confirm
+        post :stack_allocations
+      end
     end
     resources :inspections, only: [ :index, :show, :create ] do
       post :confirm, on: :member

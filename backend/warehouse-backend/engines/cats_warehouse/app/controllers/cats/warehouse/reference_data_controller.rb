@@ -225,6 +225,19 @@ module Cats
         render_success(commodities: commodities)
       end
 
+      def commodity_grades
+        authorize :reference_data, :commodities?, policy_class: ReferenceDataPolicy
+
+        grades = Array(ENV.fetch("WAREHOUSE_COMMODITY_GRADES", "Grade A,Grade B,Grade C").split(",")).map(&:strip).reject(&:blank?)
+        commodity_id = params[:commodity_id].presence
+
+        render_success(
+          items: grades.map.with_index(1) do |name, idx|
+            { id: idx, name: name, code: name.parameterize, label: name, commodity_id: commodity_id }
+          end
+        )
+      end
+
       def units
         authorize :reference_data, :units?, policy_class: ReferenceDataPolicy
 

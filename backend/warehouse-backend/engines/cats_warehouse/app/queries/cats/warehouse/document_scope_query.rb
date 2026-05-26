@@ -228,7 +228,19 @@ module Cats
           return HierarchicalOrderScopeQuery.new(user: access.user, scope: scoped_relation).call
         end
 
-        scoped_relation.where(warehouse_id: access.accessible_warehouse_ids)
+        wh_ids = access.accessible_warehouse_ids
+        by_header = scoped_relation.where(warehouse_id: wh_ids)
+
+        source_order_ids =
+          DispatchLineSourceAllocation
+            .joins(:dispatch_order_line)
+            .where(warehouse_id: wh_ids)
+            .distinct
+            .pluck("cats_warehouse_dispatch_order_lines.dispatch_order_id")
+
+        return by_header unless source_order_ids.any?
+
+        by_header.or(scoped_relation.where(id: source_order_ids))
       end
 
       # Orders linked by assignment row: same facility warehouse(s) OR personally assigned (covers

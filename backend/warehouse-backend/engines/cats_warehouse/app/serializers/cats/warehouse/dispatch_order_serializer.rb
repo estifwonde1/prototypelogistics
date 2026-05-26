@@ -1,18 +1,28 @@
+# frozen_string_literal: true
+
 module Cats
   module Warehouse
     class DispatchOrderSerializer < ApplicationSerializer
-      attributes :id, :reference_no, :name, :status, :dispatched_date, :destination_type, :destination_id, :destination_reference,
+      attributes :id, :reference_no, :plan_reference, :name, :status, :status_label,
+                 :dispatched_date, :destination_type, :destination_id, :destination_reference,
                  :hub_id, :hub_name, :warehouse_id, :warehouse_name, :warehouse_code,
-                 :created_by_id, :created_by_name, :confirmed_by_id, :confirmed_by_name, :confirmed_at,
+                 :created_by_id, :created_by_name, :confirmed_by_id, :confirmed_by_name,
+                 :confirmed_at, :approved_by_id, :approved_at,
                  :description, :created_at, :updated_at,
-                 :location_id, :hierarchical_level, :location_name
+                 :location_id, :hierarchical_level, :officer_level, :officer_location_id,
+                 :location_name, :exchange_order, :dispatch_plan_id, :dispatch_plan_item_id
 
-      has_many :dispatch_order_lines, serializer: Cats::Warehouse::DispatchOrderLineSerializer
-      has_many :dispatch_order_assignments, serializer: Cats::Warehouse::DispatchOrderAssignmentSerializer
-      has_many :stock_reservations, serializer: Cats::Warehouse::StockReservationSerializer
+      has_many :dispatch_order_lines, serializer: DispatchOrderLineSerializer
+      has_many :dispatch_order_assignments, serializer: DispatchOrderAssignmentSerializer
+      has_many :stock_reservations, serializer: StockReservationSerializer
+      has_many :dispatch_order_authorizations, serializer: DispatchOrderAuthorizationSerializer
 
-      def status
+      def status_label
         object.status.to_s.titleize
+      end
+
+      def exchange_order
+        object.exchange_order?
       end
 
       def destination_reference
@@ -34,15 +44,19 @@ module Cats
       end
 
       def created_by_name
-        [object.created_by&.first_name, object.created_by&.last_name].compact.join(" ").presence || object.created_by&.email
+        user_display(object.created_by)
       end
 
       def confirmed_by_name
-        [object.confirmed_by&.first_name, object.confirmed_by&.last_name].compact.join(" ").presence || object.confirmed_by&.email
+        user_display(object.confirmed_by)
       end
 
-      def location_name
-        object.location&.name
+      private
+
+      def user_display(user)
+        return unless user
+
+        [user.first_name, user.last_name].compact.join(" ").presence || user.email
       end
     end
   end

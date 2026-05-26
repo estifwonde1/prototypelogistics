@@ -1,19 +1,25 @@
+# frozen_string_literal: true
+
 module Cats
   module Warehouse
     class DispatchOrderLineSerializer < ApplicationSerializer
-      attributes :id, :commodity_id, :commodity_name, :quantity, :unit_id, :unit_name
+      attributes :id, :commodity_id, :commodity_name, :quantity, :unit_id, :unit_name,
+                 :base_quantity, :base_unit_id, :base_unit_name,
+                 :packaging_unit_id, :packaging_size, :package_count, :remarks
+
+      has_many :source_allocations, serializer: DispatchLineSourceAllocationSerializer
+      has_many :destination_allocations, serializer: DispatchLineDestinationAllocationSerializer
 
       def commodity_name
-        commodity = Cats::Core::Commodity.find_by(id: object.commodity_id)
-        return unless commodity
-
-        commodity.read_attribute(:name).presence || commodity.batch_no.presence
+        object.commodity&.name
       end
 
       def unit_name
-        # Reload the unit to ensure we have the right object
-        unit = Cats::Core::UnitOfMeasure.find_by(id: object.unit_id)
-        unit&.abbreviation
+        object.unit&.abbreviation || object.unit&.name
+      end
+
+      def base_unit_name
+        object.base_unit&.abbreviation || object.base_unit&.name
       end
     end
   end

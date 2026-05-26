@@ -31,13 +31,38 @@ module Cats
         render_resource(gin, status: :created, serializer: GinSerializer)
       end
 
+      def stack_allocations
+        gin = policy_scope(Gin).find(params[:id])
+        authorize gin, :confirm?
+
+        allocations = Array(params.require(:payload).permit(allocations: [:stack_id, :quantity, :commodity_id, :commodity_grade, :gin_item_id])[:allocations])
+        GinStackAllocationValidator.new(gin: gin, allocations: allocations).call
+
+        Gin.transaction do
+          allocations.each do |row|
+            DispatchStackAllocation.create!(
+              gin: gin,
+              stack_id: row[:stack_id],
+              quantity: row[:quantity],
+              base_quantity: row[:quantity],
+              commodity_grade: row[:commodity_grade]
+            )
+
+            item = gin.gin_items.find_by(commodity_id: row[:commodity_id]) || gin.gin_items.first
+            item&.update!(stack_id: row[:stack_id])
+          end
+        end
+
+        render_success(gin_id: gin.id, allocations_count: allocations.size)
+      end
+
       def confirm
         gin = policy_scope(Gin).find(params[:id])
         authorize gin, :confirm?
-        approved_by = params[:approved_by_id].present? ? Cats::Core::User.find(params[:approved_by_id]) : nil
+        approved_by = params[:approved_by_id].present? ? Cats::Core::User.find(params[:approved_by_id]) : current_user
 
         GinConfirmer.new(gin: gin, approved_by: approved_by).call
-        render_resource(gin, serializer: GinSerializer)
+        render_resource(gin.reload, serializer: GinSerializer)
       end
 
       private

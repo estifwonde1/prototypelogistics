@@ -42,9 +42,13 @@ module Cats
             end
           end
 
-          if @gin.dispatch_order.present?
+          if @gin.dispatch_order_authorization.present?
+            auth = @gin.dispatch_order_authorization
+            auth.update!(status: DispatchOrderAuthorization::COMPLETED) if auth.remaining_quantity.to_f <= 0
+            DispatchOrderStatusAggregator.call(@gin.dispatch_order) if @gin.dispatch_order.present?
+          elsif @gin.dispatch_order.present?
             order_old_status = @gin.dispatch_order.status
-            @gin.dispatch_order.update!(status: "Completed")
+            @gin.dispatch_order.update!(status: ContractConstants::DOCUMENT_STATUSES[:completed])
             WorkflowEventRecorder.record!(entity: @gin.dispatch_order, event_type: "dispatch_order.completed", actor: @approved_by || @gin.approved_by, from_status: order_old_status, to_status: @gin.dispatch_order.status, payload: { gin_id: @gin.id })
           end
 

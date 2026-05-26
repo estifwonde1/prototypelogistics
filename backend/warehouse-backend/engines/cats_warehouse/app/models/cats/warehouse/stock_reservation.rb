@@ -5,6 +5,7 @@ module Cats
 
       belongs_to :dispatch_order, class_name: "Cats::Warehouse::DispatchOrder"
       belongs_to :dispatch_order_line, class_name: "Cats::Warehouse::DispatchOrderLine"
+      belongs_to :dispatch_order_authorization, class_name: "Cats::Warehouse::DispatchOrderAuthorization", optional: true
       belongs_to :warehouse, class_name: "Cats::Warehouse::Warehouse"
       belongs_to :store, class_name: "Cats::Warehouse::Store", optional: true
       belongs_to :stack, class_name: "Cats::Warehouse::Stack", optional: true

@@ -9,6 +9,7 @@ module Cats
       belongs_to :source_location, class_name: "Cats::Core::Location"
       belongs_to :destination_location, class_name: "Cats::Core::Location"
       belongs_to :dispatch_order, class_name: "Cats::Warehouse::DispatchOrder", optional: true
+      belongs_to :dispatch_order_authorization, class_name: "Cats::Warehouse::DispatchOrderAuthorization", optional: true
       belongs_to :prepared_by, class_name: "Cats::Core::User", optional: true
       belongs_to :auto_generated_gin, class_name: "Cats::Warehouse::Gin", optional: true
 

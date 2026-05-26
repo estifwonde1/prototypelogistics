@@ -44,13 +44,21 @@ module Cats
         show?
       end
 
+      def self_approve?
+        confirm? && record.is_a?(DispatchOrder) && record.created_by_id == user.id
+      end
+
       def confirm?
         return false unless record.is_a?(DispatchOrder)
-        return false unless record.status.to_s.casecmp("draft").zero?
+        return false unless record.status_draft?
         return false if level_excluded?
 
         return true if admin?
-        return true if officer?  # Officers can confirm any order
+
+        if officer?
+          return record.created_by_id == user.id if record.v2_dispatch?
+          return true
+        end
 
         # For hub managers, check assigned hub IDs
         if hub_manager?

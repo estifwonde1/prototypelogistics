@@ -7,6 +7,7 @@ module Cats
       rescue_from ActiveRecord::RecordInvalid, with: :render_record_invalid
       rescue_from ActionController::ParameterMissing, with: :render_bad_request
       rescue_from ArgumentError, with: :render_invalid_argument
+      rescue_from DispatchOrderJurisdictionGuard::JurisdictionViolation, with: :render_jurisdiction_violation
       rescue_from Cats::Warehouse::InsufficientSpaceError, with: :render_invalid_argument
       rescue_from Pundit::NotAuthorizedError, with: :render_forbidden
 
@@ -54,6 +55,17 @@ module Cats
       def render_forbidden(error)
         message = error.respond_to?(:message) ? error.message : "Not authorized"
         render_error(message, status: :forbidden)
+      end
+
+      def render_jurisdiction_violation(error)
+        render json: {
+          success: false,
+          error: {
+            code: error.code,
+            message: error.message,
+            details: error.details
+          }
+        }, status: :forbidden
       end
 
       def normalize_payload_aliases(payload, aliases = {})
