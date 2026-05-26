@@ -94,3 +94,16 @@ paths:
   /waybills:
     post:
       summary: Create waybill using canonical payload.items and payload.transport contract.
+  /dispatch_orders:
+  /dispatch_orders/{id}/self_approve:
+  /dispatch_orders/lookups/source_warehouses:
+  /dispatch_orders/lookups/destinations:
+  /dispatch_order_authorizations:
+  /dispatch_order_authorizations/{id}/confirm:
+  /dispatch_order_authorizations/{id}/driver_confirm:
+  /dispatch_order_authorizations/{id}/executions:
+  /gins/{id}/stack_allocations:
+  /packaging_transactions:
+  /printables/waybill:
+  /printables/gin:
+  /reference_data/commodity_grades:

@@ -214,14 +214,18 @@ module Cats
       def commodities
         authorize :reference_data, :commodities?, policy_class: ReferenceDataPolicy
 
-        # Pre-load all categories into a hash for efficient lookup
         category_map = Cats::Core::CommodityCategory.all.index_by(&:id)
+        scope = Cats::Core::Commodity.includes(:unit_of_measure).order(:name, :batch_no, :id)
 
-        commodities = Cats::Core::Commodity
-          .includes(:unit_of_measure)
-          .order(:name, :batch_no, :id)
-          .map { |commodity| serialize_commodity_reference(commodity, category_map: category_map) }
+        if params[:q].present? || params[:page].present?
+          return render_reference_lookup(
+            scope,
+            search_columns: %w[name batch_no],
+            serializer: ->(c) { serialize_commodity_reference(c, category_map: category_map) }
+          )
+        end
 
+        commodities = scope.map { |commodity| serialize_commodity_reference(commodity, category_map: category_map) }
         render_success(commodities: commodities)
       end
 
@@ -241,35 +245,40 @@ module Cats
       def units
         authorize :reference_data, :units?, policy_class: ReferenceDataPolicy
 
-        units = Cats::Core::UnitOfMeasure
-          .order(:name, :id)
-          .map do |unit|
-            {
-              id: unit.id,
-              name: unit.name,
-              abbreviation: unit.abbreviation,
-              unit_type: unit.unit_type
+        scope = Cats::Core::UnitOfMeasure.order(:name, :id)
+        if params[:q].present? || params[:page].present?
+          return render_reference_lookup(
+            scope,
+            search_columns: %w[name abbreviation],
+            serializer: ->(unit) {
+              { id: unit.id, name: unit.name, abbreviation: unit.abbreviation, unit_type: unit.unit_type }
             }
-          end
+          )
+        end
 
+        units = scope.map do |unit|
+          { id: unit.id, name: unit.name, abbreviation: unit.abbreviation, unit_type: unit.unit_type }
+        end
         render_success(units: units)
       end
 
       def transporters
         authorize :reference_data, :transporters?, policy_class: ReferenceDataPolicy
 
-        transporters = Cats::Core::Transporter
-          .order(:name, :code, :id)
-          .map do |t|
-            {
-              id: t.id,
-              code: t.code,
-              name: t.name,
-              address: t.address,
-              contact_phone: t.contact_phone
+        scope = Cats::Core::Transporter.order(:name, :code, :id)
+        if params[:q].present? || params[:page].present?
+          return render_reference_lookup(
+            scope,
+            search_columns: %w[name code],
+            serializer: ->(t) {
+              { id: t.id, code: t.code, name: t.name, address: t.address, contact_phone: t.contact_phone }
             }
-          end
+          )
+        end
 
+        transporters = scope.map do |t|
+          { id: t.id, code: t.code, name: t.name, address: t.address, contact_phone: t.contact_phone }
+        end
         render_success(transporters: transporters)
       end
 
@@ -397,6 +406,24 @@ module Cats
               display_name: lot.display_name
             }
           end
+      end
+
+      def render_reference_lookup(scope, search_columns:, serializer:)
+        page = [params[:page].to_i, 1].max
+        per_page = params[:per_page].present? ? [[params[:per_page].to_i, 1].max, 100].min : 25
+
+        if params[:q].present?
+          q = "%#{params[:q].to_s.strip}%"
+          table = scope.klass.table_name
+          conditions = search_columns.map { |col| "#{table}.#{col} ILIKE ?" }.join(" OR ")
+          scope = scope.where(conditions, *([q] * search_columns.length))
+        end
+
+        total = scope.count
+        rows = scope.offset((page - 1) * per_page).limit(per_page)
+        items = rows.map { |row| serializer.call(row) }
+
+        render_success(items: items, meta: { page: page, per_page: per_page, total_count: total })
       end
     end
   end

@@ -10,7 +10,11 @@ module Cats
                  :confirmed_at, :approved_by_id, :approved_at,
                  :description, :created_at, :updated_at,
                  :location_id, :hierarchical_level, :officer_level, :officer_location_id,
-                 :location_name, :exchange_order, :dispatch_plan_id, :dispatch_plan_item_id
+                 :exchange_order, :dispatch_plan_id, :dispatch_plan_item_id
+
+      attribute :location_name do
+        object.location&.name || object.officer_location&.name
+      end
 
       has_many :dispatch_order_lines, serializer: DispatchOrderLineSerializer
       has_many :dispatch_order_assignments, serializer: DispatchOrderAssignmentSerializer

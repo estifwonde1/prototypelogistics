@@ -152,6 +152,9 @@ Cats::Warehouse::Engine.routes.draw do
       post :confirm, on: :member
     end
 
+    post "printables/waybill", to: "printables#waybill"
+    post "printables/gin", to: "printables#gin"
+
     get "reports/bin_card", to: "reports#bin_card"
     get "reports/stock_card", to: "reports#stock_card"
   end

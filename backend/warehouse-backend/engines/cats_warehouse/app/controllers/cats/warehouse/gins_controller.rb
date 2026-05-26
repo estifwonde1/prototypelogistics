@@ -61,7 +61,11 @@ module Cats
         authorize gin, :confirm?
         approved_by = params[:approved_by_id].present? ? Cats::Core::User.find(params[:approved_by_id]) : current_user
 
-        GinConfirmer.new(gin: gin, approved_by: approved_by).call
+        GinConfirmer.new(
+          gin: gin,
+          approved_by: approved_by,
+          idempotency_key: request.headers["Idempotency-Key"]
+        ).call
         render_resource(gin.reload, serializer: GinSerializer)
       end
 

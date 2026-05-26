@@ -3,6 +3,9 @@
 module Cats
   module Warehouse
     class DispatchOrdersController < BaseController
+      include OfficerDispatchV2Feature
+
+      before_action :ensure_officer_dispatch_v2_enabled!, only: [:self_approve, :receive, :transport_record, :update_transport_record]
       def index
         authorize DispatchOrder
         orders = policy_scope(DispatchOrder)
@@ -46,6 +49,7 @@ module Cats
         payload = dispatch_order_params
 
         if v2_payload?(payload)
+          ensure_officer_dispatch_v2_enabled!
           order = DispatchOrderCreatorForOfficer.new(
             actor: current_user,
             plan_reference: payload[:plan_reference],

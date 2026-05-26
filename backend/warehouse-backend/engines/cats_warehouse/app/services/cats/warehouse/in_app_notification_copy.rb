@@ -28,8 +28,18 @@ module Cats
           { title: "GRN confirmed", body: "A goods receipt was confirmed for a receipt authorization." }
         when "inspection.confirmed"
           { title: "Inspection confirmed", body: "An inspection was confirmed." }
-        when "dispatch_order.confirmed"
-          { title: "Dispatch order confirmed", body: "A dispatch order was confirmed." }
+        when "dispatch_order.confirmed", "dispatch_order.self_approved"
+          { title: "Dispatch order confirmed", body: "A dispatch order was confirmed and is ready for warehouse authorization." }
+        when "dispatch_order_authorization.created"
+          { title: "Dispatch authorization created", body: "A new dispatch authorization awaits action at your warehouse." }
+        when "dispatch_order_authorization.confirmed"
+          { title: "Dispatch authorization confirmed", body: "Dispatch authorization was confirmed; waybill generated." }
+        when "waybill.created"
+          { title: "Waybill created", body: "A waybill was generated for outbound dispatch." }
+        when "gin.draft_generated"
+          { title: "GIN draft ready", body: "A draft GIN is ready for stack allocation and confirmation." }
+        when "packaging_transaction.posted"
+          { title: "Packaging transaction posted", body: "A packaging movement was recorded." }
         when "grn.confirmed"
           { title: "GRN confirmed", body: "A goods receipt note was confirmed." }
         when "gin.confirmed"

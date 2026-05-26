@@ -4,6 +4,10 @@ module Cats
   module Warehouse
     module DispatchOrderAuthorizations
       class LookupsController < BaseController
+        include OfficerDispatchV2Feature
+
+        before_action :ensure_officer_dispatch_v2_enabled!
+
         def stores
           authorize DispatchOrderAuthorization
           raise ArgumentError, "warehouse_id is required" if params[:warehouse_id].blank?

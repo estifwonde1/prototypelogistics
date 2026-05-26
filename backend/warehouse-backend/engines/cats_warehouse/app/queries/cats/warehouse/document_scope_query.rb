@@ -27,6 +27,10 @@ module Cats
           receipt_orders_scope
         when "Cats::Warehouse::DispatchOrder"
           dispatch_orders_scope
+        when "Cats::Warehouse::DispatchOrderAuthorization"
+          dispatch_order_authorizations_scope
+        when "Cats::Warehouse::PackagingTransaction"
+          packaging_transactions_scope
         when "Cats::Warehouse::Waybill"
           waybills_scope
         when "Cats::Core::Receipt"
@@ -222,6 +226,27 @@ module Cats
 
       # Dispatch orders use hierarchical scoping for sub-federal officers.
       # Other roles (hub manager, warehouse manager, storekeeper) use warehouse-based scoping.
+      def dispatch_order_authorizations_scope
+        return scoped_relation if access.admin?
+
+        wh_ids = access.accessible_warehouse_ids
+        by_warehouse = scoped_relation.where(warehouse_id: wh_ids)
+
+        store_ids = access.assigned_store_ids if access.storekeeper?
+        if store_ids.present?
+          auth_ids = DispatchOrderAuthorizationStore.where(store_id: store_ids).select(:dispatch_order_authorization_id)
+          return by_warehouse.or(scoped_relation.where(id: auth_ids))
+        end
+
+        by_warehouse
+      end
+
+      def packaging_transactions_scope
+        return scoped_relation if access.admin?
+
+        scoped_relation.where(warehouse_id: access.accessible_warehouse_ids)
+      end
+
       def dispatch_orders_scope
         # Sub-federal officers use hierarchical scoping based on location and level
         if access.officer? && !access.officer_full_access?

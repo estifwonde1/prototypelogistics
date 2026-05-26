@@ -3,6 +3,9 @@
 module Cats
   module Warehouse
     class DispatchOrderAuthorizationsController < BaseController
+      include OfficerDispatchV2Feature
+
+      before_action :ensure_officer_dispatch_v2_enabled!
       def index
         authorize DispatchOrderAuthorization
         scope = policy_scope(DispatchOrderAuthorization)

@@ -59,8 +59,27 @@ module Cats
             payload: { execution_id: execution.id, shortage_quantity: shortage }
           )
 
+          post_packaging_dispatch_transaction!(execution)
+
           execution
         end
+      end
+
+      private
+
+      def post_packaging_dispatch_transaction!(execution)
+        PackagingTransactionPoster.new(
+          actor: @actor,
+          transaction_type: PackagingTransaction::DISPATCH,
+          warehouse: @authorization.warehouse,
+          commodity: execution.commodity,
+          quantity: execution.quantity,
+          unit_id: @store_row.commodity.unit_of_measure_id,
+          reference_order: @authorization.dispatch_order,
+          execution_id: execution.id
+        ).call
+      rescue StandardError => e
+        Rails.logger.warn("[DispatchOrderAuthorizationExecutionService] packaging dispatch skipped: #{e.message}")
       end
     end
   end

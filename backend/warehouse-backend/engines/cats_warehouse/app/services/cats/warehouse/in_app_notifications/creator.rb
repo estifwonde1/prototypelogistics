@@ -90,8 +90,16 @@ module Cats
             rows_receipt_authorization_grn_confirmed
           when "inspection.confirmed"
             rows_inspection_confirmed
-          when "dispatch_order.confirmed"
+          when "dispatch_order.confirmed", "dispatch_order.self_approved"
             rows_dispatch_order_confirmed
+          when "dispatch_order_authorization.created", "dispatch_order_authorization.confirmed"
+            rows_dispatch_order_authorization_facility
+          when "waybill.created"
+            rows_waybill_created
+          when "gin.draft_generated"
+            rows_gin_draft_generated
+          when "packaging_transaction.posted"
+            rows_packaging_transaction_posted
           when "grn.confirmed"
             rows_grn_confirmed
           when "gin.confirmed"
@@ -341,11 +349,69 @@ module Cats
           return [] unless order
 
           users = {}
-          facility_users(role_name: "Hub Manager", hub_id: order.hub_id).each { |u| users[u.id] = u } if order.hub_id.present?
-          facility_users(role_name: "Warehouse Manager", warehouse_id: order.warehouse_id).each { |u| users[u.id] = u } if order.warehouse_id.present?
+          warehouse_ids = Array(payload_value(:warehouse_ids)).map(&:to_i).reject(&:zero?)
+          warehouse_ids = [order.warehouse_id].compact if warehouse_ids.empty?
 
-          base = { "dispatch_order_id" => order.id, "hub_id" => order.hub_id, "warehouse_id" => order.warehouse_id }.compact
+          warehouse_ids.each do |wid|
+            facility_users(role_name: "Warehouse Manager", warehouse_id: wid).each { |u| users[u.id] = u }
+            wh = Warehouse.find_by(id: wid)
+            facility_users(role_name: "Hub Manager", hub_id: wh.hub_id).each { |u| users[u.id] = u } if wh&.hub_id.present?
+          end
+
+          facility_users(role_name: "Hub Manager", hub_id: order.hub_id).each { |u| users[u.id] = u } if order.hub_id.present?
+
+          base = {
+            "dispatch_order_id" => order.id,
+            "plan_reference" => order.plan_reference,
+            "hub_id" => order.hub_id,
+            "warehouse_id" => order.warehouse_id
+          }.compact
           users.values.map { |u| { user: u, params: base.merge("path" => Paths.dispatch_order(u, order.id)) } }
+        end
+
+        def rows_dispatch_order_authorization_facility
+          auth = DispatchOrderAuthorization.find_by(id: payload_value(:dispatch_order_authorization_id))
+          return [] unless auth
+
+          users = {}
+          facility_users(role_name: "Warehouse Manager", warehouse_id: auth.warehouse_id).each { |u| users[u.id] = u }
+          wh = auth.warehouse
+          facility_users(role_name: "Hub Manager", hub_id: wh.hub_id).each { |u| users[u.id] = u } if wh&.hub_id.present?
+
+          auth.dispatch_order_authorization_stores.includes(:store).find_each do |row|
+            facility_users(role_name: "Storekeeper", store_id: row.store_id).each { |u| users[u.id] = u }
+          end
+
+          base = {
+            "dispatch_order_authorization_id" => auth.id,
+            "dispatch_order_id" => auth.dispatch_order_id,
+            "warehouse_id" => auth.warehouse_id
+          }
+          users.values.map { |u| { user: u, params: base.merge("path" => Paths.dispatch_order_authorization(u, auth)) } }
+        end
+
+        def rows_waybill_created
+          auth = DispatchOrderAuthorization.find_by(id: payload_value(:dispatch_order_authorization_id))
+          return rows_waybill_confirmed unless auth
+
+          rows_dispatch_order_authorization_facility
+        end
+
+        def rows_gin_draft_generated
+          auth = DispatchOrderAuthorization.find_by(id: payload_value(:dispatch_order_authorization_id))
+          return [] unless auth
+
+          rows_dispatch_order_authorization_facility
+        end
+
+        def rows_packaging_transaction_posted
+          pt = PackagingTransaction.find_by(id: payload_value(:packaging_transaction_id))
+          return [] unless pt&.warehouse_id
+
+          users = {}
+          facility_users(role_name: "Warehouse Manager", warehouse_id: pt.warehouse_id).each { |u| users[u.id] = u }
+          base = { "packaging_transaction_id" => pt.id, "warehouse_id" => pt.warehouse_id }
+          users.values.map { |u| { user: u, params: base.merge("path" => Paths.dispatch_order(u, pt.reference_order_id)) } }
         end
 
         def rows_grn_confirmed
@@ -446,6 +512,16 @@ module Cats
 
           def dispatch_order(user, order_id)
             officer?(user) ? "/officer/dispatch-orders/#{order_id}" : "/dispatch-orders/#{order_id}"
+          end
+
+          def dispatch_order_authorization(user, auth)
+            if user&.has_role?("Storekeeper")
+              "/storekeeper/dispatch-authorizations/#{auth.id}"
+            elsif user&.has_role?("Warehouse Manager")
+              "/warehouse/dispatch-authorizations/#{auth.id}"
+            else
+              "/dispatch-orders/#{auth.dispatch_order_id}"
+            end
           end
 
           def grn(_user, grn_id)

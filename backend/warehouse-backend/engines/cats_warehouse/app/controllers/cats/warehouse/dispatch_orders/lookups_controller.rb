@@ -4,14 +4,17 @@ module Cats
   module Warehouse
     module DispatchOrders
       class LookupsController < BaseController
+        include OfficerDispatchV2Feature
+        include LookupPagination
+
+        before_action :ensure_officer_dispatch_v2_enabled!
         skip_after_action :verify_authorized, only: [:source_warehouses, :destinations]
 
         def source_warehouses
           authorize DispatchOrder, :create?
 
           scope = Warehouse.where(id: AccessContext.new(user: current_user).accessible_warehouse_ids)
-          scope = apply_search(scope, %w[name code])
-          render_lookup_page(scope)
+          render_paginated_lookup(scope, search_columns: %w[name code])
         end
 
         def destinations
@@ -27,30 +30,7 @@ module Cats
             scope = scope.where(location_type: Cats::Core::Location::WAREHOUSE)
           end
 
-          scope = apply_search(scope, %w[name code])
-          render_lookup_page(scope)
-        end
-
-        private
-
-        def apply_search(scope, columns)
-          return scope unless params[:q].present?
-
-          q = "%#{params[:q].to_s.strip}%"
-          conditions = columns.map { |col| "#{scope.table_name}.#{col} ILIKE ?" }.join(" OR ")
-          scope.where(conditions, *([q] * columns.length))
-        end
-
-        def render_lookup_page(scope)
-          page = [params[:page].to_i, 1].max
-          per_page = [[params[:per_page].to_i, 25].max, 100].min
-          total = scope.count
-          items = scope.offset((page - 1) * per_page).limit(per_page)
-
-          render_success(
-            items: ActiveModelSerializers::SerializableResource.new(items, each_serializer: LookupOptionSerializer).as_json,
-            meta: { page: page, per_page: per_page, total_count: total }
-          )
+          render_paginated_lookup(scope, search_columns: %w[name code])
         end
       end
     end
