@@ -1,7 +1,8 @@
 module Cats
   module Warehouse
     class WaybillSerializer < ApplicationSerializer
-      attributes :id, :reference_no, :dispatch_id, :dispatch_order_id, :prepared_by_id, :auto_generated_gin_id,
+      attributes :id, :reference_no, :dispatch_id, :dispatch_order_id, :dispatch_order_authorization_id,
+                 :prepared_by_id, :auto_generated_gin_id,
                  :source_location_id, :destination_location_id, :source_location_name, :destination_location_name,
                  :issued_on, :status, :workflow_status, :created_at, :updated_at
       has_one :waybill_transport, serializer: WaybillTransportSerializer
@@ -12,11 +13,11 @@ module Cats
       end
 
       def source_location_name
-        Cats::Core::Location.find_by(id: object.source_location_id)&.name
+        object.source_location&.name
       end
 
       def destination_location_name
-        Cats::Core::Location.find_by(id: object.destination_location_id)&.name
+        object.destination_location&.name
       end
     end
   end
