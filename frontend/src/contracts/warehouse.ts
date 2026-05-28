@@ -61,6 +61,7 @@ export type Resource =
   | 'dispatch_orders'
   | 'transfer_requests'
   | 'receipt_authorizations'
+  | 'dispatch_order_authorizations'
   | 'reports';
 
 export type Action = 'read' | 'create' | 'update' | 'delete' | 'confirm';
@@ -100,6 +101,7 @@ export const PATH_SEGMENT_TO_RESOURCE: Record<string, Resource> = {
   'dispatch-orders': 'dispatch_orders',
   'transfer-requests': 'transfer_requests',
   'receipt-authorizations': 'receipt_authorizations',
+  'dispatch-authorizations': 'dispatch_order_authorizations',
   reports: 'reports',
 };
 
@@ -117,12 +119,16 @@ const FULL_ACCESS: PermissionMatrix = {
   stock_balances: ['read'],
   receipts: ['read'],
   dispatches: ['read'],
+  receipt_orders: ['read', 'create', 'update', 'delete', 'confirm'],
+  dispatch_orders: ['read', 'create', 'update', 'delete', 'confirm'],
+  dispatch_order_authorizations: ['read', 'create', 'update', 'delete', 'confirm'],
   reports: ['read'],
 };
 
 const OFFICER_ACCESS: PermissionMatrix = {
   receipt_orders: ['read', 'create', 'update', 'delete', 'confirm'],
   dispatch_orders: ['read', 'create', 'update', 'delete', 'confirm'],
+  dispatch_order_authorizations: ['read'],
   receipts: ['read'],
   dispatches: ['read'],
 };
@@ -152,6 +158,7 @@ export const ROLE_CAPABILITIES: Record<RoleSlug, PermissionMatrix> = {
     receipt_orders: ['read', 'update'],
     receipt_authorizations: ['read', 'create', 'update'],
     dispatch_orders: ['read'],
+    dispatch_order_authorizations: ['read', 'create', 'confirm'],
     reports: ['read'],
   },
   [ROLES.WAREHOUSE_MANAGER]: {
@@ -168,6 +175,7 @@ export const ROLE_CAPABILITIES: Record<RoleSlug, PermissionMatrix> = {
     receipt_orders: ['read'],
     receipt_authorizations: ['read', 'create', 'update'],
     dispatch_orders: ['read'],
+    dispatch_order_authorizations: ['read', 'create', 'confirm'],
     transfer_requests: ['read', 'update'],
     reports: ['read'],
   },
@@ -183,6 +191,7 @@ export const ROLE_CAPABILITIES: Record<RoleSlug, PermissionMatrix> = {
     dispatches: ['read'],
     receipt_orders: ['read'],
     dispatch_orders: ['read'],
+    dispatch_order_authorizations: ['read'],
     transfer_requests: ['read', 'create'],
     reports: ['read'],
   },

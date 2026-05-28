@@ -362,7 +362,7 @@ module Cats
 
           base = {
             "dispatch_order_id" => order.id,
-            "plan_reference" => order.plan_reference,
+            "dispatch_reference" => order.dispatch_reference,
             "hub_id" => order.hub_id,
             "warehouse_id" => order.warehouse_id
           }.compact

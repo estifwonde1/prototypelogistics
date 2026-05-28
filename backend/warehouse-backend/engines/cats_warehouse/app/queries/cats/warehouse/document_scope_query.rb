@@ -263,9 +263,22 @@ module Cats
             .distinct
             .pluck("cats_warehouse_dispatch_order_lines.dispatch_order_id")
 
-        return by_header unless source_order_ids.any?
+        dest_location_ids = Warehouse.where(id: wh_ids).pluck(:location_id).compact
+        dest_order_ids =
+          if dest_location_ids.empty?
+            []
+          else
+            DispatchLineDestinationAllocation
+              .joins(:dispatch_order_line)
+              .where(destination_location_id: dest_location_ids)
+              .distinct
+              .pluck("cats_warehouse_dispatch_order_lines.dispatch_order_id")
+          end
 
-        by_header.or(scoped_relation.where(id: source_order_ids))
+        combined_ids = (source_order_ids + dest_order_ids).uniq
+        return by_header if combined_ids.empty?
+
+        by_header.or(scoped_relation.where(id: combined_ids))
       end
 
       # Orders linked by assignment row: same facility warehouse(s) OR personally assigned (covers

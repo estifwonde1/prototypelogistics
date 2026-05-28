@@ -45,6 +45,8 @@ module Cats
       end
 
       def build_items
+        store_id = resolve_store_id_for_items
+
         @waybill.waybill_items.map do |item|
           {
             commodity_id: item.commodity_id,
@@ -53,9 +55,22 @@ module Cats
             inventory_lot_id: item.inventory_lot_id,
             entered_unit_id: item.entered_unit_id,
             base_unit_id: item.base_unit_id,
-            base_quantity: item.base_quantity
+            base_quantity: item.base_quantity,
+            store_id: store_id
           }
         end
+      end
+
+      def resolve_store_id_for_items
+        auth = @waybill.dispatch_order_authorization
+        return nil if auth.blank?
+
+        execution = auth.dispatch_order_authorization_executions.order(created_at: :desc).first
+        if execution&.dispatch_order_authorization_store
+          return execution.dispatch_order_authorization_store.store_id
+        end
+
+        auth.dispatch_order_authorization_stores.order(:id).first&.store_id
       end
     end
   end

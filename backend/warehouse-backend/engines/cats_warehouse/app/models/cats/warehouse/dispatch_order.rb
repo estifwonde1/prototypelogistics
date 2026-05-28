@@ -27,10 +27,13 @@ module Cats
 
       validates :reference_no, uniqueness: true, allow_blank: true
       validates :created_by, presence: true
-      validates :plan_reference, length: { maximum: 100 }, allow_blank: true
+      validates :dispatch_reference, length: { maximum: 100 }, allow_blank: true
 
+      # Allocation-based flow (formerly "dispatch v2"): officer reference and/or split source warehouses.
       def v2_dispatch?
-        plan_reference.present?
+        return true if dispatch_reference.present?
+
+        dispatch_order_lines.joins(:source_allocations).exists?
       end
 
       def exchange_order?
@@ -57,7 +60,7 @@ module Cats
       private
 
       def ensure_v2_confirmable!
-        raise ArgumentError, "plan_reference is required" if plan_reference.blank?
+        raise ArgumentError, "Dispatch reference is required" if dispatch_reference.blank? && reference_no.blank?
         raise ArgumentError, "Dispatch order has no lines" if dispatch_order_lines.empty?
 
         dispatch_order_lines.each do |line|

@@ -8,6 +8,7 @@ module Cats
       rescue_from ActionController::ParameterMissing, with: :render_bad_request
       rescue_from ArgumentError, with: :render_invalid_argument
       rescue_from DispatchOrderJurisdictionGuard::JurisdictionViolation, with: :render_jurisdiction_violation
+      rescue_from Cats::Warehouse::InsufficientStockError, with: :render_insufficient_stock
       rescue_from Cats::Warehouse::InsufficientSpaceError, with: :render_invalid_argument
       rescue_from Pundit::NotAuthorizedError, with: :render_forbidden
 
@@ -66,6 +67,17 @@ module Cats
             details: error.details
           }
         }, status: :forbidden
+      end
+
+      def render_insufficient_stock(error)
+        render json: {
+          success: false,
+          error: {
+            code: "INSUFFICIENT_STOCK",
+            message: error.message,
+            details: error.details
+          }
+        }, status: :unprocessable_entity
       end
 
       def normalize_payload_aliases(payload, aliases = {})

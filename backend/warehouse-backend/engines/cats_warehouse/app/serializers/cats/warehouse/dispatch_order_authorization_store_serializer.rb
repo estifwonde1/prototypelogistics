@@ -11,7 +11,10 @@ module Cats
       end
 
       def commodity_name
-        object.commodity&.name
+        commodity = object.commodity
+        return unless commodity
+
+        commodity.read_attribute(:name).presence || commodity.batch_no
       end
     end
   end

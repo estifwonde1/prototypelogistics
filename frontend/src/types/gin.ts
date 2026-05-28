@@ -9,6 +9,8 @@ export interface Gin {
   issued_by_id?: number;
   approved_by_id?: number;
   gin_items?: GinItem[];
+  dispatch_stack_allocations?: DispatchStackAllocation[];
+  dispatch_order_authorization_id?: number;
   // Phase 3: Order linkage
   dispatch_order_id?: number;
   dispatch_order?: {
@@ -46,4 +48,17 @@ export interface GinItem {
   base_unit_name?: string;
   base_quantity?: number;
   inventory_lot_id?: number;
+}
+
+export interface DispatchStackAllocation {
+  id: number;
+  gin_id?: number;
+  stack_id: number;
+  stack_code?: string | null;
+  store_id?: number | null;
+  store_name?: string | null;
+  quantity: number;
+  base_quantity?: number;
+  commodity_grade?: string | null;
+  dispatch_order_authorization_execution_id?: number | null;
 }

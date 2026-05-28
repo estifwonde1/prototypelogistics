@@ -5,6 +5,7 @@ module Cats
                  :status, :workflow_status, :dispatch_order_id, :dispatch_order_authorization_id,
                  :generated_from_waybill_id, :issued_by_id, :approved_by_id, :created_at, :updated_at
       has_many :gin_items, serializer: GinItemSerializer
+      has_many :dispatch_stack_allocations, serializer: DispatchStackAllocationSerializer
 
       def status
         object[:status].to_s.titleize

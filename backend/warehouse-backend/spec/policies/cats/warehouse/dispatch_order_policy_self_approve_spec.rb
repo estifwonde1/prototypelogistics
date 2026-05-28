@@ -7,7 +7,7 @@ RSpec.describe Cats::Warehouse::DispatchOrderPolicy, type: :policy do
   let(:other_officer) { create(:cats_core_user, role_name: "Federal Officer") }
   let(:order) do
     Cats::Warehouse::DispatchOrder.create!(
-      plan_reference: "PLAN-#{SecureRandom.hex(3)}",
+      dispatch_reference: "PLAN-#{SecureRandom.hex(3)}",
       created_by: officer,
       status: Cats::Warehouse::ContractConstants::DOCUMENT_STATUSES[:draft]
     )

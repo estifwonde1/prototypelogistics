@@ -24,7 +24,7 @@ module Cats
           destination_location_name: @waybill.destination_location&.name,
           dispatch_order_id: @waybill.dispatch_order_id,
           dispatch_order_reference: @waybill.dispatch_order&.reference_no,
-          plan_reference: @waybill.dispatch_order&.plan_reference,
+          dispatch_reference: @waybill.dispatch_order&.dispatch_reference,
           authorization_reference: auth&.reference_no,
           transporter_name: transport&.transporter&.name || auth&.transporter_name,
           driver_name: transport&.driver_name || auth&.driver_name,

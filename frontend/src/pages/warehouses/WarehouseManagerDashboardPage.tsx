@@ -30,6 +30,10 @@ import { getRoleLabel } from '../../contracts/warehouse';
 import { useWarehouseManagerRaAccess } from '../../hooks/useWarehouseManagerRaAccess';
 import { getReceiptOrders } from '../../api/receiptOrders';
 import { getDispatchOrders } from '../../api/dispatchOrders';
+import { getDispatchOrderAuthorizations } from '../../api/dispatchOrderAuthorizations';
+import { buildPendingRows } from '../../utils/dispatchAuthorizationUtils';
+import { getDispatchOrderReference } from '../../utils/dispatchOrderReference';
+import { dispatchAuthorizationNewPath } from '../../utils/dispatchAuthorizationPaths';
 import { getStockBalances } from '../../api/stockBalances';
 import { getInspections } from '../../api/inspections';
 import type { Inspection } from '../../types/inspection';
@@ -49,10 +53,16 @@ export default function WarehouseManagerDashboardPage() {
     enabled: !!warehouseId,
   });
 
-  // 2. Dispatch Orders pending authorization (Draft) & Active Authorizations (Confirmed)
-  const { data: dispatchOrders, isLoading: dispatchesLoading } = useQuery({
-    queryKey: ['dispatch_orders', { warehouse_id: warehouseId }],
-    queryFn: () => getDispatchOrders({ warehouse_id: warehouseId }),
+  // 2. Dispatch orders awaiting WM authorization + active authorizations
+  const { data: confirmedDispatchOrders, isLoading: dispatchesLoading } = useQuery({
+    queryKey: ['dispatch_orders', 'awaiting_authorization', warehouseId],
+    queryFn: () => getDispatchOrders({ warehouse_id: warehouseId, status: 'confirmed' }),
+    enabled: !!warehouseId,
+  });
+
+  const { data: dispatchAuthorizations = [] } = useQuery({
+    queryKey: ['dispatch_order_authorizations', { warehouse_id: warehouseId }],
+    queryFn: () => getDispatchOrderAuthorizations({ warehouse_id: warehouseId }),
     enabled: !!warehouseId,
   });
 
@@ -70,15 +80,16 @@ export default function WarehouseManagerDashboardPage() {
     return status === 'confirmed' || status === 'draft';
   }) ?? [];
   
-  const pendingDispatchAuthorizations = dispatchOrders?.filter(o => {
-    const status = String(o.status || '').toLowerCase();
-    return status === 'draft';
-  }) ?? [];
-  
-  const activeDispatchAuthorizations = dispatchOrders?.filter(o => {
-    const status = String(o.status || '').toLowerCase();
-    return status === 'confirmed';
-  }) ?? [];
+  const pendingDispatchAuthorizations = buildPendingRows(
+    confirmedDispatchOrders ?? [],
+    dispatchAuthorizations,
+    warehouseId
+  );
+
+  const activeDispatchAuthorizations = dispatchAuthorizations.filter((a) => {
+    const s = String(a.status ?? '').toLowerCase();
+    return s === 'confirmed' || s === 'in_progress';
+  });
 
   // 4. Lost Commodity records
   const { data: inspectionsData } = useQuery({
@@ -208,7 +219,7 @@ export default function WarehouseManagerDashboardPage() {
           <Paper withBorder p="md" radius="md">
             <Group justify="space-between" mb="md">
               <Title order={4}>Authorize Dispatches</Title>
-              <Button variant="subtle" size="xs" onClick={() => navigate('/dispatches')}>View All</Button>
+              <Button variant="subtle" size="xs" onClick={() => navigate('/warehouse/dispatch-authorizations')}>View All</Button>
             </Group>
             {pendingDispatchAuthorizations.length === 0 ? (
               <Text c="dimmed" py="xl" ta="center">No dispatch orders awaiting authorization.</Text>
@@ -216,24 +227,27 @@ export default function WarehouseManagerDashboardPage() {
               <Table variant="vertical" layout="fixed">
                 <Table.Thead>
                   <Table.Tr>
-                    <Table.Th>Destination</Table.Th>
-                    <Table.Th>Expected</Table.Th>
+                    <Table.Th>Dispatch reference</Table.Th>
                     <Table.Th w={40}></Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {pendingDispatchAuthorizations.map((order) => (
+                  {pendingDispatchAuthorizations.map(({ order }) => (
                     <Table.Tr key={order.id}>
                       <Table.Td>
-                        <Text size="sm" fw={500} truncate>{order.destination_name}</Text>
+                        <Text size="sm" fw={500}>{getDispatchOrderReference(order)}</Text>
                       </Table.Td>
                       <Table.Td>
-                        <Text size="sm">{new Date(order.expected_pickup_date).toLocaleDateString()}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <ActionIcon 
-                          variant="subtle" 
-                          onClick={() => navigate(`/officer/dispatch-orders/${order.id}`)}
+                        <ActionIcon
+                          variant="subtle"
+                          onClick={() =>
+                            navigate(
+                              dispatchAuthorizationNewPath('warehouse', {
+                                dispatch_order_id: order.id,
+                                warehouse_id: warehouseId,
+                              })
+                            )
+                          }
                         >
                           <IconArrowRight size={16} />
                         </ActionIcon>

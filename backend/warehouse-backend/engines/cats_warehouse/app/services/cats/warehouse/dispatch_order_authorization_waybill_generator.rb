@@ -27,7 +27,7 @@ module Cats
             transporter: @authorization.transporter,
             vehicle_plate_no: @authorization.truck_plate_number,
             driver_name: @authorization.driver_name,
-            driver_phone: nil
+            driver_phone: resolve_driver_phone
           },
           dispatch_order: @order,
           prepared_by: @actor,
@@ -38,6 +38,17 @@ module Cats
       end
 
       private
+
+      def resolve_driver_phone
+        phone = @authorization.driver_phone.presence || transport_record_phone
+        raise ArgumentError, "Driver phone is required" if phone.blank?
+
+        phone
+      end
+
+      def transport_record_phone
+        TransportRecord.find_by(dispatch_order_id: @order.id, warehouse_id: @warehouse.id)&.phone
+      end
 
       def primary_destination_location
         DispatchLineDestinationAllocation

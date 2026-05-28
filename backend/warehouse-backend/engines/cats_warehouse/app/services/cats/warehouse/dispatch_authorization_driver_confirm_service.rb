@@ -3,9 +3,10 @@
 module Cats
   module Warehouse
     class DispatchAuthorizationDriverConfirmService
-      def initialize(authorization:, actor:)
+      def initialize(authorization:, actor:, driver_phone: nil)
         @authorization = authorization
         @actor = actor
+        @driver_phone = driver_phone
       end
 
       def call
@@ -16,13 +17,25 @@ module Cats
         raise ArgumentError, "Execution quantity must be positive" unless execution.quantity.to_f.positive?
 
         DispatchOrderAuthorization.transaction do
+          if @driver_phone.present?
+            @authorization.update!(driver_phone: @driver_phone)
+          end
+
           @authorization.update!(
             driver_confirmed_at: Time.current,
             driver_confirmed_by: @actor,
             status: DispatchOrderAuthorization::IN_PROGRESS
           )
 
-          waybill = @authorization.waybill || raise(ArgumentError, "Waybill not found for authorization")
+          waybill = @authorization.waybill
+          if waybill.blank?
+            raise ArgumentError, "Store splits are required before driver confirmation" if @authorization.dispatch_order_authorization_stores.empty?
+
+            waybill = DispatchOrderAuthorizationWaybillGenerator.new(
+              authorization: @authorization,
+              actor: @actor
+            ).call
+          end
           gin = GinGeneratorFromWaybill.new(waybill: waybill, actor: @actor).call
           gin.update!(dispatch_order_authorization_id: @authorization.id)
 

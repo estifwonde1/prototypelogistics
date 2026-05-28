@@ -60,6 +60,29 @@ Returns warehouses within the officer's jurisdiction.
 
 Query params: `q` (search string), `page`, `per_page`
 
+### GET /dispatch_orders/lookups/warehouses_for_commodity
+Returns only warehouses in officer scope that hold **positive available stock** for the admin commodity definition (all batch-level inventory rows with the same name are summed).
+
+Query params: `commodity_definition_id` (required), `unit_id` (optional — display quantity in this unit). Legacy `commodity_id` is still accepted but resolves via matching definition name.
+
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": 10,
+        "name": "Addis Hub WH",
+        "code": "AHW01",
+        "label": "Addis Hub WH (AHW01)",
+        "meta": { "commodity_id": 1, "available_quantity": 1200.5, "unit_id": 2 }
+      }
+    ],
+    "meta": { "commodity_id": 1, "unit_id": 2, "total_count": 3 }
+  }
+}
+```
+
 ```json
 { "success": true, "data": { "items": [{ "id": 1, "name": "Addis Hub WH", "code": "AHW01", "label": "Addis Hub WH (AHW01)" }], "meta": { "total": 12 } } }
 ```
@@ -86,12 +109,12 @@ All return flat arrays. No auth scoping — available to all authenticated users
 
 ### POST /dispatch_orders
 
-**Identifies as v2** when `plan_reference` is present in the payload.
+**Allocation-based dispatch** when `dispatch_reference` is present in the payload (legacy alias `plan_reference` still accepted).
 
 ```json
 {
   "payload": {
-    "plan_reference": "RP-2026-03-WHEAT-001",
+    "dispatch_reference": "DR-01",
     "description": "Optional free text",
     "dispatch_plan_id": null,
     "lines": [
@@ -114,12 +137,16 @@ All return flat arrays. No auth scoping — available to all authenticated users
 }
 ```
 
-**Backend computes server-side (do not send):** `base_quantity`, `package_count`, `officer_level`, `officer_location_id`, `jurisdiction_metadata`, `reference_no`.
+**Backend computes server-side (do not send):** `base_quantity`, `package_count`, `officer_level`, `officer_location_id`, `jurisdiction_metadata`.
+
+**System document number:** `reference_no` is assigned on draft create as `DO-{id}` when using the allocation flow.
+
+**Stock validation:** source allocation totals per `(warehouse_id, commodity_id)` must not exceed aggregated `StockBalance` available quantity (base UOM). Error code `INSUFFICIENT_STOCK` with `details.violations[]`.
 
 **Response:** Full `DispatchOrderSerializer` payload (see §Serializer Reference).
 
 **Errors:**
-- `422` — `plan_reference` blank, quantity ≤ 0, no UOM conversion path
+- `422` — `dispatch_reference` blank, quantity ≤ 0, no UOM conversion path, `INSUFFICIENT_STOCK`
 - `403` — `{ code: "JURISDICTION_VIOLATION", message: "...", details: [{ field, code }] }` — warehouse or destination outside officer scope
 
 
@@ -163,7 +190,7 @@ No body required.
 **Response:** Updated `DispatchOrderSerializer`.
 
 **Errors:**
-- `422` — allocation mismatch, missing `plan_reference`, incomplete lines
+- `422` — allocation mismatch, missing `dispatch_reference`, incomplete lines, `INSUFFICIENT_STOCK`
 - `403` — not the creator (self_approve), jurisdiction violation
 
 **UI hint:** The `DispatchOrderSerializer` includes `can_confirm` and `can_self_approve` boolean flags — use these to show/hide action buttons without a separate policy call.
@@ -507,7 +534,7 @@ Returns full event history for an order:
 
 ### DispatchOrderSerializer
 ```
-id, reference_no, plan_reference, name, status, status_label,
+id, reference_no, dispatch_reference, name, status, status_label,
 dispatched_date, hub_id, hub_name, warehouse_id, warehouse_name, warehouse_code,
 created_by_id, created_by_name, confirmed_by_id, confirmed_by_name, confirmed_at,
 approved_by_id, approved_at, description, created_at, updated_at,

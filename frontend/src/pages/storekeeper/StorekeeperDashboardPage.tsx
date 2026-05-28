@@ -311,7 +311,7 @@ export default function StorekeeperDashboardPage() {
               fullWidth 
               mt="lg" 
               rightSection={<IconArrowRight size={14} />}
-              onClick={() => navigate('/storekeeper/assignments')}
+              onClick={() => navigate('/storekeeper/dispatch-authorizations')}
             >
               Confirm Dispatches
             </Button>
@@ -469,7 +469,7 @@ export default function StorekeeperDashboardPage() {
                       size="xs" 
                       variant="light" 
                       color="teal"
-                      onClick={() => navigate('/storekeeper/assignments')}
+                      onClick={() => navigate('/storekeeper/dispatch-authorizations')}
                     >
                       Review
                     </Button>
@@ -482,7 +482,7 @@ export default function StorekeeperDashboardPage() {
                 <Anchor 
                   size="sm" 
                   ta="center" 
-                  onClick={() => navigate('/storekeeper/assignments')}
+                  onClick={() => navigate('/storekeeper/dispatch-authorizations')}
                 >
                   View all {pendingDispatches.length} pending dispatches
                 </Anchor>

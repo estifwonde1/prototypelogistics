@@ -7,11 +7,26 @@ module Cats
                  :stack_code, :created_at, :updated_at
 
       def commodity_name
-        object.commodity&.[](:name) || object.commodity&.batch_no
+        catalog_name = safe_commodity_catalog_name(object.commodity)
+        catalog_name.presence || object.commodity&.batch_no
       end
 
       def commodity_code
-        object.commodity&.[](:code)
+        commodity_code_for(object.commodity)
+      end
+
+      def commodity_code_for(commodity)
+        return unless commodity.is_a?(Cats::Core::Commodity)
+
+        commodity.batch_no.presence || safe_commodity_catalog_name(commodity)
+      end
+
+      def safe_commodity_catalog_name(commodity)
+        return unless commodity.is_a?(Cats::Core::Commodity)
+
+        commodity.read_attribute(:name).presence || commodity.batch_no
+      rescue StandardError
+        commodity.try(:batch_no)
       end
 
       def unit_name

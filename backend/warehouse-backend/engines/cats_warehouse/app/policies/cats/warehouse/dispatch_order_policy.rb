@@ -28,6 +28,16 @@ module Cats
         create?
       end
 
+      def destroy?
+        return false unless record.is_a?(DispatchOrder)
+        return false if level_excluded?
+        return false if record.dispatch_order_authorizations.exists?
+
+        return true if admin?
+
+        officer? && record.created_by_id == user.id
+      end
+
       def assign?
         return true if admin?
 

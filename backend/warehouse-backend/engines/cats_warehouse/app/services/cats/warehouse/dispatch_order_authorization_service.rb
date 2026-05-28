@@ -5,7 +5,7 @@ module Cats
     class DispatchOrderAuthorizationService
       def initialize(dispatch_order:, actor:, warehouse:, authorized_quantity:, transporter:,
                      driver_name:, driver_id_number:, truck_plate_number:,
-                     authorized_quantity_input_unit: nil, store_splits: [])
+                     driver_phone: nil, authorized_quantity_input_unit: nil, store_splits: [])
         @order = dispatch_order
         @actor = actor
         @warehouse = warehouse
@@ -14,6 +14,7 @@ module Cats
         @driver_name = driver_name
         @driver_id_number = driver_id_number
         @truck_plate_number = truck_plate_number
+        @driver_phone = driver_phone
         @input_unit = authorized_quantity_input_unit
         @store_splits = store_splits
       end
@@ -52,6 +53,7 @@ module Cats
             driver_name: @driver_name,
             driver_id_number: @driver_id_number,
             truck_plate_number: @truck_plate_number,
+            driver_phone: @driver_phone,
             created_by: @actor
           )
 
@@ -110,10 +112,13 @@ module Cats
 
             optional_reserve_stock!
 
-            waybill = DispatchOrderAuthorizationWaybillGenerator.new(
-              authorization: @authorization,
-              actor: @actor
-            ).call
+            waybill = nil
+            if @authorization.dispatch_order_authorization_stores.exists?
+              waybill = DispatchOrderAuthorizationWaybillGenerator.new(
+                authorization: @authorization,
+                actor: @actor
+              ).call
+            end
 
             WorkflowEventRecorder.record!(
               entity: @authorization,
@@ -121,14 +126,16 @@ module Cats
               actor: @actor,
               from_status: DispatchOrderAuthorization::DRAFT,
               to_status: @authorization.status,
-              payload: { waybill_id: waybill.id }
+              payload: { waybill_id: waybill&.id }
             )
 
-            NotificationFanout.deliver(
-              "waybill.created",
-              dispatch_order_authorization_id: @authorization.id,
-              waybill_id: waybill.id
-            )
+            if waybill.present?
+              NotificationFanout.deliver(
+                "waybill.created",
+                dispatch_order_authorization_id: @authorization.id,
+                waybill_id: waybill.id
+              )
+            end
 
             DispatchOrderStatusAggregator.call(@authorization.dispatch_order)
 
@@ -140,7 +147,7 @@ module Cats
 
         def validate_store_splits!
           stores = @authorization.dispatch_order_authorization_stores
-          raise ArgumentError, "At least one store split is required" if stores.empty?
+          return if stores.empty?
 
           sum = stores.sum(:authorized_quantity).to_f
           unless (sum - @authorization.authorized_quantity.to_f).abs <= 0.001
@@ -169,6 +176,8 @@ module Cats
       # the source-allocated quantity for this warehouse. For multi-commodity store splits,
       # each commodity is checked independently.
       def validate_quantity_ledger_per_commodity!(authorized_base)
+        return if @store_splits.blank?
+
         commodity_ids = @store_splits.map { |s| s[:commodity_id] }.compact.uniq
         commodity_ids = [primary_commodity_id] if commodity_ids.empty?
 
@@ -197,6 +206,7 @@ module Cats
         @driver_name = @driver_name.presence || tr.driver_name
         @truck_plate_number = @truck_plate_number.presence || tr.vehicle_plate
         @driver_id_number = @driver_id_number.presence || tr.license_number
+        @driver_phone = @driver_phone.presence || tr.phone
       end
 
       def create_store_splits!(auth)

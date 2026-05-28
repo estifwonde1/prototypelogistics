@@ -16,6 +16,7 @@ module Cats
           @order.lock!
 
           if @order.v2_dispatch?
+            DispatchOrderStockGuard.call(@order)
             DispatchAllocationReconciler.call(@order, strict: true)
             DispatchOrderJurisdictionGuard.call(@order, @confirmed_by) if @confirmed_by.present?
           end
@@ -67,7 +68,7 @@ module Cats
           "dispatch_order.confirmed",
           dispatch_order_id: @order.id,
           warehouse_ids: warehouse_ids,
-          plan_reference: @order.plan_reference
+          dispatch_reference: @order.dispatch_reference
         )
       end
     end

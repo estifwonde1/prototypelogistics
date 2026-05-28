@@ -3,7 +3,9 @@ module Cats
     class GinsController < BaseController
       def index
         authorize Gin
-        scope = policy_scope(Gin).includes(:gin_items).order(created_at: :desc)
+        scope = policy_scope(Gin)
+                  .includes(:gin_items, dispatch_stack_allocations: { stack: :store })
+                  .order(created_at: :desc)
         scope = scope.where(warehouse_id: params[:warehouse_id]) if params[:warehouse_id].present?
         scope = scope.where(dispatch_order_id: params[:dispatch_order_id]) if params[:dispatch_order_id].present?
         scope = scope.where(dispatch_order_authorization_id: params[:dispatch_order_authorization_id]) if params[:dispatch_order_authorization_id].present?
@@ -11,7 +13,9 @@ module Cats
       end
 
       def show
-        gin = policy_scope(Gin).includes(:gin_items).find(params[:id])
+        gin = policy_scope(Gin)
+                .includes(:gin_items, dispatch_stack_allocations: { stack: :store })
+                .find(params[:id])
         authorize gin
         render_resource(gin, serializer: GinSerializer)
       end
@@ -35,15 +39,21 @@ module Cats
 
       def stack_allocations
         gin = policy_scope(Gin).find(params[:id])
-        authorize gin, :confirm?
+        authorize gin, :stack_allocations?
 
         allocations = Array(params.require(:payload).permit(allocations: [:stack_id, :quantity, :commodity_id, :commodity_grade, :gin_item_id])[:allocations])
         GinStackAllocationValidator.new(gin: gin, allocations: allocations).call
 
         created = Gin.transaction do
+          gin.dispatch_stack_allocations.destroy_all
+
           allocations.map do |row|
+            stack = Stack.includes(:store).find(row[:stack_id])
+            execution = resolve_execution_for_allocation(gin, stack, row[:commodity_id])
+
             alloc = DispatchStackAllocation.create!(
               gin: gin,
+              dispatch_order_authorization_execution: execution,
               stack_id: row[:stack_id],
               quantity: row[:quantity],
               base_quantity: row[:quantity],
@@ -51,7 +61,7 @@ module Cats
             )
 
             item = gin.gin_items.find_by(commodity_id: row[:commodity_id]) || gin.gin_items.first
-            item&.update!(stack_id: row[:stack_id])
+            item&.update!(store_id: stack.store_id)
 
             alloc
           end
@@ -70,10 +80,37 @@ module Cats
           approved_by: approved_by,
           idempotency_key: request.headers["Idempotency-Key"]
         ).call
-        render_resource(gin.reload, serializer: GinSerializer)
+
+        gin = policy_scope(Gin)
+                .includes(
+                  gin_items: [:commodity, :unit, :store, :stack, :entered_unit, :base_unit, :inventory_lot],
+                  dispatch_stack_allocations: :stack
+                )
+                .find(params[:id])
+        render_resource(gin, serializer: GinSerializer)
       end
 
       private
+
+      def resolve_execution_for_allocation(gin, stack, commodity_id)
+        auth = gin.dispatch_order_authorization
+        return nil if auth.blank?
+
+        anchor_id = gin.gin_items.pick(:commodity_id) || commodity_id
+        allowed_ids = CommodityDefinitionStockResolver.core_commodity_ids_for_core_commodity(anchor_id)
+
+        auth.dispatch_order_authorization_executions
+            .joins(:dispatch_order_authorization_store)
+            .where(cats_warehouse_dispatch_order_authorization_stores: { store_id: stack.store_id })
+            .where(commodity_id: allowed_ids)
+            .order(created_at: :desc)
+            .first ||
+          auth.dispatch_order_authorization_executions
+            .joins(:dispatch_order_authorization_store)
+            .where(cats_warehouse_dispatch_order_authorization_stores: { store_id: stack.store_id })
+            .order(created_at: :desc)
+            .first
+      end
 
       def gin_params
         payload = normalize_payload_aliases(params.require(:payload), items: :gin_items)

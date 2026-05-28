@@ -11,12 +11,26 @@ RSpec.describe Cats::Warehouse::DispatchAllocationReconciler, type: :service do
 
   before do
     skip "Requires seeded warehouse and location data" if warehouse.blank? || destination.blank? || commodity.blank?
+
+    Cats::Warehouse::StockBalance.where(warehouse_id: warehouse.id, commodity_id: commodity.id).delete_all
+    Cats::Warehouse::StockBalance.create!(
+      warehouse: warehouse,
+      store: nil,
+      stack: nil,
+      commodity: commodity,
+      quantity: 10_000,
+      unit: unit,
+      base_quantity: 10_000,
+      base_unit_id: unit.id,
+      available_quantity: 10_000,
+      reserved_quantity: 0
+    )
   end
 
   it "raises when source and destination totals do not match line base quantity" do
     order = Cats::Warehouse::DispatchOrderCreatorForOfficer.new(
       actor: user,
-      plan_reference: "TEST-#{SecureRandom.hex(3)}",
+      dispatch_reference: "TEST-#{SecureRandom.hex(3)}",
       lines: [{
         commodity_id: commodity.id,
         quantity: 100,

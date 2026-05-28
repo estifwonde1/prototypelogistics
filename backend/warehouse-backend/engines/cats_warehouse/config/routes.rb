@@ -103,10 +103,11 @@ Cats::Warehouse::Engine.routes.draw do
         post :reject
       end
     end
-    resources :dispatch_orders, only: [ :index, :show, :create, :update ] do
+    resources :dispatch_orders, only: [ :index, :show, :create, :update, :destroy ] do
       collection do
         get "lookups/source_warehouses", to: "dispatch_orders/lookups#source_warehouses"
         get "lookups/destinations", to: "dispatch_orders/lookups#destinations"
+        get "lookups/warehouses_for_commodity", to: "dispatch_orders/lookups#warehouses_for_commodity"
       end
       member do
         post :confirm
@@ -126,6 +127,7 @@ Cats::Warehouse::Engine.routes.draw do
         get "lookups/stacks", to: "dispatch_order_authorizations/lookups#stacks"
       end
       member do
+        patch :store_splits
         post :confirm
         post :driver_confirm
         get  :executions, action: :list_executions

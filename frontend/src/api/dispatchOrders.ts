@@ -1,4 +1,12 @@
 import apiClient from './client';
+import { unwrapData } from '../utils/apiSuccess';
+import type {
+  CreateDispatchOrderV2Payload,
+  DispatchOrderV2,
+  DispatchOrderWorkflowPayload,
+  ExchangeReceivePayload,
+  TransportRecordPayload,
+} from '../types/dispatchV2';
 import type {
   DispatchOrderAssignment,
   StockReservation,
@@ -13,26 +21,35 @@ export interface DispatchOrderLine {
   notes?: string;
 }
 
+/** Legacy + partial v2 fields used by older pages */
 export interface DispatchOrder {
   id: number;
-  source_warehouse_id: number;
+  source_warehouse_id?: number;
   source_warehouse_name?: string;
-  destination_type: string;
-  destination_name: string;
-  expected_pickup_date: string;
-  status: 'Draft' | 'Confirmed' | 'Assigned' | 'Reserved' | 'In Progress' | 'Completed';
+  destination_type?: string;
+  destination_name?: string;
+  expected_pickup_date?: string;
+  status: string;
   notes?: string;
+  description?: string;
   lines?: DispatchOrderLine[];
   created_at: string;
   updated_at: string;
-  // Phase 3: Assignment & Reservation
   assignments?: DispatchOrderAssignment[];
   stock_reservations?: StockReservation[];
   workflow_events?: WorkflowEvent[];
-  // Hierarchical order management
   location_id?: number | null;
   hierarchical_level?: string | null;
   location_name?: string | null;
+  plan_reference?: string | null;
+  dispatch_reference?: string | null;
+  reference_no?: string | null;
+  exchange_order?: boolean;
+  can_confirm?: boolean;
+  can_self_approve?: boolean;
+  can_destroy?: boolean;
+  dispatch_order_lines?: import('../types/dispatchV2').DispatchOrderLineV2[];
+  dispatch_order_authorizations?: import('../types/dispatchV2').DispatchOrderAuthorization[];
 }
 
 export interface CreateDispatchOrderPayload {
@@ -42,29 +59,46 @@ export interface CreateDispatchOrderPayload {
   expected_pickup_date: string;
   notes?: string;
   lines: DispatchOrderLine[];
-  /** Location tagging for hierarchical order management */
   location_id?: number | null;
   hierarchical_level?: string | null;
 }
 
-export async function getDispatchOrders(params?: { warehouse_id?: number }): Promise<DispatchOrder[]> {
+export async function getDispatchOrders(params?: {
+  warehouse_id?: number;
+  status?: string;
+  created_by?: string;
+  officer_level?: string;
+}): Promise<DispatchOrder[]> {
   const response = await apiClient.get('/dispatch_orders', { params });
-  return Array.isArray(response.data) ? response.data : response.data.data || [];
+  return unwrapData<DispatchOrder[]>(response);
 }
 
 export async function getDispatchOrder(id: number): Promise<DispatchOrder> {
   const response = await apiClient.get(`/dispatch_orders/${id}`);
-  return response.data.data || response.data;
+  return unwrapData<DispatchOrder>(response);
 }
 
 export async function createDispatchOrder(payload: CreateDispatchOrderPayload): Promise<DispatchOrder> {
   const response = await apiClient.post('/dispatch_orders', { payload });
-  return response.data.data || response.data;
+  return unwrapData<DispatchOrder>(response);
+}
+
+export async function createDispatchOrderV2(payload: CreateDispatchOrderV2Payload): Promise<DispatchOrderV2> {
+  const response = await apiClient.post('/dispatch_orders', { payload });
+  return unwrapData<DispatchOrderV2>(response);
 }
 
 export async function updateDispatchOrder(id: number, payload: Partial<CreateDispatchOrderPayload>): Promise<DispatchOrder> {
-  const response = await apiClient.put(`/dispatch_orders/${id}`, { payload });
-  return response.data.data || response.data;
+  const response = await apiClient.patch(`/dispatch_orders/${id}`, { payload });
+  return unwrapData<DispatchOrder>(response);
+}
+
+export async function updateDispatchOrderV2(
+  id: number,
+  payload: { description?: string; lines: CreateDispatchOrderV2Payload['lines'] }
+): Promise<DispatchOrderV2> {
+  const response = await apiClient.patch(`/dispatch_orders/${id}`, { payload });
+  return unwrapData<DispatchOrderV2>(response);
 }
 
 export async function deleteDispatchOrder(id: number): Promise<void> {
@@ -73,17 +107,38 @@ export async function deleteDispatchOrder(id: number): Promise<void> {
 
 export async function confirmDispatchOrder(id: number): Promise<DispatchOrder> {
   const response = await apiClient.post(`/dispatch_orders/${id}/confirm`);
-  return response.data.data || response.data;
+  return unwrapData<DispatchOrder>(response);
 }
 
-// Phase 3: Assignment & Reservation APIs
+export async function selfApproveDispatchOrder(id: number): Promise<DispatchOrderV2> {
+  const response = await apiClient.post(`/dispatch_orders/${id}/self_approve`);
+  return unwrapData<DispatchOrderV2>(response);
+}
+
+export async function postDispatchOrderTransportRecord(
+  id: number,
+  payload: TransportRecordPayload,
+  method: 'post' | 'patch' = 'post'
+): Promise<{ transport_record_id: number }> {
+  const fn = method === 'patch' ? apiClient.patch : apiClient.post;
+  const response = await fn(`/dispatch_orders/${id}/transport_record`, { payload });
+  return unwrapData<{ transport_record_id: number }>(response);
+}
+
+export async function postDispatchOrderReceive(
+  id: number,
+  payload: ExchangeReceivePayload
+): Promise<{ packaging_transaction_id: number }> {
+  const response = await apiClient.post(`/dispatch_orders/${id}/receive`, { payload });
+  return unwrapData<{ packaging_transaction_id: number }>(response);
+}
 
 export async function assignDispatchOrder(
   id: number,
   payload: { assignments: Partial<DispatchOrderAssignment>[] }
 ): Promise<DispatchOrder> {
   const response = await apiClient.post(`/dispatch_orders/${id}/assign`, { payload });
-  return response.data.data || response.data;
+  return unwrapData<DispatchOrder>(response);
 }
 
 export async function reserveStock(
@@ -91,17 +146,16 @@ export async function reserveStock(
   payload: { reservations: Partial<StockReservation>[] }
 ): Promise<DispatchOrder> {
   const response = await apiClient.post(`/dispatch_orders/${id}/reserve_stock`, { payload });
-  return response.data.data || response.data;
+  return unwrapData<DispatchOrder>(response);
 }
 
-function extractWorkflowEvents(responseData: unknown): WorkflowEvent[] {
-  const root = (responseData as { data?: { workflow_events?: unknown }; workflow_events?: unknown }) || {};
-  const inner = root.data ?? root;
-  const raw = inner.workflow_events ?? (Array.isArray(inner) ? inner : []);
-  return Array.isArray(raw) ? raw : [];
-}
-
-export async function getDispatchOrderWorkflow(id: number): Promise<WorkflowEvent[]> {
+export async function getDispatchOrderWorkflowPayload(id: number): Promise<DispatchOrderWorkflowPayload> {
   const response = await apiClient.get(`/dispatch_orders/${id}/workflow`);
-  return extractWorkflowEvents(response.data);
+  return unwrapData<DispatchOrderWorkflowPayload>(response);
+}
+
+/** @deprecated Prefer getDispatchOrderWorkflowPayload — returns only events array for legacy timeline */
+export async function getDispatchOrderWorkflow(id: number): Promise<WorkflowEvent[]> {
+  const payload = await getDispatchOrderWorkflowPayload(id);
+  return (payload.workflow_events ?? []) as WorkflowEvent[];
 }

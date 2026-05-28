@@ -3,8 +3,12 @@ import type { Waybill, WaybillItem, WaybillTransport } from '../types/waybill';
 import type { ApiResponse } from '../types/common';
 import { toCreateWaybillRequest, type CreateWaybillRequest } from '../contracts/documents';
 
-export const getWaybills = async (): Promise<Waybill[]> => {
-  const response = await apiClient.get<ApiResponse<Waybill[]>>('/waybills');
+export const getWaybills = async (params?: {
+  dispatch_order_authorization_id?: number;
+  dispatch_order_id?: number;
+  warehouse_id?: number;
+}): Promise<Waybill[]> => {
+  const response = await apiClient.get<ApiResponse<Waybill[]>>('/waybills', { params });
   return response.data.data;
 };
 

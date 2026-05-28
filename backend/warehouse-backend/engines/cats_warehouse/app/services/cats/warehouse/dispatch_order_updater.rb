@@ -19,7 +19,12 @@ module Cats
 
           replace_lines! if @lines
 
+          @order.reload
+
           DispatchOrderJurisdictionGuard.call(@order, @actor) if @order.v2_dispatch?
+          DispatchOrderStockGuard.call(@order) if @order.v2_dispatch?
+
+          assign_dispatch_reference! if @order.v2_dispatch?
 
           @order
         end
@@ -32,7 +37,7 @@ module Cats
 
         Array(@lines).each do |attrs|
           line = @order.dispatch_order_lines.create!(
-            commodity_id: attrs[:commodity_id],
+            commodity_id: CommodityDefinitionStockResolver.resolve_line_commodity_id(attrs),
             quantity: attrs[:quantity],
             unit_id: attrs[:unit_id],
             packaging_unit_id: attrs[:packaging_unit_id],
@@ -57,6 +62,12 @@ module Cats
           end
         end
       end
+
+      def assign_dispatch_reference!
+        ref = "DO-#{@order.id}"
+        @order.update_columns(reference_no: ref, dispatch_reference: ref) # rubocop:disable Rails/SkipsModelValidations
+      end
+
     end
   end
 end

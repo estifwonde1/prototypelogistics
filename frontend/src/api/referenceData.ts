@@ -76,6 +76,14 @@ export const getTransporterReferences = async (): Promise<TransporterReference[]
   return response.data.data.transporters;
 };
 
+export const getCommodityGrades = async (commodityId?: number): Promise<{ items: { id: number; name: string; code: string; label: string }[] }> => {
+  const response = await apiClient.get<ApiResponse<{ items: { id: number; name: string; code: string; label: string }[] }>>(
+    '/reference_data/commodity_grades',
+    { params: commodityId ? { commodity_id: commodityId } : undefined }
+  );
+  return response.data.data;
+};
+
 export const getInventoryLots = async (): Promise<InventoryLot[]> => {
   const response = await apiClient.get<ApiResponse<{ inventory_lots: InventoryLot[] }>>(
     '/reference_data/inventory_lots'

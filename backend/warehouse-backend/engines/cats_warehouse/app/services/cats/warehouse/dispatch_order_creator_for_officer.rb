@@ -3,9 +3,9 @@
 module Cats
   module Warehouse
     class DispatchOrderCreatorForOfficer
-      def initialize(actor:, plan_reference:, description: nil, lines: [], dispatch_plan_id: nil, dispatch_plan_item_id: nil)
+      def initialize(actor:, dispatch_reference: nil, description: nil, lines: [], dispatch_plan_id: nil, dispatch_plan_item_id: nil)
         @actor = actor
-        @plan_reference = plan_reference.to_s.strip
+        # dispatch_reference is system-assigned (DO-{id}); ignore any client-supplied value.
         @description = description
         @lines = lines
         @dispatch_plan_id = dispatch_plan_id
@@ -15,11 +15,8 @@ module Cats
       end
 
       def call
-        raise ArgumentError, "plan_reference is required" if @plan_reference.blank?
-
         DispatchOrder.transaction do
           order = DispatchOrder.create!(
-            plan_reference: @plan_reference,
             description: @description,
             created_by: @actor,
             status: ContractConstants::DOCUMENT_STATUSES[:draft],
@@ -34,7 +31,12 @@ module Cats
 
           Array(@lines).each { |line_attrs| create_line!(order, line_attrs) }
 
+          order.reload
+
           DispatchOrderJurisdictionGuard.call(order, @actor)
+          DispatchOrderStockGuard.call(order)
+
+          assign_dispatch_reference!(order)
 
           WorkflowEventRecorder.record!(
             entity: order,
@@ -42,7 +44,7 @@ module Cats
             actor: @actor,
             from_status: nil,
             to_status: order.status,
-            payload: { plan_reference: order.plan_reference }
+            payload: { dispatch_reference: order.dispatch_reference, reference_no: order.reference_no }
           )
 
           order
@@ -63,9 +65,16 @@ module Cats
         }
       end
 
+      def assign_dispatch_reference!(order)
+        ref = "DO-#{order.id}"
+        order.update_columns(reference_no: ref, dispatch_reference: ref) # rubocop:disable Rails/SkipsModelValidations
+      end
+
       def create_line!(order, attrs)
+        commodity_id = CommodityDefinitionStockResolver.resolve_line_commodity_id(attrs)
+
         line = order.dispatch_order_lines.create!(
-          commodity_id: attrs[:commodity_id],
+          commodity_id: commodity_id,
           quantity: attrs[:quantity],
           unit_id: attrs[:unit_id],
           packaging_unit_id: attrs[:packaging_unit_id],
@@ -89,6 +98,7 @@ module Cats
           )
         end
       end
+
     end
   end
 end

@@ -9,10 +9,7 @@ module Cats
       def index
         authorize DispatchOrder
         orders = policy_scope(DispatchOrder)
-                   .includes(
-                     :hub, :warehouse,
-                     dispatch_order_lines: [:commodity, :unit, :source_allocations, :destination_allocations]
-                   )
+                   .includes(dispatch_order_includes)
 
         if params[:warehouse_id].present?
           warehouse_id = params[:warehouse_id].to_i
@@ -35,7 +32,7 @@ module Cats
         orders = orders.where(officer_level: params[:officer_level]) if params[:officer_level].present?
 
         orders = orders.order(created_at: :desc)
-        render_resource(orders, each_serializer: DispatchOrderSerializer)
+        render_success(orders.map { |order| build_dispatch_order_payload(order) })
       end
 
       def show
@@ -52,7 +49,6 @@ module Cats
           ensure_officer_dispatch_v2_enabled!
           order = DispatchOrderCreatorForOfficer.new(
             actor: current_user,
-            plan_reference: payload[:plan_reference],
             description: payload[:description] || payload[:notes],
             lines: payload[:lines] || payload[:dispatch_order_lines] || [],
             dispatch_plan_id: payload[:dispatch_plan_id],
@@ -91,12 +87,13 @@ module Cats
         payload = dispatch_order_params
 
         if order.v2_dispatch? || v2_payload?(payload)
+          update_attrs = {
+            description: payload[:description] || payload[:notes]
+          }.compact
           DispatchOrderUpdater.new(
             order: order,
             actor: current_user,
-            attributes: {
-              description: payload[:description] || payload[:notes]
-            }.compact,
+            attributes: update_attrs,
             lines: payload[:lines] || payload[:dispatch_order_lines]
           ).call
         else
@@ -106,10 +103,25 @@ module Cats
         render_order_payload(load_order(order.id))
       end
 
+      def destroy
+        order = load_order(params[:id])
+        authorize order, :destroy?
+
+        if order.dispatch_order_authorizations.exists?
+          raise ArgumentError,
+                "Cannot delete: a warehouse manager has already created an authorization for this dispatch order"
+        end
+
+        destroyed_id = order.id
+        order.destroy!
+        render_success({ id: destroyed_id })
+      end
+
       def confirm
         order = policy_scope(DispatchOrder).find(params[:id])
         authorize order, :confirm?
 
+        # Confirm locks the order and sets approved_by / approved_at (v2 has no separate self-approve step).
         DispatchOrderConfirmer.new(order: order, confirmed_by: current_user).call
         render_order_payload(load_order(order.id))
       end
@@ -198,7 +210,7 @@ module Cats
         render_success(
           id: order.id,
           reference_no: order.reference_no,
-          plan_reference: order.plan_reference,
+          dispatch_reference: order.dispatch_reference,
           status: order.status,
           officer_level: order.officer_level,
           workflow_events: ActiveModelSerializers::SerializableResource.new(
@@ -213,13 +225,27 @@ module Cats
       def load_order(id)
         DispatchOrder.includes(
           :hub, :warehouse,
-          dispatch_order_lines: [:commodity, :unit, :source_allocations, :destination_allocations],
+          dispatch_order_includes,
           dispatch_order_authorizations: [:warehouse, :dispatch_order_authorization_stores]
         ).find(id)
       end
 
+      def dispatch_order_includes
+        {
+          dispatch_order_lines: [
+            :commodity,
+            :unit,
+            { source_allocations: [:warehouse, :unit] },
+            { destination_allocations: [:destination_location, :unit] }
+          ]
+        }
+      end
+
       def v2_payload?(payload)
-        payload[:plan_reference].present?
+        lines = payload[:lines] || payload[:dispatch_order_lines]
+        return true if Array(lines).any? { |line| line[:source_allocations].present? }
+
+        payload[:dispatch_plan_id].present?
       end
 
       def warehouse_accessible?(access, warehouse_id)
@@ -229,13 +255,24 @@ module Cats
       end
 
       def render_order_payload(order, status: :ok)
+        render_success(build_dispatch_order_payload(order), status: status)
+      end
+
+      # AMS embeds dispatch_order_lines on the order but drops nested source/destination allocations.
+      def build_dispatch_order_payload(order)
         payload = ActiveModelSerializers::SerializableResource.new(
           order,
-          serializer: DispatchOrderSerializer
+          serializer: DispatchOrderSerializer,
+          scope: current_user,
+          scope_name: :current_user
         ).as_json
-        payload = payload.merge(can_confirm: DispatchOrderPolicy.new(current_user, order).confirm?)
-        payload = payload.merge(can_self_approve: DispatchOrderPolicy.new(current_user, order).self_approve?)
-        render_success(payload, status: status)
+        payload[:dispatch_order_lines] = ActiveModelSerializers::SerializableResource.new(
+          order.dispatch_order_lines,
+          each_serializer: DispatchOrderLineSerializer
+        ).as_json
+        payload.merge(can_confirm: DispatchOrderPolicy.new(current_user, order).confirm?)
+                 .merge(can_self_approve: order.v2_dispatch? ? false : DispatchOrderPolicy.new(current_user, order).self_approve?)
+                 .merge(can_destroy: DispatchOrderPolicy.new(current_user, order).destroy?)
       end
 
       def update_legacy_order!(order, payload)
@@ -256,7 +293,8 @@ module Cats
       end
 
       def dispatch_order_params
-        payload = params.require(:payload)
+        raw = params.require(:payload)
+        payload = normalize_payload_aliases(raw, dispatch_reference: :plan_reference)
         payload.permit(
           :hub_id,
           :warehouse_id,
@@ -265,6 +303,7 @@ module Cats
           :expected_pickup_date,
           :reference_no,
           :plan_reference,
+          :dispatch_reference,
           :name,
           :destination_name,
           :description,
@@ -281,6 +320,7 @@ module Cats
       def line_permit_list
         [
           :commodity_id,
+          :commodity_definition_id,
           :quantity,
           :unit_id,
           :notes,

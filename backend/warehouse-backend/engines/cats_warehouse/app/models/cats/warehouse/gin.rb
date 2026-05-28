@@ -13,6 +13,9 @@ module Cats
       belongs_to :generated_from_waybill, class_name: "Cats::Warehouse::Waybill", optional: true
 
       has_many :gin_items, class_name: "Cats::Warehouse::GinItem", dependent: :destroy
+      has_many :dispatch_stack_allocations,
+               class_name: "Cats::Warehouse::DispatchStackAllocation",
+               dependent: :destroy
 
       validates :issued_on, presence: true
       validate :destination_matches_warehouse, if: -> { destination.present? }

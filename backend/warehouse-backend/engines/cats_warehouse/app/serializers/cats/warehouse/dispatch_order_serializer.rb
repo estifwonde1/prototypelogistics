@@ -3,17 +3,23 @@
 module Cats
   module Warehouse
     class DispatchOrderSerializer < ApplicationSerializer
-      attributes :id, :reference_no, :plan_reference, :name, :status, :status_label,
+      attributes :id, :reference_no, :dispatch_reference, :name, :status, :status_label,
                  :dispatched_date, :destination_type, :destination_id, :destination_reference,
                  :hub_id, :hub_name, :warehouse_id, :warehouse_name, :warehouse_code,
                  :created_by_id, :created_by_name, :confirmed_by_id, :confirmed_by_name,
-                 :confirmed_at, :approved_by_id, :approved_at,
+                 :confirmed_at, :approved_by_id, :approved_by_name, :approved_at,
                  :description, :created_at, :updated_at,
                  :location_id, :hierarchical_level, :officer_level, :officer_location_id,
                  :exchange_order, :dispatch_plan_id, :dispatch_plan_item_id
 
       attribute :location_name do
         object.location&.name || object.officer_location&.name
+      end
+
+      attribute :can_destroy do
+        next false unless scope
+
+        DispatchOrderPolicy.new(scope, object).destroy?
       end
 
       has_many :dispatch_order_lines, serializer: DispatchOrderLineSerializer
@@ -53,6 +59,10 @@ module Cats
 
       def confirmed_by_name
         user_display(object.confirmed_by)
+      end
+
+      def approved_by_name
+        user_display(object.approved_by)
       end
 
       private

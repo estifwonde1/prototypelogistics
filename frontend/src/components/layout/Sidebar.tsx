@@ -17,6 +17,7 @@ import {
   IconMapPin,
   IconFileArrowRight,
   IconClipboardCheck,
+  IconPackageExport,
 } from "@tabler/icons-react";
 import { useAuthStore } from "../../store/authStore";
 import { usePermission } from "../../hooks/usePermission";
@@ -221,6 +222,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               path: "/hub/receipt-authorizations",
               resource: "receipt_authorizations",
             },
+            {
+              label: "Dispatch authorizations",
+              icon: <IconTruck size={20} />,
+              path: "/hub/dispatch-authorizations",
+              resource: "dispatch_order_authorizations",
+            },
           ],
         },
       ];
@@ -257,6 +264,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
           icon: <IconFileArrowRight size={20} />,
           path: "/transfer-requests",
           resource: "transfer_requests",
+        },
+        {
+          label: "Dispatch authorizations",
+          icon: <IconTruck size={20} />,
+          path: "/warehouse/dispatch-authorizations",
+          resource: "dispatch_order_authorizations",
         },
         {
           label: "Receipts",
@@ -359,6 +372,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               path: "/storekeeper/receipt-authorizations",
               resource: "receipt_orders",
             },
+            {
+              label: "Outbound Dispatches",
+              icon: <IconPackageExport size={20} />,
+              path: "/storekeeper/dispatch-authorizations",
+              resource: "dispatch_order_authorizations",
+            },
           ],
         },
         {
@@ -423,6 +442,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
                 path: "/officer/commodities/new",
                 resource: "receipt_orders",
               },
+              {
+                label: "Dispatch orders",
+                icon: <IconTruck size={20} />,
+                path: "/officer/dispatch-orders",
+                resource: "dispatch_orders",
+              },
             ],
           },
         ];
@@ -461,6 +486,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               icon: <IconBox size={20} />,
               path: "/officer/commodities/new",
               resource: "receipt_orders",
+            },
+            {
+              label: "Dispatch orders",
+              icon: <IconTruck size={20} />,
+              path: "/officer/dispatch-orders",
+              resource: "dispatch_orders",
             },
           ],
         },

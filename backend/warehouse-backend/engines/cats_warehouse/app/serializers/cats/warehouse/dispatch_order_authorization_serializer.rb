@@ -5,7 +5,7 @@ module Cats
     class DispatchOrderAuthorizationSerializer < ApplicationSerializer
       attributes :id, :dispatch_order_id, :warehouse_id, :reference_no, :status, :status_label,
                  :authorized_quantity, :authorized_base_quantity, :remaining_quantity,
-                 :driver_name, :driver_id_number, :truck_plate_number, :transporter_id, :transporter_name,
+                 :driver_name, :driver_id_number, :truck_plate_number, :driver_phone, :transporter_id, :transporter_name,
                  :created_by_id, :confirmed_at, :driver_confirmed_at
 
       belongs_to :warehouse, serializer: LookupOptionSerializer
@@ -14,6 +14,23 @@ module Cats
 
       def status_label
         object.status.to_s.titleize
+      end
+
+      def driver_phone
+        object.driver_phone.presence || waybill_driver_phone || transport_record_phone
+      end
+
+      private
+
+      def waybill_driver_phone
+        object.waybill&.waybill_transport&.driver_phone
+      end
+
+      def transport_record_phone
+        TransportRecord.find_by(
+          dispatch_order_id: object.dispatch_order_id,
+          warehouse_id: object.warehouse_id
+        )&.phone
       end
     end
   end

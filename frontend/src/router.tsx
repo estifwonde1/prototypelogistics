@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter, Navigate, useParams } from 'react-router-dom';
 import { lazy, Suspense, useEffect } from 'react';
 import type { ComponentType, ReactNode } from 'react';
 import { Center, Loader } from '@mantine/core';
@@ -16,6 +16,11 @@ import {
 } from './utils/workspaceSelection';
 
 const CHUNK_RELOAD_KEY = 'cats:chunk-reload-attempted';
+
+function PlanDispatchEditRedirect() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/officer/dispatch-orders/${id}/edit`} replace />;
+}
 
 function isChunkLoadError(error: unknown): boolean {
   const message = String(error instanceof Error ? error.message : error);
@@ -64,6 +69,10 @@ const CommoditiesSetupPage = lazy(() => import('./pages/admin/setup/CommoditiesS
 const DispatchOrdersListPage = lazy(() => import('./pages/officer/DispatchOrdersListPage'));
 const DispatchOrderFormPage = lazy(() => import('./pages/officer/DispatchOrderFormPage'));
 const DispatchOrderDetailPage = lazy(() => import('./pages/officer/DispatchOrderDetailPage'));
+const LegacyDispatchOrderFormPage = lazy(() => import('./pages/officer/LegacyDispatchOrderFormPage'));
+const DispatchAuthorizationListPage = lazy(() => import('./pages/warehouse/DispatchAuthorizationListPage'));
+const DispatchAuthorizationFormPage = lazy(() => import('./pages/warehouse/DispatchAuthorizationFormPage'));
+const DispatchAuthorizationDetailPage = lazy(() => import('./pages/warehouse/DispatchAuthorizationDetailPage'));
 const HubListPage = lazy(() => import('./pages/hubs/HubListPage'));
 const HubDetailPage = lazy(() => import('./pages/hubs/HubDetailPage'));
 const HubFormPage = lazy(() => import('./pages/hubs/HubFormPage'));
@@ -103,6 +112,8 @@ const ReceiptAuthorizationListPage = lazy(() => import('./pages/hub-manager/Rece
 const ReceiptAuthorizationFormPage = lazy(() => import('./pages/hub-manager/ReceiptAuthorizationFormPage'));
 const ReceiptAuthorizationDetailPage = lazy(() => import('./pages/hub-manager/ReceiptAuthorizationDetailPage'));
 const StorekeeperRAListPage = lazy(() => import('./pages/storekeeper/StorekeeperRAListPage'));
+const StorekeeperDispatchListPage = lazy(() => import('./pages/storekeeper/StorekeeperDispatchListPage'));
+const StorekeeperDispatchDetailPage = lazy(() => import('./pages/storekeeper/StorekeeperDispatchDetailPage'));
 const StorekeeperRADetailPage = lazy(() => import('./pages/storekeeper/StorekeeperRADetailPage'));
 
 // Loading fallback
@@ -267,6 +278,30 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: 'hub/dispatch-authorizations',
+        element: (
+          <RequirePermission resource="dispatch_order_authorizations" action="read">
+            <DispatchAuthorizationListPage basePath="hub" />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'hub/dispatch-authorizations/new',
+        element: (
+          <RequirePermission resource="dispatch_order_authorizations" action="create">
+            <DispatchAuthorizationFormPage basePath="hub" />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'hub/dispatch-authorizations/:id',
+        element: (
+          <RequirePermission resource="dispatch_order_authorizations" action="read">
+            <DispatchAuthorizationDetailPage basePath="hub" />
+          </RequirePermission>
+        ),
+      },
+      {
         path: 'warehouse/dashboard',
         element: (
           <RequirePermission resource="warehouses" action="read">
@@ -311,6 +346,30 @@ export const router = createBrowserRouter([
             <RequireStandaloneWarehouseRa requireCreate>
               <ReceiptAuthorizationFormPage />
             </RequireStandaloneWarehouseRa>
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/dispatch-authorizations',
+        element: (
+          <RequirePermission resource="dispatch_order_authorizations" action="read">
+            <DispatchAuthorizationListPage basePath="warehouse" />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/dispatch-authorizations/new',
+        element: (
+          <RequirePermission resource="dispatch_order_authorizations" action="create">
+            <DispatchAuthorizationFormPage basePath="warehouse" />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/dispatch-authorizations/:id',
+        element: (
+          <RequirePermission resource="dispatch_order_authorizations" action="read">
+            <DispatchAuthorizationDetailPage basePath="warehouse" />
           </RequirePermission>
         ),
       },
@@ -425,6 +484,22 @@ export const router = createBrowserRouter([
             <DispatchOrderFormPage />
           </RequirePermission>
         ),
+      },
+      {
+        path: 'officer/dispatch-orders/:id/edit-legacy',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="update">
+            <LegacyDispatchOrderFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/dispatch-orders/plan/new',
+        element: <Navigate to="/officer/dispatch-orders/new" replace />,
+      },
+      {
+        path: 'officer/dispatch-orders/plan/:id/edit',
+        element: <PlanDispatchEditRedirect />,
       },
       {
         path: 'hubs',
@@ -687,6 +762,22 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission resource="receipt_orders" action="read">
             <StorekeeperRADetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'storekeeper/dispatch-authorizations',
+        element: (
+          <RequirePermission resource="dispatch_order_authorizations" action="read">
+            <StorekeeperDispatchListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'storekeeper/dispatch-authorizations/:id',
+        element: (
+          <RequirePermission resource="dispatch_order_authorizations" action="read">
+            <StorekeeperDispatchDetailPage />
           </RequirePermission>
         ),
       },

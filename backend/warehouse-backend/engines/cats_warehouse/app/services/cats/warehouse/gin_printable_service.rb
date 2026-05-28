@@ -22,7 +22,7 @@ module Cats
           warehouse_code: @gin.warehouse&.code,
           dispatch_order_id: @gin.dispatch_order_id,
           dispatch_order_reference: @gin.dispatch_order&.reference_no,
-          plan_reference: @gin.dispatch_order&.plan_reference,
+          dispatch_reference: @gin.dispatch_order&.dispatch_reference,
           authorization_reference: auth&.reference_no,
           driver_name: auth&.driver_name,
           truck_plate_number: auth&.truck_plate_number,
