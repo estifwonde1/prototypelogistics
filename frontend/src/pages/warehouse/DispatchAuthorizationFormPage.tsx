@@ -26,7 +26,6 @@ import {
   getAuthorizationStoresLookup,
   getDispatchOrderAuthorizations,
 } from '../../api/dispatchOrderAuthorizations';
-import { getTransporterReferences } from '../../api/referenceData';
 import { useAuthStore } from '../../store/authStore';
 import type { ApiError } from '../../types/common';
 import type { DispatchOrderLineV2 } from '../../types/dispatchV2';
@@ -36,7 +35,7 @@ import {
   dispatchAuthorizationDetailPath,
   dispatchAuthorizationListPath,
 } from '../../utils/dispatchAuthorizationPaths';
-import { remainingQtyAtWarehouse, warehouseLabelFromOrder } from '../../utils/dispatchAuthorizationUtils';
+import { remainingQtyAtWarehouseForCommodity, warehouseLabelFromOrder } from '../../utils/dispatchAuthorizationUtils';
 import { getDispatchOrderReference } from '../../utils/dispatchOrderReference';
 import { LoadingState } from '../../components/common/LoadingState';
 
@@ -68,9 +67,10 @@ export default function DispatchAuthorizationFormPage({
   const [warehouseId, setWarehouseId] = useState<number>(
     qpWarehouse ? Number(qpWarehouse) : warehouseIdFromAssignment || 0
   );
+  const [selectedCommodityId, setSelectedCommodityId] = useState<number>(0);
   const [authorizedQty, setAuthorizedQty] = useState<number>(0);
   const [inputUnitId, setInputUnitId] = useState<number>(0);
-  const [transporterId, setTransporterId] = useState<number>(0);
+  const [transporterName, setTransporterName] = useState('');
   const [driverName, setDriverName] = useState('');
   const [driverIdNumber, setDriverIdNumber] = useState('');
   const [truckPlate, setTruckPlate] = useState('');
@@ -104,10 +104,24 @@ export default function DispatchAuthorizationFormPage({
     );
   }, [order, warehouseId]);
 
+  const commodityOptions = useMemo(
+    () =>
+      linesAtWarehouse.map((l) => ({
+        value: String(l.commodity_id),
+        label: l.commodity_name || `Commodity ${l.commodity_id}`,
+      })),
+    [linesAtWarehouse]
+  );
+
+  const selectedLine = useMemo(() => {
+    if (!selectedCommodityId) return null;
+    return linesAtWarehouse.find((l) => Number(l.commodity_id) === Number(selectedCommodityId)) ?? null;
+  }, [linesAtWarehouse, selectedCommodityId]);
+
   const remainingQty = useMemo(() => {
-    if (!order || !warehouseId) return 0;
-    return remainingQtyAtWarehouse(order, warehouseId, existingAuths);
-  }, [order, warehouseId, existingAuths]);
+    if (!order || !warehouseId || !selectedCommodityId) return 0;
+    return remainingQtyAtWarehouseForCommodity(order, warehouseId, selectedCommodityId, existingAuths);
+  }, [order, warehouseId, selectedCommodityId, existingAuths]);
 
   const { data: storesData } = useQuery({
     queryKey: ['auth_lookup_stores', warehouseId],
@@ -119,85 +133,70 @@ export default function DispatchAuthorizationFormPage({
     [storesData]
   );
 
-  const { data: transporters = [] } = useQuery({
-    queryKey: ['reference-data', 'transporters'],
-    queryFn: getTransporterReferences,
-  });
-  const transporterOptions = useMemo(
-    () =>
-      transporters.map((t) => ({
-        value: String(t.id),
-        label: t.name ?? `Transporter #${t.id}`,
-      })),
-    [transporters]
-  );
-
   const unitOptions = useMemo(() => {
     const units = new Map<number, string>();
-    linesAtWarehouse.forEach((line) => {
+    const lines = selectedLine ? [selectedLine] : linesAtWarehouse;
+    lines.forEach((line) => {
       units.set(line.unit_id, line.unit_name || String(line.unit_id));
       line.source_allocations?.forEach((s) => {
         if (s.unit_id) units.set(s.unit_id, s.unit_name || String(s.unit_id));
       });
     });
     return [...units.entries()].map(([id, label]) => ({ value: String(id), label }));
-  }, [linesAtWarehouse]);
+  }, [linesAtWarehouse, selectedLine]);
 
-  const primaryUnitId = linesAtWarehouse[0]?.unit_id ?? 0;
-  const primaryUnitName = linesAtWarehouse[0]?.unit_name ?? '';
+  const primaryUnitId = selectedLine?.unit_id ?? linesAtWarehouse[0]?.unit_id ?? 0;
+  const primaryUnitName = selectedLine?.unit_name ?? linesAtWarehouse[0]?.unit_name ?? '';
 
   useEffect(() => {
-    if (!order || !warehouseId || prefilledRef.current || remainingQty <= 0) return;
+    if (!order || !warehouseId || !selectedCommodityId || prefilledRef.current || remainingQty <= 0) return;
     prefilledRef.current = true;
 
     setAuthorizedQty(remainingQty);
     if (primaryUnitId) setInputUnitId(primaryUnitId);
 
-    const firstLine = linesAtWarehouse[0];
     const stores = storesData?.items ?? [];
-    if (stores.length === 1 && firstLine) {
+    if (stores.length === 1 && selectedLine) {
       setSplits([
         {
           clientKey: newKey(),
           store_id: stores[0].id,
-          commodity_id: firstLine.commodity_id,
+          commodity_id: selectedCommodityId,
           authorized_quantity: remainingQty,
           base_quantity: remainingQty,
         },
       ]);
-    } else if (firstLine && stores.length > 0) {
+    } else if (selectedLine && stores.length > 0) {
       setSplits([
         {
           clientKey: newKey(),
           store_id: 0,
-          commodity_id: firstLine.commodity_id,
+          commodity_id: selectedCommodityId,
           authorized_quantity: remainingQty,
           base_quantity: remainingQty,
         },
       ]);
     }
-  }, [order, warehouseId, remainingQty, primaryUnitId, linesAtWarehouse, storesData]);
+  }, [order, warehouseId, selectedCommodityId, remainingQty, primaryUnitId, selectedLine, storesData]);
+
+  const handleCommodityChange = (v: string | null) => {
+    const newId = Number(v);
+    prefilledRef.current = false;
+    setSplits([]);
+    setAuthorizedQty(0);
+    setSelectedCommodityId(newId);
+  };
 
   const splitsSum = splits.reduce((s, r) => s + Number(r.authorized_quantity ?? 0), 0);
   const splitsValid = Math.abs(splitsSum - authorizedQty) < 0.001;
 
-  const commodityOptions = useMemo(
-    () =>
-      linesAtWarehouse.map((l) => ({
-        value: String(l.commodity_id),
-        label: l.commodity_name || `Commodity ${l.commodity_id}`,
-      })),
-    [linesAtWarehouse]
-  );
-
   const addSplit = () => {
-    const firstLine = linesAtWarehouse[0];
     setSplits((prev) => [
       ...prev,
       {
         clientKey: newKey(),
         store_id: 0,
-        commodity_id: firstLine?.commodity_id ?? 0,
+        commodity_id: selectedCommodityId,
         authorized_quantity: 0,
         base_quantity: 0,
       },
@@ -206,12 +205,13 @@ export default function DispatchAuthorizationFormPage({
 
   const validate = (): string | null => {
     if (!dispatchOrderId || !warehouseId) return 'Select a dispatch order and warehouse';
-    if (remainingQty <= 0) return 'No remaining quantity to authorize at this warehouse';
+    if (!selectedCommodityId) return 'Select a commodity to authorize';
+    if (remainingQty <= 0) return 'No remaining quantity to authorize for this commodity at this warehouse';
     if (authorizedQty <= 0 || authorizedQty > remainingQty) {
       return `Authorized quantity must be between 0 and ${remainingQty}`;
     }
     if (!inputUnitId) return 'Select a quantity unit';
-    if (!transporterId) return 'Select a transporter';
+    if (!transporterName.trim()) return 'Transporter name is required';
     if (!driverName.trim()) return 'Driver name is required';
     if (!driverIdNumber.trim()) return 'Driver license / ID is required';
     if (!truckPlate.trim()) return 'Truck plate is required';
@@ -232,9 +232,10 @@ export default function DispatchAuthorizationFormPage({
       return createDispatchOrderAuthorization({
         dispatch_order_id: dispatchOrderId,
         warehouse_id: warehouseId,
+        commodity_id: selectedCommodityId,
         authorized_quantity: authorizedQty,
         authorized_quantity_input_unit_id: inputUnitId,
-        transporter_id: transporterId,
+        transporter_name: transporterName.trim(),
         driver_name: driverName.trim(),
         driver_id_number: driverIdNumber.trim(),
         truck_plate_number: truckPlate.trim(),
@@ -296,14 +297,6 @@ export default function DispatchAuthorizationFormPage({
               </Text>
               <Text fw={600}>{warehouseLabel}</Text>
             </div>
-            <div>
-              <Text size="xs" c="dimmed" tt="uppercase">
-                Remaining to authorize
-              </Text>
-              <Text fw={600}>
-                {remainingQty} {primaryUnitName}
-              </Text>
-            </div>
           </SimpleGrid>
           {order.description && (
             <Text size="sm" c="dimmed" mb="sm">
@@ -357,162 +350,172 @@ export default function DispatchAuthorizationFormPage({
         </Card>
       )}
 
-      {remainingQty <= 0 && order && (
+      <Card withBorder padding="lg">
+        <Title order={5} mb="sm">
+          Select commodity to authorize
+        </Title>
+        <Select
+          placeholder="Pick a commodity"
+          searchable
+          data={commodityOptions}
+          value={selectedCommodityId ? String(selectedCommodityId) : null}
+          onChange={handleCommodityChange}
+          nothingFoundMessage="No commodities at this warehouse"
+        />
+      </Card>
+
+      {selectedCommodityId && remainingQty <= 0 && order && (
         <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
-          This warehouse has no remaining quantity to authorize on this order.
+          This warehouse has no remaining quantity to authorize for the selected commodity.
         </Alert>
       )}
 
-      <Card withBorder padding="lg">
-        <Title order={5} mb="sm">
-          Authorization quantity
-        </Title>
-        <Stack gap="sm">
-          <NumberInput
-            label="Authorized quantity"
-            description={`Maximum ${remainingQty} ${primaryUnitName}`}
-            value={authorizedQty}
-            onChange={(v) => setAuthorizedQty(Number(v))}
-            min={0}
-            max={remainingQty}
-          />
-          <Select
-            label="Quantity unit"
-            data={unitOptions}
-            value={inputUnitId ? String(inputUnitId) : null}
-            onChange={(v) => setInputUnitId(Number(v))}
-          />
-        </Stack>
-      </Card>
+      {selectedCommodityId && remainingQty > 0 && (
+        <>
+          <Card withBorder padding="lg">
+            <Title order={5} mb="sm">
+              Authorization quantity
+            </Title>
+            <Stack gap="sm">
+              <Text size="sm" c="dimmed">
+                Remaining to authorize:{' '}
+                <Text span fw={600}>
+                  {remainingQty} {primaryUnitName}
+                </Text>
+              </Text>
+              <NumberInput
+                label="Authorized quantity"
+                description={`Maximum ${remainingQty} ${primaryUnitName}`}
+                value={authorizedQty}
+                onChange={(v) => setAuthorizedQty(Number(v))}
+                min={0}
+                max={remainingQty}
+              />
+              <Select
+                label="Quantity unit"
+                data={unitOptions}
+                value={inputUnitId ? String(inputUnitId) : null}
+                onChange={(v) => setInputUnitId(Number(v))}
+              />
+            </Stack>
+          </Card>
 
-      <Card withBorder padding="lg">
-        <Title order={5} mb="sm">
-          Transport details
-        </Title>
-        <Stack gap="sm">
-          <Select
-            label="Transporter"
-            searchable
-            required
-            data={transporterOptions}
-            value={transporterId ? String(transporterId) : null}
-            onChange={(v) => setTransporterId(Number(v))}
-          />
-          <TextInput
-            label="Driver name"
-            required
-            value={driverName}
-            onChange={(e) => setDriverName(e.target.value)}
-          />
-          <TextInput
-            label="Driver ID / license"
-            required
-            value={driverIdNumber}
-            onChange={(e) => setDriverIdNumber(e.target.value)}
-          />
-          <TextInput
-            label="Truck plate"
-            required
-            value={truckPlate}
-            onChange={(e) => setTruckPlate(e.target.value)}
-          />
-          <TextInput
-            label="Driver phone"
-            required
-            placeholder="e.g. 0911000000"
-            value={driverPhone}
-            onChange={(e) => setDriverPhone(e.target.value)}
-          />
-        </Stack>
-      </Card>
+          <Card withBorder padding="lg">
+            <Title order={5} mb="sm">
+              Transport details
+            </Title>
+            <Stack gap="sm">
+              <TextInput
+                label="Transporter"
+                required
+                placeholder="Enter transporter name"
+                value={transporterName}
+                onChange={(e) => setTransporterName(e.target.value)}
+              />
+              <TextInput
+                label="Driver name"
+                required
+                value={driverName}
+                onChange={(e) => setDriverName(e.target.value)}
+              />
+              <TextInput
+                label="Driver ID / license"
+                required
+                value={driverIdNumber}
+                onChange={(e) => setDriverIdNumber(e.target.value)}
+              />
+              <TextInput
+                label="Truck plate"
+                required
+                value={truckPlate}
+                onChange={(e) => setTruckPlate(e.target.value)}
+              />
+              <TextInput
+                label="Driver phone"
+                required
+                placeholder="e.g. 0911000000"
+                value={driverPhone}
+                onChange={(e) => setDriverPhone(e.target.value)}
+              />
+            </Stack>
+          </Card>
 
-      <Card withBorder padding="lg">
-        <Group justify="space-between" mb="sm">
-          <div>
-            <Title order={5}>Store splits</Title>
-            <Text size="sm" c={splitsValid ? 'dimmed' : 'red'}>
-              Distributed: {splitsSum} / {authorizedQty} {primaryUnitName}
-            </Text>
-            <Text size="xs" c="dimmed">
-              Optional at this stage. If left empty, storekeeper can add or update splits later.
-            </Text>
-          </div>
-          <Button size="xs" variant="light" leftSection={<IconPlus size={14} />} onClick={addSplit}>
-            Add store
+          <Card withBorder padding="lg">
+            <Group justify="space-between" mb="sm">
+              <div>
+                <Title order={5}>Store splits</Title>
+                <Text size="sm" c={splitsValid ? 'dimmed' : 'red'}>
+                  Distributed: {splitsSum} / {authorizedQty} {primaryUnitName}
+                </Text>
+                <Text size="xs" c="dimmed">
+                  Optional at this stage. If left empty, storekeeper can add or update splits later.
+                </Text>
+              </div>
+              <Button size="xs" variant="light" leftSection={<IconPlus size={14} />} onClick={addSplit}>
+                Add store
+              </Button>
+            </Group>
+            <Table.ScrollContainer minWidth={560}>
+              <Table>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Store</Table.Th>
+                    <Table.Th>Qty</Table.Th>
+                    <Table.Th w={40} />
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {splits.map((row, idx) => (
+                    <Table.Tr key={row.clientKey}>
+                      <Table.Td>
+                        <Select
+                          searchable
+                          data={storeOptions}
+                          value={row.store_id ? String(row.store_id) : null}
+                          onChange={(v) => {
+                            const next = [...splits];
+                            next[idx] = { ...row, store_id: Number(v) };
+                            setSplits(next);
+                          }}
+                        />
+                      </Table.Td>
+                      <Table.Td>
+                        <NumberInput
+                          min={0}
+                          value={row.authorized_quantity}
+                          onChange={(v) => {
+                            const next = [...splits];
+                            const q = Number(v);
+                            next[idx] = { ...row, authorized_quantity: q, base_quantity: q };
+                            setSplits(next);
+                          }}
+                        />
+                      </Table.Td>
+                      <Table.Td>
+                        <ActionIcon
+                          variant="light"
+                          color="red"
+                          onClick={() => setSplits((p) => p.filter((_, i) => i !== idx))}
+                        >
+                          <IconTrash size={16} />
+                        </ActionIcon>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          </Card>
+
+          <Button
+            loading={createMutation.isPending}
+            onClick={() => createMutation.mutate()}
+            disabled={remainingQty <= 0}
+          >
+            Save draft authorization
           </Button>
-        </Group>
-        <Table.ScrollContainer minWidth={560}>
-          <Table>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Store</Table.Th>
-                <Table.Th>Commodity</Table.Th>
-                <Table.Th>Qty</Table.Th>
-                <Table.Th w={40} />
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {splits.map((row, idx) => (
-                <Table.Tr key={row.clientKey}>
-                  <Table.Td>
-                    <Select
-                      searchable
-                      data={storeOptions}
-                      value={row.store_id ? String(row.store_id) : null}
-                      onChange={(v) => {
-                        const next = [...splits];
-                        next[idx] = { ...row, store_id: Number(v) };
-                        setSplits(next);
-                      }}
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <Select
-                      searchable
-                      data={commodityOptions}
-                      value={row.commodity_id ? String(row.commodity_id) : null}
-                      onChange={(v) => {
-                        const next = [...splits];
-                        next[idx] = { ...row, commodity_id: Number(v) };
-                        setSplits(next);
-                      }}
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <NumberInput
-                      min={0}
-                      value={row.authorized_quantity}
-                      onChange={(v) => {
-                        const next = [...splits];
-                        const q = Number(v);
-                        next[idx] = { ...row, authorized_quantity: q, base_quantity: q };
-                        setSplits(next);
-                      }}
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <ActionIcon
-                      variant="light"
-                      color="red"
-                      onClick={() => setSplits((p) => p.filter((_, i) => i !== idx))}
-                    >
-                      <IconTrash size={16} />
-                    </ActionIcon>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
-      </Card>
-
-      <Button
-        loading={createMutation.isPending}
-        onClick={() => createMutation.mutate()}
-        disabled={remainingQty <= 0}
-      >
-        Save draft authorization
-      </Button>
+        </>
+      )}
     </Stack>
   );
 }

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_05_29_100000) do
+ActiveRecord::Schema[7.0].define(version: 2026_05_29_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1151,7 +1151,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_29_100000) do
     t.decimal "authorized_base_quantity", precision: 18, scale: 6
     t.bigint "authorized_quantity_input_unit_id"
     t.decimal "remaining_quantity", precision: 18, scale: 6
-    t.bigint "transporter_id", null: false
+    t.bigint "transporter_id"
     t.string "driver_name"
     t.string "driver_id_number"
     t.string "truck_plate_number"
@@ -1166,6 +1166,8 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_29_100000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.string "driver_phone"
+    t.bigint "commodity_id"
+    t.index ["commodity_id"], name: "idx_cw_doa_commodity"
     t.index ["dispatch_order_id", "warehouse_id"], name: "idx_cw_doa_order_wh"
     t.index ["dispatch_order_id"], name: "idx_cw_doa_order"
     t.index ["reference_no"], name: "idx_cw_doa_reference_no", unique: true
@@ -1217,6 +1219,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_29_100000) do
     t.datetime "approved_at"
     t.bigint "dispatch_plan_id"
     t.bigint "dispatch_plan_item_id"
+    t.string "reference_title"
     t.index ["confirmed_by_id"], name: "index_cats_warehouse_dispatch_orders_on_confirmed_by_id"
     t.index ["created_by_id", "status"], name: "idx_cw_do_created_by_status"
     t.index ["created_by_id"], name: "index_cats_warehouse_dispatch_orders_on_created_by_id"
@@ -2262,6 +2265,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_29_100000) do
   add_foreign_key "cats_warehouse_dispatch_order_authorization_stores", "cats_core_commodities", column: "commodity_id"
   add_foreign_key "cats_warehouse_dispatch_order_authorization_stores", "cats_warehouse_dispatch_order_authorizations", column: "dispatch_order_authorization_id"
   add_foreign_key "cats_warehouse_dispatch_order_authorization_stores", "cats_warehouse_stores", column: "store_id"
+  add_foreign_key "cats_warehouse_dispatch_order_authorizations", "cats_core_commodities", column: "commodity_id"
   add_foreign_key "cats_warehouse_dispatch_order_authorizations", "cats_core_transporters", column: "transporter_id"
   add_foreign_key "cats_warehouse_dispatch_order_authorizations", "cats_core_unit_of_measures", column: "authorized_quantity_input_unit_id"
   add_foreign_key "cats_warehouse_dispatch_order_authorizations", "cats_core_users", column: "cancelled_by_id"

@@ -60,7 +60,7 @@ module Cats
 
         order = policy_scope(DispatchOrder).find(payload[:dispatch_order_id])
         warehouse = Warehouse.find(payload[:warehouse_id])
-        transporter = Cats::Core::Transporter.find(payload[:transporter_id])
+        transporter = resolve_transporter(payload)
         input_unit = payload[:authorized_quantity_input_unit_id].present? ? Cats::Core::UnitOfMeasure.find(payload[:authorized_quantity_input_unit_id]) : nil
 
         auth = DispatchOrderAuthorizationService.new(
@@ -68,6 +68,7 @@ module Cats
           actor: current_user,
           warehouse: warehouse,
           authorized_quantity: payload[:authorized_quantity],
+          commodity_id: payload[:commodity_id],
           transporter: transporter,
           driver_name: payload[:driver_name],
           driver_id_number: payload[:driver_id_number],
@@ -183,6 +184,8 @@ module Cats
           :warehouse_id,
           :authorized_quantity,
           :authorized_quantity_input_unit_id,
+          :commodity_id,
+          :transporter_name,
           :transporter_id,
           :driver_name,
           :driver_id_number,
@@ -206,6 +209,35 @@ module Cats
         params.require(:payload).permit(
           store_splits: [:store_id, :commodity_id, :authorized_quantity, :base_quantity]
         )
+      end
+
+      def resolve_transporter(payload)
+        if payload[:transporter_id].present?
+          return Cats::Core::Transporter.find(payload[:transporter_id])
+        end
+
+        name = payload[:transporter_name].to_s.strip
+        return nil if name.blank?
+
+        normalized = name.downcase
+        existing = Cats::Core::Transporter.where("LOWER(TRIM(name)) = ?", normalized).first
+        return existing if existing
+
+        Cats::Core::Transporter.create!(
+          name: name,
+          code: unique_ad_hoc_transporter_code,
+          address: "Not provided",
+          contact_phone: "Not provided"
+        )
+      rescue ActiveRecord::RecordInvalid => e
+        raise ArgumentError, e.record.errors.full_messages.to_sentence
+      end
+
+      def unique_ad_hoc_transporter_code
+        loop do
+          candidate = "DOA-T-#{SecureRandom.hex(4).upcase}"
+          break candidate unless Cats::Core::Transporter.exists?(code: candidate)
+        end
       end
     end
   end

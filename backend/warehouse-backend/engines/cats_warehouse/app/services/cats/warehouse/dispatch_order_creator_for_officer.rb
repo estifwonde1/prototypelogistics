@@ -3,10 +3,11 @@
 module Cats
   module Warehouse
     class DispatchOrderCreatorForOfficer
-      def initialize(actor:, dispatch_reference: nil, description: nil, lines: [], dispatch_plan_id: nil, dispatch_plan_item_id: nil)
+      def initialize(actor:, dispatch_reference: nil, description: nil, reference_title: nil, lines: [], dispatch_plan_id: nil, dispatch_plan_item_id: nil)
         @actor = actor
         # dispatch_reference is system-assigned (DO-{id}); ignore any client-supplied value.
         @description = description
+        @reference_title = reference_title
         @lines = lines
         @dispatch_plan_id = dispatch_plan_id
         @dispatch_plan_item_id = dispatch_plan_item_id
@@ -20,6 +21,7 @@ module Cats
         DispatchOrder.transaction do
           order = DispatchOrder.create!(
             description: @description,
+            reference_title: @reference_title,
             created_by: @actor,
             status: ContractConstants::DOCUMENT_STATUSES[:draft],
             location_id: @location_attrs[:location_id],

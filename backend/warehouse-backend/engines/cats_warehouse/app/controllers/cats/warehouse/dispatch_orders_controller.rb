@@ -52,6 +52,7 @@ module Cats
           order = DispatchOrderCreatorForOfficer.new(
             actor: current_user,
             description: payload[:description] || payload[:notes],
+            reference_title: payload[:reference_title],
             lines: payload[:lines] || payload[:dispatch_order_lines] || [],
             dispatch_plan_id: payload[:dispatch_plan_id],
             dispatch_plan_item_id: payload[:dispatch_plan_item_id]
@@ -90,7 +91,8 @@ module Cats
 
         if order.v2_dispatch? || v2_payload?(payload)
           update_attrs = {
-            description: payload[:description] || payload[:notes]
+            description: payload[:description] || payload[:notes],
+            reference_title: payload[:reference_title]
           }.compact
           DispatchOrderUpdater.new(
             order: order,
@@ -320,6 +322,7 @@ module Cats
             destination: payload.key?(:destination_type) || payload.key?(:destination_id) ? PolymorphicReferenceResolver.resolve_source(payload[:destination_type], payload[:destination_id]) : order.destination,
             reference_no: payload.key?(:reference_no) ? payload[:reference_no].presence : order.reference_no,
             description: payload.key?(:description) ? payload[:description] : order.description,
+            reference_title: payload.key?(:reference_title) ? payload[:reference_title] : order.reference_title,
             name: payload.key?(:name) ? payload[:name] : order.name
           )
           order.save!
@@ -343,6 +346,7 @@ module Cats
           :name,
           :destination_name,
           :description,
+          :reference_title,
           :notes,
           :destination_type,
           :destination_id,

@@ -24,11 +24,16 @@ module Cats
         base = per_wh[warehouse_id.to_i].to_f
         return base if base_unit_id.blank? || unit_id.to_i == base_unit_id.to_i
 
+        conv_cid = [*instance.commodity_ids, nil].find { |cid|
+          converted = UomConversionResolver.convert(base, from_unit_id: base_unit_id, to_unit_id: unit_id, commodity_id: cid)
+          converted.is_a?(Numeric) && (converted - base).abs > 0.0001
+        } || instance.conversion_commodity_id
+
         UomConversionResolver.convert(
           base,
           from_unit_id: base_unit_id,
           to_unit_id: unit_id,
-          commodity_id: instance.conversion_commodity_id
+          commodity_id: conv_cid
         )
       end
 
@@ -37,7 +42,12 @@ module Cats
       def initialize(commodity_id: nil, commodity_definition_id: nil, commodity_ids: nil, warehouse_ids:)
         @warehouse_ids = Array(warehouse_ids).map(&:to_i).reject(&:zero?).uniq
         @commodity_ids = resolve_commodity_ids(commodity_id, commodity_definition_id, commodity_ids)
-        @conversion_commodity_id = @commodity_ids.first
+        # Use the first commodity with a non-nil unit_of_measure_id so that
+        # base_unit_id is not nil when one of the later commodities defines it.
+        first_with_uom = @commodity_ids.detect { |cid|
+          Cats::Core::Commodity.find_by(id: cid)&.unit_of_measure_id.present?
+        }
+        @conversion_commodity_id = first_with_uom || @commodity_ids.first
         @base_unit_id =
           if @conversion_commodity_id.present?
             Cats::Core::Commodity.find_by(id: @conversion_commodity_id)&.unit_of_measure_id

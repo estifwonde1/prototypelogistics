@@ -41,16 +41,30 @@ module Cats
             },
             warehouse_id: @warehouse.id
           )
-          .sum(:base_quantity)
+          .sum("COALESCE(cats_warehouse_dispatch_line_source_allocations.base_quantity, cats_warehouse_dispatch_line_source_allocations.quantity)")
           .to_f
       end
 
       def authorized_base_for_warehouse_commodity
-        DispatchOrderAuthorization
+        scope = DispatchOrderAuthorization
           .where(dispatch_order_id: @dispatch_order.id, warehouse_id: @warehouse.id)
-          .where.not(status: DispatchOrderAuthorization::CANCELLED)
-          .sum(:authorized_base_quantity)
-          .to_f
+          .where.not(status: [DispatchOrderAuthorization::DRAFT, DispatchOrderAuthorization::CANCELLED])
+
+        # Filter by commodity_id when available (new auths); fall back to store splits for legacy auths
+        commodity_scope = scope.where(commodity_id: @commodity_id)
+        commodity_sum = commodity_scope.sum(:authorized_base_quantity).to_f
+
+        # Legacy auths without commodity_id — sum only the portion from store splits for this commodity
+        legacy_ids = scope.where(commodity_id: nil).pluck(:id)
+        if legacy_ids.any?
+          legacy_sum = DispatchOrderAuthorizationStore
+            .where(dispatch_order_authorization_id: legacy_ids, commodity_id: @commodity_id)
+            .sum(:base_quantity)
+            .to_f
+          commodity_sum + legacy_sum
+        else
+          commodity_sum
+        end
       end
     end
   end

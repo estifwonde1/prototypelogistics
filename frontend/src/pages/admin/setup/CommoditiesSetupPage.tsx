@@ -547,7 +547,10 @@ export default function CommoditiesSetupPage() {
                   </Table.Thead>
                   <Table.Tbody>
                     {leafCategories
-                      .filter((cat) => !categoryGroupFilter || cat.parent_name === categoryGroupFilter)
+                      .filter((cat) => {
+                        if (!categoryGroupFilter) return true;
+                        return cat.parent_id === parseInt(categoryGroupFilter);
+                      })
                       .map((cat) => (
                         <Table.Tr key={cat.id}>
                           <Table.Td>

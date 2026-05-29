@@ -15,7 +15,7 @@ module Cats
 
       belongs_to :dispatch_order, class_name: "Cats::Warehouse::DispatchOrder"
       belongs_to :warehouse, class_name: "Cats::Warehouse::Warehouse"
-      belongs_to :transporter, class_name: "Cats::Core::Transporter"
+      belongs_to :transporter, class_name: "Cats::Core::Transporter", optional: true
       belongs_to :authorized_quantity_input_unit, class_name: "Cats::Core::UnitOfMeasure", optional: true
       belongs_to :created_by, class_name: "Cats::Core::User"
       belongs_to :confirmed_by, class_name: "Cats::Core::User", optional: true

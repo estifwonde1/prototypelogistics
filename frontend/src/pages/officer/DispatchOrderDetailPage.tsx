@@ -86,7 +86,7 @@ function DispatchOrderDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dispatch_orders'] });
       queryClient.invalidateQueries({ queryKey: ['dispatch_orders', 'awaiting_authorization'] });
-      queryClient.invalidateQueries({ queryKey: ['dispatch_order_authorizations'] });
+
       const v2 = (order?.dispatch_order_lines ?? []).some(
         (l) => (l.source_allocations?.length ?? 0) > 0
       );
@@ -294,8 +294,7 @@ function DispatchOrderDetailPage() {
   const canCreateGin = !isV2 && can('gins', 'create') && !isDraft;
   const isManagerRole = roleSlug === 'warehouse_manager' || roleSlug === 'hub_manager';
   const v2Lines = (order.dispatch_order_lines || []) as DispatchOrderLineV2[];
-  const authorizations = order.dispatch_order_authorizations || [];
-  const authBase = roleSlug === 'hub_manager' ? '/hub' : '/warehouse';
+
 
   type ReceiveRow = {
     key: string;
@@ -430,17 +429,7 @@ function DispatchOrderDetailPage() {
                   </Stack>
                 </Card>
 
-                {isV2 && isConfirmed && (
-                  <Alert icon={<IconInfoCircle size={16} />} color="blue" variant="light" title="Next step">
-                    <Text size="sm">
-                      This order is confirmed and approved. Warehouse managers at each{' '}
-                      <strong>source warehouse</strong> will create dispatch authorizations to release stock.
-                      {authorizations.length > 0
-                        ? ' Authorizations are listed below.'
-                        : ' You will see authorizations here once managers act.'}
-                    </Text>
-                  </Alert>
-                )}
+
 
                 <div>
                   <Text size="sm" fw={600} mb="md">
@@ -472,34 +461,6 @@ function DispatchOrderDetailPage() {
                   </Table.ScrollContainer>
                 </div>
 
-                {authorizations.length > 0 && (
-                  <Card withBorder padding="md">
-                    <Text fw={600} mb="sm">
-                      Authorizations
-                    </Text>
-                    <Table>
-                      <Table.Thead>
-                        <Table.Tr>
-                          <Table.Th>ID</Table.Th>
-                          <Table.Th>Warehouse</Table.Th>
-                          <Table.Th>Status</Table.Th>
-                          <Table.Th>Qty</Table.Th>
-                        </Table.Tr>
-                      </Table.Thead>
-                      <Table.Tbody>
-                        {authorizations.map((a) => (
-                          <Table.Tr key={a.id}>
-                            <Table.Td>{a.id}</Table.Td>
-                            <Table.Td>{a.warehouse?.label ?? a.warehouse_id}</Table.Td>
-                            <Table.Td>{a.status_label ?? a.status}</Table.Td>
-                            <Table.Td>{a.authorized_quantity}</Table.Td>
-                          </Table.Tr>
-                        ))}
-                      </Table.Tbody>
-                    </Table>
-                  </Card>
-                )}
-
                 {showReceiveSection && (
                   <Card withBorder padding="md">
                     <Text fw={600} mb="sm">
@@ -530,18 +491,6 @@ function DispatchOrderDetailPage() {
                   </Card>
                 )}
 
-                {isManagerRole && !isDraft && warehouseIdAssignment && (
-                  <Button
-                    variant="light"
-                    onClick={() =>
-                      navigate(
-                        `${authBase}/dispatch-authorizations/new?dispatch_order_id=${order.id}&warehouse_id=${warehouseIdAssignment}`
-                      )
-                    }
-                  >
-                    Authorize at my warehouse
-                  </Button>
-                )}
               </>
             ) : (
               <>
@@ -660,7 +609,7 @@ function DispatchOrderDetailPage() {
                     const label = getDispatchOrderReference(order);
                     if (
                       window.confirm(
-                        `Remove dispatch order ${label}?\n\nOnly allowed before any warehouse manager creates an authorization.`
+                        `Remove dispatch order ${label}?`
                       )
                     ) {
                       deleteMutation.mutate();

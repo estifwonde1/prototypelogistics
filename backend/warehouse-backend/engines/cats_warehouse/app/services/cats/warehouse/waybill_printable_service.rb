@@ -38,13 +38,19 @@ module Cats
       def printable_item(item)
         {
           commodity_id: item.commodity_id,
-          commodity_name: item.commodity&.name,
+          commodity_name: safe_commodity_name(item.commodity),
           quantity: item.quantity,
           unit_id: item.unit_id,
           unit_name: item.unit&.abbreviation || item.unit&.name,
           base_quantity: item.base_quantity,
           base_unit_id: item.base_unit_id
         }
+      end
+
+      def safe_commodity_name(commodity)
+        commodity&.name
+      rescue NoMethodError
+        commodity.try(:batch_no) || "Unknown"
       end
     end
   end

@@ -32,6 +32,7 @@ export interface DispatchOrder {
   status: string;
   notes?: string;
   description?: string;
+  reference_title?: string;
   lines?: DispatchOrderLine[];
   created_at: string;
   updated_at: string;
@@ -95,7 +96,7 @@ export async function updateDispatchOrder(id: number, payload: Partial<CreateDis
 
 export async function updateDispatchOrderV2(
   id: number,
-  payload: { description?: string; lines: CreateDispatchOrderV2Payload['lines'] }
+  payload: { reference_title?: string; description?: string; lines: CreateDispatchOrderV2Payload['lines'] }
 ): Promise<DispatchOrderV2> {
   const response = await apiClient.patch(`/dispatch_orders/${id}`, { payload });
   return unwrapData<DispatchOrderV2>(response);

@@ -59,7 +59,25 @@ module Cats
 
           per_wh = availability.available_base_quantity_per_warehouse
           base_unit_id = availability.base_unit_id
+
           conversion_commodity_id = availability.conversion_commodity_id
+
+          # If we need to convert between different units, try each commodity_id
+          # (including nil for global) to find one where the conversion actually
+          # changes the value, avoiding the silent 1.0 fallback.
+          if base_unit_id.present? && display_unit_id.to_i != base_unit_id.to_i
+            sample_qty = per_wh.values.find { |v| v.to_f > 0 }
+            if sample_qty.to_f > 0
+              matched_cid = [*commodity_ids, nil].find { |cid|
+                conv = UomConversionResolver.convert(
+                  sample_qty, from_unit_id: base_unit_id,
+                  to_unit_id: display_unit_id, commodity_id: cid
+                )
+                conv.is_a?(Numeric) && (conv - sample_qty.to_f).abs > 0.0001
+              }
+              conversion_commodity_id = matched_cid if matched_cid
+            end
+          end
 
           warehouses_by_id = Warehouse.where(id: per_wh.keys).index_by(&:id)
 

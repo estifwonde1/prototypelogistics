@@ -12,6 +12,7 @@ import {
   Table,
   ActionIcon,
   Text,
+  TextInput,
   NumberInput,
   Textarea,
   SimpleGrid,
@@ -34,8 +35,9 @@ import {
   getDestinationsLookup,
   getWarehousesForCommodityLookup,
 } from '../../api/dispatchLookups';
-import { getUnitReferences } from '../../api/referenceData';
+import { getUnitReferences, getUomConversions } from '../../api/referenceData';
 import { getCommodityDefinitions, type CommodityDefinition } from '../../api/commodityDefinitions';
+import { convertQuantityToTargetUnit, conversionCommodityId } from '../../utils/uomConversions';
 import type { ApiError } from '../../types/common';
 import type {
   CreateDispatchOrderV2LinePayload,
@@ -125,6 +127,7 @@ function filterSelectDataBySearch(data: SelectData, search: string): SelectData 
 const WIZARD_CACHE_KEY = 'officer_dispatch_order_wizard_v1';
 
 type WizardCache = {
+  referenceTitle: string;
   description: string;
   lines: LineForm[];
   wizardStep: number;
@@ -225,6 +228,7 @@ function OfficerDispatchOrderWizard() {
   const queryClient = useQueryClient();
   const cachedWizard = !isEdit ? readWizardCache() : null;
 
+  const [referenceTitle, setReferenceTitle] = useState(cachedWizard?.referenceTitle ?? '');
   const [description, setDescription] = useState(cachedWizard?.description ?? '');
   const [lines, setLines] = useState<LineForm[]>(cachedWizard?.lines ?? []);
 
@@ -259,6 +263,11 @@ function OfficerDispatchOrderWizard() {
   const { data: units = [] } = useQuery({
     queryKey: ['reference-data', 'units'],
     queryFn: getUnitReferences,
+  });
+
+  const { data: uomConversions = [] } = useQuery({
+    queryKey: ['reference-data', 'uom_conversions'],
+    queryFn: getUomConversions,
   });
 
   const { data: hubs = [] } = useQuery({
@@ -305,11 +314,12 @@ function OfficerDispatchOrderWizard() {
   const isEditingLine = editingLineClientKey != null;
   const showOrderInProgress =
     !isEdit &&
-    (lines.length > 0 || description.trim().length > 0);
+    (lines.length > 0 || description.trim().length > 0 || referenceTitle.trim().length > 0);
 
   useEffect(() => {
     if (isEdit) return;
     writeWizardCache({
+      referenceTitle,
       description,
       lines,
       wizardStep,
@@ -321,6 +331,7 @@ function OfficerDispatchOrderWizard() {
     });
   }, [
     isEdit,
+    referenceTitle,
     description,
     lines,
     wizardStep,
@@ -333,6 +344,7 @@ function OfficerDispatchOrderWizard() {
 
   useEffect(() => {
     if (!isEdit || !existing || commodityDefinitions.length === 0) return;
+    setReferenceTitle(existing.reference_title || '');
     setDescription(existing.description || existing.notes || '');
     const raw = existing.dispatch_order_lines || [];
     if (raw.length === 0) return;
@@ -407,6 +419,16 @@ function OfficerDispatchOrderWizard() {
     [hubs]
   );
 
+  const sourceWarehouseIds = useMemo(
+    () => new Set(draftLine.source_allocations.map((s) => s.warehouse_id).filter(Boolean)),
+    [draftLine.source_allocations]
+  );
+
+  const isSourceWarehouse = (i: LookupOption) => {
+    const whId = (i.meta as { warehouse_id?: number } | undefined)?.warehouse_id;
+    return whId ? sourceWarehouseIds.has(whId) : false;
+  };
+
   const destinationOptions = useMemo(() => {
     const items = destLookup?.items ?? [];
     const formatItem = (i: LookupOption) => ({
@@ -415,11 +437,14 @@ function OfficerDispatchOrderWizard() {
     });
 
     if (destKind !== 'all') {
-      return dedupeSelectOptions(items.map(formatItem));
+      return dedupeSelectOptions(items.filter((i) => !isSourceWarehouse(i)).map(formatItem));
     }
 
     const warehouseItems = dedupeSelectOptions(
-      items.filter((i) => isWarehouseLocationType(i.location_type)).map(formatItem)
+      items
+        .filter((i) => isWarehouseLocationType(i.location_type))
+        .filter((i) => !isSourceWarehouse(i))
+        .map(formatItem)
     );
     const warehouseValues = new Set(warehouseItems.map((o) => o.value));
     const fdpItems = dedupeSelectOptions(
@@ -443,23 +468,17 @@ function OfficerDispatchOrderWizard() {
     return grouped;
   }, [destLookup, destKind]);
 
-  const warehouseStockById = useMemo(() => {
-    const map = new Map<number, LookupOption>();
-    stockWarehouses?.items.forEach((w) => map.set(w.id, w));
-    return map;
-  }, [stockWarehouses]);
-
   const warehouseOptions = useMemo(
     () =>
-      stockWarehouses?.items.map((w) => ({
-        value: String(w.id),
-        label: `${w.label} — avail: ${w.meta?.available_quantity ?? 0}`,
-      })) ?? [],
-    [stockWarehouses]
+      stockWarehouses?.items.map((w) => {
+        const whUnitAbbr = units.find((u) => u.id === w.meta?.unit_id)?.abbreviation || '';
+        return {
+          value: String(w.id),
+          label: `${w.label} — avail: ${w.meta?.available_quantity ?? 0}${whUnitAbbr ? ` ${whUnitAbbr}` : ''}`,
+        };
+      }) ?? [],
+    [stockWarehouses, units]
   );
-
-  const maxQtyForWarehouse = (warehouseId: number) =>
-    warehouseStockById.get(warehouseId)?.meta?.available_quantity ?? undefined;
 
   const totalAvailable = useMemo(() => {
     const fromMeta = stockWarehouses?.meta?.total_available_quantity;
@@ -479,14 +498,38 @@ function OfficerDispatchOrderWizard() {
     return u?.abbreviation || u?.name || '';
   }, [stockWarehouses, draftLine.unit_id, units]);
 
+  const convCommodityId = conversionCommodityId(draftLine.commodity_id);
+
+  const toLineUnit = (qty: number, fromUnitId: number): number => {
+    const uid = draftLine.unit_id;
+    if (!fromUnitId || !uid || fromUnitId === uid) return qty;
+    const r = convertQuantityToTargetUnit(qty, fromUnitId, uid, convCommodityId, uomConversions);
+    return r != null ? r : qty;
+  };
+
+  const fromLineUnit = (qty: number, toUnitId: number): number => {
+    const uid = draftLine.unit_id;
+    if (!toUnitId || !uid || toUnitId === uid) return qty;
+    const r = convertQuantityToTargetUnit(qty, uid, toUnitId, convCommodityId, uomConversions);
+    return r != null ? r : qty;
+  };
+
   const sourceAllocSum = useMemo(
-    () => draftLine.source_allocations.reduce((a, r) => a + Number(r.quantity || 0), 0),
-    [draftLine.source_allocations]
+    () =>
+      draftLine.source_allocations.reduce(
+        (a, r) => a + toLineUnit(Number(r.quantity || 0), r.unit_id || draftLine.unit_id),
+        0
+      ),
+    [draftLine.source_allocations, draftLine.unit_id, uomConversions, convCommodityId]
   );
 
   const destAllocSum = useMemo(
-    () => draftLine.destination_allocations.reduce((a, r) => a + Number(r.quantity || 0), 0),
-    [draftLine.destination_allocations]
+    () =>
+      draftLine.destination_allocations.reduce(
+        (a, r) => a + toLineUnit(Number(r.quantity || 0), r.unit_id || draftLine.unit_id),
+        0
+      ),
+    [draftLine.destination_allocations, draftLine.unit_id, uomConversions, convCommodityId]
   );
 
   const remainingDestQty = useMemo(
@@ -584,8 +627,10 @@ function OfficerDispatchOrderWizard() {
   const maxQtyForDestRow = (rowIndex: number) => {
     const otherSum = draftLine.destination_allocations
       .filter((_, i) => i !== rowIndex)
-      .reduce((a, r) => a + Number(r.quantity || 0), 0);
-    return Math.max(0, draftLine.quantity - otherSum);
+      .reduce((a, r) => a + toLineUnit(Number(r.quantity || 0), r.unit_id || draftLine.unit_id), 0);
+    const remaining = Math.max(0, draftLine.quantity - otherSum);
+    const row = draftLine.destination_allocations[rowIndex];
+    return fromLineUnit(remaining, row?.unit_id || draftLine.unit_id);
   };
 
   const setDestRowSearch = (clientKey: string, search: string) => {
@@ -650,11 +695,12 @@ function OfficerDispatchOrderWizard() {
         ),
       }));
       const body = {
+        reference_title: referenceTitle || undefined,
         description: description || undefined,
         lines: payloadLines,
       };
       if (isEdit) {
-        return updateDispatchOrderV2(Number(id), { description: body.description, lines: body.lines });
+        return updateDispatchOrderV2(Number(id), { reference_title: body.reference_title, description: body.description, lines: body.lines });
       }
       return createDispatchOrderV2(body);
     },
@@ -666,11 +712,42 @@ function OfficerDispatchOrderWizard() {
     },
     onError: (error: unknown) => {
       const apiErr = isAxiosError<ApiError>(error) ? error.response?.data?.error : undefined;
-      notifications.show({
-        title: apiErr?.code === 'INSUFFICIENT_STOCK' ? 'Insufficient stock' : 'Error',
-        message: apiErr?.message || 'Failed to save',
-        color: 'red',
-      });
+      const details = apiErr?.details as
+        | { violations?: Array<{ commodity_name: string; available_base_quantity: number; requested_base_quantity: number; unit_name?: string }> }
+        | undefined;
+      const violations = details?.violations;
+      let message = apiErr?.message || 'Failed to save';
+      if (violations && violations.length > 0) {
+        message = violations
+          .map((v) => {
+            const match = lines.find(
+              (l) =>
+                l.commodity_definition_name?.toLowerCase() === v.commodity_name?.toLowerCase()
+            );
+            const lineQty = match?.quantity ?? 0;
+            const matchUnitLabel =
+              (match ? units.find((u) => u.id === match.unit_id)?.abbreviation : null) ||
+              unitLabel;
+            const ratio =
+              lineQty > 0 ? v.requested_base_quantity / lineQty : 1;
+            const availInLineUnit = v.available_base_quantity / ratio;
+            return `${v.commodity_name}: requested ${lineQty} ${matchUnitLabel}, available ${availInLineUnit.toFixed(3)} ${matchUnitLabel}`;
+          })
+          .join('\n');
+        notifications.show({
+          title: 'Insufficient stock',
+          message: `Insufficient stock for one or more source warehouses:\n${message}`,
+          color: 'red',
+          autoClose: false,
+          withCloseButton: true,
+        });
+      } else {
+        notifications.show({
+          title: apiErr?.code === 'INSUFFICIENT_STOCK' ? 'Insufficient stock' : 'Error',
+          message,
+          color: 'red',
+        });
+      }
     },
   });
 
@@ -769,8 +846,14 @@ function OfficerDispatchOrderWizard() {
       });
       return;
     }
-    const srcSum = draftLine.source_allocations.reduce((a, r) => a + Number(r.quantity || 0), 0);
-    const destSum = draftLine.destination_allocations.reduce((a, r) => a + Number(r.quantity || 0), 0);
+    const srcSum = draftLine.source_allocations.reduce(
+      (a, r) => a + toLineUnit(Number(r.quantity || 0), r.unit_id || draftLine.unit_id),
+      0
+    );
+    const destSum = draftLine.destination_allocations.reduce(
+      (a, r) => a + toLineUnit(Number(r.quantity || 0), r.unit_id || draftLine.unit_id),
+      0
+    );
     if (Math.abs(srcSum - draftLine.quantity) > 0.001 || Math.abs(destSum - draftLine.quantity) > 0.001) {
       notifications.show({
         title: 'Allocation mismatch',
@@ -780,11 +863,11 @@ function OfficerDispatchOrderWizard() {
       return;
     }
     for (const src of draftLine.source_allocations) {
-      const max = maxQtyForWarehouse(src.warehouse_id);
-      if (max != null && src.quantity > max + 0.001) {
+      const conv = toLineUnit(src.quantity, src.unit_id || draftLine.unit_id);
+      if (conv > draftLine.quantity + 0.001) {
         notifications.show({
           title: 'Over allocation',
-          message: `Quantity exceeds available stock (${max}) for selected warehouse`,
+          message: `Source quantity cannot exceed line quantity (${draftLine.quantity} ${unitLabel})`,
           color: 'red',
         });
         return;
@@ -871,6 +954,13 @@ function OfficerDispatchOrderWizard() {
 
       <Card withBorder padding="lg">
         <Stack gap="md">
+          <TextInput
+            label="Reference title"
+            description="A short title for this dispatch order"
+            required
+            value={referenceTitle}
+            onChange={(e) => setReferenceTitle(e.target.value)}
+          />
           <Textarea
             label="Description (optional)"
             value={description}
@@ -891,6 +981,11 @@ function OfficerDispatchOrderWizard() {
             <strong>{isEdit ? 'Save draft' : 'Create draft'}</strong> to save the order. You can edit or
             remove lines before saving.
           </Text>
+          {referenceTitle.trim() && (
+            <Text size="sm" mt={4}>
+              Reference: {referenceTitle.trim()}
+            </Text>
+          )}
           {description.trim() && (
             <Text size="sm" mt={4}>
               Description: {description.trim()}
@@ -973,7 +1068,7 @@ function OfficerDispatchOrderWizard() {
           <Button
             loading={saveMutation.isPending}
             onClick={() => saveMutation.mutate()}
-            disabled={lines.length === 0 || saveMutation.isPending}
+            disabled={!referenceTitle.trim() || lines.length === 0 || saveMutation.isPending}
           >
             {isEdit ? 'Save draft' : 'Create draft'}
           </Button>
@@ -1120,6 +1215,7 @@ function OfficerDispatchOrderWizard() {
                         ...p,
                         unit_id: Number(v),
                         source_allocations: [],
+                        destination_allocations: [],
                         quantity: 0,
                       }))
                     }
@@ -1139,7 +1235,7 @@ function OfficerDispatchOrderWizard() {
                   </Card>
 
                   <NumberInput
-                    label="Line quantity"
+                    label={`Line quantity (${unitLabel || 'units'})`}
                     description="Total amount to dispatch on this line (cannot exceed available total)"
                     min={0}
                     max={totalAvailable > 0 ? totalAvailable : undefined}
@@ -1149,20 +1245,26 @@ function OfficerDispatchOrderWizard() {
                       setDraftLine((p) => ({ ...p, quantity: parseQuantityInput(v) }))
                     }
                     disabled={!draftLine.unit_id}
+                    error={
+                      draftLine.quantity > 0 && draftLine.quantity > totalAvailable
+                        ? `Exceeds available (${totalAvailable} ${unitLabel})`
+                        : undefined
+                    }
                   />
 
                   <Text size="sm" c="dimmed">
-                    Source allocated: <strong>{sourceAllocSum}</strong> / Line quantity:{' '}
+                    Source allocated: <strong>{sourceAllocSum.toFixed(3).replace(/\.?0+$/, '')}</strong> / Line quantity:{' '}
                     <strong>{draftLine.quantity}</strong> {unitLabel}
                   </Text>
 
                   <Divider label="Allocate from warehouses" labelPosition="center" />
 
-                  <Table.ScrollContainer minWidth={480}>
+                  <Table.ScrollContainer minWidth={640}>
                   <Table>
                     <Table.Thead>
                       <Table.Tr>
                         <Table.Th>Warehouse</Table.Th>
+                        <Table.Th>Unit</Table.Th>
                         <Table.Th>Qty</Table.Th>
                         <Table.Th />
                       </Table.Tr>
@@ -1177,18 +1279,29 @@ function OfficerDispatchOrderWizard() {
                               value={row.warehouse_id ? String(row.warehouse_id) : null}
                               onChange={(v) => {
                                 const wid = Number(v);
-                                const whMax = maxQtyForWarehouse(wid);
                                 const lineQty = draftLine.quantity;
-                                const defaultQty =
-                                  lineQty > 0
-                                    ? whMax != null
-                                      ? Math.min(lineQty, whMax)
-                                      : lineQty
-                                    : 0;
                                 updateDraftSource(j, {
                                   warehouse_id: wid,
-                                  unit_id: draftLine.unit_id,
-                                  quantity: defaultQty,
+                                  unit_id: row.unit_id || draftLine.unit_id,
+                                  quantity: lineQty > 0 ? lineQty : 0,
+                                });
+                              }}
+                            />
+                          </Table.Td>
+                          <Table.Td>
+                            <Select
+                              data={unitOptions}
+                              value={String(row.unit_id || draftLine.unit_id || unitOptions[0]?.value)}
+                              onChange={(v) => {
+                                const newUnitId = Number(v);
+                                const oldUnitId = row.unit_id || draftLine.unit_id;
+                                if (oldUnitId === newUnitId) return;
+                                const converted = convertQuantityToTargetUnit(
+                                  row.quantity, oldUnitId, newUnitId, convCommodityId, uomConversions
+                                );
+                                updateDraftSource(j, {
+                                  unit_id: newUnitId,
+                                  quantity: converted != null ? converted : row.quantity,
                                 });
                               }}
                             />
@@ -1197,8 +1310,8 @@ function OfficerDispatchOrderWizard() {
                             <NumberInput
                               min={0}
                               max={
-                                row.warehouse_id
-                                  ? maxQtyForWarehouse(row.warehouse_id)
+                                draftLine.quantity > 0
+                                  ? fromLineUnit(draftLine.quantity, row.unit_id || draftLine.unit_id)
                                   : undefined
                               }
                               placeholder="0"
@@ -1207,6 +1320,13 @@ function OfficerDispatchOrderWizard() {
                                 updateDraftSource(j, { quantity: parseQuantityInput(v) })
                               }
                               disabled={draftLine.quantity <= 0}
+                              error={(() => {
+                                if (row.quantity <= 0) return undefined;
+                                const conv = toLineUnit(row.quantity, row.unit_id || draftLine.unit_id);
+                                return conv != null && conv > draftLine.quantity + 0.001
+                                  ? `Exceeds line quantity (${draftLine.quantity} ${unitLabel})`
+                                  : undefined;
+                              })()}
                             />
                           </Table.Td>
                           <Table.Td>
@@ -1269,7 +1389,7 @@ function OfficerDispatchOrderWizard() {
                           return;
                         }
                         const srcSum = draftLine.source_allocations.reduce(
-                          (a, r) => a + Number(r.quantity || 0),
+                          (a, r) => a + toLineUnit(Number(r.quantity || 0), r.unit_id || draftLine.unit_id),
                           0
                         );
                         if (Math.abs(srcSum - draftLine.quantity) > 0.001) {
@@ -1335,9 +1455,9 @@ function OfficerDispatchOrderWizard() {
                   {draftLine.quantity} {unitLabel}
                 </Text>
                 <Text size="sm" mt="xs">
-                  Distributed: <strong>{destAllocSum}</strong> / {draftLine.quantity} {unitLabel}
+                  Distributed: <strong>{destAllocSum.toFixed(3).replace(/\.?0+$/, '')}</strong> / {draftLine.quantity} {unitLabel}
                   {' · '}
-                  Remaining: <strong>{remainingDestQty}</strong> {unitLabel}
+                  Remaining: <strong>{remainingDestQty.toFixed(3).replace(/\.?0+$/, '')}</strong> {unitLabel}
                 </Text>
               </Card>
 
@@ -1349,11 +1469,12 @@ function OfficerDispatchOrderWizard() {
                   : ''}
               </Text>
 
-              <Table.ScrollContainer minWidth={480}>
+              <Table.ScrollContainer minWidth={640}>
               <Table mt="sm">
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>Destination</Table.Th>
+                    <Table.Th>Unit</Table.Th>
                     <Table.Th>Qty</Table.Th>
                     <Table.Th />
                   </Table.Tr>
@@ -1381,8 +1502,26 @@ function OfficerDispatchOrderWizard() {
                             const rowOptions = getDestinationOptionsForRow(j);
                             updateDraftDest(j, {
                               destination_location_id: Number(v),
-                              unit_id: draftLine.unit_id,
+                              unit_id: row.unit_id || draftLine.unit_id,
                               destination_label: findSelectLabel(rowOptions, v),
+                            });
+                          }}
+                        />
+                      </Table.Td>
+                      <Table.Td>
+                        <Select
+                          data={unitOptions}
+                          value={String(row.unit_id || draftLine.unit_id || unitOptions[0]?.value)}
+                          onChange={(v) => {
+                            const newUnitId = Number(v);
+                            const oldUnitId = row.unit_id || draftLine.unit_id;
+                            if (oldUnitId === newUnitId) return;
+                            const converted = convertQuantityToTargetUnit(
+                              row.quantity, oldUnitId, newUnitId, convCommodityId, uomConversions
+                            );
+                            updateDraftDest(j, {
+                              unit_id: newUnitId,
+                              quantity: converted != null ? converted : row.quantity,
                             });
                           }}
                         />
@@ -1397,6 +1536,13 @@ function OfficerDispatchOrderWizard() {
                           onChange={(v) =>
                             updateDraftDest(j, { quantity: parseQuantityInput(v) })
                           }
+                          error={(() => {
+                            if (row.quantity <= 0) return undefined;
+                            const conv = toLineUnit(row.quantity, row.unit_id || draftLine.unit_id);
+                            return conv != null && conv > draftLine.quantity + 0.001
+                              ? `Exceeds line quantity (${draftLine.quantity} ${unitLabel})`
+                              : undefined;
+                          })()}
                         />
                       </Table.Td>
                       <Table.Td>

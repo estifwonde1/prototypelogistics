@@ -459,19 +459,20 @@ project = find_or_create_with(
 
 # Step 2: Create commodities (assigned to leaf categories, not top-level groups)
 commodities = [
-  { batch_no: "ADD-RICE-001",     description: "Rice",          category: cat_cereals, unit: units[:kg] },
-  { batch_no: "ADD-WHEAT-001",    description: "Wheat Flour",   category: cat_cereals, unit: units[:kg] },
-  { batch_no: "ADD-OIL-001",      description: "Cooking Oil",   category: cat_oils,    unit: units[:l] },
-  { batch_no: "ADD-BEAN-001",     description: "Beans",         category: cat_pulses,  unit: units[:kg] },
-  { batch_no: "ADD-SOAP-001",     description: "Soap Bars",     category: cat_hygiene, unit: units[:pcs] },
-  { batch_no: "ADD-BLANKET-001",  description: "Blankets",      category: cat_shelter, unit: units[:pcs] },
-  { batch_no: "ADD-JERRYCAN-001", description: "Jerry Cans",    category: cat_nfis,    unit: units[:pcs] },
-  { batch_no: "ADD-BAG-001",      description: "Storage Bags",  category: cat_nfis,    unit: units[:bag] }
+  { batch_no: "ADD-RICE-001",     description: "Rice",          code: "RICE",       category: cat_cereals, unit: units[:kg] },
+  { batch_no: "ADD-WHEAT-001",    description: "Wheat Flour",   code: "WHEAT-FLOUR", category: cat_cereals, unit: units[:kg] },
+  { batch_no: "ADD-OIL-001",      description: "Cooking Oil",   code: "COOKING-OIL", category: cat_oils,    unit: units[:l] },
+  { batch_no: "ADD-BEAN-001",     description: "Beans",         code: "BEANS",      category: cat_pulses,  unit: units[:kg] },
+  { batch_no: "ADD-SOAP-001",     description: "Soap Bars",     code: "SOAP-BARS",  category: cat_hygiene, unit: units[:pcs] },
+  { batch_no: "ADD-BLANKET-001",  description: "Blankets",      code: "BLANKETS",   category: cat_shelter, unit: units[:pcs] },
+  { batch_no: "ADD-JERRYCAN-001", description: "Jerry Cans",    code: "JERRY-CANS", category: cat_nfis,    unit: units[:pcs] },
+  { batch_no: "ADD-BAG-001",      description: "Storage Bags",  code: "STORAGE-BAGS", category: cat_nfis,    unit: units[:bag] }
 ].map do |c|
   # Create a Commodity Definition so it's available in the frontend dropdown
   if Object.const_defined?("Cats::Warehouse::CommodityDefinition")
     commodity_def = Cats::Warehouse::CommodityDefinition.find_or_initialize_by(name: c[:description])
     if commodity_def.new_record?
+      commodity_def.commodity_code = c[:code]
       commodity_def.commodity_category_id = c[:category].id
       begin
         commodity_def.save!

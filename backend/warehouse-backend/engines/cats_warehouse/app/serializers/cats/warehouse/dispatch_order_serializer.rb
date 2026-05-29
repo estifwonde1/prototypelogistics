@@ -8,7 +8,7 @@ module Cats
                  :hub_id, :hub_name, :warehouse_id, :warehouse_name, :warehouse_code,
                  :created_by_id, :created_by_name, :confirmed_by_id, :confirmed_by_name,
                  :confirmed_at, :approved_by_id, :approved_by_name, :approved_at,
-                 :description, :created_at, :updated_at,
+                 :description, :reference_title, :created_at, :updated_at,
                  :location_id, :hierarchical_level, :officer_level, :officer_location_id,
                  :exchange_order, :dispatch_plan_id, :dispatch_plan_item_id
 

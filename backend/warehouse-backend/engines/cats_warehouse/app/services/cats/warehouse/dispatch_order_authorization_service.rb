@@ -3,13 +3,14 @@
 module Cats
   module Warehouse
     class DispatchOrderAuthorizationService
-      def initialize(dispatch_order:, actor:, warehouse:, authorized_quantity:, transporter:,
-                     driver_name:, driver_id_number:, truck_plate_number:,
+      def initialize(dispatch_order:, actor:, warehouse:, authorized_quantity:, commodity_id: nil,
+                     transporter: nil, driver_name:, driver_id_number:, truck_plate_number:,
                      driver_phone: nil, authorized_quantity_input_unit: nil, store_splits: [])
         @order = dispatch_order
         @actor = actor
         @warehouse = warehouse
         @authorized_quantity = authorized_quantity.to_f
+        @commodity_id = commodity_id
         @transporter = transporter
         @driver_name = driver_name
         @driver_id_number = driver_id_number
@@ -48,8 +49,9 @@ module Cats
             authorized_base_quantity: authorized_base,
             authorized_quantity_input_unit_id: input_unit_id,
             remaining_quantity: @authorized_quantity,
+            commodity_id: @commodity_id,
             transporter: @transporter,
-            transporter_name: @transporter.name,
+            transporter_name: @transporter&.name,
             driver_name: @driver_name,
             driver_id_number: @driver_id_number,
             truck_plate_number: @truck_plate_number,
@@ -102,6 +104,8 @@ module Cats
 
           DispatchOrderAuthorization.transaction do
             @authorization.lock!
+
+            resolve_transporter!
 
             @authorization.update!(
               status: DispatchOrderAuthorization::CONFIRMED,
@@ -159,6 +163,30 @@ module Cats
           return unless ENV["DISPATCH_RESERVE_ON_AUTH_CONFIRM"] == "true"
 
           # Soft reservation hook — extend StockReservationService when needed
+        end
+
+        def resolve_transporter!
+          return if @authorization.transporter.present?
+
+          name = @authorization.transporter_name.to_s.strip
+          return if name.blank?
+
+          normalized = name.downcase
+          existing = Cats::Core::Transporter.where("LOWER(TRIM(name)) = ?", normalized).first
+          if existing
+            @authorization.update!(transporter_id: existing.id, transporter_name: existing.name)
+            return
+          end
+
+          transporter = Cats::Core::Transporter.create!(
+            name: name,
+            code: "DOA-T-#{SecureRandom.hex(4).upcase}",
+            address: "Not provided",
+            contact_phone: "Not provided"
+          )
+          @authorization.update!(transporter_id: transporter.id, transporter_name: transporter.name)
+        rescue ActiveRecord::RecordInvalid => e
+          raise ArgumentError, e.record.errors.full_messages.to_sentence
         end
       end
 
@@ -223,13 +251,17 @@ module Cats
       end
 
       def primary_commodity_id
-        @store_splits.first&.dig(:commodity_id) ||
+        @commodity_id ||
+          @store_splits.first&.dig(:commodity_id) ||
           @order.dispatch_order_lines.first&.commodity_id ||
           raise(ArgumentError, "commodity_id required in store_splits")
       end
 
       def default_unit_id
-        @order.dispatch_order_lines.first&.unit_id
+        line = if @commodity_id
+                 @order.dispatch_order_lines.find_by(commodity_id: @commodity_id)
+               end
+        (line || @order.dispatch_order_lines.first)&.unit_id
       end
 
       def default_base_unit_id

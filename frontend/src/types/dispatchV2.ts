@@ -109,6 +109,7 @@ export interface DispatchOrderAuthorization {
   id: number;
   dispatch_order_id: number;
   warehouse_id: number;
+  commodity_id?: number | null;
   reference_no?: string | null;
   status: string;
   status_label?: string;
@@ -139,6 +140,7 @@ export interface DispatchOrderV2 {
   status: string;
   status_label?: string;
   description?: string | null;
+  reference_title?: string | null;
   notes?: string | null;
   created_at: string;
   updated_at: string;
@@ -216,6 +218,7 @@ export interface CreateDispatchOrderV2Payload {
   /** Optional legacy field — server assigns DO-{id} automatically. */
   dispatch_reference?: string;
   plan_reference?: string;
+  reference_title?: string;
   description?: string;
   dispatch_plan_id?: number | null;
   dispatch_plan_item_id?: number | null;
@@ -242,9 +245,10 @@ export interface ExchangeReceivePayload {
 export interface CreateDispatchOrderAuthorizationPayload {
   dispatch_order_id: number;
   warehouse_id: number;
+  commodity_id: number;
   authorized_quantity: number;
   authorized_quantity_input_unit_id: number;
-  transporter_id: number;
+  transporter_name: string;
   driver_name: string;
   driver_id_number: string;
   truck_plate_number: string;

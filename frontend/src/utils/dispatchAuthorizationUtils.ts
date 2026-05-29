@@ -85,3 +85,42 @@ export function remainingQtyAtWarehouse(
     .reduce((sum, a) => sum + Number(a.authorized_quantity ?? 0), 0);
   return Math.max(0, allocated - used);
 }
+
+export function commoditySourceQtyAtWarehouse(
+  order: DispatchOrderV2,
+  warehouseId: number,
+  commodityId: number
+): number {
+  return (order.dispatch_order_lines ?? [])
+    .filter((l) => Number(l.commodity_id) === Number(commodityId))
+    .reduce((sum, line) => {
+      const lineSum = (line.source_allocations ?? [])
+        .filter((s) => Number(s.warehouse_id) === Number(warehouseId))
+        .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+      return sum + lineSum;
+    }, 0);
+}
+
+export function remainingQtyAtWarehouseForCommodity(
+  order: DispatchOrderV2,
+  warehouseId: number,
+  commodityId: number,
+  existingAuths: DispatchOrderAuthorization[]
+): number {
+  const allocated = commoditySourceQtyAtWarehouse(order, warehouseId, commodityId);
+  const used = existingAuths
+    .filter(
+      (a) =>
+        Number(a.dispatch_order_id) === Number(order.id) &&
+        Number(a.warehouse_id) === Number(warehouseId) &&
+        String(a.status).toLowerCase() !== 'cancelled'
+    )
+    .reduce((sum, a) => {
+      const stores = a.dispatch_order_authorization_stores ?? [];
+      const commoditySum = stores
+        .filter((s) => Number(s.commodity_id) === Number(commodityId))
+        .reduce((s, store) => s + Number(store.authorized_quantity ?? 0), 0);
+      return sum + (stores.length > 0 ? commoditySum : Number(a.authorized_quantity ?? 0));
+    }, 0);
+  return Math.max(0, allocated - used);
+}
