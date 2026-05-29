@@ -25,6 +25,31 @@ module Cats
 
       before_validation :derive_hub_from_destination_warehouse
 
+      # Legacy/seeded orders may lack created_by_id; infer from related records or the acting user
+      # so status transitions (stacking, completion) do not fail validation.
+      def backfill_created_by!(actor: nil)
+        return self if created_by_id.present?
+
+        creator_id = nil
+        if actor.is_a?(Cats::Core::User) && actor.persisted?
+          creator_id = actor.id
+        end
+        creator_id ||= receipt_authorizations.order(created_at: :asc).pick(:created_by_id)
+        creator_id ||= receipt_order_assignments.order(created_at: :asc).pick(:assigned_by_id)
+        creator_id ||= confirmed_by_id
+
+        if creator_id.present?
+          update_columns(created_by_id: creator_id)
+          association(:created_by).reset
+        end
+
+        self
+      end
+
+      def self.backfill_missing_created_by!
+        where(created_by_id: nil).find_each(&:backfill_created_by!)
+      end
+
       def ensure_confirmable!
         super
         derive_hub_from_destination_warehouse

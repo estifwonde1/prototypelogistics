@@ -100,7 +100,14 @@ module Cats
       # Level exclusion check: if the record's hierarchical_level is strictly higher
       # (lower index in LEVEL_ORDER) than the current officer's own level, return false.
       # Federal officers always pass this check.
+      # Memoized: the UserAssignment query runs at most once per policy instance.
       def level_excluded?
+        return @level_excluded if defined?(@level_excluded)
+
+        @level_excluded = compute_level_excluded
+      end
+
+      def compute_level_excluded
         return false if admin?
         return false unless officer?
 

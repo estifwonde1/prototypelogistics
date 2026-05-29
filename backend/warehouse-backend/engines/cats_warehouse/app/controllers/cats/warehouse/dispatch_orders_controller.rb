@@ -8,8 +8,7 @@ module Cats
       before_action :ensure_officer_dispatch_v2_enabled!, only: [:self_approve, :receive, :transport_record, :update_transport_record]
       def index
         authorize DispatchOrder
-        orders = policy_scope(DispatchOrder)
-                   .includes(dispatch_order_includes)
+        orders = policy_scope(DispatchOrder).includes(dispatch_order_includes)
 
         if params[:warehouse_id].present?
           warehouse_id = params[:warehouse_id].to_i
@@ -30,9 +29,12 @@ module Cats
         orders = orders.where(created_by_id: current_user.id) if params[:created_by].to_s == "me"
         orders = orders.where(status: params[:status]) if params[:status].present?
         orders = orders.where(officer_level: params[:officer_level]) if params[:officer_level].present?
-
         orders = orders.order(created_at: :desc)
-        render_success(orders.map { |order| build_dispatch_order_payload(order) })
+
+        # Preload warehouses keyed by location_id for all destination allocations in one query.
+        warehouses_by_location_id = preload_destination_warehouses(orders)
+
+        render_success(orders.map { |order| build_dispatch_order_payload(order, warehouses_by_location_id: warehouses_by_location_id) })
       end
 
       def show
@@ -223,22 +225,28 @@ module Cats
       private
 
       def load_order(id)
-        DispatchOrder.includes(
-          :hub, :warehouse,
-          dispatch_order_includes,
-          dispatch_order_authorizations: [:warehouse, :dispatch_order_authorization_stores]
-        ).find(id)
+        DispatchOrder.includes(dispatch_order_includes).find(id)
       end
 
+      # Full eager-load list used by both index and show/mutation actions.
+      # Covers every association touched by DispatchOrderSerializer and nested serializers,
+      # eliminating N+1 queries for users, hub/warehouse names, assignments, reservations,
+      # authorizations, and allocation labels.
       def dispatch_order_includes
-        {
-          dispatch_order_lines: [
-            :commodity,
-            :unit,
-            { source_allocations: [:warehouse, :unit] },
-            { destination_allocations: [:destination_location, :unit] }
-          ]
-        }
+        [
+          :hub, :warehouse, :location, :officer_location,
+          :created_by, :confirmed_by, :approved_by, :destination,
+          {
+            dispatch_order_lines: [
+              :commodity, :unit,
+              { source_allocations: [:warehouse, :unit] },
+              { destination_allocations: [:destination_location, :unit] }
+            ]
+          },
+          { dispatch_order_assignments: [:hub, :warehouse, :store, :assigned_to] },
+          :stock_reservations,
+          { dispatch_order_authorizations: [:warehouse, :dispatch_order_authorization_stores] }
+        ]
       end
 
       def v2_payload?(payload)
@@ -255,24 +263,52 @@ module Cats
       end
 
       def render_order_payload(order, status: :ok)
-        render_success(build_dispatch_order_payload(order), status: status)
+        warehouses_by_location_id = preload_destination_warehouses([order])
+        render_success(build_dispatch_order_payload(order, warehouses_by_location_id: warehouses_by_location_id), status: status)
       end
 
-      # AMS embeds dispatch_order_lines on the order but drops nested source/destination allocations.
-      def build_dispatch_order_payload(order)
+      # Builds the full JSON payload for a single dispatch order.
+      # Uses one DispatchOrderPolicy instance for all capability flags to avoid repeated DB hits.
+      # Accepts a pre-built warehouse lookup map to eliminate N+1 queries in destination allocation labels.
+      def build_dispatch_order_payload(order, warehouses_by_location_id: {})
+        policy = DispatchOrderPolicy.new(current_user, order)
+        can_destroy = policy.destroy?
+        is_v2 = order.v2_dispatch?
+
         payload = ActiveModelSerializers::SerializableResource.new(
           order,
           serializer: DispatchOrderSerializer,
           scope: current_user,
-          scope_name: :current_user
+          scope_name: :current_user,
+          precomputed_can_destroy: can_destroy,
+          warehouses_by_location_id: warehouses_by_location_id
         ).as_json
+
+        # Re-serialize lines with full allocation nesting (AMS flattens them on the order).
         payload[:dispatch_order_lines] = ActiveModelSerializers::SerializableResource.new(
           order.dispatch_order_lines,
-          each_serializer: DispatchOrderLineSerializer
+          each_serializer: DispatchOrderLineSerializer,
+          warehouses_by_location_id: warehouses_by_location_id
         ).as_json
-        payload.merge(can_confirm: DispatchOrderPolicy.new(current_user, order).confirm?)
-                 .merge(can_self_approve: order.v2_dispatch? ? false : DispatchOrderPolicy.new(current_user, order).self_approve?)
-                 .merge(can_destroy: DispatchOrderPolicy.new(current_user, order).destroy?)
+
+        payload
+          .merge(can_confirm: policy.confirm?)
+          .merge(can_self_approve: is_v2 ? false : policy.self_approve?)
+          .merge(can_destroy: can_destroy)
+      end
+
+      # Loads all warehouses that match destination allocation location_ids in a single query.
+      # Returns a Hash keyed by location_id for O(1) lookup in serializers.
+      def preload_destination_warehouses(orders)
+        location_ids = orders.flat_map do |order|
+          order.dispatch_order_lines.flat_map do |line|
+            line.destination_allocations.map(&:destination_location_id)
+          end
+        end.compact.uniq
+
+        return {} if location_ids.empty?
+
+        Warehouse.where(location_id: location_ids).index_by(&:location_id)
       end
 
       def update_legacy_order!(order, payload)

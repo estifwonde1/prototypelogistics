@@ -33,21 +33,36 @@ module Cats
       def v2_dispatch?
         return true if dispatch_reference.present?
 
-        dispatch_order_lines.joins(:source_allocations).exists?
+        # Use already-loaded associations when available to avoid extra queries.
+        if dispatch_order_lines.loaded?
+          dispatch_order_lines.any? do |line|
+            line.source_allocations.loaded? ? line.source_allocations.any? : line.source_allocations.exists?
+          end
+        else
+          dispatch_order_lines.joins(:source_allocations).exists?
+        end
       end
 
       def exchange_order?
         return false unless v2_dispatch?
 
-        DispatchLineDestinationAllocation
-          .joins(:dispatch_order_line)
-          .where(cats_warehouse_dispatch_order_lines: { dispatch_order_id: id })
-          .where.not(destination_location_type: Cats::Core::Location::WAREHOUSE)
-          .none? &&
+        # Use already-loaded associations when available to avoid 2 extra queries per order.
+        if dispatch_order_lines.loaded? && dispatch_order_lines.all? { |l| l.destination_allocations.loaded? }
+          dest_allocs = dispatch_order_lines.flat_map(&:destination_allocations)
+          return false if dest_allocs.empty?
+
+          dest_allocs.none? { |a| a.destination_location_type != Cats::Core::Location::WAREHOUSE }
+        else
           DispatchLineDestinationAllocation
             .joins(:dispatch_order_line)
             .where(cats_warehouse_dispatch_order_lines: { dispatch_order_id: id })
-            .exists?
+            .where.not(destination_location_type: Cats::Core::Location::WAREHOUSE)
+            .none? &&
+            DispatchLineDestinationAllocation
+              .joins(:dispatch_order_line)
+              .where(cats_warehouse_dispatch_order_lines: { dispatch_order_id: id })
+              .exists?
+        end
       end
 
       def ensure_confirmable!

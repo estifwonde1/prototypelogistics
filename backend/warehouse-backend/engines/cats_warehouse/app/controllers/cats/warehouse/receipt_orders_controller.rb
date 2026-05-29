@@ -440,6 +440,7 @@ module Cats
         end
 
         old_status = order.status
+        order.backfill_created_by!(actor: current_user)
         order.update!(status: "in_progress")
         WorkflowEventRecorder.record!(
           entity: order,
@@ -478,6 +479,7 @@ module Cats
 
         if status_key != "in_progress"
           old_status = order.status
+          order.backfill_created_by!(actor: current_user)
           order.update!(status: "in_progress")
           WorkflowEventRecorder.record!(
             entity: order,
@@ -658,6 +660,7 @@ module Cats
               actor: current_user, from_status: "draft", to_status: "confirmed"
             )
 
+            order.backfill_created_by!(actor: current_user)
             order.update!(status: Cats::Warehouse::ContractConstants::DOCUMENT_STATUSES[:completed])
             WorkflowEventRecorder.record!(
               entity:      order,

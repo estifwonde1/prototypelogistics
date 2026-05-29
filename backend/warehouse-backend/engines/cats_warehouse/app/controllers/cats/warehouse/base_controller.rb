@@ -95,20 +95,38 @@ module Cats
       end
 
       def authenticate_user!
-        return if current_user.present?
+        return if authenticated_user?
 
         render_error("Unauthorized", status: :unauthorized)
       end
 
-      def current_user
-        @current_user ||= begin
-          bearer = request.headers["Authorization"]&.split(" ")&.last
-          return Cats::Core::User.find_signed(bearer, purpose: "auth") if bearer.present?
-          return nil unless Rails.env.development? || Rails.env.test?
+      # True when current_user is a persisted Cats::Core::User record.
+      def authenticated_user?
+        user = current_user
+        user.is_a?(Cats::Core::User) && user.persisted?
+      end
 
-          user_id = request.headers["X-User-Id"] || params[:current_user_id]
-          Cats::Core::User.find_by(id: user_id)
+      def current_user
+        return @current_user if defined?(@current_user)
+
+        @current_user = resolve_current_user
+      end
+
+      def resolve_current_user
+        bearer = request.headers["Authorization"]&.split(" ")&.last.to_s.strip
+        if bearer.present? && !invalid_bearer_token?(bearer)
+          user = Cats::Core::User.find_signed(bearer, purpose: "auth")
+          return user if user.present?
         end
+
+        return nil unless Rails.env.development? || Rails.env.test?
+
+        user_id = request.headers["X-User-Id"].presence || params[:current_user_id].presence
+        Cats::Core::User.find_by(id: user_id) if user_id
+      end
+
+      def invalid_bearer_token?(token)
+        %w[undefined null].include?(token)
       end
 
       def admin_user?

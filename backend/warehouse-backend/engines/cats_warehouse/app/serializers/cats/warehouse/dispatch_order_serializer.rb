@@ -17,6 +17,8 @@ module Cats
       end
 
       attribute :can_destroy do
+        # Use the value pre-computed by the controller when available (avoids a 4th policy instance per order).
+        next instance_options[:precomputed_can_destroy] if instance_options.key?(:precomputed_can_destroy)
         next false unless scope
 
         DispatchOrderPolicy.new(scope, object).destroy?

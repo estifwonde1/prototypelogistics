@@ -47,7 +47,15 @@ module Cats
       def warehouse_at_destination
         return @warehouse_at_destination if defined?(@warehouse_at_destination)
 
-        @warehouse_at_destination = Warehouse.find_by(location_id: object.destination_location_id)
+        # Prefer the preloaded lookup map (keyed by location_id) built by the controller.
+        # Falls back to a direct DB query when used outside the standard controller flow.
+        lookup = instance_options[:warehouses_by_location_id]
+        @warehouse_at_destination =
+          if lookup
+            lookup[object.destination_location_id]
+          else
+            Warehouse.find_by(location_id: object.destination_location_id)
+          end
       end
     end
   end

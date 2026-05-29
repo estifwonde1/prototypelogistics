@@ -9,15 +9,20 @@ const apiClient = axios.create({
     'Content-Type': 'application/json',
     Accept: 'application/json',
   },
-  timeout: 30000, // 30 second timeout
+  timeout: 60000, // 60 seconds — dispatch index can be heavy on first load
 });
 
 // Request interceptor to attach auth token and fix Content-Type for file uploads
 apiClient.interceptors.request.use(
   (config) => {
-    const token = useAuthStore.getState().token;
-    if (token) {
+    const { token, userId } = useAuthStore.getState();
+    const hasValidToken = Boolean(token && token !== 'undefined' && token !== 'null');
+    if (hasValidToken) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+    // Dev supplement: allows backend to recover when the Bearer token is expired/invalid.
+    if (import.meta.env.DEV && userId) {
+      config.headers['X-User-Id'] = String(userId);
     }
     if (config.data instanceof FormData) {
       delete config.headers['Content-Type'];
@@ -33,12 +38,16 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Network error (no response)
+    // No response — either the server is unreachable or the request timed out.
     if (!error.response) {
+      const isTimeout = error.code === 'ECONNABORTED' || error.message?.includes('timeout');
       notifications.show({
-        title: 'Network Error',
-        message: 'Unable to connect to the server. Please check your internet connection.',
+        title: isTimeout ? 'Request Timed Out' : 'Network Error',
+        message: isTimeout
+          ? 'The server took too long to respond. Please try again.'
+          : 'Unable to connect to the server. Please check your internet connection.',
         color: 'red',
+        autoClose: 5000,
       });
       return Promise.reject(error);
     }

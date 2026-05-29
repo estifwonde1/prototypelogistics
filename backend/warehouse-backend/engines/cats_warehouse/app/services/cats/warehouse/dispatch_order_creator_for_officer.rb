@@ -15,6 +15,8 @@ module Cats
       end
 
       def call
+        ensure_actor!
+
         DispatchOrder.transaction do
           order = DispatchOrder.create!(
             description: @description,
@@ -52,6 +54,12 @@ module Cats
       end
 
       private
+
+      def ensure_actor!
+        return if @actor.is_a?(Cats::Core::User) && @actor.persisted?
+
+        raise ArgumentError, "Authenticated user is required to create a dispatch order"
+      end
 
       def normalize_officer_level(level)
         level.to_s.downcase.presence || "federal"

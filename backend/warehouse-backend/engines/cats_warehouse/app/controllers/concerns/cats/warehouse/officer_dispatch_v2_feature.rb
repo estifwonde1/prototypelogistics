@@ -34,6 +34,7 @@ module Cats
           success: false,
           error: { code: "FEATURE_DISABLED", message: "Officer dispatch v2 is not enabled" }
         }, status: :not_found
+        nil
       end
     end
   end

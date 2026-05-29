@@ -65,6 +65,7 @@ module Cats
 
       def promote_to_completed!(active_ras)
         old_status = @order.status
+        @order.backfill_created_by!(actor: @actor)
         @order.update!(status: DOCUMENT_STATUSES[:completed])
 
         WorkflowEventRecorder.record!(
@@ -84,6 +85,7 @@ module Cats
 
       def revert_completed_to_in_progress!
         old_status = @order.status
+        @order.backfill_created_by!(actor: @actor)
         @order.update!(status: DOCUMENT_STATUSES[:in_progress])
 
         WorkflowEventRecorder.record!(
