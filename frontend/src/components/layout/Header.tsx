@@ -70,6 +70,7 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
     refetchInterval: 20_000,
     refetchOnWindowFocus: true,
     refetchOnMount: 'always',
+    retry: false,
   });
 
   const { data: recentNotifications = [] } = useQuery({
@@ -80,6 +81,7 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
     refetchInterval: 20_000,
     refetchOnWindowFocus: true,
     refetchOnMount: 'always',
+    retry: false,
   });
 
   const isOfficer = role && OFFICER_ROLE_SLUGS.includes(role as RoleSlug);

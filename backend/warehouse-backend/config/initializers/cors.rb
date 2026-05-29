@@ -15,7 +15,7 @@ Rails.application.config.middleware.insert_before 0, Rack::Cors do
     origins(*configured_origins.presence || ["http://localhost:5173"])
 
     resource "*",
-      headers: %w[Authorization Content-Type X-User-Id],
+      headers: %w[Authorization Content-Type X-User-Id Idempotency-Key],
       expose: %w[Authorization],
       methods: [:get, :post, :put, :patch, :delete, :options, :head]
   end

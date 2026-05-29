@@ -1,5 +1,4 @@
-import axios from 'axios';
-import { API_BASE_URL } from '../utils/constants';
+import axios from 'axios';import { API_BASE_URL } from '../utils/constants';
 import { useAuthStore } from '../store/authStore';
 import { notifications } from '@mantine/notifications';
 
@@ -38,14 +37,28 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    // No response — either the server is unreachable or the request timed out.
+    // No response — server unreachable, timed out, or browser blocked the request (CORS).
     if (!error.response) {
+      if (error.code === 'ERR_CANCELED' || axios.isCancel(error)) {
+        return Promise.reject(error);
+      }
+
+      if (error.config?.skipGlobalErrorHandler) {
+        return Promise.reject(error);
+      }
+
       const isTimeout = error.code === 'ECONNABORTED' || error.message?.includes('timeout');
+      const isLikelyCors =
+        !isTimeout &&
+        error.message === 'Network Error' &&
+        typeof error.request !== 'undefined';
       notifications.show({
         title: isTimeout ? 'Request Timed Out' : 'Network Error',
         message: isTimeout
           ? 'The server took too long to respond. Please try again.'
-          : 'Unable to connect to the server. Please check your internet connection.',
+          : isLikelyCors
+            ? 'The request was blocked by the browser (often a CORS configuration issue). Check the server is running and CORS headers allow this request.'
+            : 'Unable to connect to the server. Please check your internet connection.',
         color: 'red',
         autoClose: 5000,
       });

@@ -267,7 +267,7 @@ function OfficerDispatchOrderWizard() {
     enabled: isFederalFullAccess,
   });
 
-  const { data: destLookup, isFetching: destLoading } = useQuery({
+  const { data: destLookup, isFetching: destLoading, isError: destLookupError } = useQuery({
     queryKey: ['dispatch_lookup', 'dest', destHubId, destKind],
     queryFn: () =>
       getDestinationsLookup({
@@ -277,9 +277,11 @@ function OfficerDispatchOrderWizard() {
         destination_kind: destKind,
       }),
     enabled: wizardStep >= 3,
+    retry: false,
+    refetchOnWindowFocus: false,
   });
 
-  const { data: stockWarehouses, isFetching: stockLoading } = useQuery({
+  const { data: stockWarehouses, isFetching: stockLoading, isError: stockLookupError } = useQuery({
     queryKey: ['dispatch_lookup', 'stock', draftLine.commodity_definition_id, draftLine.unit_id],
     queryFn: () =>
       getWarehousesForCommodityLookup({
@@ -287,6 +289,8 @@ function OfficerDispatchOrderWizard() {
         unit_id: draftLine.unit_id || undefined,
       }),
     enabled: draftLine.commodity_definition_id > 0 && wizardStep >= 2,
+    retry: false,
+    refetchOnWindowFocus: false,
   });
 
   const { data: existing } = useQuery({
@@ -1069,6 +1073,17 @@ function OfficerDispatchOrderWizard() {
                     Loading availability for {selectedCommodityName}…
                   </Text>
                 </Center>
+              ) : stockLookupError ? (
+                <Stack gap="md" mt="md">
+                  <Alert icon={<IconAlertCircle size={16} />} color="red" variant="light" title="Could not load stock">
+                    <Text size="sm">
+                      Warehouse availability could not be loaded. Check your connection and try again.
+                    </Text>
+                  </Alert>
+                  <Button variant="light" onClick={() => setWizardStep(1)}>
+                    Back
+                  </Button>
+                </Stack>
               ) : noStockAvailable ? (
                 <Stack gap="md" mt="md">
                   <Alert
@@ -1305,6 +1320,12 @@ function OfficerDispatchOrderWizard() {
                   { value: 'fdp', label: 'FDPs only' },
                 ]}
               />
+
+              {destLookupError && (
+                <Alert icon={<IconAlertCircle size={16} />} color="red" variant="light" mt="md" title="Could not load destinations">
+                  Destination options could not be loaded. Check your connection and try again.
+                </Alert>
+              )}
 
               <Card withBorder padding="md" mt="md" bg="var(--mantine-color-blue-light)">
                 <Text size="sm" c="dimmed">
