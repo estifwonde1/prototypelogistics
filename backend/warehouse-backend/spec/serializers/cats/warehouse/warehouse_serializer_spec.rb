@@ -38,7 +38,7 @@ RSpec.describe Cats::Warehouse::WarehouseSerializer, type: :serializer do
     warehouse = create(:cats_warehouse_warehouse)
     json = serialized(warehouse)
 
-    %i[location_id location_name region_name subcity_name woreda_name].each do |field|
+    %i[location_id location_name region_id region_name zone_id subcity_name woreda_id woreda_name].each do |field|
       expect(json).to have_key(field), "expected serialized output to include :#{field}"
     end
   end

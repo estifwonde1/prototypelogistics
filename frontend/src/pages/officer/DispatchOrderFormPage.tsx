@@ -1,3 +1,4 @@
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -8,7 +9,6 @@ import {
   Button,
   Group,
   TextInput,
-  Select,
   Card,
   Table,
   ActionIcon,
@@ -393,7 +393,7 @@ function DispatchOrderFormPage() {
                 disabled
                 description="Automatically assigned based on your role"
               />
-              <Select
+              <SearchableSelect
                 label="Source Warehouse"
                 placeholder="Select warehouse"
                 data={warehouseOptions}
@@ -402,7 +402,7 @@ function DispatchOrderFormPage() {
                 required
                 disabled={isEdit}
               />
-              <Select
+              <SearchableSelect
                 label="Destination Type"
                 placeholder="Select destination type"
                 data={destinationTypeOptions}
@@ -421,7 +421,7 @@ function DispatchOrderFormPage() {
                   disabled={isEdit}
                 />
               ) : (
-                <Select
+                <SearchableSelect
                   label="Destination Name"
                   placeholder="Select destination"
                   data={destinationOptions}
@@ -489,7 +489,7 @@ function DispatchOrderFormPage() {
                   {items.map((item, index) => (
                     <Table.Tr key={index}>
                       <Table.Td>
-                        <Select
+                        <SearchableSelect
                           placeholder="Select commodity"
                           data={commodityOptions}
                           value={item.commodity_id?.toString()}
@@ -535,7 +535,7 @@ function DispatchOrderFormPage() {
                         </Stack>
                       </Table.Td>
                       <Table.Td>
-                        <Select
+                        <SearchableSelect
                           placeholder="Select unit"
                           data={unitOptions}
                           value={item.unit_id?.toString()}

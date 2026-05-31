@@ -1,15 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  Stack, Title, Group, Button, Tabs, Card, Text, Grid, Badge,
-  Modal, Anchor, Table, TextInput, NumberInput, Switch, Select, Divider, ActionIcon,
-} from '@mantine/core';
-import { IconEdit, IconTrash, IconArrowLeft, IconMapPin } from '@tabler/icons-react';
+import { Stack, Title, Group, Button, Tabs, Card, Text, Grid, Badge, Modal, Anchor, Table, TextInput, NumberInput, Switch, Divider, ActionIcon } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
+import { IconEdit, IconArrowLeft, IconMapPin, IconPlus } from '@tabler/icons-react';
 import { useEffect, useMemo, useState } from 'react';
 import { previewWarehouseCapacity } from '../../utils/capacityCalculator';
 import {
-  getWarehouse, deleteWarehouse, updateWarehouse, updateWarehouseCapacity,
+  getWarehouse, updateWarehouse, updateWarehouseCapacity,
   updateWarehouseAccess, updateWarehouseInfra, updateWarehouseContacts,
   updateWarehouseGps,
 } from '../../api/warehouses';
@@ -39,10 +37,7 @@ function WarehouseDetailPage() {
   const canEdit = can('warehouses', 'update');
   const canReadHubs = can('hubs', 'read');
   const canCreateStores = can('stores', 'create');
-  const role = useAuthStore((state) => state.role);
-  const isAdmin = role === 'admin' || role === 'superadmin';
 
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [capacityModalOpen, setCapacityModalOpen] = useState(false);
   const [accessModalOpen, setAccessModalOpen] = useState(false);
   const [infraModalOpen, setInfraModalOpen] = useState(false);
@@ -97,18 +92,6 @@ function WarehouseDetailPage() {
   const { data: facilityOptions } = useQuery({
     queryKey: ['reference-data', 'facility-options'],
     queryFn: () => getFacilityOptions(),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: deleteWarehouse,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['warehouses'] });
-      notifications.show({ title: 'Success', message: 'Warehouse deleted', color: 'green' });
-      navigate('/warehouses');
-    },
-    onError: (error: any) => {
-      notifications.show({ title: 'Error', message: error.response?.data?.error?.message || 'Failed to delete warehouse', color: 'red' });
-    },
   });
 
   const toNumber = (value: number | '' | null | undefined) =>
@@ -328,16 +311,6 @@ function WarehouseDetailPage() {
           </div>
           <StatusBadge status={warehouse.status} />
         </Group>
-        {isAdmin && (
-          <Group>
-            <Button variant="light" leftSection={<IconEdit size={16} />} onClick={() => navigate(`/warehouses/${id}/edit`)}>
-              Edit
-            </Button>
-            <Button color="red" variant="light" leftSection={<IconTrash size={16} />} onClick={() => setDeleteModalOpen(true)}>
-              Delete
-            </Button>
-          </Group>
-        )}
       </Group>
 
       <Tabs defaultValue="overview">
@@ -419,9 +392,9 @@ function WarehouseDetailPage() {
                 <Text fw={600}>GPS Location</Text>
                 {canEdit && (
                   <Button
-                    size="xs"
+                    size="sm"
                     variant="light"
-                    leftSection={<IconMapPin size={14} />}
+                    leftSection={<IconMapPin size={16} />}
                     onClick={() => setGpsModalOpen(true)}
                   >
                     {warehouse.geo ? 'Update GPS Location' : 'Add GPS Location'}
@@ -457,7 +430,7 @@ function WarehouseDetailPage() {
           <Group justify="space-between" mb="sm">
             <Title order={4}>Capacity</Title>
             {canEdit && (
-              <Button size="xs" variant="light" onClick={() => setCapacityModalOpen(true)}>Edit</Button>
+              <Button size="sm" variant="light" leftSection={<IconEdit size={16} />} onClick={() => setCapacityModalOpen(true)}>Edit</Button>
             )}
           </Group>
           <Card withBorder>
@@ -515,7 +488,7 @@ function WarehouseDetailPage() {
             ) : (
               <Stack gap="xs" align="center" py="md">
                 <Text c="dimmed">No capacity information yet</Text>
-                {canEdit && <Button size="xs" variant="light" onClick={() => setCapacityModalOpen(true)}>Add Capacity Info</Button>}
+                {canEdit && <Button size="sm" variant="light" leftSection={<IconEdit size={16} />} onClick={() => setCapacityModalOpen(true)}>Add Capacity Info</Button>}
               </Stack>
             )}
           </Card>
@@ -526,7 +499,7 @@ function WarehouseDetailPage() {
           <Group justify="space-between" mb="sm">
             <Title order={4}>Access</Title>
             {canEdit && (
-              <Button size="xs" variant="light" onClick={() => setAccessModalOpen(true)}>Edit</Button>
+              <Button size="sm" variant="light" leftSection={<IconEdit size={16} />} onClick={() => setAccessModalOpen(true)}>Edit</Button>
             )}
           </Group>
           <Card withBorder>
@@ -564,7 +537,7 @@ function WarehouseDetailPage() {
             ) : (
               <Stack gap="xs" align="center" py="md">
                 <Text c="dimmed">No access information yet</Text>
-                {canEdit && <Button size="xs" variant="light" onClick={() => setAccessModalOpen(true)}>Add Access Info</Button>}
+                {canEdit && <Button size="sm" variant="light" leftSection={<IconEdit size={16} />} onClick={() => setAccessModalOpen(true)}>Add Access Info</Button>}
               </Stack>
             )}
           </Card>
@@ -575,7 +548,7 @@ function WarehouseDetailPage() {
           <Group justify="space-between" mb="sm">
             <Title order={4}>Infrastructure</Title>
             {canEdit && (
-              <Button size="xs" variant="light" onClick={() => setInfraModalOpen(true)}>Edit</Button>
+              <Button size="sm" variant="light" leftSection={<IconEdit size={16} />} onClick={() => setInfraModalOpen(true)}>Edit</Button>
             )}
           </Group>
           <Card withBorder>
@@ -605,7 +578,7 @@ function WarehouseDetailPage() {
             ) : (
               <Stack gap="xs" align="center" py="md">
                 <Text c="dimmed">No infrastructure information yet</Text>
-                {canEdit && <Button size="xs" variant="light" onClick={() => setInfraModalOpen(true)}>Add Infrastructure Info</Button>}
+                {canEdit && <Button size="sm" variant="light" leftSection={<IconEdit size={16} />} onClick={() => setInfraModalOpen(true)}>Add Infrastructure Info</Button>}
               </Stack>
             )}
           </Card>
@@ -616,7 +589,7 @@ function WarehouseDetailPage() {
           <Group justify="space-between" mb="sm">
             <Title order={4}>Contacts</Title>
             {canEdit && (
-              <Button size="xs" variant="light" onClick={() => setContactsModalOpen(true)}>Edit</Button>
+              <Button size="sm" variant="light" leftSection={<IconEdit size={16} />} onClick={() => setContactsModalOpen(true)}>Edit</Button>
             )}
           </Group>
           <Card withBorder>
@@ -638,7 +611,7 @@ function WarehouseDetailPage() {
             ) : (
               <Stack gap="xs" align="center" py="md">
                 <Text c="dimmed">No contact information yet</Text>
-                {canEdit && <Button size="xs" variant="light" onClick={() => setContactsModalOpen(true)}>Add Contact Info</Button>}
+                {canEdit && <Button size="sm" variant="light" leftSection={<IconEdit size={16} />} onClick={() => setContactsModalOpen(true)}>Add Contact Info</Button>}
               </Stack>
             )}
           </Card>
@@ -649,7 +622,7 @@ function WarehouseDetailPage() {
           <Group justify="space-between" mb="sm">
             <Title order={4}>Stores</Title>
             {canCreateStores && (
-              <Button size="xs" onClick={() => navigate(`/stores/new?warehouse_id=${warehouse.id}`)}>
+              <Button size="sm" variant="light" leftSection={<IconPlus size={16} />} onClick={() => navigate(`/stores/new?warehouse_id=${warehouse.id}`)}>
                 Create Store
               </Button>
             )}
@@ -776,17 +749,6 @@ function WarehouseDetailPage() {
         </Tabs.Panel>
       </Tabs>
 
-      {/* Delete Modal */}
-      <Modal opened={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} title="Delete Warehouse">
-        <Text mb="md">Are you sure you want to delete this warehouse? This action cannot be undone.</Text>
-        <Group justify="flex-end">
-          <Button variant="default" onClick={() => setDeleteModalOpen(false)}>Cancel</Button>
-          <Button color="red" onClick={() => id && deleteMutation.mutate(Number(id))} loading={deleteMutation.isPending}>
-            Delete
-          </Button>
-        </Group>
-      </Modal>
-
       {/* GPS Modal */}
       <GpsMapModal
         opened={gpsModalOpen}
@@ -877,11 +839,11 @@ function WarehouseDetailPage() {
             {accessForm.values.has_loading_dock && (
               <>
                 <NumberInput label="Number of Loading Docks" min={0} {...accessForm.getInputProps('number_of_loading_docks')} />
-                <Select label="Loading Dock Type" data={facilityOptions?.loading_dock_type || []} {...accessForm.getInputProps('loading_dock_type')} />
+                <SearchableSelect label="Loading Dock Type" data={facilityOptions?.loading_dock_type || []} {...accessForm.getInputProps('loading_dock_type')} />
               </>
             )}
             <Divider />
-            <Select label="Access Road Type" data={facilityOptions?.access_road_type || []} {...accessForm.getInputProps('access_road_type')} />
+            <SearchableSelect label="Access Road Type" data={facilityOptions?.access_road_type || []} {...accessForm.getInputProps('access_road_type')} />
             <TextInput label="Nearest Town" {...accessForm.getInputProps('nearest_town')} />
             <NumberInput label="Distance from Town (km)" min={0} {...accessForm.getInputProps('distance_from_town_km')} />
             <Group justify="flex-end">
@@ -896,8 +858,8 @@ function WarehouseDetailPage() {
       <Modal opened={infraModalOpen} onClose={() => setInfraModalOpen(false)} title="Edit Infrastructure" centered>
         <form onSubmit={infraForm.onSubmit((values) => updateInfraMutation.mutate(values))}>
           <Stack gap="md">
-            <Select label="Floor Type" data={facilityOptions?.floor_type || []} {...infraForm.getInputProps('floor_type')} />
-            <Select label="Roof Type" data={facilityOptions?.roof_type || []} {...infraForm.getInputProps('roof_type')} />
+            <SearchableSelect label="Floor Type" data={facilityOptions?.floor_type || []} {...infraForm.getInputProps('floor_type')} />
+            <SearchableSelect label="Roof Type" data={facilityOptions?.roof_type || []} {...infraForm.getInputProps('roof_type')} />
             <Switch label="Has Fumigation Facility" {...infraForm.getInputProps('has_fumigation_facility', { type: 'checkbox' })} />
             <Switch label="Has Fire Extinguisher" {...infraForm.getInputProps('has_fire_extinguisher', { type: 'checkbox' })} />
             <Switch label="Has Security Guard" {...infraForm.getInputProps('has_security_guard', { type: 'checkbox' })} />

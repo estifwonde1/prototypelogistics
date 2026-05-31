@@ -1,26 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import {
-  Alert,
-  Badge,
-  Button,
-  Card,
-  Divider,
-  Group,
-  Loader,
-  Modal,
-  NumberInput,
-  Progress,
-  Select,
-  SimpleGrid,
-  Stack,
-  Text,
-  TextInput,
-  ThemeIcon,
-  Title,
-  Tooltip,
-} from '@mantine/core';
+import { Alert, Badge, Button, Card, Divider, Group, Loader, Modal, NumberInput, Progress, SimpleGrid, Stack, Text, TextInput, ThemeIcon, Title, Tooltip } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { useForm } from '@mantine/form';
 import {
   IconBox,
@@ -1198,7 +1180,7 @@ export default function StackLayoutPage() {
           }}
         >
           <Group justify="space-between" align="flex-start">
-            <Select
+            <SearchableSelect
               value={resolvedStoreId}
               onChange={setStoreId}
               data={storeOptions}
@@ -1267,7 +1249,7 @@ export default function StackLayoutPage() {
                   <Text size="xs" fw={800} c="#42506a" tt="uppercase" style={{ letterSpacing: '0.12em' }}>
                     Receipt Authorization
                   </Text>
-                  <Select
+                  <SearchableSelect
                     placeholder={
                       driverArrivalRAsForStacking.length === 0
                         ? 'No active RA with Draft GRN for this truck'
@@ -1838,7 +1820,7 @@ export default function StackLayoutPage() {
                 styles={baseInputStyles}
                 {...form.getInputProps('code')}
               />
-              <Select
+              <SearchableSelect
                 label="Stack Status"
                 data={stackStatusOptions}
                 styles={baseInputStyles}

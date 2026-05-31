@@ -1,28 +1,21 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import {
-  Alert,
-  Stack,
-  Title,
-  Group,
-  TextInput,
-  Select,
-  Textarea,
-  Button,
-  Card,
-  Text,
-  NumberInput,
-} from '@mantine/core';
+import { Alert, Stack, Title, Group, TextInput, Textarea, Button, Card, Text, NumberInput } from '@mantine/core';
+import { IconArrowLeft } from '@tabler/icons-react';
+import { SearchableSelect } from '../../../components/common/SearchableSelect';
 import { useForm } from '@mantine/form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { createHub } from '../../../api/hubs';
+import { createHub, getHub, updateHub } from '../../../api/hubs';
 import { getKebeles, getRegions, getZones, getWoredas } from '../../../api/locations';
 import { LoadingState } from '../../../components/common/LoadingState';
 import { ErrorState } from '../../../components/common/ErrorState';
 import { dedupOptions } from '../../../utils/dedup';
-import { resolveLocationContextFromQuery } from '../../../utils/locationContext';
+import {
+  locationContextFromEntity,
+  resolveLocationContextFromQuery,
+} from '../../../utils/locationContext';
 
 const DEFAULT_REGION_NAME = 'Addis Ababa';
 
@@ -40,18 +33,31 @@ export default function HubSetupPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const editIdParam = searchParams.get('id');
+  const editId = editIdParam ? Number(editIdParam) : null;
+  const isEdit = !!editId;
   const inheritedContext = resolveLocationContextFromQuery(searchParams);
-  const isInheritedFromLocationPage = !!inheritedContext.woredaId;
+  const isInheritedFromLocationPage = !isEdit && !!inheritedContext.woredaId;
+  const isLocationLocked = isInheritedFromLocationPage;
+  const editInitialized = useRef(false);
   const [regionId, setRegionId] = useState<string | null>(null);
   const [zoneId, setZoneId] = useState<string | null>(null);
   const [woredaId, setWoredaId] = useState<string | null>(null);
   const [kebeleId, setKebeleId] = useState<string | null>(null);
   const [createdHubId, setCreatedHubId] = useState<number | null>(null);
 
+  const { data: hub, isLoading: hubLoading, error: hubError } = useQuery({
+    queryKey: ['hubs', editId],
+    queryFn: () => getHub(editId as number),
+    enabled: isEdit,
+  });
+
   const { data: regions, isLoading: regionsLoading, error: regionsError } = useQuery({
     queryKey: ['locations', 'regions'],
     queryFn: getRegions,
   });
+
+  const editLocationContext = useMemo(() => locationContextFromEntity(hub), [hub]);
 
   const { data: zones, isLoading: zonesLoading } = useQuery({
     queryKey: ['locations', 'zones', regionId],
@@ -72,6 +78,7 @@ export default function HubSetupPage() {
   });
 
   useEffect(() => {
+    if (isEdit) return;
     if (regions && regions.length > 0 && !regionId) {
       const defaultRegion =
         regions.find((region) => region.id === inheritedContext.regionId) ||
@@ -79,9 +86,10 @@ export default function HubSetupPage() {
         regions[0];
       setRegionId(String(defaultRegion.id));
     }
-  }, [regions, regionId, inheritedContext.regionId]);
+  }, [regions, regionId, isEdit, inheritedContext.regionId]);
 
   useEffect(() => {
+    if (isEdit) return;
     if (isInheritedFromLocationPage) {
       if (inheritedContext.zoneId) setZoneId(String(inheritedContext.zoneId));
       return;
@@ -93,9 +101,10 @@ export default function HubSetupPage() {
     if (!zoneId || !zones.some((zone) => String(zone.id) === zoneId)) {
       setZoneId(String(zones[0].id));
     }
-  }, [zones, zoneId, isInheritedFromLocationPage, inheritedContext.zoneId]);
+  }, [isEdit, zones, zoneId, isInheritedFromLocationPage, inheritedContext.zoneId]);
 
   useEffect(() => {
+    if (isEdit) return;
     if (isInheritedFromLocationPage) {
       if (inheritedContext.woredaId) setWoredaId(String(inheritedContext.woredaId));
       setKebeleId(inheritedContext.kebeleId ? String(inheritedContext.kebeleId) : null);
@@ -109,9 +118,10 @@ export default function HubSetupPage() {
     if (!woredaId || !woredas.some((woreda) => String(woreda.id) === woredaId)) {
       setWoredaId(String(woredas[0].id));
     }
-  }, [woredas, woredaId, isInheritedFromLocationPage, inheritedContext.woredaId]);
+  }, [isEdit, woredas, woredaId, isInheritedFromLocationPage, inheritedContext.woredaId, inheritedContext.kebeleId]);
 
   useEffect(() => {
+    if (isEdit) return;
     if (isInheritedFromLocationPage) {
       setKebeleId(inheritedContext.kebeleId ? String(inheritedContext.kebeleId) : null);
       return;
@@ -123,7 +133,7 @@ export default function HubSetupPage() {
     if (kebeleId && !kebeles.some((kebele) => String(kebele.id) === kebeleId)) {
       setKebeleId(null);
     }
-  }, [kebeles, kebeleId, isInheritedFromLocationPage, inheritedContext.kebeleId]);
+  }, [isEdit, kebeles, kebeleId, isInheritedFromLocationPage, inheritedContext.kebeleId]);
 
   const form = useForm({
     initialValues: {
@@ -147,6 +157,26 @@ export default function HubSetupPage() {
     },
   });
 
+  useEffect(() => {
+    if (!isEdit || !hub || editInitialized.current) return;
+
+    editInitialized.current = true;
+    form.setValues({
+      code: hub.code,
+      name: hub.name,
+      hub_type: hub.hub_type,
+      status: hub.status,
+      description: hub.description || '',
+      kebele: hub.kebele ?? '',
+    });
+
+    const ctx = editLocationContext;
+    if (ctx.regionId) setRegionId(String(ctx.regionId));
+    if (ctx.zoneId) setZoneId(String(ctx.zoneId));
+    if (ctx.woredaId) setWoredaId(String(ctx.woredaId));
+    if (ctx.kebeleId) setKebeleId(String(ctx.kebeleId));
+  }, [isEdit, hub, editLocationContext]);
+
   const createMutation = useMutation({
     mutationFn: createHub,
     onSuccess: (data) => {
@@ -159,6 +189,23 @@ export default function HubSetupPage() {
       notifications.show({
         title: 'Error',
         message: err.response?.data?.error?.message || 'Failed to create hub',
+        color: 'red',
+      });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (payload: Parameters<typeof updateHub>[1]) => updateHub(editId as number, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hubs'] });
+      queryClient.invalidateQueries({ queryKey: ['hubs', editId] });
+      notifications.show({ title: 'Success', message: 'Hub updated', color: 'green' });
+      navigate(`/hubs/${editId}`);
+    },
+    onError: (err: any) => {
+      notifications.show({
+        title: 'Error',
+        message: err.response?.data?.error?.message || 'Failed to update hub',
         color: 'red',
       });
     },
@@ -182,33 +229,45 @@ export default function HubSetupPage() {
   );
 
   const displayedZoneOptions = useMemo(() => {
-    if (!isInheritedFromLocationPage || !inheritedContext.zoneId || !inheritedContext.subcityName) return zoneOptions;
-    if (zoneOptions.some((option) => option.value === String(inheritedContext.zoneId))) return zoneOptions;
-    return dedupOptions([{ value: String(inheritedContext.zoneId), label: inheritedContext.subcityName }, ...zoneOptions]);
-  }, [isInheritedFromLocationPage, inheritedContext, zoneOptions]);
+    const context = isEdit ? editLocationContext : inheritedContext;
+    if (!context?.zoneId || !context.subcityName) return zoneOptions;
+    if (zoneOptions.some((option) => option.value === String(context.zoneId))) return zoneOptions;
+    return dedupOptions([{ value: String(context.zoneId), label: context.subcityName }, ...zoneOptions]);
+  }, [isEdit, editLocationContext, inheritedContext, zoneOptions]);
 
   const displayedWoredaOptions = useMemo(() => {
-    if (!isInheritedFromLocationPage || !inheritedContext.woredaId || !inheritedContext.woredaName) return woredaOptions;
-    if (woredaOptions.some((option) => option.value === String(inheritedContext.woredaId))) return woredaOptions;
-    return dedupOptions([{ value: String(inheritedContext.woredaId), label: inheritedContext.woredaName }, ...woredaOptions]);
-  }, [isInheritedFromLocationPage, inheritedContext, woredaOptions]);
+    const context = isEdit ? editLocationContext : inheritedContext;
+    if (!context?.woredaId || !context.woredaName) return woredaOptions;
+    if (woredaOptions.some((option) => option.value === String(context.woredaId))) return woredaOptions;
+    return dedupOptions([{ value: String(context.woredaId), label: context.woredaName }, ...woredaOptions]);
+  }, [isEdit, editLocationContext, inheritedContext, woredaOptions]);
 
   const selectedKebeleName =
     kebeleOptions.find((option) => option.value === kebeleId)?.label ||
-    inheritedContext.kebeleName ||
+    (isEdit ? editLocationContext?.kebeleName || hub?.kebele_name : inheritedContext.kebeleName) ||
     '';
 
-  if (regionsLoading) return <LoadingState message="Loading regions..." />;
+  const canSubmit = !!woredaId || (isEdit && !!hub?.location_id);
+
+  if (regionsLoading || (isEdit && hubLoading)) {
+    return <LoadingState message={isEdit ? 'Loading hub...' : 'Loading regions...'} />;
+  }
   if (regionsError) return <ErrorState message="Failed to load regions" />;
+  if (isEdit && (hubError || !hub)) return <ErrorState message="Failed to load hub" />;
+
+  const isKebeleProvided = !!(inheritedContext.kebeleId || inheritedContext.kebeleName);
+  const isKebeleLocked = isLocationLocked && isKebeleProvided;
+  const lockedKebeleValue = isKebeleLocked ? kebeleNumberFromName(selectedKebeleName) : undefined;
 
   const handleSubmit = (values: typeof form.values) => {
-    if (!woredaId) return;
-    const targetLocationId = kebeleId || woredaId;
-    const kebeleNumber =
-      values.kebele !== ''
+    const targetLocationId = kebeleId || woredaId || (isEdit && hub?.location_id ? String(hub.location_id) : null);
+    if (!targetLocationId) return;
+    const kebeleNumber = isKebeleLocked
+      ? lockedKebeleValue ?? kebeleNumberFromName(selectedKebeleName)
+      : values.kebele !== ''
         ? Number(values.kebele)
         : kebeleNumberFromName(selectedKebeleName);
-    createMutation.mutate({
+    const payload = {
       code: values.code,
       name: values.name,
       hub_type: values.hub_type,
@@ -216,24 +275,42 @@ export default function HubSetupPage() {
       description: values.description || undefined,
       location_id: Number(targetLocationId),
       kebele: kebeleNumber,
-    });
+    };
+
+    if (isEdit) {
+      updateMutation.mutate(payload);
+      return;
+    }
+
+    createMutation.mutate(payload);
   };
 
   return (
     <Stack gap="md">
-      <div>
-        <Title order={2}>Create Hub</Title>
-        <Text c="dimmed" size="sm">
-          Hubs are tied to a woreda or kebele location within the selected region.
-        </Text>
-      </div>
+      <Group>
+        {isEdit && (
+          <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate(`/hubs/${editId}`)}>
+            Back
+          </Button>
+        )}
+        <div>
+          <Title order={2}>{isEdit ? 'Edit Hub' : 'Create Hub'}</Title>
+          <Text c="dimmed" size="sm">
+            {isEdit
+              ? 'Update hub details and location information.'
+              : 'Hubs are tied to a woreda or kebele location within the selected region.'}
+          </Text>
+        </div>
+      </Group>
 
       <Card withBorder padding="lg">
         <form onSubmit={form.onSubmit(handleSubmit)}>
           <Stack gap="md">
-            {isInheritedFromLocationPage && (
+            {isLocationLocked && (
               <Alert color="blue" variant="light">
-                Region, zone/subcity, woreda, and any selected kebele were chosen on the location page and are locked for this hub.
+                {isKebeleLocked
+                  ? 'Region, zone/subcity, woreda, and kebele were chosen on the location page and are locked for this hub.'
+                  : 'Region, zone/subcity, and woreda were chosen on the location page and are locked for this hub. Kebele is optional and can be entered below.'}
               </Alert>
             )}
 
@@ -243,7 +320,7 @@ export default function HubSetupPage() {
             </Group>
 
             <Group grow>
-              <Select
+              <SearchableSelect
                 label="Hierarchical Level"
                 data={[
                   { value: 'federal', label: 'Federal' },
@@ -254,7 +331,7 @@ export default function HubSetupPage() {
                 ]}
                 {...form.getInputProps('hub_type')}
               />
-              <Select
+              <SearchableSelect
                 label="Status"
                 data={[
                   { value: 'active', label: 'Active' },
@@ -266,22 +343,22 @@ export default function HubSetupPage() {
             </Group>
 
             <Group grow>
-              <Select
+              <SearchableSelect
                 label="Region"
                 data={regionOptions}
                 value={regionId}
                 onChange={(value) => {
                   setRegionId(value);
-                  if (!isInheritedFromLocationPage) {
+                  if (!isLocationLocked) {
                     setZoneId(null);
                     setWoredaId(null);
                     setKebeleId(null);
                   }
                 }}
-                disabled={isInheritedFromLocationPage}
-                description={isInheritedFromLocationPage ? inheritedContext.regionName || 'Inherited from location page' : undefined}
+                disabled={isLocationLocked}
+                description={isLocationLocked ? inheritedContext.regionName || 'Inherited from location page' : undefined}
               />
-              <Select
+              <SearchableSelect
                 label="Zone / Subcity"
                 data={displayedZoneOptions}
                 value={zoneId}
@@ -290,36 +367,58 @@ export default function HubSetupPage() {
                   setWoredaId(null);
                   setKebeleId(null);
                 }}
-                disabled={zonesLoading || isInheritedFromLocationPage}
-                description={isInheritedFromLocationPage ? inheritedContext.subcityName || 'Inherited from location page' : undefined}
+                disabled={zonesLoading || isLocationLocked}
+                description={isLocationLocked ? inheritedContext.subcityName || 'Inherited from location page' : undefined}
               />
-              <Select
+              <SearchableSelect
                 label="Woreda"
                 data={displayedWoredaOptions}
                 value={woredaId}
                 onChange={(value) => {
                   setWoredaId(value);
                 }}
-                disabled={woredasLoading || isInheritedFromLocationPage}
-                description={isInheritedFromLocationPage ? inheritedContext.woredaName || 'Inherited from location page' : undefined}
+                disabled={woredasLoading || isLocationLocked}
+                description={isLocationLocked ? inheritedContext.woredaName || 'Inherited from location page' : undefined}
               />
               <NumberInput
                 label="Kebele (Optional)"
                 placeholder="1-40"
                 min={1}
                 max={40}
-                description={selectedKebeleName || 'Optional'}
-                {...form.getInputProps('kebele')}
+                description={
+                  isKebeleLocked
+                    ? selectedKebeleName || 'Inherited from location page'
+                    : selectedKebeleName || 'Optional'
+                }
+                disabled={isKebeleLocked}
+                value={isKebeleLocked ? (lockedKebeleValue ?? '') : form.values.kebele}
+                onChange={(value) => {
+                  if (!isKebeleLocked) {
+                    form.setFieldValue('kebele', value);
+                  }
+                }}
+                error={form.errors.kebele}
               />
             </Group>
 
             <Textarea label="Description" minRows={3} {...form.getInputProps('description')} />
 
             <Group justify="space-between">
-              <Button type="submit" loading={createMutation.isPending} disabled={!woredaId}>
-                Create Hub
-              </Button>
-              {createdHubId && (
+              <Group>
+                {isEdit && (
+                  <Button variant="default" onClick={() => navigate('/hubs')}>
+                    Cancel
+                  </Button>
+                )}
+                <Button
+                  type="submit"
+                  loading={createMutation.isPending || updateMutation.isPending}
+                  disabled={!canSubmit}
+                >
+                  {isEdit ? 'Update Hub' : 'Create Hub'}
+                </Button>
+              </Group>
+              {!isEdit && createdHubId && (
                 <Button
                   variant="light"
                   onClick={() =>

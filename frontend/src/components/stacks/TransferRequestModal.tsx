@@ -1,13 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Modal,
-  Button,
-  Select,
-  Textarea,
-  Stack as MantineStack,
-  Group,
-  Alert,
-} from '@mantine/core';
+import { Modal, Button, Textarea, Stack as MantineStack, Group, Alert } from '@mantine/core';
+import { SearchableSelect } from '../common/SearchableSelect';
 import { IconAlertCircle } from '@tabler/icons-react';
 import type { Stack } from '../../types/stack';
 import type { Store } from '../../types/store';
@@ -136,7 +129,7 @@ const TransferRequestModal: React.FC<TransferRequestModalProps> = ({
           </Alert>
         ) : (
           <>
-            <Select
+            <SearchableSelect
               label="Destination store"
               placeholder="Select destination store"
               data={storeOptions}

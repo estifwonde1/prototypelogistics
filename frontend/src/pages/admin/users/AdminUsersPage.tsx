@@ -1,21 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMemo, useState } from 'react';
-import {
-  Stack,
-  Group,
-  Title,
-  Button,
-  Select,
-  MultiSelect,
-  Table,
-  ActionIcon,
-  Modal,
-  TextInput,
-  PasswordInput,
-  Text,
-  Badge,
-  Divider,
-} from '@mantine/core';
+import { Stack, Group, Title, Button, Table, ActionIcon, Modal, TextInput, PasswordInput, Text, Badge, Divider } from '@mantine/core';
+import { SearchableSelect, SearchableMultiSelect } from '../../../components/common/SearchableSelect';
 import { useForm } from '@mantine/form';
 import { IconPlus, IconEdit, IconTrash } from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -230,7 +216,7 @@ export default function AdminUsersPage() {
       </Group>
 
       <Group>
-        <Select
+        <SearchableSelect
           label="Filter by Warehouse"
           placeholder="All warehouses"
           data={warehouses?.map((w) => ({ value: String(w.id), label: w.name })) || []}
@@ -239,7 +225,7 @@ export default function AdminUsersPage() {
           clearable
           w={320}
         />
-        <Select
+        <SearchableSelect
           label="Filter by Role"
           placeholder="All roles"
           data={(roles?.map((r) => r.name) || ROLE_OPTIONS).map((name) => ({ value: name, label: name }))}
@@ -320,7 +306,7 @@ export default function AdminUsersPage() {
               error={form.errors.phone_number}
               required
             />
-            <MultiSelect
+            <SearchableMultiSelect
               label="Roles"
               placeholder="Select one or more roles"
               data={(roles?.map((r) => r.name) || ROLE_OPTIONS).map((name) => ({ value: name, label: name }))}

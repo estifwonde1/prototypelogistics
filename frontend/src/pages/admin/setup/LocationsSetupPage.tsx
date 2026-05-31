@@ -1,7 +1,8 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Stack, Title, Group, Select, Button, Text, Card, Autocomplete } from '@mantine/core';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Stack, Title, Group, Button, Text, Card, Autocomplete } from '@mantine/core';
+import { SearchableSelect } from '../../../components/common/SearchableSelect';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { createLocation, getKebeles, getRegions, getZones, getWoredas } from '../../../api/locations';
@@ -11,8 +12,12 @@ import { dedupBy, dedupOptions } from '../../../utils/dedup';
 
 const DEFAULT_REGION_NAME = 'Addis Ababa';
 
+type SetupFlow = 'hub' | 'warehouse';
+
 export default function LocationsSetupPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const flow = searchParams.get('flow') as SetupFlow | null;
   const queryClient = useQueryClient();
   const [regionId, setRegionId] = useState<string | null>(null);
   const [zoneId, setZoneId] = useState<string | null>(null);
@@ -52,26 +57,30 @@ export default function LocationsSetupPage() {
 
   useEffect(() => {
     if (!zones || zones.length === 0) {
-      setZoneId(null);
+      if (zoneId !== null) setZoneId(null);
       return;
     }
 
-    if (!zoneId || !zones.some((zone) => String(zone.id) === zoneId)) {
-      setZoneId(String(zones[0].id));
-    }
+    const nextZoneId =
+      !zoneId || !zones.some((zone) => String(zone.id) === zoneId)
+        ? String(zones[0].id)
+        : zoneId;
+    if (nextZoneId !== zoneId) setZoneId(nextZoneId);
   }, [zones, zoneId]);
 
   useEffect(() => {
     if (!woredas || woredas.length === 0) {
-      setWoredaId(null);
-      setKebeleId(null);
-      setKebeleInputValue('');
+      if (woredaId !== null) setWoredaId(null);
+      if (kebeleId !== null) setKebeleId(null);
+      if (kebeleInputValue !== '') setKebeleInputValue('');
       return;
     }
 
-    if (!woredaId || !woredas.some((woreda) => String(woreda.id) === woredaId)) {
-      setWoredaId(String(woredas[0].id));
-    }
+    const nextWoredaId =
+      !woredaId || !woredas.some((woreda) => String(woreda.id) === woredaId)
+        ? String(woredas[0].id)
+        : woredaId;
+    if (nextWoredaId !== woredaId) setWoredaId(nextWoredaId);
   }, [woredas, woredaId]);
 
   useEffect(() => {
@@ -194,7 +203,7 @@ export default function LocationsSetupPage() {
 
       <Card withBorder padding="lg">
         <Group align="end">
-          <Select
+          <SearchableSelect
             label="Region"
             data={regionOptions}
             value={regionId}
@@ -207,7 +216,7 @@ export default function LocationsSetupPage() {
             }}
             w={260}
           />
-          <Select
+          <SearchableSelect
             label="Zone / Subcity"
             data={zoneOptions}
             value={zoneId}
@@ -220,7 +229,7 @@ export default function LocationsSetupPage() {
             w={300}
             disabled={!regionId || zonesLoading}
           />
-          <Select
+          <SearchableSelect
             label="Woreda"
             data={woredaOptions}
             value={woredaId}
@@ -259,16 +268,24 @@ export default function LocationsSetupPage() {
         </Group>
 
         <Group mt="md" justify="flex-end">
-          <Button onClick={() => void handleNavigateWithLocation('/admin/setup/hubs')} disabled={!woredaId || createKebeleMutation.isPending}>
-            Create Hub
-          </Button>
-          <Button
-            onClick={() => void handleNavigateWithLocation('/admin/setup/warehouses')}
-            disabled={!woredaId || createKebeleMutation.isPending}
-            variant="light"
-          >
-            Create Warehouse
-          </Button>
+          {(flow === 'hub' || !flow) && (
+            <Button
+              onClick={() => void handleNavigateWithLocation('/admin/setup/hubs')}
+              disabled={!woredaId || createKebeleMutation.isPending}
+              variant={flow === 'hub' ? 'filled' : 'light'}
+            >
+              {flow === 'hub' ? 'Next' : 'Next: Hub'}
+            </Button>
+          )}
+          {(flow === 'warehouse' || !flow) && (
+            <Button
+              onClick={() => void handleNavigateWithLocation('/admin/setup/warehouses')}
+              disabled={!woredaId || createKebeleMutation.isPending}
+              variant={flow === 'warehouse' ? 'filled' : 'light'}
+            >
+              {flow === 'warehouse' ? 'Next' : 'Next: Warehouse'}
+            </Button>
+          )}
         </Group>
       </Card>
 

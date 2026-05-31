@@ -1,17 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  TextInput,
-  Table,
-  ActionIcon,
-  Text,
-  Select,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, TextInput, Table, ActionIcon, Text } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { IconPlus, IconSearch, IconEye } from '@tabler/icons-react';
 import { getGrns } from '../../api/grns';
 import { getWarehouses } from '../../api/warehouses';
@@ -87,7 +78,7 @@ function GrnListPage() {
           onChange={(e) => setSearch(e.target.value)}
           style={{ flex: 1, maxWidth: 400 }}
         />
-        <Select
+        <SearchableSelect
           placeholder="Filter by status"
           data={statusOptions}
           value={statusFilter}

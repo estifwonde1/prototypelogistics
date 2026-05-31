@@ -1,3 +1,4 @@
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect */
 import { useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
@@ -9,7 +10,6 @@ import {
   Group,
   TextInput,
   NumberInput,
-  Select,
   Switch,
   Card,
   Text,
@@ -405,7 +405,7 @@ function StoreFormPage() {
                 />
               </Group>
 
-              <Select
+              <SearchableSelect
                 label="Warehouse"
                 placeholder="Select warehouse"
                 required

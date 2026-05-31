@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useMemo, useState } from 'react';
-import { Stack, Title, Group, Select, MultiSelect, Button, Table, Badge, Text } from '@mantine/core';
+import { Stack, Title, Group, Button, Table, Badge, Text } from '@mantine/core';
+import { SearchableSelect, SearchableMultiSelect } from '../../../components/common/SearchableSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { getAdminUsers } from '../../../api/adminUsers';
@@ -175,7 +176,7 @@ export default function UserAssignmentsPage() {
       <Title order={2}>User Assignments</Title>
 
       <Group align="end">
-        <Select
+        <SearchableSelect
           label="Role"
           data={ROLE_OPTIONS.map((r) => ({ value: r, label: r }))}
           value={roleName}
@@ -189,7 +190,7 @@ export default function UserAssignmentsPage() {
           }}
           w={260}
         />
-        <Select
+        <SearchableSelect
           label="User"
           placeholder="Select user"
           data={dedupOptions(users?.map((u) => ({ value: String(u.id), label: `${u.first_name} ${u.last_name}` })) || [])}
@@ -198,7 +199,7 @@ export default function UserAssignmentsPage() {
           w={320}
         />
         {(isZonalOfficer || isWoredaOfficer || isKebeleOfficer) && (
-          <Select
+          <SearchableSelect
             label="Region"
             placeholder="Select region"
             data={dedupOptions(regions?.map((r) => ({ value: String(r.id), label: r.name })) || [])}
@@ -213,7 +214,7 @@ export default function UserAssignmentsPage() {
           />
         )}
         {(isWoredaOfficer || isKebeleOfficer) && (
-          <Select
+          <SearchableSelect
             label="Zone"
             placeholder="Select zone"
             data={dedupOptions(zones?.map((z) => ({ value: String(z.id), label: z.name })) || [])}
@@ -228,7 +229,7 @@ export default function UserAssignmentsPage() {
           />
         )}
         {isKebeleOfficer && (
-          <Select
+          <SearchableSelect
             label="Woreda"
             placeholder="Select woreda"
             data={dedupOptions(woredas?.map((w) => ({ value: String(w.id), label: w.name })) || [])}
@@ -241,7 +242,7 @@ export default function UserAssignmentsPage() {
             disabled={!zoneId}
           />
         )}
-        <MultiSelect
+        <SearchableMultiSelect
           label={isWarehouseRole ? 'Assign Warehouses' : 'Assign Locations'}
           placeholder="Select locations"
           data={locationOptions}

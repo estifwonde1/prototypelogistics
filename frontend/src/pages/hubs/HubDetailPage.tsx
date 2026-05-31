@@ -2,27 +2,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Alert,
-  Badge,
-  Button,
-  Card,
-  Grid,
-  Group,
-  Modal,
-  NumberInput,
-  Select,
-  Stack,
-  Switch,
-  Tabs,
-  Text,
-  TextInput,
-  Title,
-} from '@mantine/core';
-import { IconArrowLeft, IconEdit, IconMapPin, IconPlus, IconTrash } from '@tabler/icons-react';
+import { Alert, Badge, Button, Card, Grid, Group, Modal, NumberInput, Stack, Switch, Tabs, Text, TextInput, Title } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
+import { IconArrowLeft, IconEdit, IconMapPin, IconPlus } from '@tabler/icons-react';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import { deleteHub, getHub, updateHubAccess, updateHubGps } from '../../api/hubs';
+import { getHub, updateHubAccess, updateHubGps } from '../../api/hubs';
 import { createWarehouse, getWarehouses } from '../../api/warehouses';
 import { ErrorState } from '../../components/common/ErrorState';
 import { GpsMapModal } from '../../components/common/GpsMapModal';
@@ -47,7 +32,6 @@ function HubDetailPage() {
   const isHubManager = role === 'hub_manager';
   const activeTab = searchParams.get('tab') || 'overview';
 
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [accessModalOpen, setAccessModalOpen] = useState(false);
   const [gpsModalOpen, setGpsModalOpen] = useState(false);
   const [createWarehouseModalOpen, setCreateWarehouseModalOpen] = useState(false);
@@ -114,22 +98,6 @@ function HubDetailPage() {
       has_weighbridge: !!hub.access?.has_weighbridge,
     });
   }, [hub]);
-
-  const deleteMutation = useMutation({
-    mutationFn: deleteHub,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['hubs'] });
-      notifications.show({ title: 'Success', message: 'Hub deleted', color: 'green' });
-      navigate('/hubs');
-    },
-    onError: (mutationError: any) => {
-      notifications.show({
-        title: 'Error',
-        message: mutationError.response?.data?.error?.message || 'Failed to delete hub',
-        color: 'red',
-      });
-    },
-  });
 
   const updateAccessMutation = useMutation({
     mutationFn: (payload: typeof accessForm.values) =>
@@ -228,17 +196,6 @@ function HubDetailPage() {
           </div>
           <StatusBadge status={hub.status} />
         </Group>
-
-        {isAdmin && (
-          <Group>
-            <Button variant="light" leftSection={<IconEdit size={16} />} onClick={() => navigate(`/hubs/${id}/edit`)}>
-              Edit
-            </Button>
-            <Button color="red" variant="light" leftSection={<IconTrash size={16} />} onClick={() => setDeleteModalOpen(true)}>
-              Delete
-            </Button>
-          </Group>
-        )}
       </Group>
 
       <Tabs value={activeTab} onChange={(value) => setSearchParams(value ? { tab: value } : {})}>
@@ -301,9 +258,9 @@ function HubDetailPage() {
                 <Text fw={600}>GPS Location</Text>
                 {canEdit && (
                   <Button
-                    size="xs"
+                    size="sm"
                     variant="light"
-                    leftSection={<IconMapPin size={14} />}
+                    leftSection={<IconMapPin size={16} />}
                     onClick={() => setGpsModalOpen(true)}
                   >
                     {hub.geo ? 'Update GPS Location' : 'Add GPS Location'}
@@ -363,7 +320,7 @@ function HubDetailPage() {
           <Group justify="space-between" mb="sm">
             <Title order={4}>Access</Title>
             {canEdit && (
-              <Button size="xs" variant="light" onClick={() => setAccessModalOpen(true)}>
+              <Button size="sm" variant="light" leftSection={<IconEdit size={16} />} onClick={() => setAccessModalOpen(true)}>
                 Edit
               </Button>
             )}
@@ -437,7 +394,7 @@ function HubDetailPage() {
           <Tabs.Panel value="warehouses" pt="md">
             <Group justify="space-between" mb="sm">
               <Title order={4}>Warehouses</Title>
-              <Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => setCreateWarehouseModalOpen(true)}>
+              <Button size="sm" variant="light" leftSection={<IconPlus size={16} />} onClick={() => setCreateWarehouseModalOpen(true)}>
                 New Warehouse
               </Button>
             </Group>
@@ -465,7 +422,7 @@ function HubDetailPage() {
                 <Card withBorder>
                   <Stack gap="xs" align="center" py="md">
                     <Text c="dimmed">No warehouses under this hub yet</Text>
-                    <Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => setCreateWarehouseModalOpen(true)}>
+                    <Button size="sm" variant="light" leftSection={<IconPlus size={16} />} onClick={() => setCreateWarehouseModalOpen(true)}>
                       Create First Warehouse
                     </Button>
                   </Stack>
@@ -475,16 +432,6 @@ function HubDetailPage() {
           </Tabs.Panel>
         )}
       </Tabs>
-
-      <Modal opened={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} title="Delete Hub">
-        <Text mb="md">Are you sure you want to delete this hub? This action cannot be undone.</Text>
-        <Group justify="flex-end">
-          <Button variant="default" onClick={() => setDeleteModalOpen(false)}>Cancel</Button>
-          <Button color="red" onClick={() => id && deleteMutation.mutate(Number(id))} loading={deleteMutation.isPending}>
-            Delete
-          </Button>
-        </Group>
-      </Modal>
 
       <GpsMapModal
         opened={gpsModalOpen}
@@ -503,10 +450,10 @@ function HubDetailPage() {
             {accessForm.values.has_loading_dock && (
               <>
                 <NumberInput label="Number of Loading Docks" min={0} {...accessForm.getInputProps('number_of_loading_docks')} />
-                <Select label="Loading Dock Type" data={facilityOptions?.loading_dock_type || []} {...accessForm.getInputProps('loading_dock_type')} />
+                <SearchableSelect label="Loading Dock Type" data={facilityOptions?.loading_dock_type || []} {...accessForm.getInputProps('loading_dock_type')} />
               </>
             )}
-            <Select label="Access Road Type" data={facilityOptions?.access_road_type || []} {...accessForm.getInputProps('access_road_type')} />
+            <SearchableSelect label="Access Road Type" data={facilityOptions?.access_road_type || []} {...accessForm.getInputProps('access_road_type')} />
             <TextInput label="Nearest Town" {...accessForm.getInputProps('nearest_town')} />
             <NumberInput label="Distance from Town (km)" min={0} {...accessForm.getInputProps('distance_from_town_km')} />
             <Switch label="Has Weighbridge" {...accessForm.getInputProps('has_weighbridge', { type: 'checkbox' })} />
@@ -536,7 +483,7 @@ function HubDetailPage() {
           <Stack gap="md">
             <TextInput label="Code" placeholder="WH-001" required {...warehouseForm.getInputProps('code')} />
             <TextInput label="Name" placeholder="Warehouse name" required {...warehouseForm.getInputProps('name')} />
-            <Select
+            <SearchableSelect
               label="Type"
               data={[
                 { value: 'main', label: 'Main' },
@@ -545,7 +492,7 @@ function HubDetailPage() {
               ]}
               {...warehouseForm.getInputProps('warehouse_type')}
             />
-            <Select
+            <SearchableSelect
               label="Status"
               data={[
                 { value: 'active', label: 'Active' },
@@ -554,7 +501,7 @@ function HubDetailPage() {
               ]}
               {...warehouseForm.getInputProps('status')}
             />
-            <Select
+            <SearchableSelect
               label="Ownership Type"
               data={[
                 { value: 'self_owned', label: 'Self Owned' },

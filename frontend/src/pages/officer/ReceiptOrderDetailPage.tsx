@@ -1,27 +1,8 @@
 import { useLocation, useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  Card,
-  Table,
-  Text,
-  SimpleGrid,
-  Dialog,
-  Tabs,
-  Select,
-  Textarea,
-  NumberInput,
-  TextInput,
-  Alert,
-  Divider,
-  Badge,
-  Progress,
-  Anchor,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, Card, Table, Text, SimpleGrid, Dialog, Tabs, Textarea, NumberInput, TextInput, Alert, Divider, Badge, Progress, Anchor } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { notifications } from '@mantine/notifications';
 import {
   getReceiptOrder,
@@ -2124,14 +2105,14 @@ function ReceiptOrderDetailPage() {
                                   error={Number(receiptQty) > remaining && remaining > 0 ? `Exceeds remaining (${remaining.toLocaleString()})` : null}
                                   required
                                 />
-                                <Select
+                                <SearchableSelect
                                   label="Condition"
                                   data={['Good', 'Damaged', 'Infested', 'Wet', 'Other']}
                                   value={receiptCondition}
                                   onChange={setReceiptCondition}
                                   required
                                 />
-                                <Select
+                                <SearchableSelect
                                   label="Grade"
                                   placeholder="Select grade"
                                   data={['Grade 1', 'Grade 2', 'Grade 3', 'Grade A', 'Grade B', 'Grade C', 'Substandard', 'Unknown']}
@@ -2164,7 +2145,7 @@ function ReceiptOrderDetailPage() {
                                       })()}
                                       description="Bags that were dispatched but did not arrive"
                                     />
-                                    <Select
+                                    <SearchableSelect
                                       label="Loss Type"
                                       placeholder="Select reason"
                                       data={['Theft', 'Damage', 'Infested', 'Wet', 'Other']}
@@ -2409,7 +2390,7 @@ function ReceiptOrderDetailPage() {
                           Could not load available managers.
                         </Text>
                       ) : null}
-                      <Select
+                      <SearchableSelect
                         label="Manager"
                         placeholder={
                           assignableManagersLoading
@@ -2454,7 +2435,7 @@ function ReceiptOrderDetailPage() {
 
                       <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
                         <Stack gap="xs">
-                          <Select
+                          <SearchableSelect
                             label="Store"
                             placeholder={
                               assignableManagersLoading
@@ -2513,7 +2494,7 @@ function ReceiptOrderDetailPage() {
                           )}
                         </Stack>
 
-                        <Select
+                        <SearchableSelect
                           label="Quantity unit"
                           description="Saved in the receipt line unit (e.g. mt)."
                           placeholder="Unit"
@@ -2813,7 +2794,7 @@ function ReceiptOrderDetailPage() {
                   </Group>
 
                   <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-                    <Select
+                    <SearchableSelect
                       label="Store"
                       placeholder={
                         storesLoading ? 'Loading stores…' : 'Select store'

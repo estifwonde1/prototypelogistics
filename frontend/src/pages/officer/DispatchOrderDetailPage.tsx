@@ -1,21 +1,8 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  Card,
-  Table,
-  Text,
-  SimpleGrid,
-  Dialog,
-  Tabs,
-  Select,
-  Textarea,
-  NumberInput,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, Card, Table, Text, SimpleGrid, Dialog, Tabs, Textarea, NumberInput } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { notifications } from '@mantine/notifications';
 import {
   getDispatchOrder,
@@ -395,7 +382,7 @@ function DispatchOrderDetailPage() {
             {showAssignmentForm && (
               <Card shadow="sm" padding="lg" radius="md" withBorder>
                 <Stack gap="md">
-                  <Select
+                  <SearchableSelect
                     label="Assign to User"
                     placeholder="Select warehouse manager"
                     data={[
@@ -460,7 +447,7 @@ function DispatchOrderDetailPage() {
             {showStockReservationForm && (
               <Card shadow="sm" padding="lg" radius="md" withBorder>
                 <Stack gap="md">
-                  <Select
+                  <SearchableSelect
                     label="Commodity"
                     placeholder="Select commodity"
                     data={[
