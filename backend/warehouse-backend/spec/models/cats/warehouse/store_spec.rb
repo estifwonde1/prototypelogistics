@@ -77,5 +77,67 @@ RSpec.describe Cats::Warehouse::Store, type: :model do
       expect(store).not_to be_valid
       expect(store.errors[:base]).to include(/Total store area cannot exceed/)
     end
+
+    it "allows a store matching full warehouse dimensions when capacity is established" do
+      create(
+        :cats_warehouse_warehouse_capacity,
+        warehouse: warehouse,
+        length_m: 10,
+        width_m: 80,
+        height_m: 10,
+        usable_space_percentage: 75
+      )
+      store = build(
+        :cats_warehouse_store,
+        warehouse: warehouse,
+        length: 10,
+        width: 80,
+        height: 10,
+        usable_space: 0,
+        available_space: 0
+      )
+
+      expect(store).to be_valid
+      expect(store.allocated_capacity_mt).to eq(4800.0)
+    end
+  end
+
+  describe "warehouse_not_fully_allocated_by_existing_store" do
+    let!(:capacity) do
+      create(
+        :cats_warehouse_warehouse_capacity,
+        warehouse: warehouse,
+        length_m: 10,
+        width_m: 80,
+        height_m: 10,
+        usable_space_percentage: 75
+      )
+    end
+
+    it "blocks creating a second store when one fully occupies the warehouse" do
+      create(
+        :cats_warehouse_store,
+        warehouse: warehouse,
+        length: 10,
+        width: 80,
+        height: 10,
+        usable_space: 0,
+        available_space: 0
+      )
+
+      second_store = build(
+        :cats_warehouse_store,
+        warehouse: warehouse,
+        name: "Partial Store",
+        length: 5,
+        width: 40,
+        height: 10,
+        usable_space: 0,
+        available_space: 0
+      )
+
+      expect(second_store).not_to be_valid
+      expect(second_store.errors[:base]).to include(/fully allocated by an existing store/)
+    end
   end
 end

@@ -1,18 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Stack, Title, Group, Button, Tabs, Card, Text, Grid, Badge, Modal, Anchor, Table, TextInput, NumberInput, Switch, Divider, ActionIcon } from '@mantine/core';
+import { Stack, Title, Group, Button, Tabs, Card, Text, Grid, Badge, Modal, Anchor, Table, TextInput, NumberInput, Switch, Divider, ActionIcon, Checkbox, Alert, Tooltip } from '@mantine/core';
 import { SearchableSelect } from '../../components/common/SearchableSelect';
-import { IconEdit, IconArrowLeft, IconMapPin, IconPlus } from '@tabler/icons-react';
+import { IconEdit, IconArrowLeft, IconMapPin, IconPlus, IconTrash } from '@tabler/icons-react';
 import { useEffect, useMemo, useState } from 'react';
-import { previewWarehouseCapacity } from '../../utils/capacityCalculator';
+import { previewWarehouseCapacity, storeFullyOccupiesWarehouse, formatFullWarehouseCapacityLabel } from '../../utils/capacityCalculator';
 import {
   getWarehouse, updateWarehouse, updateWarehouseCapacity,
   updateWarehouseAccess, updateWarehouseInfra, updateWarehouseContacts,
   updateWarehouseGps,
 } from '../../api/warehouses';
 import { getHubs } from '../../api/hubs';
-import { getStores } from '../../api/stores';
+import { getStores, createStore, deleteStore } from '../../api/stores';
 import { getStockBalances } from '../../api/stockBalances';
 import { getGrns } from '../../api/grns';
 import { getGins } from '../../api/gins';
@@ -25,24 +25,36 @@ import { notifications } from '@mantine/notifications';
 import { formatDate } from '../../utils/formatters';
 import { useForm } from '@mantine/form';
 import { usePermission } from '../../hooks/usePermission';
-import { useAuthStore } from '../../store/authStore';
-import { normalizeRoleSlug } from '../../contracts/warehouse';
 import { getFacilityOptions } from '../../api/referenceData';
 
 function WarehouseDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const warehouseIdNum = id ? Number(id) : undefined;
+  const activeTab = searchParams.get('tab') || 'overview';
   const { can } = usePermission();
   const canEdit = can('warehouses', 'update');
   const canReadHubs = can('hubs', 'read');
   const canCreateStores = can('stores', 'create');
+  const canUpdateStores = can('stores', 'update');
+  const canDeleteStores = can('stores', 'delete');
 
   const [capacityModalOpen, setCapacityModalOpen] = useState(false);
+  const [singleStoreModalOpen, setSingleStoreModalOpen] = useState(false);
+  const [createSingleStore, setCreateSingleStore] = useState(false);
+  const [pendingCapacityDimensions, setPendingCapacityDimensions] = useState<{
+    length_m: number;
+    width_m: number;
+    height_m: number;
+  } | null>(null);
   const [accessModalOpen, setAccessModalOpen] = useState(false);
   const [infraModalOpen, setInfraModalOpen] = useState(false);
   const [contactsModalOpen, setContactsModalOpen] = useState(false);
   const [gpsModalOpen, setGpsModalOpen] = useState(false);
+  const [deleteStoreModalOpen, setDeleteStoreModalOpen] = useState(false);
+  const [storeToDelete, setStoreToDelete] = useState<{ id: number; name: string } | null>(null);
 
   const { data: warehouse, isLoading, error } = useQuery({
     queryKey: ['warehouses', id],
@@ -50,24 +62,12 @@ function WarehouseDetailPage() {
     enabled: !!id,
   });
 
-  // Get active assignment context for filtering initial data load
-  const activeAssignment = useAuthStore((state) => state.activeAssignment);
-  const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
-  const userWarehouseId = activeAssignment?.warehouse?.id;
-  const isWarehouseManager = roleSlug === 'warehouse_manager';
-
   const { data: hubs } = useQuery({ queryKey: ['hubs'], queryFn: () => getHubs(), enabled: canReadHubs });
   
-  const { data: stores = [] } = useQuery({ 
-    queryKey: ['stores', { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }], 
-    queryFn: () => {
-      // For warehouse detail page, we want to load stores for the specific warehouse being viewed
-      // But if user is a warehouse manager, we should still respect their access
-      if (isWarehouseManager && userWarehouseId) {
-        return getStores({ warehouse_id: userWarehouseId });
-      }
-      return getStores();
-    }
+  const { data: warehouseStores = [] } = useQuery({
+    queryKey: ['stores', { warehouse_id: warehouseIdNum }],
+    queryFn: () => getStores({ warehouse_id: warehouseIdNum! }),
+    enabled: !!warehouseIdNum,
   });
   const { data: stockBalances = [] } = useQuery({
     queryKey: ['stockBalances', { warehouse_id: Number(id) }],
@@ -154,6 +154,14 @@ function WarehouseDetailPage() {
     },
   });
 
+  const singleStoreForm = useForm({
+    initialValues: { name: '', code: '' },
+    validate: {
+      name: (v) => (!v ? 'Store name is required' : null),
+      code: (v) => (!v ? 'Store code is required' : null),
+    },
+  });
+
   useEffect(() => {
     if (!warehouse) return;
     capacityForm.setValues({
@@ -187,7 +195,7 @@ function WarehouseDetailPage() {
   }, [warehouse]);
 
   const updateCapacityMutation = useMutation({
-    mutationFn: async (payload: typeof capacityForm.values) => {
+    mutationFn: async (payload: typeof capacityForm.values & { createSingleStore?: boolean }) => {
       // WarehouseCapacity fields — sent to PUT /warehouses/:id/capacity
       await updateWarehouseCapacity(Number(id), {
         length_m: toNumber(payload.length_m),
@@ -202,14 +210,91 @@ function WarehouseDetailPage() {
       if (payload.ownership_type && payload.ownership_type !== warehouse?.ownership_type) {
         await updateWarehouse(Number(id), { ownership_type: payload.ownership_type });
       }
+
+      return {
+        createSingleStore: payload.createSingleStore,
+        length_m: toNumber(payload.length_m),
+        width_m: toNumber(payload.width_m),
+        height_m: toNumber(payload.height_m),
+      };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['warehouses', id] });
       notifications.show({ title: 'Success', message: 'Capacity updated', color: 'green' });
       setCapacityModalOpen(false);
+      setCreateSingleStore(false);
+
+      if (
+        result?.createSingleStore &&
+        result.length_m &&
+        result.width_m &&
+        result.height_m &&
+        canCreateStores
+      ) {
+        setPendingCapacityDimensions({
+          length_m: result.length_m,
+          width_m: result.width_m,
+          height_m: result.height_m,
+        });
+        singleStoreForm.setValues({
+          name: '',
+          code: warehouse ? `${warehouse.code}-STORE-001` : 'STORE-001',
+        });
+        setSingleStoreModalOpen(true);
+      }
     },
     onError: (error: any) => {
       notifications.show({ title: 'Error', message: error.response?.data?.error?.message || 'Failed to update capacity', color: 'red' });
+    },
+  });
+
+  const createSingleStoreMutation = useMutation({
+    mutationFn: async (values: { name: string; code: string }) => {
+      if (!pendingCapacityDimensions || !warehouse) {
+        throw new Error('Missing warehouse capacity dimensions');
+      }
+      return createStore({
+        name: values.name,
+        code: values.code,
+        warehouse_id: warehouse.id,
+        length: pendingCapacityDimensions.length_m,
+        width: pendingCapacityDimensions.width_m,
+        height: pendingCapacityDimensions.height_m,
+        temporary: false,
+        has_gangway: false,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stores'] });
+      queryClient.invalidateQueries({ queryKey: ['warehouses', id] });
+      notifications.show({ title: 'Success', message: 'Single store created for this warehouse', color: 'green' });
+      setSingleStoreModalOpen(false);
+      setPendingCapacityDimensions(null);
+    },
+    onError: (error: any) => {
+      notifications.show({
+        title: 'Error',
+        message: error.response?.data?.error?.message || 'Failed to create store',
+        color: 'red',
+      });
+    },
+  });
+
+  const deleteStoreMutation = useMutation({
+    mutationFn: (storeId: number) => deleteStore(storeId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stores'] });
+      queryClient.invalidateQueries({ queryKey: ['warehouses', id] });
+      notifications.show({ title: 'Success', message: 'Store deleted successfully', color: 'green' });
+      setDeleteStoreModalOpen(false);
+      setStoreToDelete(null);
+    },
+    onError: (error: any) => {
+      notifications.show({
+        title: 'Error',
+        message: error.response?.data?.error?.message || 'Failed to delete store',
+        color: 'red',
+      });
     },
   });
 
@@ -284,7 +369,24 @@ function WarehouseDetailPage() {
   });
 
   const hub = hubs?.find((h) => h.id === warehouse?.hub_id);
-  const warehouseStores = stores?.filter((s) => s.warehouse_id === Number(id));
+  const storeContextQuery = `warehouse_id=${warehouse?.id}&return_to=warehouse`;
+  const warehouseFullyAllocated = useMemo(
+    () =>
+      !!warehouse?.capacity &&
+      (warehouseStores ?? []).some((s) => storeFullyOccupiesWarehouse(s, warehouse.capacity)),
+    [warehouse, warehouseStores]
+  );
+  const fullOccupancyStore = warehouseFullyAllocated
+    ? warehouseStores?.find((s) => storeFullyOccupiesWarehouse(s, warehouse?.capacity))
+    : undefined;
+  const isSingleStoreWarehouse =
+    warehouseFullyAllocated && (warehouseStores?.length ?? 0) === 1 && !!fullOccupancyStore;
+  const warehouseUsableMt = Number(warehouse?.capacity?.usable_storage_capacity_mt ?? 0);
+  const warehouseUsablePct = warehouse?.capacity?.usable_space_percentage ?? 75;
+  const fullWarehouseCapacityLabel = formatFullWarehouseCapacityLabel(
+    warehouseUsableMt,
+    warehouseUsablePct
+  );
   const warehouseStock = stockBalances;
   const warehouseGrns = grns?.slice(0, 5);
   const warehouseGins = gins?.slice(0, 5);
@@ -313,7 +415,14 @@ function WarehouseDetailPage() {
         </Group>
       </Group>
 
-      <Tabs defaultValue="overview">
+      <Tabs
+        value={activeTab}
+        onChange={(value) => {
+          if (value) {
+            setSearchParams(value === 'overview' ? {} : { tab: value }, { replace: true });
+          }
+        }}
+      >
         <Tabs.List>
           <Tabs.Tab value="overview">Overview</Tabs.Tab>
           <Tabs.Tab value="capacity">Capacity</Tabs.Tab>
@@ -433,6 +542,12 @@ function WarehouseDetailPage() {
               <Button size="sm" variant="light" leftSection={<IconEdit size={16} />} onClick={() => setCapacityModalOpen(true)}>Edit</Button>
             )}
           </Group>
+          {warehouse.capacity?.capacity_established && (!warehouseStores || warehouseStores.length === 0) && (
+            <Alert color="blue" variant="light" mb="sm" title="No stores yet">
+              This warehouse has no stores yet. Edit capacity to set up a single-store warehouse using the full usable
+              capacity.
+            </Alert>
+          )}
           <Card withBorder>
             {warehouse.capacity ? (
               <Grid>
@@ -621,28 +736,123 @@ function WarehouseDetailPage() {
         <Tabs.Panel value="stores" pt="md">
           <Group justify="space-between" mb="sm">
             <Title order={4}>Stores</Title>
-            {canCreateStores && (
-              <Button size="sm" variant="light" leftSection={<IconPlus size={16} />} onClick={() => navigate(`/stores/new?warehouse_id=${warehouse.id}`)}>
+            {canCreateStores && !warehouseFullyAllocated && (
+              <Button size="sm" variant="light" leftSection={<IconPlus size={16} />} onClick={() => navigate(`/stores/new?${storeContextQuery}`)}>
                 Create Store
               </Button>
             )}
           </Group>
+          {warehouseFullyAllocated && fullOccupancyStore && (
+            <Alert
+              color="teal"
+              variant="light"
+              mb="sm"
+              title={isSingleStoreWarehouse ? "Single-store warehouse" : "Warehouse fully occupied"}
+            >
+              <Group justify="space-between" align="flex-start" wrap="nowrap">
+                <Text size="sm">
+                  {isSingleStoreWarehouse ? (
+                    <>
+                      {fullOccupancyStore.name} uses the entire warehouse capacity ({fullWarehouseCapacityLabel}).
+                      This warehouse operates as a single store — you cannot create more stores until you reduce this
+                      store&apos;s dimensions.
+                    </>
+                  ) : (
+                    <>
+                      This warehouse is fully occupied by {fullOccupancyStore.name}. Edit that store and reduce its
+                      dimensions to add more stores.
+                    </>
+                  )}
+                </Text>
+                {canUpdateStores && (
+                  <Button
+                    size="xs"
+                    variant="light"
+                    leftSection={<IconEdit size={14} />}
+                    onClick={() => navigate(`/stores/${fullOccupancyStore.id}/edit?${storeContextQuery}`)}
+                  >
+                    Edit store
+                  </Button>
+                )}
+              </Group>
+            </Alert>
+          )}
           <Card withBorder>
             {warehouseStores && warehouseStores.length > 0 ? (
               <Stack gap="sm">
-                {warehouseStores.map((store) => (
-                  <Card key={store.id} withBorder padding="sm" style={{ cursor: 'pointer' }} onClick={() => navigate(`/stores/${store.id}`)}>
-                    <Group justify="space-between">
-                      <div>
-                        <Text fw={500}>{store.name}</Text>
-                        <Text size="sm" c="dimmed">{store.code} — {store.length}×{store.width}×{store.height}m</Text>
-                      </div>
-                      <Badge color={store.temporary ? 'yellow' : 'blue'}>
-                        {store.temporary ? 'Temporary' : 'Permanent'}
-                      </Badge>
-                    </Group>
-                  </Card>
-                ))}
+                {warehouseStores.map((store) => {
+                  const storeHasStock = (store.used_capacity_mt ?? 0) > 0;
+                  const storeUsesFullWarehouse = storeFullyOccupiesWarehouse(store, warehouse.capacity);
+
+                  return (
+                    <Card
+                      key={store.id}
+                      withBorder
+                      padding="sm"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => navigate(`/stores/${store.id}`)}
+                    >
+                      <Group justify="space-between" wrap="nowrap">
+                        <div>
+                          <Text fw={500}>{store.name}</Text>
+                          <Text size="sm" c="dimmed">
+                            {store.code} — {store.length}×{store.width}×{store.height}m
+                          </Text>
+                        </div>
+                        <Group gap="xs" wrap="nowrap" onClick={(e) => e.stopPropagation()}>
+                          {storeUsesFullWarehouse && (
+                            <Badge color="teal" variant="light">
+                              Full warehouse capacity
+                            </Badge>
+                          )}
+                          <Badge color={store.temporary ? 'yellow' : 'blue'}>
+                            {store.temporary ? 'Temporary' : 'Permanent'}
+                          </Badge>
+                          {canUpdateStores && (
+                            <ActionIcon
+                              variant="subtle"
+                              color="gray"
+                              aria-label={`Edit ${store.name}`}
+                              onClick={() => navigate(`/stores/${store.id}/edit?${storeContextQuery}`)}
+                            >
+                              <IconEdit size={16} />
+                            </ActionIcon>
+                          )}
+                          {canDeleteStores && (
+                            storeHasStock ? (
+                              <Tooltip label="Cannot delete a store that has stock. Move or remove stock first.">
+                                <span>
+                                  <ActionIcon
+                                    variant="subtle"
+                                    color="red"
+                                    aria-label={`Delete ${store.name}`}
+                                    disabled
+                                  >
+                                    <IconTrash size={16} />
+                                  </ActionIcon>
+                                </span>
+                              </Tooltip>
+                            ) : (
+                              <Tooltip label="Delete store">
+                                <ActionIcon
+                                  variant="subtle"
+                                  color="red"
+                                  aria-label={`Delete ${store.name}`}
+                                  onClick={() => {
+                                    setStoreToDelete({ id: store.id, name: store.name });
+                                    setDeleteStoreModalOpen(true);
+                                  }}
+                                >
+                                  <IconTrash size={16} />
+                                </ActionIcon>
+                              </Tooltip>
+                            )
+                          )}
+                        </Group>
+                      </Group>
+                    </Card>
+                  );
+                })}
               </Stack>
             ) : (
               <Text c="dimmed">No stores in this warehouse</Text>
@@ -761,8 +971,8 @@ function WarehouseDetailPage() {
       />
 
       {/* Capacity Modal */}
-      <Modal opened={capacityModalOpen} onClose={() => setCapacityModalOpen(false)} title="Edit Capacity" centered>
-        <form onSubmit={capacityForm.onSubmit((values) => updateCapacityMutation.mutate(values))}>
+      <Modal opened={capacityModalOpen} onClose={() => { setCapacityModalOpen(false); setCreateSingleStore(false); }} title="Edit Capacity" centered>
+        <form onSubmit={capacityForm.onSubmit((values) => updateCapacityMutation.mutate({ ...values, createSingleStore }))}>
           <Stack gap="md">
             <Group grow>
               <NumberInput label="Length (m)" min={0} decimalScale={2} {...capacityForm.getInputProps('length_m')} />
@@ -823,12 +1033,77 @@ function WarehouseDetailPage() {
               }}
             />
             <NumberInput label="Construction Year" min={1900} max={new Date().getFullYear()} {...capacityForm.getInputProps('construction_year')} />
+            {(!warehouseStores || warehouseStores.length === 0) && canCreateStores && (
+              <Checkbox
+                label="Use entire warehouse as a single store"
+                description="After saving capacity, create one store using the full warehouse dimensions and usable MT capacity. Only the store name is required."
+                checked={createSingleStore}
+                onChange={(event) => setCreateSingleStore(event.currentTarget.checked)}
+              />
+            )}
             <Group justify="flex-end">
               <Button variant="default" onClick={() => setCapacityModalOpen(false)}>Cancel</Button>
               <Button type="submit" loading={updateCapacityMutation.isPending}>Save</Button>
             </Group>
           </Stack>
         </form>
+      </Modal>
+
+      <Modal
+        opened={singleStoreModalOpen}
+        onClose={() => { setSingleStoreModalOpen(false); setPendingCapacityDimensions(null); }}
+        title="Create Single Store"
+        centered
+      >
+        <form onSubmit={singleStoreForm.onSubmit((values) => createSingleStoreMutation.mutate(values))}>
+          <Stack gap="md">
+            <Text size="sm" c="dimmed">
+              This store will use the full warehouse dimensions and usable capacity you just saved.
+            </Text>
+            <TextInput label="Store Name" placeholder="Main Storage Area" required {...singleStoreForm.getInputProps('name')} />
+            <TextInput label="Store Code" placeholder="STORE-001" required {...singleStoreForm.getInputProps('code')} />
+            <Group justify="flex-end">
+              <Button variant="default" onClick={() => { setSingleStoreModalOpen(false); setPendingCapacityDimensions(null); }}>
+                Cancel
+              </Button>
+              <Button type="submit" loading={createSingleStoreMutation.isPending}>
+                Create Store
+              </Button>
+            </Group>
+          </Stack>
+        </form>
+      </Modal>
+
+      <Modal
+        opened={deleteStoreModalOpen}
+        onClose={() => {
+          setDeleteStoreModalOpen(false);
+          setStoreToDelete(null);
+        }}
+        title="Delete Store"
+        centered
+      >
+        <Text mb="md">
+          Are you sure you want to delete {storeToDelete?.name ?? 'this store'}? This action cannot be undone.
+        </Text>
+        <Group justify="flex-end">
+          <Button
+            variant="default"
+            onClick={() => {
+              setDeleteStoreModalOpen(false);
+              setStoreToDelete(null);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            color="red"
+            loading={deleteStoreMutation.isPending}
+            onClick={() => storeToDelete && deleteStoreMutation.mutate(storeToDelete.id)}
+          >
+            Delete
+          </Button>
+        </Group>
       </Modal>
 
       {/* Access Modal */}

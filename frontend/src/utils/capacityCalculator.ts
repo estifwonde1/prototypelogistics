@@ -102,13 +102,63 @@ export function formatStackFootprintHint(
   return `Up to ${maxL}×${maxW} m per side; ~${remainingSqm.toLocaleString()} m² floor left in store`;
 }
 
+export function warehouseGeometricVolumeM3(
+  lengthM: number,
+  widthM: number,
+  heightM: number
+): number {
+  const l = Number(lengthM);
+  const w = Number(widthM);
+  const h = Number(heightM);
+  if (l <= 0 || w <= 0 || h <= 0) return 0;
+  return round(l * w * h);
+}
+
+/** Pro-rata MT share based on geometric warehouse volume (L×W×H), scaled to usable MT budget. */
 export function allocatedStoreMt(
-  storeUsableVolume: number,
-  warehouseUsableVolume: number,
+  storeGeometricVolume: number,
+  warehouseGeometricVolume: number,
   warehouseUsableMt: number
 ): number | null {
-  if (warehouseUsableVolume <= 0 || storeUsableVolume <= 0 || warehouseUsableMt <= 0) return null;
-  return round((storeUsableVolume / warehouseUsableVolume) * warehouseUsableMt);
+  if (warehouseGeometricVolume <= 0 || storeGeometricVolume <= 0 || warehouseUsableMt <= 0) return null;
+  return round((storeGeometricVolume / warehouseGeometricVolume) * warehouseUsableMt);
+}
+
+export interface WarehouseCapacityDimensions {
+  length_m?: number;
+  width_m?: number;
+  height_m?: number;
+}
+
+export interface StoreDimensions {
+  length: number;
+  width: number;
+  height: number;
+  has_gangway?: boolean;
+}
+
+const DIMENSION_EPS = 1e-4;
+
+/** True when store matches warehouse L×W×H with no gangway (occupies entire warehouse). */
+export function storeFullyOccupiesWarehouse(
+  store: StoreDimensions,
+  capacity: WarehouseCapacityDimensions | null | undefined
+): boolean {
+  if (!capacity?.length_m || !capacity?.width_m || !capacity?.height_m) return false;
+  if (store.has_gangway) return false;
+
+  return (
+    Math.abs(Number(store.length) - Number(capacity.length_m)) <= DIMENSION_EPS &&
+    Math.abs(Number(store.width) - Number(capacity.width_m)) <= DIMENSION_EPS &&
+    Math.abs(Number(store.height) - Number(capacity.height_m)) <= DIMENSION_EPS
+  );
+}
+
+/** Formatted MT label for full-warehouse capacity messaging. */
+export function formatFullWarehouseCapacityLabel(usableMt: number, usablePct?: number): string {
+  const mt = usableMt.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  if (usablePct == null) return `${mt} MT`;
+  return `${mt} MT at ${usablePct}% usable floor`;
 }
 
 function round(n: number): number {
