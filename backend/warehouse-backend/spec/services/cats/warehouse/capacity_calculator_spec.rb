@@ -49,4 +49,75 @@ RSpec.describe Cats::Warehouse::CapacityCalculator do
       expect(described_class.store_usable_volume_m3(store)).to eq(1000.0)
     end
   end
+
+  describe ".allocated_capacity_mt" do
+    it "allocates full warehouse MT when store matches warehouse dimensions (10×80×10 @ 75%)" do
+      warehouse = create(:cats_warehouse_warehouse)
+      capacity = create(
+        :cats_warehouse_warehouse_capacity,
+        warehouse: warehouse,
+        length_m: 10,
+        width_m: 80,
+        height_m: 10,
+        usable_space_percentage: 75
+      )
+      store = build(
+        :cats_warehouse_store,
+        warehouse: warehouse,
+        length: 10,
+        width: 80,
+        height: 10,
+        usable_space: 0,
+        available_space: 0
+      )
+
+      expect(described_class.allocated_capacity_mt(store, warehouse_capacity: capacity)).to eq(4800.0)
+    end
+
+    it "allocates half warehouse MT for half footprint store" do
+      warehouse = create(:cats_warehouse_warehouse)
+      capacity = create(
+        :cats_warehouse_warehouse_capacity,
+        warehouse: warehouse,
+        length_m: 10,
+        width_m: 80,
+        height_m: 10,
+        usable_space_percentage: 75
+      )
+      store = build(
+        :cats_warehouse_store,
+        warehouse: warehouse,
+        length: 5,
+        width: 80,
+        height: 10,
+        usable_space: 0,
+        available_space: 0
+      )
+
+      expect(described_class.allocated_capacity_mt(store, warehouse_capacity: capacity)).to eq(2400.0)
+    end
+  end
+
+  describe ".store_fully_occupies_warehouse?" do
+    it "returns true when store dimensions match warehouse capacity" do
+      warehouse = create(:cats_warehouse_warehouse)
+      capacity = create(
+        :cats_warehouse_warehouse_capacity,
+        warehouse: warehouse,
+        length_m: 10,
+        width_m: 80,
+        height_m: 10
+      )
+      store = build(
+        :cats_warehouse_store,
+        warehouse: warehouse,
+        length: 10,
+        width: 80,
+        height: 10,
+        has_gangway: false
+      )
+
+      expect(described_class.store_fully_occupies_warehouse?(store, warehouse_capacity: capacity)).to be(true)
+    end
+  end
 end

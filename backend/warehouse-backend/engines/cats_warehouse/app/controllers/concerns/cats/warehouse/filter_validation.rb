@@ -32,7 +32,7 @@ module Cats
       # Validate warehouse access for current user
       def validate_warehouse_access!(warehouse_id)
         access = AccessContext.new(user: current_user)
-        unless access.accessible_warehouse_ids.include?(warehouse_id)
+        unless access.can_access_warehouse?(warehouse_id)
           raise Pundit::NotAuthorizedError, "Access denied to warehouse #{warehouse_id}"
         end
       end

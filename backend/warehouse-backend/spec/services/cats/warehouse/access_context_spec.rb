@@ -149,4 +149,29 @@ RSpec.describe Cats::Warehouse::AccessContext, type: :service do
       end
     end
   end
+
+  describe "#can_access_warehouse?" do
+    let(:admin) { create(:cats_core_user, role_name: "Admin") }
+    let(:other_warehouse) { create(:cats_warehouse_warehouse) }
+
+    it "allows admin to access any warehouse" do
+      access = described_class.new(user: admin)
+
+      expect(access.can_access_warehouse?(warehouse.id)).to be(true)
+      expect(access.can_access_warehouse?(other_warehouse.id)).to be(true)
+    end
+
+    it "denies warehouse manager access to unassigned warehouses" do
+      wm = create(:cats_core_user, role_name: "Warehouse Manager")
+      Cats::Warehouse::UserAssignment.create!(
+        user: wm,
+        role_name: "Warehouse Manager",
+        warehouse: warehouse
+      )
+      access = described_class.new(user: wm)
+
+      expect(access.can_access_warehouse?(warehouse.id)).to be(true)
+      expect(access.can_access_warehouse?(other_warehouse.id)).to be(false)
+    end
+  end
 end

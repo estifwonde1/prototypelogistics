@@ -162,6 +162,20 @@ module Cats
           Array(ids).map(&:to_i).include?(store_id.to_i)
         end
       end
+
+      def can_access_warehouse?(warehouse_id)
+        return true if admin?
+
+        wid = warehouse_id.to_i
+        return false if wid <= 0
+
+        ids = accessible_warehouse_ids
+        if ids.is_a?(ActiveRecord::Relation)
+          ids.where(id: wid).exists?
+        else
+          Array(ids).map(&:to_i).include?(wid)
+        end
+      end
     end
   end
 end
