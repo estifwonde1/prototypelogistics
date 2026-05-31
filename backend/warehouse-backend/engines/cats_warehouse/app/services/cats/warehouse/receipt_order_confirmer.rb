@@ -168,6 +168,7 @@ module Cats
           store_id: nil
         )
         assignment.assigned_by = @confirmed_by || @order.confirmed_by || @order.created_by
+        assignment.quantity = @order.receipt_order_lines.sum { |line| line.quantity.to_f }
         
         # CRITICAL: Hub-level assignments should be "pending" not "assigned"
         # They represent routing/notification, not actual warehouse assignments

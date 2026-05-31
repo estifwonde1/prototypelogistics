@@ -328,6 +328,7 @@ function computeWarehouseManagerStoreRemaining(
   opts?: {
     receiptAuthorizations?: ReceiptAuthorization[];
     restrictWarehouseRowsToLineIds?: Set<number> | null;
+    unquantifiedWarehouseRowQuantity?: number;
   }
 ): { pool: number; assigned: number; remaining: number } {
   let whRows = warehouseOnlyAssignmentsForManager(assignments, userWarehouseId);
@@ -339,7 +340,11 @@ function computeWarehouseManagerStoreRemaining(
     });
   }
 
-  const assignmentPool = whRows.reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+  const unquantifiedWarehouseRowQuantity = Number(opts?.unquantifiedWarehouseRowQuantity ?? 0);
+  const assignmentPool = whRows.reduce((s, a) => {
+    if (a.quantity != null) return s + Number(a.quantity);
+    return s + unquantifiedWarehouseRowQuantity;
+  }, 0);
 
   let pool = assignmentPool;
   if (assignmentPool <= 1e-6 && opts?.receiptAuthorizations?.length) {
@@ -628,6 +633,18 @@ function ReceiptOrderDetailPage() {
     enabled: !!order,
   });
   const allHubs = (allHubsQuery.data as { id: number; name: string }[]) || [];
+
+  const isIndependentWarehouseContext = useMemo(() => {
+    if (!isWarehouseManager || userWarehouseId == null) return false;
+    const activeWarehouse = allWarehouses.find((w) => Number(w.id) === Number(userWarehouseId));
+    if (activeWarehouse) return activeWarehouse.hub_id == null;
+    return (
+      order?.warehouse_id != null &&
+      Number(order.warehouse_id) === Number(userWarehouseId) &&
+      order.hub_id == null &&
+      activeAssignment?.hub?.id == null
+    );
+  }, [isWarehouseManager, userWarehouseId, allWarehouses, order, activeAssignment]);
 
   const allStoresQuery = useQuery({
     queryKey: ['stores', { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],
@@ -1009,6 +1026,7 @@ function ReceiptOrderDetailPage() {
         {
           receiptAuthorizations,
           restrictWarehouseRowsToLineIds: restrictLines.size > 0 ? restrictLines : null,
+          unquantifiedWarehouseRowQuantity: visibleLines.reduce((s, l) => s + Number(l.quantity ?? 0), 0),
         }
       );
       const whOnly = warehouseOnlyAssignmentsForManager(assignments, userWarehouseId).filter((a) => {
@@ -1136,9 +1154,13 @@ function ReceiptOrderDetailPage() {
       }
       // Fall back: lines with destination_warehouse_id matching
       const byDest = lines.filter(l => l.destination_warehouse_id === warehouseId);
+      if (byDest.length > 0) return byDest;
+      if (order.warehouse_id != null && Number(order.warehouse_id) === Number(warehouseId)) {
+        return lines;
+      }
       // Do NOT fall back to all lines — if this warehouse has no assignment yet,
       // return empty so the manager doesn't see the full hub quantity.
-      return byDest;
+      return [];
     }
 
     if (roleSlug === 'storekeeper') {
@@ -1178,6 +1200,7 @@ function ReceiptOrderDetailPage() {
       {
         receiptAuthorizations,
         restrictWarehouseRowsToLineIds: lineRestrict.size > 0 ? lineRestrict : null,
+        unquantifiedWarehouseRowQuantity: visibleLines.reduce((s, l) => s + Number(l.quantity ?? 0), 0),
       }
     );
     const primaryLine = visibleLines[0] ?? lines[0];
@@ -1201,8 +1224,11 @@ function ReceiptOrderDetailPage() {
     }
 
     const u = baseAbbrev || 'order unit';
+    const allocationLabel = isIndependentWarehouseContext
+      ? 'Warehouse order quantity'
+      : 'Warehouse allocation (all hub→warehouse rows for you)';
     const detailLines = [
-      `Warehouse allocation (all hub→warehouse rows for you): ${pool.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${u}${poolKntl}`,
+      `${allocationLabel}: ${pool.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${u}${poolKntl}`,
       `Already assigned to stores here: ${assigned.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${u}${assignedKntl}`,
       `Remaining for stores: ${remaining.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${u}${remainingKntl}`,
     ];
@@ -1217,6 +1243,7 @@ function ReceiptOrderDetailPage() {
     uomConversions,
     units,
     receiptAuthorizations,
+    isIndependentWarehouseContext,
   ]);
 
   const storeAssignmentPackagingHint = useMemo(() => {
@@ -1383,6 +1410,7 @@ function ReceiptOrderDetailPage() {
         {
           receiptAuthorizations,
           restrictWarehouseRowsToLineIds: lineIdSet.size > 0 ? lineIdSet : null,
+          unquantifiedWarehouseRowQuantity: linesForScope.reduce((s, l) => s + Number(l.quantity ?? 0), 0),
         }
       );
       warehouseReceived = pool;
@@ -1424,6 +1452,9 @@ function ReceiptOrderDetailPage() {
       warehouseReceived,
       storeAssigned,
       remaining,
+      warehouseReceivedTitle: isIndependentWarehouseContext
+        ? 'Total order quantity at warehouse'
+        : 'Total received at warehouse (from hub)',
       warehouseReceivedLabel: withKntlSuffix(
         warehouseReceived,
         baseUnitId,
@@ -1464,6 +1495,7 @@ function ReceiptOrderDetailPage() {
     units,
     uomConversions,
     receiptAuthorizations,
+    isIndependentWarehouseContext,
   ]);
 
   // For storekeepers: GRN can only be created after inspection is completed (has at least one confirmed inspection)
@@ -2241,7 +2273,7 @@ function ReceiptOrderDetailPage() {
                 <Group gap="xl" align="flex-start" wrap="wrap">
                   <div>
                     <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                      Total received at warehouse (from hub)
+                      {assignmentsTabSummary.warehouseReceivedTitle}
                     </Text>
                     <Text size="sm" fw={700}>
                       {assignmentsTabSummary.warehouseReceivedLabel}

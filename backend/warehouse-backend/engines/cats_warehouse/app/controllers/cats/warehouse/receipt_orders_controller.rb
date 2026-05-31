@@ -65,6 +65,7 @@ module Cats
       def show
         order = policy_scope(ReceiptOrder).includes(:hub, :warehouse).find(params[:id])
         authorize order
+        ensure_order_in_requested_warehouse!(order)
 
         assignments = order.receipt_order_assignments
           .includes(:assigned_to, :assigned_by, :store, :warehouse, :hub, { receipt_order_line: :unit })
@@ -321,6 +322,7 @@ module Cats
       def assignable_managers
         order = policy_scope(ReceiptOrder).includes(:hub, warehouse: :hub).find(params[:id])
         authorize order, :assignable_managers?
+        ensure_order_in_requested_warehouse!(order)
 
         effective_hub_id = order.warehouse&.hub_id.presence || order.hub_id
         manager_only = params[:manager_only] == 'true'
@@ -393,6 +395,7 @@ module Cats
       def assign
         order = policy_scope(ReceiptOrder).includes(warehouse: :hub).find(params[:id])
         authorize order, :assign?
+        ensure_order_in_requested_warehouse!(order)
 
         ReceiptOrderAssignmentService.new(
           order: order,
@@ -699,6 +702,8 @@ module Cats
       end
 
       def render_order_payload(order, status: :ok)
+        ensure_order_in_requested_warehouse!(order)
+
         # Apply role-based filtering to assignments
         assignments = order.receipt_order_assignments
           .includes(:assigned_to, :assigned_by, :store, :warehouse, :hub, { receipt_order_line: :unit })
@@ -803,6 +808,51 @@ module Cats
           :reserved_volume,
           :status
         ])
+      end
+
+      def ensure_order_in_requested_warehouse!(order)
+        return unless params[:warehouse_id].present?
+
+        warehouse_id = params[:warehouse_id].to_i
+        access = AccessContext.new(user: current_user)
+        unless warehouse_id_values(access.accessible_warehouse_ids).include?(warehouse_id)
+          raise Pundit::NotAuthorizedError, "Access denied to warehouse #{warehouse_id}"
+        end
+
+        return if order_visible_in_warehouse_context?(order, warehouse_id)
+
+        raise ActiveRecord::RecordNotFound, "Receipt Order not found"
+      end
+
+      def order_visible_in_warehouse_context?(order, warehouse_id)
+        return true if order.warehouse_id.present? && order.warehouse_id.to_i == warehouse_id
+
+        store_ids = Store.where(warehouse_id: warehouse_id).pluck(:id)
+        roa_t = ReceiptOrderAssignment.table_name
+        assigned_here = ReceiptOrderAssignment
+          .where(receipt_order_id: order.id)
+          .where.not("LOWER(TRIM(#{roa_t}.status)) = ?", "rejected")
+          .where(
+            "warehouse_id = :warehouse_id OR store_id IN (:store_ids)",
+            warehouse_id: warehouse_id,
+            store_ids: store_ids.presence || [0]
+          )
+          .exists?
+        return true if assigned_here
+
+        ra_t = ReceiptAuthorization.table_name
+        ReceiptAuthorization
+          .where(receipt_order_id: order.id, warehouse_id: warehouse_id)
+          .where.not("LOWER(TRIM(#{ra_t}.status)) = ?", ReceiptAuthorization::CANCELLED)
+          .exists?
+      end
+
+      def warehouse_id_values(raw)
+        if raw.is_a?(Array)
+          raw.map { |v| v.is_a?(Integer) ? v : v.try(:id) }.compact.map(&:to_i)
+        else
+          raw.pluck(:id).map(&:to_i)
+        end
       end
 
       # Hub-scoped receipt orders: includes Hub Managers, Warehouse Managers, and Storekeepers for the hub.
