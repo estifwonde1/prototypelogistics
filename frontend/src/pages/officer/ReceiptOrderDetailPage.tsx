@@ -24,7 +24,6 @@ import { getWarehouses } from '../../api/warehouses';
 import { getHubs } from '../../api/hubs';
 import { getCommodityReferences, getUnitReferences, getUomConversions } from '../../api/referenceData';
 import { StatusBadge } from '../../components/common/StatusBadge';
-import { ScopeBadge } from '../../components/common/ScopeBadge';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { ReservationCard } from '../../components/common/ReservationCard';
@@ -1584,7 +1583,6 @@ function ReceiptOrderDetailPage() {
         <div>
           <Group gap="sm" align="center">
             <Title order={2}>Receipt Order RO-{order.id}</Title>
-            <ScopeBadge locationName={order.location_name} hierarchicalLevel={order.hierarchical_level} />
           </Group>
           <Text c="dimmed" size="sm">
             Created on {new Date(order.created_at).toLocaleDateString()}
@@ -1941,38 +1939,7 @@ function ReceiptOrderDetailPage() {
                                 );
                               }
                               if (isHub) {
-                                const unit =
-                                  line.unit_name?.trim() ||
-                                  (line.unit_id ? `unit #${line.unit_id}` : '');
-                                return (
-                                  <Stack gap={4}>
-                                    <Group gap={6} wrap="nowrap" align="baseline">
-                                      <Text fw={700} component="span">
-                                        {hubAssignedTotal.toLocaleString()}
-                                      </Text>
-                                      <Text size="sm" c="dimmed" component="span">
-                                        of
-                                      </Text>
-                                      <Text fw={600} component="span">
-                                        {hubOrderedTotal.toLocaleString()}
-                                      </Text>
-                                      {unit ? (
-                                        <Text size="xs" c="dimmed" component="span">
-                                          {unit}
-                                        </Text>
-                                      ) : null}
-                                    </Group>
-                                    {hubRemaining > 1e-6 ? (
-                                      <Text size="xs" c="dimmed">
-                                        {hubRemaining.toLocaleString()} still to assign to a warehouse
-                                      </Text>
-                                    ) : hubOrderedTotal > 0 ? (
-                                      <Text size="xs" c="green.7">
-                                        Fully assigned to warehouses
-                                      </Text>
-                                    ) : null}
-                                  </Stack>
-                                );
+                                return <Text fw={600}>{line.quantity}</Text>;
                               }
                               return <Text fw={600}>{line.quantity}</Text>;
                             })()}

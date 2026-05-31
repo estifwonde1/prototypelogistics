@@ -44,6 +44,7 @@ module Cats
           status: Cats::Core::Commodity::DRAFT,
           arrival_status: Cats::Core::Commodity::AT_SOURCE,
           quantity: payload[:quantity].present? ? payload[:quantity].to_f : 1,
+          received_quantity: payload[:quantity].present? ? payload[:quantity].to_f : 1,
           best_use_before: payload[:best_use_before].presence || (Date.today + 365),
           project_id: project.id,
           unit_of_measure_id: unit_id,
@@ -314,14 +315,21 @@ module Cats
           .where(commodity_id: commodity.id)
           .sum(:quantity)
           .to_f
-        batch_quantity = commodity.quantity.to_f + allocated_quantity
+
+        # Use received_quantity for original batch amount (preserved on create),
+        # fall back to reconstructed value for pre-migration records
+        original_quantity = commodity.received_quantity.to_f
+        if original_quantity <= 0
+          original_quantity = commodity.quantity.to_f + allocated_quantity
+        end
+
         remaining_quantity = commodity.quantity.to_f
 
         {
           id: commodity.id,
           name: commodity_name || "Commodity ##{commodity.id}",
           batch_no: commodity[:batch_no],
-          quantity: batch_quantity,
+          quantity: original_quantity,
           allocated_quantity: allocated_quantity,
           remaining_quantity: remaining_quantity,
           unit_id: commodity.unit_of_measure_id,

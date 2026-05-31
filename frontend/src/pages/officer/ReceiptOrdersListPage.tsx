@@ -187,6 +187,7 @@ function ReceiptOrdersListPage() {
           value={statusFilter}
           onChange={setStatusFilter}
           clearable
+          searchable
           style={{ width: 200 }}
         />
         <SearchableSelect
@@ -195,6 +196,7 @@ function ReceiptOrdersListPage() {
           value={warehouseFilter}
           onChange={setWarehouseFilter}
           clearable
+          searchable
           style={{ width: 200 }}
         />
       </Group>
@@ -226,16 +228,14 @@ function ReceiptOrdersListPage() {
                 <Table.Th>Order ID</Table.Th>
                 <Table.Th>Source</Table.Th>
                 <Table.Th>Destination</Table.Th>
-                <Table.Th>Jurisdiction</Table.Th>
+                <Table.Th>Commodity</Table.Th>
                 <Table.Th>Status</Table.Th>
-                <Table.Th>Items</Table.Th>
                 <Table.Th>Created</Table.Th>
                 <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {filteredOrders?.map((order) => {
-                const isFederal = !order.location_name || !order.hierarchical_level || order.hierarchical_level === 'Federal';
                 return (
                   <Table.Tr
                     key={order.id}
@@ -276,19 +276,18 @@ function ReceiptOrdersListPage() {
                       })()}
                     </Table.Td>
                     <Table.Td>
-                      {isFederal ? (
-                        <Badge color="gray" variant="light" size="sm">Federal</Badge>
-                      ) : (
-                        <Badge color="blue" variant="light" size="sm">
-                          {order.location_name} — {order.hierarchical_level}
-                        </Badge>
-                      )}
+                      {(() => {
+                        const lines = order.receipt_order_lines ?? order.lines ?? [];
+                        const commodities = [...new Set(lines.map((l: any) => l.commodity_name).filter(Boolean))];
+                        return commodities.length > 0 ? (
+                          <Text size="sm">{commodities.join(', ')}</Text>
+                        ) : (
+                          <Text size="sm" c="dimmed">—</Text>
+                        );
+                      })()}
                     </Table.Td>
                     <Table.Td>
                       <StatusBadge status={order.status} />
-                    </Table.Td>
-                    <Table.Td>
-                      {order.receipt_order_lines?.length ?? order.lines?.length ?? 0}
                     </Table.Td>
                     <Table.Td>
                       {new Date(order.created_at).toLocaleDateString()}

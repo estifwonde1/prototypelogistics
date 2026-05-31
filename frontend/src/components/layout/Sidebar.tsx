@@ -131,12 +131,6 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
           path: "/stacks",
           resource: "stacks",
         },
-        {
-          label: "Stacking",
-          icon: <IconBox size={20} />,
-          path: "/stacks/layout",
-          resource: "stacks",
-        },
       ],
     },
     {
@@ -328,12 +322,6 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               label: "Stacks",
               icon: <IconStack2 size={20} />,
               path: "/stacks",
-              resource: "stacks",
-            },
-            {
-              label: "Stacking",
-              icon: <IconBox size={20} />,
-              path: "/stacks/layout",
               resource: "stacks",
             },
             {

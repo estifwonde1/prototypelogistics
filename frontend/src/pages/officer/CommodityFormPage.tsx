@@ -168,7 +168,7 @@ function CommodityFormPage() {
   const [expiryDate, setExpiryDate] = useState<Date | null>(null);
   const [batchNo, setBatchNo] = useState("");
   const [autoGenBatch, setAutoGenBatch] = useState(true);
-  const [quantity, setQuantity] = useState<number | string>(1);
+  const [quantity, setQuantity] = useState<number | string>("");
   // packageUnitAbbr holds the abbreviation string (e.g. "BAG") for the packaging container
   const [packageUnitAbbr, setPackageUnitAbbr] = useState<string | null>(null);
   const [packageSize, setPackageSize] = useState<number | string>("");
@@ -241,7 +241,7 @@ function CommodityFormPage() {
       setBatchNo("");
       setAutoGenBatch(true);
       setPreviewBatch(generateBatchNo());
-      setQuantity(1);
+      setQuantity("");
       setUnitId(null);
       setPackageUnitAbbr(null);
       setPackageSize("");
@@ -585,7 +585,7 @@ function CommodityFormPage() {
           <NumberInput
             label="Quantity"
             placeholder="e.g. 1000"
-            min={1}
+            min={0}
             value={quantity}
             onChange={setQuantity}
             description="Must be greater than 0"

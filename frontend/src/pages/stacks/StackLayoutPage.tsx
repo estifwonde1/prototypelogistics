@@ -299,7 +299,7 @@ function createInitialValues(storeId: string | null): StackFormValues {
     commodity_name: '',
     length: 6,
     width: 4,
-    height: 3,
+    height: 0,
     start_x: 0,
     start_y: 0,
     quantity: 0,
@@ -733,6 +733,14 @@ export default function StackLayoutPage() {
     }
   }, [isStorekeeper, userStoreId, storeId]);
 
+  /** When creating a new stack, inherit height from the selected store. */
+  useEffect(() => {
+    if (!modalOpened || selectedStack) return;
+    if (selectedStore && (!form.values.height || form.values.height === 0)) {
+      form.setFieldValue('height', selectedStore.height);
+    }
+  }, [modalOpened, selectedStack, selectedStore]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** If definitions load after opening edit, attach definition id from stack commodity name. */
   useEffect(() => {
     if (!modalOpened || !selectedStack || form.values.id !== selectedStack.id) return;
@@ -914,7 +922,7 @@ export default function StackLayoutPage() {
         commodity_name: stack.commodity_name || '',
         length: stack.length,
         width: stack.width,
-        height: stack.height,
+        height: selectedStore ? selectedStore.height : stack.height,
         start_x: stack.start_x ?? 1,
         start_y: stack.start_y ?? 1,
         quantity: stack.quantity,
@@ -924,7 +932,11 @@ export default function StackLayoutPage() {
       });
     } else {
       setSelectedStack(null);
-      form.setValues(createInitialValues(resolvedStoreId));
+      const defaults = createInitialValues(resolvedStoreId);
+      if (selectedStore) {
+        defaults.height = selectedStore.height;
+      }
+      form.setValues(defaults);
     }
 
     setModalOpened(true);
@@ -977,6 +989,7 @@ export default function StackLayoutPage() {
       ...createInitialValues(resolvedStoreId),
       length: roundToTwo(length),
       width: roundToTwo(width),
+      height: selectedStore ? selectedStore.height : 0,
       start_x: roundToTwo(startX),
       start_y: roundToTwo(startY),
     });
@@ -1772,11 +1785,12 @@ export default function StackLayoutPage() {
         overlayProps={{ blur: 6, color: '#1d3557', opacity: 0.35 }}
         styles={{
           content: {
-            overflow: 'hidden',
             backgroundColor: '#ffffff',
           },
           body: {
             padding: 0,
+            overflowY: 'auto',
+            maxHeight: 'calc(90vh - 2rem)',
           },
         }}
       >
@@ -1913,14 +1927,9 @@ export default function StackLayoutPage() {
               <NumberInput
                 label="Height (m)"
                 decimalScale={2}
-                min={0}
-                placeholder={stackDimHints ? `Max ${stackDimHints.maxHeightM} m` : undefined}
-                description={stackHeightError ? undefined : dimensionValidLabel(stackHeightStatus)}
-                error={stackHeightError}
-                styles={{
-                  ...baseInputStyles,
-                  ...dimensionInputBorderStyle(stackHeightStatus),
-                }}
+                disabled
+                description={selectedStore ? `Inherited from store — ${selectedStore.height} m` : undefined}
+                styles={baseInputStyles}
                 {...form.getInputProps('height')}
               />
             </Group>
