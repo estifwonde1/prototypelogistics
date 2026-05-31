@@ -143,11 +143,11 @@ export default function StorekeeperDashboardPage() {
           </div>
         </Group>
 
-        {/* Quick Search for Driver Arrival */}
+        {/* Quick Search for Receipt */}
         <Paper withBorder p="lg" radius="md" mt="md" bg="blue.0">
           <Group align="flex-end" gap="md">
             <Stack gap={4} flex={1}>
-              <Text fw={700} size="sm" c="blue.9">Driver Arrival</Text>
+              <Text fw={700} size="sm" c="blue.9">Find Delivery</Text>
               <TextInput 
                 placeholder="Enter Waybill or Dispatch Reference Number (e.g. WB-12345)" 
                 leftSection={<IconSearch size={16} />}

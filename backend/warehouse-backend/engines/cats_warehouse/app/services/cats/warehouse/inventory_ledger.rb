@@ -181,7 +181,18 @@ module Cats
 
         incoming_mt = incoming_base_qty.to_f
 
-        stack_remaining = stack.volume.to_f - stack.occupied_volume.to_f
+        # Compute actual remaining volume from goods already on the stack,
+        # rather than relying on occupied_volume (which is 0 or full volume).
+        current_goods_m3 = if stack.base_quantity.to_f > 0
+          VolumeCalculator.call(
+            commodity: stack.commodity || item.commodity,
+            base_quantity: stack.base_quantity.to_f
+          ) || 0.0
+        else
+          0.0
+        end
+
+        stack_remaining = [stack.volume.to_f - current_goods_m3, 0.0].max
         if incoming_m3 > stack_remaining + 1e-6
           raise Cats::Warehouse::InsufficientSpaceError,
                 "Insufficient stack capacity: incoming #{incoming_m3.round(4)} m³ " \

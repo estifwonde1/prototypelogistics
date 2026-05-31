@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Stack, Title, Button, Group, TextInput, Table, ActionIcon, Text } from '@mantine/core';
+import { Stack, Title, Group, TextInput, Table, ActionIcon, Text } from '@mantine/core';
 import { SearchableSelect } from '../../components/common/SearchableSelect';
-import { IconPlus, IconSearch, IconEye } from '@tabler/icons-react';
+import { IconSearch, IconEye } from '@tabler/icons-react';
 import { getGrns } from '../../api/grns';
 import { getWarehouses } from '../../api/warehouses';
 import { StatusBadge } from '../../components/common/StatusBadge';
@@ -62,12 +62,6 @@ function GrnListPage() {
             Manage incoming goods and inventory receipts
           </Text>
         </div>
-        <Button
-          leftSection={<IconPlus size={16} />}
-          onClick={() => navigate('/grns/new')}
-        >
-          Create GRN
-        </Button>
       </Group>
 
       <Group>
@@ -94,15 +88,7 @@ function GrnListPage() {
           description={
             search || statusFilter
               ? 'Try adjusting your filters'
-              : 'Get started by creating your first GRN'
-          }
-          action={
-            !search && !statusFilter
-              ? {
-                  label: 'Create GRN',
-                  onClick: () => navigate('/grns/new'),
-                }
-              : undefined
+              : 'No GRNs found'
           }
         />
       ) : (

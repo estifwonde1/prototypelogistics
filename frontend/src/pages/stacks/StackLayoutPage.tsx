@@ -1266,7 +1266,7 @@ export default function StackLayoutPage() {
                     placeholder={
                       driverArrivalRAsForStacking.length === 0
                         ? 'No active RA with Draft GRN for this truck'
-                        : 'Receipt Authorization for this driver arrival'
+                        : 'Receipt Authorization for this receipt'
                     }
                     data={driverArrivalRAsForStacking.map((ra) => ({
                       value: String(ra.id),
@@ -1288,7 +1288,7 @@ export default function StackLayoutPage() {
                   />
                   {driverArrivalRAsForStacking.length === 0 && (
                     <Text size="xs" c="dimmed">
-                      This driver arrival is not ready for stacking yet. Go to{' '}
+                      This receipt is not ready for stacking yet. Go to{' '}
                       <Text
                         component="a"
                         href="/storekeeper/receipt-authorizations"
@@ -2037,11 +2037,6 @@ export default function StackLayoutPage() {
         const primaryUnit = raPrimaryUnit(selectedRA);
         const useInputUnit = raUsesInputUnit(selectedRA);
         const totalToPlaceLine = Number(selectedRA.my_inspection?.total_received ?? selectedRA.authorized_quantity);
-        const alreadyPlacedLine = Object.entries(placements)
-          .filter(([sid]) => sid !== String(placementModalStack.id))
-          .reduce((s, [, q]) => s + q, 0);
-        const maxForThisStackLine = Math.max(0, totalToPlaceLine - alreadyPlacedLine);
-        const maxForThisStackPrimary = convertRaLineToInput(maxForThisStackLine, selectedRA);
         const currentQtyLine = placements[String(placementModalStack.id)] || 0;
         const currentQtyPrimary = convertRaLineToInput(Number(currentQtyLine), selectedRA);
 
@@ -2053,6 +2048,7 @@ export default function StackLayoutPage() {
 
         return (
           <Modal
+            key={placementModalStack.id}
             opened={!!placementModalStack}
             onClose={() => setPlacementModalStack(null)}
             title={<Text fw={700}>Place Goods — {placementModalStack.code}</Text>}
@@ -2086,38 +2082,41 @@ export default function StackLayoutPage() {
                     label={`Quantity to place${primaryUnit ? ` (${primaryUnit})` : ''}`}
                     description={
                       useInputUnit && uLine
-                        ? `Maximum for this stack: ${maxForThisStackPrimary.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${primaryUnit} (${maxForThisStackLine.toLocaleString()} ${uLine}). Enter amounts in ${primaryUnit} — same unit you used when receiving goods.`
-                        : `Maximum for this stack: ${maxForThisStackLine.toLocaleString()}${uLine ? ` ${uLine}` : ''}. Enter amounts in the same unit as received on file.`
+                        ? `Remaining to assign: ${(totalToPlaceLine - Object.values(placements).reduce((s, q) => s + q, 0)).toLocaleString()} ${uLine} (${convertRaLineToInput(totalToPlaceLine, selectedRA).toLocaleString(undefined, { maximumFractionDigits: 3 })} ${primaryUnit} total received). Adjust any stack freely.`
+                        : `Remaining to assign: ${(totalToPlaceLine - Object.values(placements).reduce((s, q) => s + q, 0)).toLocaleString()}${uLine ? ` ${uLine}` : ''} total received. Adjust any stack freely.`
                     }
                     value={currentQtyPrimary || ''}
                     onChange={(val) => {
                       const rawPrimary = Number(val) || 0;
-                      const cappedPrimary = Math.min(rawPrimary, maxForThisStackPrimary);
-                      const lineQty = convertRaInputToLine(cappedPrimary, selectedRA);
+                      const lineQty = convertRaInputToLine(rawPrimary, selectedRA);
                       setPlacements((p) => ({
                         ...p,
                         [String(placementModalStack.id)]: lineQty,
                       }));
                     }}
-                    min={0}
-                    max={maxForThisStackPrimary}
-                    clampBehavior="strict"
                     decimalScale={3}
-                    disabled={maxForThisStackLine <= 0}
                   />
                   {useInputUnit && Number(currentQtyLine) > 0 && uLine ? (
                     <Text size="xs" c="dimmed">
                       = {Number(currentQtyLine).toLocaleString(undefined, { maximumFractionDigits: 3 })} {uLine} (system record)
                     </Text>
                   ) : null}
-                  {maxForThisStackLine <= 0 && (
-                    <Text size="xs" c="orange">All goods have already been assigned to other stacks.</Text>
-                  )}
                 </>
               )}
 
               <Group justify="flex-end">
-                <Button variant="light" onClick={() => setPlacementModalStack(null)}>
+                <Button
+                  variant="light"
+                  onClick={() => {
+                    setPlacementModalStack(null);
+                    if (!incompatible && canPlaceDriverArrivalGoods) {
+                      const totalPlacedNow = Object.values(placements).reduce((s, q) => s + q, 0);
+                      if (totalToPlaceLine - totalPlacedNow === 0) {
+                        finishStackingMutation.mutate();
+                      }
+                    }
+                  }}
+                >
                   {incompatible ? 'Close' : 'Done'}
                 </Button>
               </Group>

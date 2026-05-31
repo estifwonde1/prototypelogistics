@@ -261,7 +261,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
         ...(wmCanAccessRa
           ? [
               {
-                label: "Receipt Authorizations",
+              label: "Receipt Authorizations",
                 icon: <IconClipboardCheck size={20} />,
                 path: "/warehouse/receipt-authorizations",
                 resource: "receipt_authorizations" as Resource,
@@ -342,7 +342,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               resource: "receipt_orders",
             },
             {
-              label: "Driver Arrivals",
+              label: "Receive Receipt",
               icon: <IconTruck size={20} />,
               path: "/storekeeper/receipt-authorizations",
               resource: "receipt_orders",

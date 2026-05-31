@@ -17,7 +17,7 @@ class AddKuntalPoundUomUnitsAndConversions < ActiveRecord::Migration[7.0]
     weight_type = Cats::Core::UnitOfMeasure::WEIGHT
 
     kntl = Cats::Core::UnitOfMeasure.find_or_initialize_by(abbreviation: "kntl")
-    kntl.assign_attributes(name: "Kuntal (100 kg)", unit_type: weight_type)
+    kntl.assign_attributes(name: "Kuntal", unit_type: weight_type)
     kntl.save!
 
     lb = Cats::Core::UnitOfMeasure.find_or_initialize_by(abbreviation: "lb")
