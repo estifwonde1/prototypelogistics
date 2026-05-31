@@ -18,19 +18,23 @@ export async function fetchNotifications(options?: {
   unread?: boolean;
   limit?: number;
   offset?: number;
+  warehouse_id?: number;
 }): Promise<InAppNotificationDto[]> {
   const res = await apiClient.get<ApiResponse<InAppNotificationDto[]>>('/notifications', {
     params: {
       unread: options?.unread,
       limit: options?.limit ?? 30,
       offset: options?.offset ?? 0,
+      warehouse_id: options?.warehouse_id,
     },
   });
   return Array.isArray(res.data.data) ? res.data.data : [];
 }
 
-export async function fetchUnreadNotificationCount(): Promise<number> {
-  const res = await apiClient.get<ApiResponse<{ count: number }>>('/notifications/unread_count');
+export async function fetchUnreadNotificationCount(options?: { warehouse_id?: number }): Promise<number> {
+  const res = await apiClient.get<ApiResponse<{ count: number }>>('/notifications/unread_count', {
+    params: { warehouse_id: options?.warehouse_id },
+  });
   return res.data.data?.count ?? 0;
 }
 

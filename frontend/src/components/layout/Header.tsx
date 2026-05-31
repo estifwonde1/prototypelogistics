@@ -58,13 +58,14 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
   const { role, assignments, activeAssignment, clearAuth, token } = useAuthStore();
   const roleLabel = getRoleLabel(role);
   const [notifMenuOpened, setNotifMenuOpened] = useState(false);
+  const activeWarehouseId = activeAssignment?.warehouse?.id;
 
   const { switchState, switchToRole, onFacilitySelected, onStoreSelected, dismissPicker } =
     useRoleSwitcher();
 
   const { data: unreadCount = 0 } = useQuery({
-    queryKey: notificationsUnreadCountKey,
-    queryFn: fetchUnreadNotificationCount,
+    queryKey: [...notificationsUnreadCountKey, { warehouse_id: activeWarehouseId }],
+    queryFn: () => fetchUnreadNotificationCount({ warehouse_id: activeWarehouseId }),
     enabled: Boolean(token),
     staleTime: 0,
     refetchInterval: 20_000,
@@ -73,8 +74,8 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
   });
 
   const { data: recentNotifications = [] } = useQuery({
-    queryKey: [...notificationsQueryKey, 'recent'],
-    queryFn: () => fetchNotifications({ limit: 15 }),
+    queryKey: [...notificationsQueryKey, 'recent', { warehouse_id: activeWarehouseId }],
+    queryFn: () => fetchNotifications({ limit: 15, warehouse_id: activeWarehouseId }),
     enabled: Boolean(token),
     staleTime: 0,
     refetchInterval: 20_000,
