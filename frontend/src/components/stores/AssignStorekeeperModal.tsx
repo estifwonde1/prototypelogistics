@@ -1,3 +1,4 @@
+import { SearchableMultiSelect } from '../common/SearchableSelect';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from "react";
 import {
@@ -6,7 +7,6 @@ import {
   Text,
   Button,
   Group,
-  MultiSelect,
   Badge,
   Divider,
   Alert,
@@ -220,7 +220,7 @@ export function AssignStorekeeperModal({
                 <Text size="sm" fw={500} mb="xs">
                   Select Stores
                 </Text>
-                <MultiSelect
+                <SearchableMultiSelect
                   data={storeOptions}
                   value={selectedStores}
                   onChange={setSelectedStores}

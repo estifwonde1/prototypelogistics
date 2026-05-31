@@ -1,7 +1,7 @@
-import { Select } from '@mantine/core';
 import type { SelectProps } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { getInventoryLots } from '../../api/referenceData';
+import { SearchableSelect } from './SearchableSelect';
 
 interface LotSelectorProps extends Omit<SelectProps, 'data'> {
   warehouseId?: number;
@@ -26,5 +26,5 @@ export function LotSelector({ warehouseId, commodityId, ...props }: LotSelectorP
     label: lot.display_name || `${lot.batch_no} (Exp: ${new Date(lot.expiry_date).toLocaleDateString()})`,
   }));
 
-  return <Select {...props} data={lotOptions} />;
+  return <SearchableSelect {...props} data={lotOptions} />;
 }

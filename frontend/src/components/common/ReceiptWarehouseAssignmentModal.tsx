@@ -1,18 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import {
-  Alert,
-  Badge,
-  Button,
-  Group,
-  Modal,
-  NumberInput,
-  Select,
-  Stack,
-  Table,
-  Text,
-  ThemeIcon,
-} from '@mantine/core';
+import { Alert, Badge, Button, Group, Modal, NumberInput, Stack, Table, Text, ThemeIcon } from '@mantine/core';
+import { SearchableSelect } from './SearchableSelect';
 import { IconAlertCircle, IconInfoCircle, IconPlus, IconTrash } from '@tabler/icons-react';
 import type { ReceiptOrder } from '../../api/receiptOrders';
 import type { ReceiptOrderLine } from '../../api/receiptOrders';
@@ -473,7 +462,7 @@ function ReceiptWarehouseAssignmentModal({
                 </Group>
 
                 <Group grow align="flex-start">
-                  <Select
+                  <SearchableSelect
                     label="Select Warehouse"
                     placeholder="Choose warehouse"
                     data={warehouseOptionsForRow}
@@ -486,7 +475,7 @@ function ReceiptWarehouseAssignmentModal({
                     }
                     searchable
                   />
-                  <Select
+                  <SearchableSelect
                     label="Commodity"
                     placeholder="Choose commodity"
                     data={lineOptionsForRow}
@@ -524,7 +513,7 @@ function ReceiptWarehouseAssignmentModal({
                     allowDecimal
                     decimalScale={3}
                   />
-                  <Select
+                  <SearchableSelect
                     label="Unit"
                     placeholder="Select unit"
                     data={unitOptions}

@@ -1,22 +1,7 @@
 import { Fragment, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import {
-  Alert,
-  Badge,
-  Button,
-  Card,
-  Collapse,
-  Divider,
-  Group,
-  SegmentedControl,
-  Select,
-  SimpleGrid,
-  Stack,
-  Table,
-  Text,
-  TextInput,
-  Title,
-} from '@mantine/core';
+import { Alert, Badge, Button, Card, Collapse, Divider, Group, SegmentedControl, SimpleGrid, Stack, Table, Text, TextInput, Title } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import {
   IconChevronDown,
   IconChevronRight,
@@ -428,7 +413,7 @@ function StockBalancePage() {
           onChange={(event) => setSearch(event.currentTarget.value)}
           style={{ flex: 1, minWidth: 280 }}
         />
-        <Select
+        <SearchableSelect
           placeholder="Filter by warehouse"
           data={warehouseOptions}
           value={warehouseFilter}

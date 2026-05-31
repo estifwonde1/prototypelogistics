@@ -1,3 +1,4 @@
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -7,7 +8,6 @@ import {
   Title,
   Button,
   Group,
-  Select,
   Card,
   Text,
   Textarea,
@@ -568,7 +568,7 @@ function ReceiptOrderFormPage() {
             <Text size="sm" fw={700} mb="sm">Commodity &amp; Batch</Text>
 
             <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-              <Select
+              <SearchableSelect
                 label="Commodity"
                 placeholder="Search and select a commodity"
                 data={commodityNameOptions}
@@ -579,7 +579,7 @@ function ReceiptOrderFormPage() {
                 required
                 disabled={!fieldsEditable}
               />
-              <Select
+              <SearchableSelect
                 label="Batch Number"
                 placeholder={selectedCommodityId ? "Select a batch" : "Select commodity first"}
                 data={batchOptions}
@@ -861,7 +861,7 @@ function DestinationRowItem({
   return (
     <Group gap="sm" align="flex-start" wrap="nowrap">
       {/* Destination Type */}
-      <Select
+      <SearchableSelect
         placeholder="Select type"
         data={[
           { value: "hub", label: "Hub" },
@@ -874,7 +874,7 @@ function DestinationRowItem({
       />
 
       {/* Hub / Warehouse */}
-      <Select
+      <SearchableSelect
         placeholder={dest.kind ? `Select ${dest.kind === "hub" ? "hub" : "warehouse"}` : "Type first"}
         data={dest.kind ? facilityOptions : []}
         value={facilityValue ?? null}
@@ -897,7 +897,7 @@ function DestinationRowItem({
             />
           </div>
           <div style={{ flex: "0 0 100px" }}>
-            <Select
+            <SearchableSelect
               placeholder="Unit"
               data={unitOptions}
               value={dest.unitId}

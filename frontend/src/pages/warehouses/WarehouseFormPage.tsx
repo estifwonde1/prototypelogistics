@@ -2,18 +2,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  TextInput,
-  Textarea,
-  Select,
-  NumberInput,
-  Card,
-  Alert,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, TextInput, Textarea, NumberInput, Card, Alert } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { useForm } from '@mantine/form';
 import { IconArrowLeft, IconDeviceFloppy } from '@tabler/icons-react';
 import { getWarehouse, createWarehouse, updateWarehouse } from '../../api/warehouses';
@@ -237,7 +227,7 @@ function WarehouseFormPage() {
               </Group>
 
               <Group grow>
-                <Select
+                <SearchableSelect
                   label="Warehouse Type"
                   placeholder="Select type"
                   required
@@ -248,7 +238,7 @@ function WarehouseFormPage() {
                   ]}
                   {...form.getInputProps('warehouse_type')}
                 />
-                <Select
+                <SearchableSelect
                   label="Status"
                   placeholder="Select status"
                   required
@@ -262,7 +252,7 @@ function WarehouseFormPage() {
               </Group>
 
               {isHubManager ? (
-                <Select
+                <SearchableSelect
                   label="Ownership Type"
                   placeholder="Select ownership"
                   required
@@ -274,7 +264,7 @@ function WarehouseFormPage() {
                   }}
                 />
               ) : (
-                <Select
+                <SearchableSelect
                   label="Ownership Type"
                   placeholder="Select ownership"
                   data={LEGACY_OWNERSHIP_SELECT_OPTIONS}
@@ -292,7 +282,7 @@ function WarehouseFormPage() {
               )}
 
               {canReadHubs && (
-                <Select
+                <SearchableSelect
                   label="Hub"
                   placeholder="Select hub"
                   data={hubOptions || []}

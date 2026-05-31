@@ -1,3 +1,4 @@
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
@@ -9,7 +10,6 @@ import {
   Group,
   TextInput,
   NumberInput,
-  Select,
   Card,
   Text,
   Table,
@@ -500,7 +500,7 @@ function CommodityFormPage() {
         <Stack gap="md">
           <Title order={3}>Create New Commodity Batch</Title>
 
-          <Select
+          <SearchableSelect
             label="Commodity Name"
             placeholder="Type to search (e.g. Rice, Wheat...)"
             required
@@ -519,7 +519,7 @@ function CommodityFormPage() {
             </Text>
           )}
 
-          <Select
+          <SearchableSelect
             label="Source Type"
             placeholder="Select source type"
             required
@@ -592,7 +592,7 @@ function CommodityFormPage() {
             required
           />
 
-          <Select
+          <SearchableSelect
             label="Default Unit"
             placeholder="Select unit"
             data={unitOptions}
@@ -606,7 +606,7 @@ function CommodityFormPage() {
           {/* Packaging section */}
           <Divider label="Packaging" labelPosition="left" />
 
-          <Select
+          <SearchableSelect
             label="Packaging Unit"
             placeholder="Select packaging unit"
             data={PACKAGING_UNIT_OPTIONS}
@@ -628,7 +628,7 @@ function CommodityFormPage() {
               description="Numeric amount per package"
             />
 
-            <Select
+            <SearchableSelect
               label="Unit per Package"
               placeholder="Select unit"
               data={unitOptions}
@@ -657,7 +657,7 @@ function CommodityFormPage() {
 
           <Divider />
 
-          <Select
+          <SearchableSelect
             label="Category"
             placeholder="Auto-filled when commodity is selected"
             data={categoryOptions}
@@ -729,7 +729,7 @@ function CommodityFormPage() {
               }
               style={{ flex: 1 }}
             />
-            <Select
+            <SearchableSelect
               placeholder="All categories"
               data={[
                 { value: "Food", label: "Food" },

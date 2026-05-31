@@ -1,18 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  TextInput,
-  Table,
-  ActionIcon,
-  Text,
-  Select,
-  Badge,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, TextInput, Table, ActionIcon, Text, Badge } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { IconPlus, IconSearch, IconEye } from '@tabler/icons-react';
 import { getReceiptOrders, type ReceiptOrder } from '../../api/receiptOrders';
 import { getWarehouses } from '../../api/warehouses';
@@ -191,7 +181,7 @@ function ReceiptOrdersListPage() {
           onChange={(e) => setSearch(e.target.value)}
           style={{ flex: 1, maxWidth: 400 }}
         />
-        <Select
+        <SearchableSelect
           placeholder="Filter by status"
           data={statusOptions}
           value={statusFilter}
@@ -199,7 +189,7 @@ function ReceiptOrdersListPage() {
           clearable
           style={{ width: 200 }}
         />
-        <Select
+        <SearchableSelect
           placeholder="Filter by warehouse"
           data={warehouseOptions}
           value={warehouseFilter}

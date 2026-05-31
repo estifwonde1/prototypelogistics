@@ -2,20 +2,8 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  TextInput,
-  Select,
-  Card,
-  Table,
-  ActionIcon,
-  Text,
-  NumberInput,
-  Alert,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, TextInput, Card, Table, ActionIcon, Text, NumberInput, Alert } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { DateInput } from '@mantine/dates';
 
 import { IconTrash, IconPlus, IconChevronDown, IconChevronUp } from '@tabler/icons-react';
@@ -592,7 +580,7 @@ function GrnCreatePage() {
               onChange={(event) => setReferenceNo(event.target.value)}
               required
             />
-            <Select
+            <SearchableSelect
               label="Warehouse"
               placeholder="Select warehouse"
               data={warehouseOptions}
@@ -652,7 +640,7 @@ function GrnCreatePage() {
           </Group>
 
           <Group grow align="flex-start">
-            <Select
+            <SearchableSelect
               label="Source Type"
               description="Optional. Use this only when the GRN should be linked to an earlier document such as a receipt, waybill, or another GRN."
               placeholder="Select source type"
@@ -664,7 +652,7 @@ function GrnCreatePage() {
               }}
               clearable
             />
-            <Select
+            <SearchableSelect
               label="Source Reference"
               description="Optional. Choose the exact source document to link this GRN back to."
               placeholder={sourceType ? 'Select source reference' : 'Select source type first'}
@@ -715,7 +703,7 @@ function GrnCreatePage() {
                     <Fragment key={index}>
                       <Table.Tr>
                       <Table.Td>
-                        <Select
+                        <SearchableSelect
                           placeholder={effectiveWarehouseId ? 'Select store' : 'Select warehouse first'}
                           data={storeOptions}
                           value={item.store_id?.toString() || null}
@@ -746,7 +734,7 @@ function GrnCreatePage() {
                             size="xs"
                             disabled={!item.store_id}
                           />
-                          <Select
+                          <SearchableSelect
                             placeholder={item.store_id ? 'Select commodity' : 'Select store first'}
                             data={filteredCommodityOptionsForItem(item, index)}
                             value={item.commodity_id ? item.commodity_id.toString() : null}
@@ -806,7 +794,7 @@ function GrnCreatePage() {
                       </Table.Td>
 
                       <Table.Td>
-                        <Select
+                        <SearchableSelect
                           placeholder={item.commodity_id ? 'Select stack' : 'Select commodity first'}
                           data={stackOptionsForItem(item)}
                           value={item.stack_id?.toString() || null}
@@ -842,7 +830,7 @@ function GrnCreatePage() {
                       </Table.Td>
 
                       <Table.Td>
-                        <Select
+                        <SearchableSelect
                           placeholder="Select unit"
                           data={unitOptionsForItem(item)}
                           value={item.unit_id ? item.unit_id.toString() : null}
@@ -859,7 +847,7 @@ function GrnCreatePage() {
                       </Table.Td>
 
                       <Table.Td>
-                        <Select
+                        <SearchableSelect
                           placeholder="Select quality"
                           data={qualityOptions}
                           value={item.quality_status}
@@ -926,7 +914,7 @@ function GrnCreatePage() {
                                 />
                               </Group>
                               <Group grow>
-                                <Select
+                                <SearchableSelect
                                   label="Entered Unit"
                                   description="Unit as received (e.g., bags)"
                                   placeholder="Select entered unit"

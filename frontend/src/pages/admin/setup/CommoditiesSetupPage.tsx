@@ -1,22 +1,6 @@
 import { useState, useMemo } from 'react';
-import {
-  Stack,
-  Title,
-  Text,
-  Group,
-  Button,
-  Card,
-  Table,
-  ActionIcon,
-  Modal,
-  TextInput,
-  NumberInput,
-  Select,
-  Badge,
-  Divider,
-  Tabs,
-  Tooltip,
-} from '@mantine/core';
+import { Stack, Title, Text, Group, Button, Card, Table, ActionIcon, Modal, TextInput, NumberInput, Badge, Divider, Tabs, Tooltip } from '@mantine/core';
+import { SearchableSelect } from '../../../components/common/SearchableSelect';
 import { useForm } from '@mantine/form';
 import {
   IconPlus,
@@ -398,7 +382,7 @@ export default function CommoditiesSetupPage() {
                   onChange={(e) => setNameFilter(e.target.value)}
                   style={{ flex: 1 }}
                 />
-                <Select
+                <SearchableSelect
                   placeholder="All groups"
                   data={[
                     ...uniqueGroups.map((g) => ({ value: g!, label: g! })),
@@ -508,7 +492,7 @@ export default function CommoditiesSetupPage() {
             <Group justify="space-between" mb="md">
               <Group gap="sm">
                 <Text fw={600}>Commodity Categories</Text>
-                <Select
+                <SearchableSelect
                   placeholder="All groups"
                   data={groupSelectOptions}
                   value={categoryGroupFilter}
@@ -617,7 +601,7 @@ export default function CommoditiesSetupPage() {
               required
               {...createForm.getInputProps('commodity_code')}
             />
-            <Select
+            <SearchableSelect
               label="Category"
               placeholder="Select a category"
               data={categorySelectOptions}
@@ -670,7 +654,7 @@ export default function CommoditiesSetupPage() {
               required
               {...editForm.getInputProps('commodity_code')}
             />
-            <Select
+            <SearchableSelect
               label="Category"
               placeholder="Select a category"
               data={categorySelectOptions}
@@ -737,7 +721,7 @@ export default function CommoditiesSetupPage() {
       >
         <form onSubmit={handleCreateCategory}>
           <Stack gap="md">
-            <Select
+            <SearchableSelect
               label="Commodity Group"
               placeholder="Select a group (Food or Non-Food)"
               data={groupSelectOptions}

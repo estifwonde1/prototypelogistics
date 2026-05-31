@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 
-import { Alert, Select, Stack as MantineStack, Text, Textarea } from '@mantine/core';
+import { Alert, Stack as MantineStack, Text, Textarea } from '@mantine/core';
+import { SearchableSelect } from '../common/SearchableSelect';
 
 import { IconAlertCircle } from '@tabler/icons-react';
 
@@ -364,7 +365,7 @@ export default function TransferRequestApprovePanel({
 
 
 
-      <Select
+      <SearchableSelect
 
         label="Destination stack (optional)"
 

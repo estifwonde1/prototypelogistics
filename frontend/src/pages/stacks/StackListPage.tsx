@@ -1,22 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  ActionIcon,
-  Badge,
-  Button,
-  Card,
-  Group,
-  Modal,
-  Select,
-  SimpleGrid,
-  Stack,
-  Table,
-  Text,
-  TextInput,
-  ThemeIcon,
-  Title,
-} from '@mantine/core';
+import { ActionIcon, Badge, Button, Card, Group, Modal, SimpleGrid, Stack, Table, Text, TextInput, ThemeIcon, Title } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import {
   IconBox,
   IconBuildingWarehouse,
@@ -338,7 +324,7 @@ function StackListPage() {
                 }}
                 style={{ flex: 1, minWidth: 220 }}
               />
-              <Select
+              <SearchableSelect
                 label="Warehouse"
                 placeholder="All warehouses"
                 data={warehouseOptions}
@@ -354,7 +340,7 @@ function StackListPage() {
                 }}
                 w={260}
               />
-              <Select
+              <SearchableSelect
                 label="Store"
                 placeholder="All stores"
                 data={filteredStoreOptions}

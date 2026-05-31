@@ -2,21 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  TextInput,
-  Select,
-  Card,
-  Table,
-  ActionIcon,
-  Text,
-  NumberInput,
-  Textarea,
-  Alert,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, TextInput, Card, Table, ActionIcon, Text, NumberInput, Textarea, Alert } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { DateInput } from '@mantine/dates';
 import { IconTrash, IconPlus } from '@tabler/icons-react';
 import { createInspection } from '../../api/inspections';
@@ -486,7 +473,7 @@ function InspectionCreatePage() {
               onChange={(e) => setReferenceNo(e.target.value)}
               required
             />
-            <Select
+            <SearchableSelect
               label="Warehouse"
               placeholder="Select warehouse"
               data={warehouseOptions || []}
@@ -515,7 +502,7 @@ function InspectionCreatePage() {
           </Group>
 
           <Group grow>
-            <Select
+            <SearchableSelect
               label="Source Type"
               placeholder="Select source type"
               data={sourceTypeOptions}
@@ -526,7 +513,7 @@ function InspectionCreatePage() {
               }}
               clearable
             />
-            <Select
+            <SearchableSelect
               label="Source Reference"
               placeholder={
                 sourceType ? 'Select source reference' : 'Select source type first'
@@ -570,7 +557,7 @@ function InspectionCreatePage() {
 
           {isStorekeeper && (
             <>
-              <Select
+              <SearchableSelect
                 label="Receipt Authorization"
                 description="Select the Receipt Authorization for the arriving truck"
                 placeholder={
@@ -657,7 +644,7 @@ function InspectionCreatePage() {
                 {items.map((item, index) => (
                   <Table.Tr key={index}>
                     <Table.Td>
-                      <Select
+                      <SearchableSelect
                         placeholder="Select commodity"
                         data={commodityOptions}
                         value={item.commodity_id ? String(item.commodity_id) : null}
@@ -707,7 +694,7 @@ function InspectionCreatePage() {
                           hideControls
                           style={{ minWidth: 110 }}
                         />
-                        <Select
+                        <SearchableSelect
                           placeholder="Unit"
                           data={unitOptions}
                           value={item.unit_id ? String(item.unit_id) : null}
@@ -742,7 +729,7 @@ function InspectionCreatePage() {
                       />
                     </Table.Td>
                     <Table.Td>
-                      <Select
+                      <SearchableSelect
                         placeholder="Quality"
                         data={qualityOptions}
                         value={item.quality_status}
@@ -756,7 +743,7 @@ function InspectionCreatePage() {
                       />
                     </Table.Td>
                     <Table.Td>
-                      <Select
+                      <SearchableSelect
                         placeholder="Packaging"
                         data={packagingOptions}
                         value={item.packaging_condition}

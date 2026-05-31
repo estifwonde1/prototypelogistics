@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter, Navigate, useParams } from 'react-router-dom';
 import { lazy, Suspense, useEffect } from 'react';
 import type { ComponentType, ReactNode } from 'react';
 import { Center, Loader } from '@mantine/core';
@@ -150,6 +150,16 @@ const RequireAdmin = ({ children }: { children: ReactNode }) => {
   }
   return <>{children}</>;
 };
+
+function HubEditRedirect() {
+  const { id } = useParams();
+  return <Navigate to={`/admin/setup/hubs?id=${id}`} replace />;
+}
+
+function WarehouseEditRedirect() {
+  const { id } = useParams();
+  return <Navigate to={`/admin/setup/warehouses?id=${id}`} replace />;
+}
 
 const EntryRoute = () => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated());
@@ -454,7 +464,7 @@ export const router = createBrowserRouter([
         path: 'hubs/:id/edit',
         element: (
           <RequirePermission resource="hubs" action="update">
-            <HubFormPage />
+            <HubEditRedirect />
           </RequirePermission>
         ),
       },
@@ -486,7 +496,7 @@ export const router = createBrowserRouter([
         path: 'warehouses/:id/edit',
         element: (
           <RequirePermission resource="warehouses" action="update">
-            <WarehouseFormPage />
+            <WarehouseEditRedirect />
           </RequirePermission>
         ),
       },

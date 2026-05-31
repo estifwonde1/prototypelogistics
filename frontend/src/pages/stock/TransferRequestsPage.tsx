@@ -1,23 +1,7 @@
 import { useState, useMemo, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  ActionIcon,
-  Badge,
-  Button,
-  Card,
-  Group,
-  Modal,
-  Select,
-  Stack,
-  Table,
-  Text,
-  Textarea,
-  ThemeIcon,
-  Title,
-  SimpleGrid,
-  Alert,
-  Tooltip,
-} from '@mantine/core';
+import { ActionIcon, Badge, Button, Card, Group, Modal, Stack, Table, Text, Textarea, ThemeIcon, Title, SimpleGrid, Alert, Tooltip } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import {
   IconCheck,
   IconX,
@@ -420,7 +404,7 @@ function TransferRequestsPage() {
             }}
           >
             <Group gap="md" wrap="wrap" align="end" mb="lg">
-              <Select
+              <SearchableSelect
                 label="Filter by Status"
                 placeholder="All statuses"
                 data={[

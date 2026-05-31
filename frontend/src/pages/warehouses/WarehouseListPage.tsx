@@ -2,18 +2,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  TextInput,
-  Table,
-  ActionIcon,
-  Modal,
-  Text,
-  Select,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, TextInput, Table, ActionIcon, Modal, Text } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { IconPlus, IconSearch, IconEdit, IconTrash } from '@tabler/icons-react';
 import { getWarehouses, deleteWarehouse } from '../../api/warehouses';
 import { getHubs } from '../../api/hubs';
@@ -134,7 +124,7 @@ function WarehouseListPage() {
         {canCreate && (
           <Button
             leftSection={<IconPlus size={16} />}
-            onClick={() => navigate('/admin/setup/locations')}
+            onClick={() => navigate('/admin/setup/locations?flow=warehouse')}
           >
             Create Warehouse
           </Button>
@@ -150,7 +140,7 @@ function WarehouseListPage() {
           style={{ flex: 1, maxWidth: 400 }}
         />
         {canReadHubs && (
-          <Select
+          <SearchableSelect
             placeholder="Filter by hub"
             data={hubOptions || []}
             value={hubFilter}
@@ -173,7 +163,7 @@ function WarehouseListPage() {
             !search && !hubFilter && canCreate
               ? {
                   label: 'Create Warehouse',
-                  onClick: () => navigate('/warehouses/new'),
+                  onClick: () => navigate('/admin/setup/locations?flow=warehouse'),
                 }
               : undefined
           }
@@ -226,7 +216,7 @@ function WarehouseListPage() {
                           <ActionIcon
                             variant="subtle"
                             color="gray"
-                            onClick={() => navigate(`/warehouses/${warehouse.id}/edit`)}
+                            onClick={() => navigate(`/admin/setup/warehouses?id=${warehouse.id}`)}
                           >
                             <IconEdit size={16} />
                           </ActionIcon>

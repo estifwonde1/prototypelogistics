@@ -1,18 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  Card,
-  Table,
-  Text,
-  Badge,
-  Select,
-  SimpleGrid,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, Card, Table, Text, Badge, SimpleGrid } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { IconPlus } from '@tabler/icons-react';
 import { getReceiptAuthorizations } from '../../api/receiptAuthorizations';
 import type { ReceiptAuthorization } from '../../api/receiptAuthorizations';
@@ -136,7 +126,7 @@ export default function ReceiptAuthorizationListPage() {
 
       {/* Filters */}
       <Group>
-        <Select
+        <SearchableSelect
           placeholder="All statuses"
           data={[
             { value: 'pending',   label: 'Pending' },
@@ -149,7 +139,7 @@ export default function ReceiptAuthorizationListPage() {
           clearable
           w={180}
         />
-        <Select
+        <SearchableSelect
           placeholder="All warehouses"
           data={warehouseOptions}
           value={warehouseFilter}
@@ -159,7 +149,7 @@ export default function ReceiptAuthorizationListPage() {
           disabled={warehouseOptions.length === 0}
         />
         {isWarehouseManager && (
-          <Select
+          <SearchableSelect
             placeholder="Assignment status"
             data={[
               { value: 'all', label: 'All assignments' },

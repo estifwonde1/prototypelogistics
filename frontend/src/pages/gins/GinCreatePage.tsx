@@ -2,20 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  TextInput,
-  Select,
-  Card,
-  Table,
-  ActionIcon,
-  Text,
-  NumberInput,
-  Alert,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, TextInput, Card, Table, ActionIcon, Text, NumberInput, Alert } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { DateInput } from '@mantine/dates';
 import { IconTrash, IconPlus, IconChevronDown, IconChevronUp } from '@tabler/icons-react';
 import { createGin } from '../../api/gins';
@@ -410,7 +398,7 @@ function GinCreatePage() {
               onChange={(e) => setReferenceNo(e.target.value)}
               required
             />
-            <Select
+            <SearchableSelect
               label="Warehouse"
               placeholder="Select warehouse"
               data={warehouseOptions || []}
@@ -451,7 +439,7 @@ function GinCreatePage() {
           </Group>
 
           <Group grow>
-            <Select
+            <SearchableSelect
               label="Destination Type"
               placeholder="Select destination type"
               data={destinationTypeOptions}
@@ -462,7 +450,7 @@ function GinCreatePage() {
               }}
               clearable
             />
-            <Select
+            <SearchableSelect
               label="Destination Reference"
               placeholder={destinationType ? 'Select destination reference' : 'Select destination type first'}
               data={destinationOptions}
@@ -516,7 +504,7 @@ function GinCreatePage() {
                       return (
                         <>
                     <Table.Td>
-                      <Select
+                      <SearchableSelect
                         placeholder="Select available stock"
                         data={commodityOptionsForItem(item)}
                         value={
@@ -554,7 +542,7 @@ function GinCreatePage() {
                       </Text>
                     </Table.Td>
                     <Table.Td>
-                      <Select
+                      <SearchableSelect
                         placeholder="Store"
                         data={storeOptions || []}
                         value={item.store_id?.toString() || null}
@@ -573,7 +561,7 @@ function GinCreatePage() {
                       />
                     </Table.Td>
                     <Table.Td>
-                      <Select
+                      <SearchableSelect
                         placeholder="Stack"
                         data={stackOptionsForItem(item.store_id)}
                         value={item.stack_id?.toString() || null}
@@ -624,7 +612,7 @@ function GinCreatePage() {
                             <Text size="sm" fw={600}>
                               Lot Selection (Optional)
                             </Text>
-                            <Select
+                            <SearchableSelect
                               label="Select Lot"
                               description="Choose which lot to issue from"
                               placeholder="Select lot"

@@ -2,20 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  Card,
-  Select,
-  NumberInput,
-  TextInput,
-  Text,
-  Alert,
-  Divider,
-  Checkbox,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, Card, NumberInput, TextInput, Text, Alert, Divider, Checkbox } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { IconAlertCircle } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import {
@@ -792,7 +780,7 @@ export default function ReceiptAuthorizationFormPage() {
 
           <Divider label="Receipt Order" labelPosition="left" />
 
-          <Select
+          <SearchableSelect
             label="Receipt Order"
             placeholder="Select a confirmed receipt order"
             data={receiptOrderOptions}
@@ -813,7 +801,7 @@ export default function ReceiptAuthorizationFormPage() {
 
           {!routingByOverride && assignmentOptions.length > 0 ? (
             <>
-              <Select
+              <SearchableSelect
                 label="Warehouse Assignment"
                 placeholder="Select warehouse allocation"
                 data={assignmentOptions}
@@ -846,7 +834,7 @@ export default function ReceiptAuthorizationFormPage() {
                   order tied to your hub assignment.
                 </Alert>
               ) : (
-                <Select
+                <SearchableSelect
                   label="Destination warehouse"
                   placeholder="Select warehouse under hub"
                   data={warehouseOptionsRouting}
@@ -858,7 +846,7 @@ export default function ReceiptAuthorizationFormPage() {
                 />
               )}
               {orderLines.length > 1 ? (
-                <Select
+                <SearchableSelect
                   label="Receipt order line"
                   placeholder="Which commodity line on the RO?"
                   data={receiptLineOptions}
@@ -994,7 +982,7 @@ export default function ReceiptAuthorizationFormPage() {
                   : `Per truck; converted to ${measurementUnitLabel} and capped by allocation`
               }
             />
-            <Select
+            <SearchableSelect
               label="Quantity Unit"
               placeholder="Select unit"
               data={allowedUnitOptions}

@@ -2,22 +2,8 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  Card,
-  Text,
-  Badge,
-  SimpleGrid,
-  Divider,
-  Alert,
-  NumberInput,
-  Select,
-  Textarea,
-  Progress,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, Card, Text, Badge, SimpleGrid, Divider, Alert, NumberInput, Textarea, Progress } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import {
   IconArrowLeft,
   IconCheck,
@@ -487,7 +473,7 @@ export default function StorekeeperRADetailPage() {
                   )}
                 </Stack>
 
-                <Select
+                <SearchableSelect
                   label="Grade / Condition"
                   data={['Good', 'Fair', 'Poor', 'Damaged', 'Infested', 'Wet']}
                   value={grade}

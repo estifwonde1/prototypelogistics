@@ -1,12 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Modal,
-  Button,
-  Select,
-  Stack as MantineStack,
-  Group,
-  Alert,
-} from '@mantine/core';
+import { Modal, Button, Stack as MantineStack, Group, Alert } from '@mantine/core';
+import { SearchableSelect } from '../common/SearchableSelect';
 import { IconAlertCircle } from '@tabler/icons-react';
 import type { Stack } from '../../types/stack';
 import type { CommodityReference, UnitReference, UomConversion } from '../../types/referenceData';
@@ -136,7 +130,7 @@ const StackTransferModal: React.FC<StackTransferModalProps> = ({
             holds the same commodity.
           </Alert>
         ) : (
-          <Select
+          <SearchableSelect
             label="Destination stack"
             placeholder="Select destination stack"
             data={stackOptions}
