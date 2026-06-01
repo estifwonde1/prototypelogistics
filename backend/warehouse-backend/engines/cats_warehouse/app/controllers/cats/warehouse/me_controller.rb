@@ -47,6 +47,52 @@ module Cats
         render_success({ switched: true, to_role: to_role })
       end
 
+      # GET /v1/me/profile
+      def profile
+        render_success(profile: profile_payload(current_user))
+      end
+
+      # PATCH /v1/me/profile
+      # Users may only update their own phone number.
+      def update_profile
+        payload = params.require(:payload).permit(:phone_number, :first_name, :last_name, :email, role_names: [])
+
+        if payload[:first_name].present? || payload[:last_name].present? || payload[:email].present? || payload[:role_names].present?
+          return render_error("Only phone number can be updated", status: :unprocessable_entity)
+        end
+
+        if payload[:phone_number].blank?
+          return render_error("phone_number is required", status: :unprocessable_entity)
+        end
+
+        current_user.update!(phone_number: payload[:phone_number])
+        render_success(profile: profile_payload(current_user))
+      end
+
+      # PATCH /v1/me/password
+      def change_password
+        payload = params.require(:payload).permit(:current_password, :password, :password_confirmation)
+
+        unless current_user.authenticate(payload[:current_password].to_s)
+          return render_error("Current password is incorrect", status: :unprocessable_entity)
+        end
+
+        unless payload[:password].present?
+          return render_error("password is required", status: :unprocessable_entity)
+        end
+
+        unless payload[:password] == payload[:password_confirmation]
+          return render_error("Password confirmation does not match", status: :unprocessable_entity)
+        end
+
+        current_user.update!(
+          password: payload[:password],
+          password_confirmation: payload[:password_confirmation]
+        )
+
+        render_success(changed: true)
+      end
+
       # GET /v1/me/storekeeper_stores
       # Returns only the stores explicitly assigned to the current user as a
       # Storekeeper. Warehouse Manager access never implies storekeeper access.
@@ -79,6 +125,17 @@ module Cats
         return assignment.location.name     if assignment.location.present?
 
         "Federal"
+      end
+
+      def profile_payload(user)
+        {
+          id: user.id,
+          first_name: user.first_name,
+          last_name: user.last_name,
+          email: user.email,
+          phone_number: user.phone_number,
+          roles: user.roles.map(&:name)
+        }
       end
 
       def assignment_payload(a)
