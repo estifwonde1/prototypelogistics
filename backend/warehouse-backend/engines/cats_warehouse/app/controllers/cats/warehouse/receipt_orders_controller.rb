@@ -517,10 +517,17 @@ module Cats
 
           first_line = order.receipt_order_lines.first
 
-          # Resolve commodity from inspection items (most reliable source)
-          # Fall back to receipt order line if inspection items don't have it
-          inspection_commodity_id = inspection&.inspection_items&.first&.commodity_id
-          inspection_unit_id = inspection&.inspection_items&.first&.entered_unit_id
+          # Resolve commodity and UOM from inspection items (most reliable source).
+          # entered_unit_id is the unit the storekeeper actually typed (e.g. Kuntal).
+          # unit_id is the canonical receipt-order line unit (e.g. MT).
+          # Fall back to receipt order line if inspection items don't have it.
+          inspection_item        = inspection&.inspection_items&.first
+          inspection_commodity_id = inspection_item&.commodity_id
+          # Canonical unit for the GRN item (used for ledger math)
+          inspection_unit_id     = inspection_item&.entered_unit_id.presence ||
+                                   inspection_item&.unit_id.presence
+          # The unit the user typed — preserved on the StackTransaction for bin/stock card display
+          inspection_entered_unit_id = inspection_item&.entered_unit_id
 
           ReceiptOrder.transaction do
             # Add stack placement items to the existing Draft GRN
@@ -549,6 +556,8 @@ module Cats
                 commodity_id:      commodity_id,
                 quantity:          placement[:quantity].to_f,
                 unit_id:           unit_id,
+                entered_unit_id:   inspection_entered_unit_id.presence || unit_id,
+                entered_quantity:  placement[:quantity].to_f,
                 stack_id:          stack.id,
                 store_id:          stack.store_id,
                 quality_status:    inspection&.inspection_items&.first&.quality_status || 'Good',
