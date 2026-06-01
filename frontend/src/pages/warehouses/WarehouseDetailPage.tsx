@@ -27,6 +27,10 @@ import { useForm } from '@mantine/form';
 import { usePermission } from '../../hooks/usePermission';
 import { getFacilityOptions } from '../../api/referenceData';
 
+function formatStoreCount(count: number): string {
+  return count > 0 ? String(count) : '-';
+}
+
 function WarehouseDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -64,11 +68,12 @@ function WarehouseDetailPage() {
 
   const { data: hubs } = useQuery({ queryKey: ['hubs'], queryFn: () => getHubs(), enabled: canReadHubs });
   
-  const { data: warehouseStores = [] } = useQuery({
+  const { data: warehouseStores = [], isLoading: storesLoading } = useQuery({
     queryKey: ['stores', { warehouse_id: warehouseIdNum }],
     queryFn: () => getStores({ warehouse_id: warehouseIdNum! }),
     enabled: !!warehouseIdNum,
   });
+  const storeCount = warehouseStores.length;
   const { data: stockBalances = [] } = useQuery({
     queryKey: ['stockBalances', { warehouse_id: Number(id) }],
     queryFn: () => getStockBalances({ warehouse_id: Number(id) }),
@@ -542,7 +547,7 @@ function WarehouseDetailPage() {
               <Button size="sm" variant="light" leftSection={<IconEdit size={16} />} onClick={() => setCapacityModalOpen(true)}>Edit</Button>
             )}
           </Group>
-          {warehouse.capacity?.capacity_established && (!warehouseStores || warehouseStores.length === 0) && (
+          {warehouse.capacity?.capacity_established && !storesLoading && storeCount === 0 && (
             <Alert color="blue" variant="light" mb="sm" title="No stores yet">
               This warehouse has no stores yet. Edit capacity to set up a single-store warehouse using the full usable
               capacity.
@@ -589,7 +594,7 @@ function WarehouseDetailPage() {
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
                   <Text size="sm" c="dimmed">Number of Stores</Text>
-                  <Text fw={500}>{warehouse.capacity.no_of_stores ?? '-'}</Text>
+                  <Text fw={500}>{formatStoreCount(storeCount)}</Text>
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
                   <Text size="sm" c="dimmed">Construction Year</Text>
@@ -1022,7 +1027,7 @@ function WarehouseDetailPage() {
             )}
             <TextInput
               label="Number of Stores"
-              value={warehouseStores?.length?.toString() || '0'}
+              value={formatStoreCount(storeCount)}
               readOnly
               styles={{
                 input: {

@@ -25,6 +25,11 @@ module Cats
         usage.utilization_pct
       end
 
+      def no_of_stores
+        count = object.warehouse.stores.count
+        count.positive? ? count : nil
+      end
+
       private
 
       def usage
