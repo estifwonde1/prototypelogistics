@@ -17,6 +17,7 @@ interface AssignmentPayloadRow {
   hub_id?: number;
   warehouse_id: number;
   quantity: number;
+  quantity_unit_id?: number;
 }
 
 interface ReceiptWarehouseAssignmentModalProps {
@@ -315,11 +316,19 @@ function ReceiptWarehouseAssignmentModal({
 
     onSubmit({
       assignments: rows.map((row) => {
+        const line = lineMap.get(Number(row.receipt_order_line_id));
+        const lineUnitId = line?.unitId;
+        const unitId = row.unit_id;
         const assignment: AssignmentPayloadRow = {
           receipt_order_line_id: Number(row.receipt_order_line_id),
           warehouse_id: Number(row.warehouse_id),
           quantity: Number(validations[row.clientId]?.convertedQuantity ?? 0),
         };
+        
+        // Include quantity_unit_id when the selected unit differs from the line unit
+        if (unitId != null && lineUnitId != null && unitId !== lineUnitId) {
+          assignment.quantity_unit_id = unitId;
+        }
         
         // Include hub_id if provided (for multi-hub orders)
         if (hubId != null) {

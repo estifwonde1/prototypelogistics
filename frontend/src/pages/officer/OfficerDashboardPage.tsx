@@ -257,13 +257,6 @@ function OfficerDashboardPage() {
             >
               Create Receipt Order
             </Button>
-            <Button
-              leftSection={<IconPlus size={16} />}
-              variant="light"
-              onClick={() => navigate('/officer/dispatch-orders/new')}
-            >
-              Create Dispatch Order
-            </Button>
           </Group>
         ) : (
           <Group>
