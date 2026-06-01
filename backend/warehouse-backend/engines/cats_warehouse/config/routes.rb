@@ -8,6 +8,8 @@ Cats::Warehouse::Engine.routes.draw do
     patch "me/profile",  to: "me#update_profile"
     patch "me/password", to: "me#change_password"
 
+    get "dashboard/officer", to: "dashboard#officer"
+
     get "notifications", to: "notifications#index"
     get "notifications/unread_count", to: "notifications#unread_count"
     patch "notifications/read_all", to: "notifications#read_all"

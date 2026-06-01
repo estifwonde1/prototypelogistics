@@ -40,7 +40,9 @@ module Cats
       end
 
       def assigned_storekeepers
-        UserAssignment
+        # Memoize per store_id within request lifecycle to avoid one query per store
+        cache = Thread.current[:store_storekeeper_cache] ||= {}
+        cache[object.id] ||= UserAssignment
           .where(role_name: "Storekeeper", store_id: object.id)
           .includes(:user)
           .map { |a| { id: a.user.id, name: "#{a.user.first_name} #{a.user.last_name}" } }

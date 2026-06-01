@@ -17,7 +17,9 @@ module Cats
       def hub_warehouses_count
         return nil if object.hub_id.blank?
 
-        Warehouse.where(hub_id: object.hub_id).count
+        # Memoize per hub_id within request lifecycle to avoid N+1 COUNT queries
+        cache = Thread.current[:roa_hub_warehouses_count_cache] ||= {}
+        cache[object.hub_id] ||= Warehouse.where(hub_id: object.hub_id).count
       end
 
       def store_name
@@ -44,13 +46,14 @@ module Cats
 
       def quantity_unit_abbreviation
         if object.quantity_unit_id.present?
-          u = Cats::Core::UnitOfMeasure.find_by(id: object.quantity_unit_id)
+          # Use the pre-loaded association (belongs_to :quantity_unit)
+          u = object.quantity_unit
           return u&.abbreviation.presence || u&.name if u
         end
         line = measurement_line
         return if line.blank?
 
-        u = line.try(:unit) || Cats::Core::UnitOfMeasure.find_by(id: line.unit_id)
+        u = line.try(:unit)
         u&.abbreviation.presence || u&.name
       end
 

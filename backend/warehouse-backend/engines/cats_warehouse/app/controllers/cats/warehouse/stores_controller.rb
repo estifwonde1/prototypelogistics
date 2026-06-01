@@ -1,28 +1,30 @@
 module Cats
   module Warehouse
     class StoresController < BaseController
+      STORE_INCLUDES = [ { warehouse: :warehouse_capacity } ].freeze
+
       def index
         authorize Store
-        stores = policy_scope(Store)
-        
+        stores = policy_scope(Store).includes(*STORE_INCLUDES)
+
         # CRITICAL: Filter by warehouse_id if provided (for warehouse managers with multiple warehouses)
         if params[:warehouse_id].present?
           warehouse_id = params[:warehouse_id].to_i
-          
+
           # Verify user has access to this warehouse
           access = AccessContext.new(user: current_user)
           unless access.can_access_warehouse?(warehouse_id)
             return render_error("Access denied to warehouse #{warehouse_id}", status: :forbidden)
           end
-          
+
           stores = stores.where(warehouse_id: warehouse_id)
         end
-        
+
         render_resource(stores.order(:id), each_serializer: StoreSerializer)
       end
 
       def show
-        store = policy_scope(Store).find(params[:id])
+        store = policy_scope(Store).includes(*STORE_INCLUDES).find(params[:id])
         authorize store
         render_resource(store, serializer: StoreSerializer)
       end

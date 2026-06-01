@@ -77,22 +77,22 @@ function WarehouseDetailPage() {
   const { data: stockBalances = [] } = useQuery({
     queryKey: ['stockBalances', { warehouse_id: Number(id) }],
     queryFn: () => getStockBalances({ warehouse_id: Number(id) }),
-    enabled: !!id,
+    enabled: !!id && activeTab === 'stock',
   });
   const { data: grns } = useQuery({
     queryKey: ['grns', { warehouse_id: Number(id) }],
     queryFn: () => getGrns({ warehouse_id: Number(id) }),
-    enabled: !!id,
+    enabled: !!id && activeTab === 'operations',
   });
   const { data: gins } = useQuery({
     queryKey: ['gins', { warehouse_id: Number(id) }],
     queryFn: () => getGins({ warehouse_id: Number(id) }),
-    enabled: !!id,
+    enabled: !!id && activeTab === 'operations',
   });
   const { data: inspections } = useQuery({
     queryKey: ['inspections', { warehouse_id: Number(id) }],
     queryFn: () => getInspections({ warehouse_id: Number(id) }),
-    enabled: !!id,
+    enabled: !!id && activeTab === 'operations',
   });
   const { data: facilityOptions } = useQuery({
     queryKey: ['reference-data', 'facility-options'],
