@@ -412,7 +412,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               {
                 label: "Commodities",
                 icon: <IconBox size={20} />,
-                path: "/officer/commodities/new",
+                path: "/officer/commodities?tab=create",
                 resource: "receipt_orders",
               },
             ],
@@ -451,7 +451,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
             {
               label: "Commodities",
               icon: <IconBox size={20} />,
-              path: "/officer/commodities/new",
+              path: "/officer/commodities?tab=create",
               resource: "receipt_orders",
             },
           ],

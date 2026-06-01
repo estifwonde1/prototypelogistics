@@ -390,12 +390,16 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'officer/commodities/new',
+        path: 'officer/commodities',
         element: (
           <RequirePermission resource="receipt_orders" action="create">
             <CommodityFormPage />
           </RequirePermission>
         ),
+      },
+      {
+        path: 'officer/commodities/new',
+        element: <Navigate to="/officer/commodities?tab=create" replace />,
       },
       {
         path: 'officer/dispatch-orders',
