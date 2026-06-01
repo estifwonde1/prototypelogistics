@@ -76,6 +76,11 @@ RSpec.describe "Warehouse Manager Storekeeper Assignment", type: :request do
       stores_json = JSON.parse(response.body)
       store_ids = stores_json["data"].map { |s| s["id"] }
       expect(store_ids).to contain_exactly(store1.id, store2.id)
+      expect(Cats::Warehouse::UserAssignment.exists?(
+        user: storekeeper,
+        role_name: "Storekeeper",
+        warehouse: warehouse
+      )).to be(true)
     end
 
     it "defaults to assigning the selected store when store_ids are omitted" do

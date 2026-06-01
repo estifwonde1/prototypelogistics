@@ -8,6 +8,7 @@ module Cats
       def assignments
         scope = UserAssignment.includes(:hub, :warehouse, :location, store: :warehouse)
                               .where(user_id: current_user.id)
+                              .where.not(role_name: "Storekeeper", store_id: nil)
 
         render_success(assignments: scope.map { |a| assignment_payload(a) })
       end

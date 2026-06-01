@@ -105,14 +105,8 @@ module Cats
           return render_error("User is not a Storekeeper or Warehouse Manager", status: :unprocessable_entity)
         end
         ensure_storekeeper_role!(user)
-        
-        # A warehouse-level Storekeeper assignment only makes the user eligible
-        # for assignment. Store access must be granted explicitly per store.
-        UserAssignment.where(
-          user_id: user_id,
-          role_name: "Storekeeper",
-          warehouse_id: warehouse.id
-        ).delete_all
+
+        ensure_storekeeper_pool_assignment!(user, warehouse)
 
         # Create store-level assignments.
         store_ids.each do |sid|
@@ -142,6 +136,9 @@ module Cats
         authorize store, :assign_storekeeper?
 
         user_id = params[:user_id]
+        user = Cats::Core::User.find(user_id)
+        ensure_storekeeper_pool_assignment!(user, store.warehouse)
+
         deleted = UserAssignment.where(
           user_id: user_id,
           role_name: "Storekeeper",
@@ -164,6 +161,16 @@ module Cats
         role = Cats::Core::Role.find_by(name: "Storekeeper", application_module: warehouse_module)
         role ||= Cats::Core::Role.find_by(name: "Storekeeper")
         user.roles << role if role && !user.roles.exists?(id: role.id)
+      end
+
+      def ensure_storekeeper_pool_assignment!(user, warehouse)
+        return if user.has_role?("Warehouse Manager")
+
+        UserAssignment.find_or_create_by!(
+          user: user,
+          role_name: "Storekeeper",
+          warehouse_id: warehouse.id
+        )
       end
 
       def store_params
