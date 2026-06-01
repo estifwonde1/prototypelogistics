@@ -77,15 +77,9 @@ module Cats
       end
 
       def assigned_store_ids
-        # Get direct store-level assignments
-        direct_store_ids = UserAssignment.where(user_id: user&.id, role_name: "Storekeeper").pluck(:store_id).compact
-        
-        # Get warehouse-level assignments and expand to all stores in those warehouses
-        warehouse_ids = storekeeper_warehouse_ids
-        warehouse_store_ids = warehouse_ids.present? ? Store.where(warehouse_id: warehouse_ids).pluck(:id) : []
-        
-        # Merge both: union direct store assignments and expanded warehouse-level store assignments
-        (direct_store_ids + warehouse_store_ids).uniq
+        # Warehouse-level Storekeeper assignments only make the user available
+        # for assignment by a manager. Store access is explicit per store.
+        UserAssignment.where(user_id: user&.id, role_name: "Storekeeper").pluck(:store_id).compact
       end
 
       def assigned_officer_warehouse_ids

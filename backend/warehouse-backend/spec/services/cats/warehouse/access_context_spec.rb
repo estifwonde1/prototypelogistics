@@ -26,11 +26,11 @@ RSpec.describe Cats::Warehouse::AccessContext, type: :service do
         )
       end
 
-      it "returns all stores in the assigned warehouse" do
+      it "returns no stores until a store is explicitly assigned" do
         access = described_class.new(user: storekeeper)
         store_ids = access.assigned_store_ids
 
-        expect(store_ids).to contain_exactly(store1.id, store2.id, store3.id)
+        expect(store_ids).to be_empty
       end
     end
 

@@ -23,9 +23,10 @@ import {
 } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { getRoleLabel, OFFICER_ROLE_SLUGS, type RoleSlug } from '../../utils/constants';
+import { getMyAssignments } from '../../api/me';
 import {
   fetchNotifications,
   fetchUnreadNotificationCount,
@@ -55,13 +56,44 @@ function resolveNotificationPath(params: unknown): string | null {
 export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDesktop }: HeaderProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { role, assignments, activeAssignment, clearAuth, token } = useAuthStore();
+  const {
+    role,
+    assignments,
+    activeAssignment,
+    clearAuth,
+    token,
+    setAssignments,
+    setActiveAssignment,
+  } = useAuthStore();
   const roleLabel = getRoleLabel(role);
   const [notifMenuOpened, setNotifMenuOpened] = useState(false);
   const activeWarehouseId = activeAssignment?.warehouse?.id;
 
   const { switchState, switchToRole, onFacilitySelected, onStoreSelected, dismissPicker } =
     useRoleSwitcher();
+
+  const { data: freshAssignments } = useQuery({
+    queryKey: ['me', 'assignments', 'header'],
+    queryFn: getMyAssignments,
+    enabled: Boolean(token),
+    staleTime: 10_000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: 'always',
+  });
+
+  useEffect(() => {
+    if (!freshAssignments) return;
+
+    setAssignments(freshAssignments);
+
+    const activeStillExists =
+      activeAssignment &&
+      freshAssignments.some((assignment) => assignment.id === activeAssignment.id);
+
+    if (!activeStillExists && freshAssignments.length === 1) {
+      setActiveAssignment(freshAssignments[0]);
+    }
+  }, [freshAssignments, activeAssignment, setAssignments, setActiveAssignment]);
 
   const { data: unreadCount = 0 } = useQuery({
     queryKey: [...notificationsUnreadCountKey, { warehouse_id: activeWarehouseId }],
@@ -86,11 +118,13 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
   const isOfficer = role && OFFICER_ROLE_SLUGS.includes(role as RoleSlug);
 
   const facilityName =
-    activeAssignment?.hub?.name ||
-    activeAssignment?.warehouse?.name ||
-    activeAssignment?.store?.name ||
-    activeAssignment?.location?.name ||
-    'Federal';
+    role === 'storekeeper' && activeAssignment?.store?.name
+      ? activeAssignment.store.name
+      : activeAssignment?.hub?.name ||
+        activeAssignment?.warehouse?.name ||
+        activeAssignment?.store?.name ||
+        activeAssignment?.location?.name ||
+        'Federal';
 
   // All unique role names this user holds
   const uniqueRoleNames = Array.from(new Set(assignments.map((a) => a.role_name)));

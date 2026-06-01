@@ -51,7 +51,7 @@ export function StorekeeperStorePickerModal({
 
         {!isLoading && !isError && stores.length === 0 && (
           <Text size="sm" c="dimmed" ta="center" py="md">
-            No stores found in your managed warehouses.
+            No store assignments found.
           </Text>
         )}
 

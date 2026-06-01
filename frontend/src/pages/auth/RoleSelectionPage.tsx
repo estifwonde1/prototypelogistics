@@ -68,6 +68,7 @@ export default function RoleSelectionPage() {
   };
 
   const getFacilityName = (a: OfficerAssignment) => {
+    if (normalizeRoleSlug(a.role_name) === 'storekeeper' && a.store) return a.store.name;
     if (a.hub) return a.hub.name;
     if (a.warehouse) return a.warehouse.name;
     if (a.store) return a.store.name;

@@ -48,21 +48,16 @@ module Cats
       end
 
       # GET /v1/me/storekeeper_stores
-      # For a Warehouse Manager who also holds the Storekeeper role:
-      # returns the stores inside their managed warehouses so they can
-      # pick which store to operate as Storekeeper.
+      # Returns only the stores explicitly assigned to the current user as a
+      # Storekeeper. Warehouse Manager access never implies storekeeper access.
       def storekeeper_stores
-        wm_warehouse_ids = UserAssignment
-          .where(user_id: current_user.id, role_name: "Warehouse Manager")
-          .pluck(:warehouse_id)
-          .compact
-
-        if wm_warehouse_ids.empty?
-          return render_success(stores: [])
-        end
-
         stores = Store.includes(:warehouse)
-                      .where(warehouse_id: wm_warehouse_ids)
+                      .where(
+                        id: UserAssignment
+                          .where(user_id: current_user.id, role_name: "Storekeeper")
+                          .where.not(store_id: nil)
+                          .select(:store_id)
+                      )
                       .order(:name)
 
         render_success(stores: stores.map { |s|

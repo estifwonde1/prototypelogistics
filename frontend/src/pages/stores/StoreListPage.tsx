@@ -27,8 +27,10 @@ import {
   deleteStore,
   getStoreStorekeepers,
   assignStorekeeper,
+  unassignStorekeeper,
 } from "../../api/stores";
 import { getWarehouses } from "../../api/warehouses";
+import { getMyAssignments } from "../../api/me";
 import { LoadingState } from "../../components/common/LoadingState";
 import { ErrorState } from "../../components/common/ErrorState";
 import { EmptyState } from "../../components/common/EmptyState";
@@ -49,10 +51,15 @@ function StoreListPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [storeToDelete, setStoreToDelete] = useState<number | null>(null);
   const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [storeToAssign, setStoreToAssign] = useState<number | null>(null);
 
   // CRITICAL: Get the active warehouse context
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
-  const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || useAuthStore((state) => state.role));
+  const authRole = useAuthStore((state) => state.role);
+  const currentUserId = useAuthStore((state) => state.userId);
+  const setAssignments = useAuthStore((state) => state.setAssignments);
+  const setActiveAssignment = useAuthStore((state) => state.setActiveAssignment);
+  const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || authRole);
   const userWarehouseId = activeAssignment?.warehouse?.id;
   const userHubId = activeAssignment?.hub?.id;
   const isWarehouseManager = roleSlug === 'warehouse_manager';
@@ -131,6 +138,24 @@ function StoreListPage() {
     },
   });
 
+  const refreshCurrentUserAssignments = async (changedUserId: number) => {
+    queryClient.invalidateQueries({ queryKey: ["me", "assignments"] });
+    queryClient.invalidateQueries({ queryKey: ["me", "storekeeper_stores"] });
+
+    if (currentUserId !== changedUserId) return;
+
+    const freshAssignments = await getMyAssignments();
+    setAssignments(freshAssignments);
+
+    const activeStillExists =
+      activeAssignment &&
+      freshAssignments.some((assignment) => assignment.id === activeAssignment.id);
+
+    if (!activeStillExists && freshAssignments.length > 0) {
+      setActiveAssignment(freshAssignments[0]);
+    }
+  };
+
   const assignMutation = useMutation({
     mutationFn: ({
       userId,
@@ -147,9 +172,10 @@ function StoreListPage() {
         store_ids: storeIds,
       });
     },
-    onSuccess: () => {
+    onSuccess: async (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["stores"] });
       queryClient.invalidateQueries({ queryKey: ["store-storekeepers"] });
+      await refreshCurrentUserAssignments(variables.userId);
       notifications.show({
         title: "Success",
         message: "Storekeeper assigned successfully",
@@ -167,6 +193,35 @@ function StoreListPage() {
     },
   });
 
+  const unassignMutation = useMutation({
+    mutationFn: ({
+      storeId,
+      userId,
+    }: {
+      storeId: number;
+      userId: number;
+    }) => unassignStorekeeper(storeId, userId),
+    onSuccess: async (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["stores"] });
+      queryClient.invalidateQueries({ queryKey: ["store-storekeepers"] });
+      await refreshCurrentUserAssignments(variables.userId);
+      notifications.show({
+        title: "Success",
+        message: "Storekeeper removed from store",
+        color: "green",
+      });
+    },
+    onError: (error: any) => {
+      notifications.show({
+        title: "Error",
+        message:
+          error.response?.data?.error?.message ||
+          "Failed to remove storekeeper",
+        color: "red",
+      });
+    },
+  });
+
   const handleDelete = () => {
     if (storeToDelete) {
       deleteMutation.mutate(storeToDelete);
@@ -176,6 +231,16 @@ function StoreListPage() {
   const handleAssign = async (userId: number, storeIds?: number[]) => {
     await assignMutation.mutateAsync({ userId, storeIds });
   };
+
+  const handleUnassign = async (userId: number) => {
+    if (!selectedStoreToAssign) return;
+    await unassignMutation.mutateAsync({
+      storeId: selectedStoreToAssign.id,
+      userId,
+    });
+  };
+
+  const selectedStoreToAssign = stores.find((store) => store.id === storeToAssign);
 
   const filteredStores = stores?.filter((store) => {
     // CRITICAL: Double-check warehouse filtering on frontend as safety measure
@@ -225,15 +290,6 @@ function StoreListPage() {
           </Text>
         </div>
         <Group>
-          {canManageStorekeepers && storekeepers.length > 0 && (
-            <Button
-              leftSection={<IconUsers size={16} />}
-              variant="light"
-              onClick={() => setAssignModalOpen(true)}
-            >
-              Assign Storekeeper
-            </Button>
-          )}
           {can("stores", "create") && (
             <Button
               leftSection={<IconPlus size={16} />}
@@ -357,16 +413,36 @@ function StoreListPage() {
                           <ActionIcon
                             variant="subtle"
                             color="blue"
-                            onClick={() => navigate(`/stores/${store.id}`)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              navigate(`/stores/${store.id}`);
+                            }}
                           >
                             <IconEye size={16} />
+                          </ActionIcon>
+                        )}
+                        {canManageStorekeepers && storekeepers.length > 0 && (
+                          <ActionIcon
+                            variant="subtle"
+                            color="blue"
+                            aria-label={`Assign storekeeper to ${store.name}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setStoreToAssign(store.id);
+                              setAssignModalOpen(true);
+                            }}
+                          >
+                            <IconUsers size={16} />
                           </ActionIcon>
                         )}
                         {canUpdate && (
                           <ActionIcon
                             variant="subtle"
                             color="gray"
-                            onClick={() => navigate(`/stores/${store.id}/edit`)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              navigate(`/stores/${store.id}/edit`);
+                            }}
                           >
                             <IconEdit size={16} />
                           </ActionIcon>
@@ -375,7 +451,8 @@ function StoreListPage() {
                           <ActionIcon
                             variant="subtle"
                             color="red"
-                            onClick={() => {
+                            onClick={(event) => {
+                              event.stopPropagation();
                               setStoreToDelete(store.id);
                               setDeleteModalOpen(true);
                             }}
@@ -416,14 +493,19 @@ function StoreListPage() {
         </Group>
       </Modal>
 
-      {canManageStorekeepers && assignModalOpen && (
+      {canManageStorekeepers && assignModalOpen && selectedStoreToAssign && (
         <AssignStorekeeperModal
           opened={assignModalOpen}
-          onClose={() => setAssignModalOpen(false)}
+          onClose={() => {
+            setAssignModalOpen(false);
+            setStoreToAssign(null);
+          }}
           storekeepers={storekeepers}
           stores={stores}
+          store={selectedStoreToAssign!}
           onAssign={handleAssign}
-          isLoading={assignMutation.isPending}
+          onUnassign={handleUnassign}
+          isLoading={assignMutation.isPending || unassignMutation.isPending}
         />
       )}
     </Stack>

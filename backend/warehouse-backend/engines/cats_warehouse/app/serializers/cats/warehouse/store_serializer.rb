@@ -40,17 +40,10 @@ module Cats
       end
 
       def assigned_storekeepers
-        warehouse_storekeepers = UserAssignment
-          .where(role_name: "Storekeeper", warehouse_id: object.warehouse_id)
-          .includes(:user)
-          .map { |a| { id: a.user.id, name: "#{a.user.first_name} #{a.user.last_name}" } }
-
-        store_storekeepers = UserAssignment
+        UserAssignment
           .where(role_name: "Storekeeper", store_id: object.id)
           .includes(:user)
           .map { |a| { id: a.user.id, name: "#{a.user.first_name} #{a.user.last_name}" } }
-
-        (warehouse_storekeepers + store_storekeepers).uniq { |s| s[:id] }
       end
 
       private

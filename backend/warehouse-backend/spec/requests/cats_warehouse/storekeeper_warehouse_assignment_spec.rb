@@ -29,7 +29,7 @@ RSpec.describe "Storekeeper Warehouse-Level Assignment", type: :request do
       )
     end
 
-    it "allows storekeeper to see all stores in the warehouse" do
+    it "does not show stores until the manager assigns one explicitly" do
       headers = auth_headers_for(storekeeper)
       get "/cats_warehouse/v1/stores", headers: headers
 
@@ -37,20 +37,20 @@ RSpec.describe "Storekeeper Warehouse-Level Assignment", type: :request do
       json = JSON.parse(response.body)
       
       store_ids = json["data"].map { |s| s["id"] }
-      expect(store_ids).to contain_exactly(store1.id, store2.id, store3.id)
+      expect(store_ids).to be_empty
     end
 
-    it "allows storekeeper to access any store in the warehouse" do
+    it "does not allow access to stores before explicit store assignment" do
       headers = auth_headers_for(storekeeper)
       
       get "/cats_warehouse/v1/stores/#{store1.id}", headers: headers
-      expect(response).to have_http_status(:ok)
+      expect(response).to have_http_status(:not_found)
       
       get "/cats_warehouse/v1/stores/#{store2.id}", headers: headers
-      expect(response).to have_http_status(:ok)
+      expect(response).to have_http_status(:not_found)
       
       get "/cats_warehouse/v1/stores/#{store3.id}", headers: headers
-      expect(response).to have_http_status(:ok)
+      expect(response).to have_http_status(:not_found)
     end
   end
 
@@ -86,10 +86,9 @@ RSpec.describe "Storekeeper Warehouse-Level Assignment", type: :request do
     end
   end
 
-  describe "transition from warehouse-level to store-level" do
-    it "narrows access when warehouse assignment is replaced with store assignment" do
-      # Start with warehouse-level assignment
-      warehouse_assignment = Cats::Warehouse::UserAssignment.create!(
+  describe "transition from warehouse pool to store-level" do
+    it "grants access only after a store assignment is created" do
+      Cats::Warehouse::UserAssignment.create!(
         user: storekeeper,
         role_name: "Storekeeper",
         warehouse: warehouse
@@ -103,17 +102,14 @@ RSpec.describe "Storekeeper Warehouse-Level Assignment", type: :request do
       headers = auth_headers_for(storekeeper)
       get "/cats_warehouse/v1/stores", headers: headers
       json = JSON.parse(response.body)
-      expect(json["data"].map { |s| s["id"] }).to contain_exactly(store1.id, store2.id, store3.id)
+      expect(json["data"].map { |s| s["id"] }).to be_empty
 
-      # Replace with store-level assignment
-      warehouse_assignment.destroy!
       Cats::Warehouse::UserAssignment.create!(
         user: storekeeper,
         role_name: "Storekeeper",
         store: store1
       )
 
-      # Now should only see store1
       get "/cats_warehouse/v1/stores", headers: headers
       json = JSON.parse(response.body)
       expect(json["data"].map { |s| s["id"] }).to contain_exactly(store1.id)

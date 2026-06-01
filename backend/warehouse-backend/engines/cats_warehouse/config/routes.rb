@@ -61,6 +61,7 @@ Cats::Warehouse::Engine.routes.draw do
       end
       member do
         post :assign_storekeeper
+        delete :unassign_storekeeper
       end
     end
     resources :stacks, only: [ :index, :show, :create, :update, :destroy ] do
