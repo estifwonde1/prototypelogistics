@@ -397,10 +397,10 @@ export default function StackLayoutPage() {
     return pickAccessibleStoreId(
       [
         effectivePickerStoreId ? Number(effectivePickerStoreId) : null,
-        userStoreId ?? null,
         isDriverArrivalStacking && driverArrivalRAById?.store_id != null
           ? driverArrivalRAById.store_id
           : null,
+        userStoreId ?? null,
       ],
       accessibleStoreIds
     );
@@ -1318,10 +1318,7 @@ export default function StackLayoutPage() {
           {canPlaceDriverArrivalGoods && (() => {
             const selectedRA = selectedDriverArrivalRA;
             if (!selectedRA) return null;
-            const uLine = raQuantityUnit(selectedRA);
-            const uDisp = raDisplayUnit(selectedRA);
             const primaryUnit = raPrimaryUnit(selectedRA);
-            const useInputUnit = raUsesInputUnit(selectedRA);
             const totalToPlaceLine = Number(selectedRA.my_inspection?.total_received ?? selectedRA.authorized_quantity);
             const totalPlacedLine = Object.values(placements).reduce((s, q) => s + q, 0);
             const remainingLine = totalToPlaceLine - totalPlacedLine;
@@ -1339,9 +1336,9 @@ export default function StackLayoutPage() {
                   </Group>
                   <Progress value={placedPct} color={remainingLine < 0 ? 'red' : remainingLine === 0 ? 'green' : 'blue'} size="md" radius="xl" />
                   <Group gap="xl">
-                    <Text size="xs" c="dimmed">To place (received): <strong>{fmtPrimary(totalToPlaceLine)} {primaryUnit}</strong>{useInputUnit && uLine ? <span> ({totalToPlaceLine.toLocaleString()} {uLine})</span> : null}</Text>
-                    <Text size="xs" c="dimmed">Placed: <strong>{fmtPrimary(totalPlacedLine)} {primaryUnit}</strong>{useInputUnit && uLine ? <span> ({totalPlacedLine.toLocaleString()} {uLine})</span> : null}</Text>
-                    <Text size="xs" c="dimmed">Remaining: <strong>{fmtPrimary(remainingLine)} {primaryUnit}</strong>{useInputUnit && uLine ? <span> ({remainingLine.toLocaleString()} {uLine})</span> : null}</Text>
+                    <Text size="xs" c="dimmed">To place (received): <strong>{fmtPrimary(totalToPlaceLine)} {primaryUnit}</strong></Text>
+                    <Text size="xs" c="dimmed">Placed: <strong>{fmtPrimary(totalPlacedLine)} {primaryUnit}</strong></Text>
+                    <Text size="md" c="#1d3354">Remaining: <strong>{fmtPrimary(remainingLine)}</strong> <strong>{primaryUnit}</strong></Text>
                   </Group>
                   {Object.entries(placements).filter(([, q]) => q > 0).length > 0 ? (
                     <Stack gap={4}>
@@ -1352,7 +1349,7 @@ export default function StackLayoutPage() {
                         return (
                           <Group key={stackId} gap="xs">
                             <Text size="xs" style={{ fontFamily: 'monospace' }}>{stack?.code || `Stack #${stackId}`}</Text>
-                            <Text size="xs" c="blue" fw={600}>{fmtPrimary(qtyLine)} {primaryUnit}{useInputUnit && uLine ? <span> ({qtyLine.toLocaleString()} {uLine})</span> : null}</Text>
+                            <Text size="xs" c="blue" fw={600}>{fmtPrimary(qtyLine)} {primaryUnit}</Text>
                             <Button size="xs" variant="subtle" color="red" style={{ padding: '0 4px', height: 18 }} onClick={() => setPlacements(p => { const n = {...p}; delete n[stackId]; return n; })}>×</Button>
                           </Group>
                         );
@@ -2080,11 +2077,7 @@ export default function StackLayoutPage() {
                 <>
                   <NumberInput
                     label={`Quantity to place${primaryUnit ? ` (${primaryUnit})` : ''}`}
-                    description={
-                      useInputUnit && uLine
-                        ? `Remaining to assign: ${(totalToPlaceLine - Object.values(placements).reduce((s, q) => s + q, 0)).toLocaleString()} ${uLine} (${convertRaLineToInput(totalToPlaceLine, selectedRA).toLocaleString(undefined, { maximumFractionDigits: 3 })} ${primaryUnit} total received). Adjust any stack freely.`
-                        : `Remaining to assign: ${(totalToPlaceLine - Object.values(placements).reduce((s, q) => s + q, 0)).toLocaleString()}${uLine ? ` ${uLine}` : ''} total received. Adjust any stack freely.`
-                    }
+                    description={`Remaining to assign: ${convertRaLineToInput(totalToPlaceLine - Object.values(placements).reduce((s, q) => s + q, 0), selectedRA).toLocaleString(undefined, { maximumFractionDigits: 3 })} ${primaryUnit}. Adjust any stack freely.`}
                     value={currentQtyPrimary || ''}
                     onChange={(val) => {
                       const rawPrimary = Number(val) || 0;
@@ -2141,17 +2134,11 @@ export default function StackLayoutPage() {
                 <Text size="sm">{ra.driver_name} — {ra.truck_plate_number}</Text>
                 <Text size="sm">
                   Hub authorized: {raDisplayQty(ra).toLocaleString(undefined, { maximumFractionDigits: 3 })}{raDisplayUnit(ra) ? ` ${raDisplayUnit(ra)}` : ''}
-                  {raDisplayUnit(ra) && raQuantityUnit(ra) && raDisplayUnit(ra) !== raQuantityUnit(ra) ? (
-                    <span> (= {Number(ra.authorized_quantity).toLocaleString()} {raQuantityUnit(ra)})</span>
-                  ) : null}
                   {ra.my_inspection?.total_received != null && Number(ra.my_inspection.total_received) !== Number(ra.authorized_quantity) && (
                     <span>
                       {' '}· Received:{' '}
                       {Number((Number(ra.my_inspection.total_received) * raLineToInputMultiplier(ra)).toFixed(6)).toLocaleString(undefined, { maximumFractionDigits: 3 })}
                       {raDisplayUnit(ra) ? ` ${raDisplayUnit(ra)}` : ''}
-                      {raDisplayUnit(ra) && raQuantityUnit(ra) && raDisplayUnit(ra) !== raQuantityUnit(ra) ? (
-                        <span> (= {Number(ra.my_inspection.total_received).toLocaleString()} {raQuantityUnit(ra)})</span>
-                      ) : null}
                     </span>
                   )}
                 </Text>

@@ -36,12 +36,17 @@ module Cats
         object.created_at&.iso8601
       end
 
-      # Unit for displayed quantity: explicit line, else first line on the order (hub-level assignments).
+      # Unit for displayed quantity: use stored quantity_unit_id when present (user-selected unit),
+      # otherwise fall back to the line's unit.
       def quantity_unit_id
-        measurement_line&.unit_id
+        object.quantity_unit_id.presence || measurement_line&.unit_id
       end
 
       def quantity_unit_abbreviation
+        if object.quantity_unit_id.present?
+          u = Cats::Core::UnitOfMeasure.find_by(id: object.quantity_unit_id)
+          return u&.abbreviation.presence || u&.name if u
+        end
         line = measurement_line
         return if line.blank?
 

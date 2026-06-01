@@ -103,6 +103,12 @@ export default function CommoditiesSetupPage() {
     label: g.name,
   }));
 
+  // Group filter options for categories tab (uses name for matching against parent_name)
+  const groupFilterOptions = groups.map((g) => ({
+    value: g.name,
+    label: g.name,
+  }));
+
   // ── Commodity Create ──────────────────────────────────────────────────────
   const createForm = useForm({
     initialValues: { name: '', commodity_code: '', category_id: '', volume_per_metric_ton: REFERENCE_M3_PER_MT },
@@ -494,7 +500,7 @@ export default function CommoditiesSetupPage() {
                 <Text fw={600}>Commodity Categories</Text>
                 <SearchableSelect
                   placeholder="All groups"
-                  data={groupSelectOptions}
+                  data={groupFilterOptions}
                   value={categoryGroupFilter}
                   onChange={setCategoryGroupFilter}
                   clearable

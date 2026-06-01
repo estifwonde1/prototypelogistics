@@ -363,11 +363,16 @@ function CommodityFormPage() {
     });
   };
 
+  // Packaging units that should be excluded from Default Unit and Unit per Package
+  const packagingAbbreviations = new Set(PACKAGING_UNIT_OPTIONS.map((p) => p.value));
+
   // Unit options for the commodity's default unit and unit-per-package
-  const unitOptions = units.map((u) => ({
-    value: String(u.id),
-    label: u.abbreviation ? `${u.name} (${u.abbreviation})` : u.name,
-  }));
+  const unitOptions = units
+    .filter((u) => !(u.abbreviation && packagingAbbreviations.has(u.abbreviation.toUpperCase())))
+    .map((u) => ({
+      value: String(u.id),
+      label: u.abbreviation ? `${u.name} (${u.abbreviation})` : u.name,
+    }));
 
   const categoryOptions = categories.map((c) => ({
     value: String(c.id),
