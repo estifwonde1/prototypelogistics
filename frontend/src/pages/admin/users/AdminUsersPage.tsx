@@ -13,19 +13,9 @@ import { LoadingState } from '../../../components/common/LoadingState';
 import { ErrorState } from '../../../components/common/ErrorState';
 import { EmptyState } from '../../../components/common/EmptyState';
 import type { AdminUser } from '../../../types/admin';
+import { ALLOWED_ASSIGNABLE_ROLES, filterAllowedRoleNames } from '../../../constants/allowedRoles';
 
-const EXCLUDED_ROLES = new Set(['Quality Assurance', 'Receipt Authorizer', 'Superadmin']);
-
-const ROLE_OPTIONS = [
-  'Hub Manager',
-  'Warehouse Manager',
-  'Storekeeper',
-  'Federal Officer',
-  'Regional Officer',
-  'Zonal Officer',
-  'Woreda Officer',
-  'Kebele Officer',
-];
+const ROLE_OPTIONS = [...ALLOWED_ASSIGNABLE_ROLES];
 
 export default function AdminUsersPage() {
   const queryClient = useQueryClient();
@@ -228,7 +218,7 @@ export default function AdminUsersPage() {
         <SearchableSelect
           label="Filter by Role"
           placeholder="All roles"
-          data={(roles?.map((r) => r.name).filter((n) => !EXCLUDED_ROLES.has(n)) || ROLE_OPTIONS).map((name) => ({ value: name, label: name }))}
+          data={filterAllowedRoleNames(roles?.map((r) => r.name) ?? ROLE_OPTIONS).map((name) => ({ value: name, label: name }))}
           value={roleFilter}
           onChange={setRoleFilter}
           clearable
@@ -309,7 +299,7 @@ export default function AdminUsersPage() {
             <SearchableMultiSelect
               label="Roles"
               placeholder="Select one or more roles"
-              data={(roles?.map((r) => r.name).filter((n) => !EXCLUDED_ROLES.has(n)) || ROLE_OPTIONS).map((name) => ({ value: name, label: name }))}
+              data={filterAllowedRoleNames(roles?.map((r) => r.name) ?? ROLE_OPTIONS).map((name) => ({ value: name, label: name }))}
               {...form.getInputProps('role_names')}
               required
             />

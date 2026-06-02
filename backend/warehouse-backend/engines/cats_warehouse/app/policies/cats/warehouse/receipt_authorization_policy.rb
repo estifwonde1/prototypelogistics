@@ -145,11 +145,16 @@ module Cats
 
       def assign_storekeeper?
         return false unless record.is_a?(ReceiptAuthorization)
-        return false if SingleStoreWarehouse.single_store?(record.warehouse_id)
         return false unless access.warehouse_manager?
 
-        wh_ids = access.assigned_warehouse_ids.map(&:to_i)
-        return false unless wh_ids.include?(record.warehouse_id.to_i)
+        wh_id = record.warehouse_id.to_i
+        return false unless access.assigned_warehouse_ids.map(&:to_i).include?(wh_id)
+
+        # Hub-backed single-store: broadcast to all storekeepers (no manual assign).
+        # Standalone independent warehouses: WM assigns on RA form/detail even with one store.
+        if SingleStoreWarehouse.single_store?(wh_id) && !access.standalone_warehouse?(wh_id)
+          return false
+        end
 
         return false unless record.pending? || record.active?
         return false if record.inspections.exists?

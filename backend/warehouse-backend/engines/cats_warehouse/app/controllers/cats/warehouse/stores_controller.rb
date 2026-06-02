@@ -45,6 +45,14 @@ module Cats
       def destroy
         store = policy_scope(Store).find(params[:id])
         authorize store
+
+        if CapacityUsage.for_store(store).used_mt.positive?
+          return render_error(
+            "Cannot delete a store that has stock. Move or remove stock first.",
+            status: :unprocessable_entity
+          )
+        end
+
         store.destroy!
         render_success({ id: store.id })
       end

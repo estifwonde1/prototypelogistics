@@ -25,12 +25,10 @@ import { LoadingState } from '../../../components/common/LoadingState';
 import { ErrorState } from '../../../components/common/ErrorState';
 import { EmptyState } from '../../../components/common/EmptyState';
 import type { ApiError } from '../../../types/common';
+import { ALLOWED_ASSIGNABLE_ROLE_SET } from '../../../constants/allowedRoles';
 
-// Roles that are built-in and should not be deleted
-const PROTECTED_ROLES = new Set([
-  'Admin',
-  'Superadmin',
-]);
+// Only Admin is protected from deletion in the UI
+const PROTECTED_ROLES = new Set(['Admin']);
 
 export default function RolesManagementPage() {
   const queryClient = useQueryClient();
@@ -107,6 +105,8 @@ export default function RolesManagementPage() {
 
   const isProtected = (role: AdminRole) => PROTECTED_ROLES.has(role.name);
 
+  const visibleRoles = roles.filter((r) => ALLOWED_ASSIGNABLE_ROLE_SET.has(r.name));
+
   // ── Render ────────────────────────────────────────────────────────────────
   if (isLoading) return <LoadingState message="Loading roles..." />;
   if (error) return <ErrorState message="Failed to load roles" onRetry={() => refetch()} />;
@@ -132,14 +132,14 @@ export default function RolesManagementPage() {
           <IconShield size={28} color="var(--mantine-color-blue-6)" />
           <div>
             <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Total Roles</Text>
-            <Title order={3}>{roles.length}</Title>
+            <Title order={3}>{visibleRoles.length}</Title>
           </div>
         </Group>
       </Card>
 
       {/* Roles Table */}
       <Card withBorder padding="lg">
-        {roles.length === 0 ? (
+        {visibleRoles.length === 0 ? (
           <EmptyState
             title="No roles yet"
             description="Create your first role to get started."
@@ -156,7 +156,7 @@ export default function RolesManagementPage() {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {roles.map((role) => (
+                {visibleRoles.map((role) => (
                   <Table.Tr key={role.id}>
                     <Table.Td>
                       <Group gap="xs">
