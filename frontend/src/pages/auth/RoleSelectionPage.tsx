@@ -10,12 +10,14 @@ import {
   normalizeRoleSlug,
   type RoleSlug,
 } from '../../contracts/warehouse';
+import { commitWorkspaceSwitch } from '../../utils/workspaceSwitch';
 
 export default function RoleSelectionPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
   const assignments = useAuthStore((state) => state.assignments);
+  const fromRole = useAuthStore((state) => state.role);
   const setActiveAssignment = useAuthStore((state) => state.setActiveAssignment);
   const clearAuth = useAuthStore((state) => state.clearAuth);
 
@@ -63,8 +65,13 @@ export default function RoleSelectionPage() {
     const roleSlug = normalizeRoleSlug(assignment.role_name) as RoleSlug | null;
     if (!roleSlug) return;
 
-    setActiveAssignment(assignment);
-    navigate(getDefaultRouteForRole(roleSlug), { replace: true, state: {} });
+    void commitWorkspaceSwitch({
+      assignment,
+      queryClient,
+      navigate,
+      fromRole,
+      showNotification: false,
+    });
   };
 
   const getFacilityName = (a: OfficerAssignment) => {

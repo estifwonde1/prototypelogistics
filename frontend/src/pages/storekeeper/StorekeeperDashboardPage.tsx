@@ -11,7 +11,6 @@ import {
   TextInput,
   Paper,
   Box,
-  LoadingOverlay,
   List,
   ThemeIcon,
   Alert,
@@ -125,9 +124,6 @@ export default function StorekeeperDashboardPage() {
 
   return (
     <Stack gap="xl">
-      <Box pos="relative">
-        <LoadingOverlay visible={isLoading || stockLoading} overlayProps={{ blur: 2 }} />
-        
         {/* Header */}
         <Group justify="space-between" align="flex-start">
           <div>
@@ -515,7 +511,6 @@ export default function StorekeeperDashboardPage() {
             )}
           </Stack>
         </Paper>
-      </Box>
     </Stack>
   );
 }

@@ -5,12 +5,15 @@ module Cats
 
       def index
         authorize Hub
-        render_resource(policy_scope(Hub).includes(*HUB_INCLUDES).order(:id), each_serializer: HubSerializer)
+        hubs = policy_scope(Hub).includes(*HUB_INCLUDES).order(:id)
+        hubs.each { |hub| HubCapacityRecalculator.call(hub) }
+        render_resource(hubs, each_serializer: HubSerializer)
       end
 
       def show
         hub = policy_scope(Hub).includes(*HUB_INCLUDES).find(params[:id])
         authorize hub
+        HubCapacityRecalculator.call(hub)
         render_resource(hub, serializer: HubSerializer)
       end
 

@@ -21,9 +21,11 @@ import {
   IconMapPin,
   IconAlertCircle,
 } from '@tabler/icons-react';
-import { getOfficerDashboard } from '../../api/dashboard';
+import { getOfficerDashboard, officerDashboardQueryKey } from '../../api/dashboard';
 import { getRoleLabel } from '../../contracts/warehouse';
 import { useOfficerScope } from '../../hooks/useOfficerScope';
+import { useAuthStore } from '../../store/authStore';
+import { workspaceScopeKey } from '../../utils/workspaceSwitch';
 
 interface StatCardProps {
   title: string;
@@ -64,12 +66,13 @@ function ScopeAlert({ scopeLabel, isFullAccess }: { scopeLabel: string; isFullAc
 
 function OfficerDashboardPage() {
   const navigate = useNavigate();
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
   const { roleSlug, scopeLabel, scopeDescription, isFullAccess } = useOfficerScope();
   const roleLabel = getRoleLabel(roleSlug ?? 'officer');
 
   // Single summary query replaces 4 full-list fetches
   const { data: summary, isLoading } = useQuery({
-    queryKey: ['dashboard', 'officer'],
+    queryKey: officerDashboardQueryKey(workspaceScopeKey(activeAssignment)),
     queryFn: getOfficerDashboard,
   });
 

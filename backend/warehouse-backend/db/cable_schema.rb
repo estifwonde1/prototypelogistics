@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_06_01_000000) do
+ActiveRecord::Schema[7.0].define(version: 2026_06_01_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1587,9 +1587,11 @@ ActiveRecord::Schema[7.0].define(version: 2026_06_01_000000) do
     t.string "status", default: "Assigned", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "quantity_unit_id"
     t.index ["assigned_by_id"], name: "idx_cw_ro_assign_by"
     t.index ["assigned_to_id"], name: "idx_cw_ro_assign_to"
     t.index ["hub_id"], name: "idx_cw_ro_assign_hub"
+    t.index ["quantity_unit_id"], name: "idx_cw_ro_assign_qty_unit"
     t.index ["receipt_order_id"], name: "idx_cw_ro_assign_order"
     t.index ["receipt_order_line_id"], name: "idx_cw_ro_assign_line"
     t.index ["status"], name: "index_cats_warehouse_receipt_order_assignments_on_status"
@@ -2350,6 +2352,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_06_01_000000) do
   add_foreign_key "cats_warehouse_receipt_authorizations", "cats_warehouse_receipt_orders", column: "receipt_order_id"
   add_foreign_key "cats_warehouse_receipt_authorizations", "cats_warehouse_stores", column: "store_id"
   add_foreign_key "cats_warehouse_receipt_authorizations", "cats_warehouse_warehouses", column: "warehouse_id"
+  add_foreign_key "cats_warehouse_receipt_order_assignments", "cats_core_unit_of_measures", column: "quantity_unit_id"
   add_foreign_key "cats_warehouse_receipt_order_assignments", "cats_core_users", column: "assigned_by_id"
   add_foreign_key "cats_warehouse_receipt_order_assignments", "cats_core_users", column: "assigned_to_id"
   add_foreign_key "cats_warehouse_receipt_order_assignments", "cats_warehouse_hubs", column: "hub_id"

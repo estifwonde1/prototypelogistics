@@ -11,6 +11,11 @@ import type { Warehouse } from '../../types/warehouse';
 import type { UnitReference, UomConversion } from '../../types/referenceData';
 import { findDirectedMultiplier } from '../../utils/uomConversions';
 import { computePackagingPackagesHint } from '../../utils/packagingQuantityHint';
+import {
+  formatWarehouseCapacityLabel,
+  warehouseCapacityStatus,
+  whFreeMt,
+} from '../../pages/officer/FacilitiesOverviewPage_helpers';
 
 interface AssignmentPayloadRow {
   receipt_order_line_id: number;
@@ -49,10 +54,30 @@ interface RowValidation {
 
 interface RowPreview {
   lineRemainingBeforeRow: number | null;
-  warehouseSpaceBeforeRow: number | null;
+  warehouseRemainingMtBeforeRow: number | null;
 }
 
 const EPSILON = 0.000001;
+
+function findMtUnitId(units: UnitReference[]): number | null {
+  const mt = units.find((u) => (u.abbreviation ?? '').toLowerCase() === 'mt');
+  return mt?.id ?? null;
+}
+
+function convertQuantityToMt(
+  quantity: number,
+  fromUnitId: number,
+  commodityId: number,
+  units: UnitReference[],
+  uomConversions: UomConversion[]
+): number | null {
+  const mtUnitId = findMtUnitId(units);
+  if (!mtUnitId) return quantity;
+  if (fromUnitId === mtUnitId) return quantity;
+  const multiplier = findDirectedMultiplier(fromUnitId, mtUnitId, commodityId, uomConversions);
+  if (multiplier == null) return null;
+  return Number((quantity * multiplier).toFixed(6));
+}
 
 function makeClientId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -68,7 +93,7 @@ function ReceiptWarehouseAssignmentModal({
   receiptOrder,
   filteredLines,
   warehouses,
-  stores,
+  stores: _stores,
   units,
   uomConversions,
   onSubmit,
@@ -99,13 +124,15 @@ function ReceiptWarehouseAssignmentModal({
     return result;
   }, [receiptOrder.assignments, hubId]);
 
-  const warehouseSpaceByWarehouseId = useMemo(() => {
+  const warehouseRemainingMtById = useMemo(() => {
     const result: Record<number, number> = {};
-    stores.forEach((store) => {
-      result[store.warehouse_id] = (result[store.warehouse_id] || 0) + Number(store.available_space || 0);
+    warehouses.forEach((warehouse) => {
+      if (warehouse.capacity?.capacity_established === true) {
+        result[warehouse.id] = Number(warehouse.capacity?.remaining_capacity_mt ?? 0);
+      }
     });
     return result;
-  }, [stores]);
+  }, [warehouses]);
 
   const lineMeta = useMemo(() => {
     return lines.map((line) => {
@@ -162,7 +189,7 @@ function ReceiptWarehouseAssignmentModal({
 
   const rowComputation = useMemo(() => {
     const pendingByLine: Record<number, number> = {};
-    const pendingByWarehouse: Record<number, number> = {};
+    const pendingByWarehouseMt: Record<number, number> = {};
     const next: Record<string, RowValidation> = {};
     const previews: Record<string, RowPreview> = {};
 
@@ -210,17 +237,19 @@ function ReceiptWarehouseAssignmentModal({
       const convertedQuantity = Number((quantity * multiplier).toFixed(6));
       const alreadyPending = pendingByLine[lineId] || 0;
       const remainingBeforeRow = Math.max(0, line.remaining - alreadyPending);
-      const warehouseBaseSpace =
-        warehouseId != null && Number.isFinite(warehouseSpaceByWarehouseId[warehouseId])
-          ? warehouseSpaceByWarehouseId[warehouseId]
+      const warehouseBaseRemainingMt =
+        warehouseId != null && Number.isFinite(warehouseRemainingMtById[warehouseId])
+          ? warehouseRemainingMtById[warehouseId]
           : null;
-      const warehouseAlreadyPending = warehouseId != null ? pendingByWarehouse[warehouseId] || 0 : 0;
-      const warehouseSpaceBeforeRow =
-        warehouseBaseSpace != null ? Math.max(0, warehouseBaseSpace - warehouseAlreadyPending) : null;
+      const warehouseAlreadyPendingMt = warehouseId != null ? pendingByWarehouseMt[warehouseId] || 0 : 0;
+      const warehouseRemainingMtBeforeRow =
+        warehouseBaseRemainingMt != null
+          ? Math.max(0, warehouseBaseRemainingMt - warehouseAlreadyPendingMt)
+          : null;
 
       previews[row.clientId] = {
         lineRemainingBeforeRow: remainingBeforeRow,
-        warehouseSpaceBeforeRow,
+        warehouseRemainingMtBeforeRow,
       };
 
       if (convertedQuantity - remainingBeforeRow > EPSILON) {
@@ -231,15 +260,42 @@ function ReceiptWarehouseAssignmentModal({
         return;
       }
 
+      const convertedMt = convertQuantityToMt(
+        convertedQuantity,
+        line.unitId,
+        line.commodityId,
+        units,
+        uomConversions
+      );
+
+      if (convertedMt == null) {
+        next[row.clientId] = {
+          convertedQuantity,
+          error: 'Cannot convert quantity to MT for warehouse capacity check',
+        };
+        return;
+      }
+
+      if (
+        warehouseRemainingMtBeforeRow != null &&
+        convertedMt - warehouseRemainingMtBeforeRow > EPSILON
+      ) {
+        next[row.clientId] = {
+          convertedQuantity,
+          error: `Exceeds warehouse capacity (${warehouseRemainingMtBeforeRow.toLocaleString(undefined, { maximumFractionDigits: 2 })} MT remaining)`,
+        };
+        return;
+      }
+
       pendingByLine[lineId] = alreadyPending + convertedQuantity;
       if (warehouseId != null) {
-        pendingByWarehouse[warehouseId] = warehouseAlreadyPending + convertedQuantity;
+        pendingByWarehouseMt[warehouseId] = warehouseAlreadyPendingMt + convertedMt;
       }
       next[row.clientId] = { convertedQuantity, error: null };
     });
 
     return { validations: next, previews };
-  }, [lineMap, rows, uomConversions, warehouseSpaceByWarehouseId]);
+  }, [lineMap, rows, uomConversions, units, warehouseRemainingMtById]);
 
   const validations = rowComputation.validations;
   const rowPreviews = rowComputation.previews;
@@ -411,15 +467,11 @@ function ReceiptWarehouseAssignmentModal({
                 ? Math.max(0, (preview?.lineRemainingBeforeRow ?? line.remaining) - validation.convertedQuantity)
                 : null;
             const warehouseOptionsForRow = warehouses.map((warehouse) => {
-              const established = warehouse.capacity?.capacity_established === true;
-              const remainingMt = Number(warehouse.capacity?.remaining_capacity_mt ?? 0);
-              const spaceLabel = !established
-                ? 'capacity not established'
-                : `${remainingMt.toLocaleString(undefined, { maximumFractionDigits: 2 })} MT remaining`;
+              const { label, disabled } = formatWarehouseCapacityLabel(warehouse);
               return {
                 value: String(warehouse.id),
-                label: `${warehouse.name} - ${spaceLabel}`,
-                disabled: !established,
+                label,
+                disabled,
               };
             });
             const lineOptionsForRow = lineMeta.map((lineOption) => {
@@ -574,13 +626,34 @@ function ReceiptWarehouseAssignmentModal({
                       {(() => {
                         const wh = warehouses.find((w) => w.id === row.warehouse_id);
                         if (!wh) return 'Warehouse not found';
-                        return wh.assigned_manager 
+                        return wh.assigned_manager
                           ? `Assigned Warehouse Manager: ${wh.assigned_manager}`
                           : 'No manager assigned to this warehouse';
                       })()}
                     </Text>
                   </Group>
                 ) : null}
+
+                {row.warehouse_id != null ? (() => {
+                  const wh = warehouses.find((w) => w.id === row.warehouse_id);
+                  if (!wh) return null;
+                  const status = warehouseCapacityStatus(wh);
+                  if (status === 'almost_full') {
+                    return (
+                      <Alert color="orange" variant="light" icon={<IconAlertCircle size={16} />}>
+                        This warehouse is almost full — {whFreeMt(wh).toLocaleString(undefined, { maximumFractionDigits: 2 })} MT remaining.
+                      </Alert>
+                    );
+                  }
+                  if (status === 'full') {
+                    return (
+                      <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />}>
+                        This warehouse is full — no remaining capacity for new commodities.
+                      </Alert>
+                    );
+                  }
+                  return null;
+                })() : null}
 
                 {validation?.error ? (
                   <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />}>

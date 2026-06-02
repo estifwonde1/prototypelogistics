@@ -1166,7 +1166,6 @@ ActiveRecord::Schema[7.0].define(version: 2026_06_01_000001) do
     t.bigint "cancelled_by_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.string "driver_phone"
     t.index ["dispatch_order_id", "warehouse_id"], name: "idx_cw_doa_order_wh"
     t.index ["dispatch_order_id"], name: "idx_cw_doa_order"
     t.index ["reference_no"], name: "idx_cw_doa_reference_no", unique: true
@@ -1210,7 +1209,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_06_01_000001) do
     t.datetime "confirmed_at"
     t.bigint "location_id"
     t.string "hierarchical_level"
-    t.string "dispatch_reference"
+    t.string "plan_reference"
     t.string "officer_level"
     t.bigint "officer_location_id"
     t.jsonb "jurisdiction_metadata", default: {}
@@ -1221,11 +1220,11 @@ ActiveRecord::Schema[7.0].define(version: 2026_06_01_000001) do
     t.index ["confirmed_by_id"], name: "index_cats_warehouse_dispatch_orders_on_confirmed_by_id"
     t.index ["created_by_id", "status"], name: "idx_cw_do_created_by_status"
     t.index ["created_by_id"], name: "index_cats_warehouse_dispatch_orders_on_created_by_id"
-    t.index ["dispatch_reference"], name: "index_cats_warehouse_dispatch_orders_on_dispatch_reference"
     t.index ["hierarchical_level"], name: "index_cats_warehouse_dispatch_orders_on_hierarchical_level"
     t.index ["hub_id"], name: "index_cats_warehouse_dispatch_orders_on_hub_id"
     t.index ["location_id"], name: "index_cats_warehouse_dispatch_orders_on_location_id"
     t.index ["officer_level", "status"], name: "idx_cw_do_officer_level_status"
+    t.index ["plan_reference"], name: "index_cats_warehouse_dispatch_orders_on_plan_reference"
     t.index ["reference_no"], name: "index_cats_warehouse_dispatch_orders_on_reference_no", unique: true
     t.index ["status"], name: "index_cats_warehouse_dispatch_orders_on_status"
     t.index ["warehouse_id"], name: "index_cats_warehouse_dispatch_orders_on_warehouse_id"
