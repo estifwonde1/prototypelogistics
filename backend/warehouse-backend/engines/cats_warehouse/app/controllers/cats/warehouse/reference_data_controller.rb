@@ -21,7 +21,8 @@ module Cats
           :package_unit_per_package_id,
           :source_type,
           :source_name,
-          :volume_per_metric_ton
+          :volume_per_metric_ton,
+          :weight_per_unit_kg
         )
 
         project = Cats::Core::Project.order(:id).first
@@ -57,7 +58,8 @@ module Cats
           volume_per_metric_ton: CommodityDensityResolver.resolve(
             name: payload[:name],
             explicit: payload[:volume_per_metric_ton]
-          )
+          ),
+          weight_per_unit_kg: payload[:weight_per_unit_kg].presence ? payload[:weight_per_unit_kg].to_f : 1.0
         }
 
         commodity = Cats::Core::Commodity.create!(attrs)
@@ -72,7 +74,8 @@ module Cats
         payload = params.require(:commodity).permit(
           :name,
           :commodity_category_id,
-          :volume_per_metric_ton
+          :volume_per_metric_ton,
+          :weight_per_unit_kg
         )
 
         attrs = {
@@ -84,6 +87,9 @@ module Cats
             name: payload[:name].presence || commodity.read_attribute(:name),
             explicit: payload[:volume_per_metric_ton]
           )
+        end
+        if payload.key?(:weight_per_unit_kg)
+          attrs[:weight_per_unit_kg] = payload[:weight_per_unit_kg].to_f
         end
 
         commodity.update!(attrs)
@@ -344,7 +350,8 @@ module Cats
           source_name: commodity.source_name,
           category_id: commodity.commodity_category_id,
           category_name: category&.name,
-          volume_per_metric_ton: volume_per_metric_ton
+          volume_per_metric_ton: volume_per_metric_ton,
+          weight_per_unit_kg: commodity.weight_per_unit_kg.to_f
         }
       end
 

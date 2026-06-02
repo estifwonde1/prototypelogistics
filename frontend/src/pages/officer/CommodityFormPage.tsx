@@ -231,6 +231,7 @@ function CommodityFormPage() {
   const [volumePerMetricTon, setVolumePerMetricTon] = useState<number | string>(
     REFERENCE_M3_PER_MT
   );
+  const [weightPerUnitKg, setWeightPerUnitKg] = useState<number | string>(1.0);
 
   const { data: units = [] } = useQuery({
     queryKey: ["reference-data", "units"],
@@ -270,6 +271,7 @@ function CommodityFormPage() {
       setSourceName("");
       setSelectedDefinitionId(null);
       setVolumePerMetricTon(REFERENCE_M3_PER_MT);
+      setWeightPerUnitKg(1.0);
       notifications.show({
         title: "Success",
         message: `Commodity "${newCommodity.name}" created successfully`,
@@ -378,6 +380,12 @@ function CommodityFormPage() {
             ? volumePerMetricTon
             : parseFloat(String(volumePerMetricTon)) || REFERENCE_M3_PER_MT
           : REFERENCE_M3_PER_MT,
+      weight_per_unit_kg:
+        weightPerUnitKg !== "" && weightPerUnitKg != null && Number(weightPerUnitKg) > 0
+          ? typeof weightPerUnitKg === "number"
+            ? weightPerUnitKg
+            : parseFloat(String(weightPerUnitKg)) || 1.0
+          : 1.0,
     });
   };
 
@@ -419,6 +427,7 @@ function CommodityFormPage() {
       setName("");
       setCategory(null);
       setVolumePerMetricTon(REFERENCE_M3_PER_MT);
+      setWeightPerUnitKg(1.0);
       return;
     }
     const definition = commodityDefinitions.find((d) => String(d.id) === val);
@@ -435,6 +444,7 @@ function CommodityFormPage() {
           ? definition.volume_per_metric_ton
           : REFERENCE_M3_PER_MT
       );
+      setWeightPerUnitKg(1.0);
     }
   };
 
@@ -699,6 +709,16 @@ function CommodityFormPage() {
             value={volumePerMetricTon}
             onChange={setVolumePerMetricTon}
             description="Cubic meters per metric ton for warehouse capacity. Pre-filled from the catalog; defaults to 1.25."
+          />
+
+          <NumberInput
+            label="Weight per Unit (kg)"
+            placeholder="1.0"
+            min={0.001}
+            decimalScale={6}
+            value={weightPerUnitKg}
+            onChange={setWeightPerUnitKg}
+            description="How many kg one piece/unit weighs. Used to convert pcs → kg → MT for warehouse capacity. Defaults to 1.0 kg/unit."
           />
 
           <DateInput

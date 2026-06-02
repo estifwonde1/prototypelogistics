@@ -527,7 +527,6 @@ module Cats
                 quantity:          placement[:quantity].to_f,
                 unit_id:           unit_id,
                 entered_unit_id:   inspection_entered_unit_id.presence || unit_id,
-                entered_quantity:  placement[:quantity].to_f,
                 stack_id:          stack.id,
                 store_id:          stack.store_id,
                 quality_status:    inspection&.inspection_items&.first&.quality_status || 'Good',

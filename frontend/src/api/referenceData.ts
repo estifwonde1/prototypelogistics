@@ -23,6 +23,7 @@ export interface CreateCommodityPayload {
   source_type?: string;
   source_name?: string;
   volume_per_metric_ton?: number;
+  weight_per_unit_kg?: number;
 }
 
 export const getFacilityOptions = async (): Promise<FacilityOptions> => {

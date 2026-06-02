@@ -180,19 +180,19 @@ module Cats
       end
 
       def check_incoming_volume!(stack, incoming_base_qty)
+        incoming_mt = base_qty_to_mt(incoming_base_qty)
+
         incoming_m3 = VolumeCalculator.call(
           commodity: item.commodity,
-          base_quantity: incoming_base_qty
+          base_quantity: incoming_mt
         )
-
-        incoming_mt = incoming_base_qty.to_f
 
         # Compute actual remaining volume from goods already on the stack,
         # rather than relying on occupied_volume (which is 0 or full volume).
         current_goods_m3 = if stack.base_quantity.to_f > 0
           VolumeCalculator.call(
             commodity: stack.commodity || item.commodity,
-            base_quantity: stack.base_quantity.to_f
+            base_quantity: base_qty_to_mt(stack.base_quantity.to_f)
           ) || 0.0
         else
           0.0
@@ -207,7 +207,7 @@ module Cats
         end
 
         if stack.max_capacity_mt.present?
-          stack_used_mt = stack.base_quantity.to_f
+          stack_used_mt = base_qty_to_mt(stack.base_quantity.to_f)
           if stack_used_mt + incoming_mt > stack.max_capacity_mt.to_f + 1e-6
             raise Cats::Warehouse::InsufficientSpaceError,
                   "Insufficient stack capacity: incoming #{incoming_mt.round(4)} MT " \
@@ -241,6 +241,51 @@ module Cats
           raise Cats::Warehouse::InsufficientSpaceError,
                 "Insufficient warehouse capacity: incoming #{incoming_mt.round(4)} MT " \
                 "exceeds remaining warehouse capacity #{wh_usage.remaining_mt.round(4)} MT"
+        end
+      end
+
+      # Convert a quantity in the commodity's base unit to MT.
+      def base_qty_to_mt(qty)
+        base_unit = Cats::Core::UnitOfMeasure.find_by(id: @base_unit_id)
+        return qty.to_f if base_unit.blank? || base_unit.abbreviation.to_s.downcase == "mt"
+
+        mt_unit_id = Cats::Core::UnitOfMeasure
+          .where("LOWER(abbreviation) = ?", "mt")
+          .order(:id)
+          .pick(:id)
+        return qty.to_f if mt_unit_id.blank?
+        return qty.to_f if @base_unit_id.to_i == mt_unit_id.to_i
+
+        case base_unit.unit_type
+        when Cats::Core::UnitOfMeasure::ITEM
+          commodity = item.commodity
+          wpu = commodity&.weight_per_unit_kg.to_f
+          wpu = 1.0 if wpu <= 0
+          qty_kg = qty.to_f * wpu
+          kg_unit = Cats::Core::UnitOfMeasure.find_by("LOWER(abbreviation) = ?", "kg")
+          return qty_kg * 0.001 unless kg_unit
+
+          UomConversionResolver.convert(
+            qty_kg,
+            from_unit_id: kg_unit.id,
+            to_unit_id: mt_unit_id,
+            commodity_id: nil
+          )
+        when Cats::Core::UnitOfMeasure::VOLUME
+          commodity = item.commodity
+          vpm = commodity&.volume_per_metric_ton.to_f
+          vpm = CommodityDensityResolver.default_density if vpm <= 0
+          qty_m3 = qty.to_f * 0.001
+          qty_m3 / vpm
+        when Cats::Core::UnitOfMeasure::WEIGHT
+          UomConversionResolver.convert(
+            qty.to_f,
+            from_unit_id: @base_unit_id,
+            to_unit_id: mt_unit_id,
+            commodity_id: item.commodity_id
+          )
+        else
+          qty.to_f
         end
       end
     end

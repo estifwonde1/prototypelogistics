@@ -61,6 +61,29 @@ export function convertQuantityToTargetUnit(
   return null;
 }
 
+/**
+ * Resolve multiplier from an ITEM-type unit (pcs, bag) to kg using the
+ * commodity's weight_per_unit_kg value.  Returns null when the unit is not
+ * an ITEM type or no weight data is available.
+ */
+export function resolveItemToKgMultiplier(
+  fromUnitId: number,
+  commodityId: number,
+  units: Array<{ id: number; abbreviation?: string | null; unit_type?: string | null }>,
+  commodityRefs: Array<{ id: number; weight_per_unit_kg?: number; unit_id?: number }>
+): number | null {
+  const fromUnit = units.find((u) => u.id === fromUnitId);
+  if (!fromUnit || (fromUnit.unit_type ?? '').toLowerCase() !== 'item') return null;
+
+  const commodity = commodityRefs.find((c) => c.id === commodityId);
+  if (!commodity) return null;
+
+  const weightPerUnit = commodity.weight_per_unit_kg ?? 1.0;
+  if (weightPerUnit <= 0) return 1.0;
+
+  return weightPerUnit;
+}
+
 /** Commodity id for conversion lookups — global edges use null commodity_id in DB. */
 export function conversionCommodityId(commodityId: number | null | undefined): number {
   return commodityId ?? 0;
