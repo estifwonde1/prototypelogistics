@@ -11,13 +11,14 @@ import {
   Badge,
   Box,
   UnstyledButton,
+  ActionIcon,
+  Tooltip,
 } from '@mantine/core';
 import {
   IconBell,
   IconChevronDown,
   IconChevronRight,
   IconLogout,
-  IconUser,
   IconSwitchVertical,
   IconCheck,
 } from '@tabler/icons-react';
@@ -26,7 +27,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { getRoleLabel, OFFICER_ROLE_SLUGS, type RoleSlug } from '../../utils/constants';
-import { getMyAssignments } from '../../api/me';
+import { getMyAssignments, getMyProfile, MY_PROFILE_QUERY_KEY } from '../../api/me';
+import { useLogout } from '../../hooks/useLogout';
 import {
   fetchNotifications,
   fetchUnreadNotificationCount,
@@ -60,13 +62,14 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
     role,
     assignments,
     activeAssignment,
-    clearAuth,
     token,
     setAssignments,
     setActiveAssignment,
   } = useAuthStore();
+  const handleLogout = useLogout();
   const roleLabel = getRoleLabel(role);
   const [notifMenuOpened, setNotifMenuOpened] = useState(false);
+  const [accountHovered, setAccountHovered] = useState(false);
   const activeWarehouseId = activeAssignment?.warehouse?.id;
 
   const { switchState, switchToRole, onFacilitySelected, onStoreSelected, dismissPicker } =
@@ -79,6 +82,13 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
     staleTime: 10_000,
     refetchOnWindowFocus: true,
     refetchOnMount: 'always',
+  });
+
+  const { data: profile } = useQuery({
+    queryKey: MY_PROFILE_QUERY_KEY,
+    queryFn: getMyProfile,
+    enabled: Boolean(token),
+    staleTime: 60_000,
   });
 
   useEffect(() => {
@@ -117,24 +127,15 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
 
   const isOfficer = role && OFFICER_ROLE_SLUGS.includes(role as RoleSlug);
 
-  const facilityName =
-    role === 'storekeeper' && activeAssignment?.store?.name
-      ? activeAssignment.store.name
-      : activeAssignment?.hub?.name ||
-        activeAssignment?.warehouse?.name ||
-        activeAssignment?.store?.name ||
-        activeAssignment?.location?.name ||
-        'Federal';
-
   // All unique role names this user holds
   const uniqueRoleNames = Array.from(new Set(assignments.map((a) => a.role_name)));
   const hasMultipleRoles = uniqueRoleNames.length > 1;
 
-  const handleLogout = () => {
-    clearAuth();
-    queryClient.clear();
-    navigate('/login');
-  };
+  const profileName = profile
+    ? `${profile.first_name} ${profile.last_name}`.trim()
+    : '';
+  const profileEmail = profile?.email ?? '';
+  const showAccountExtras = accountHovered;
 
   const handleSwitchWorkspace = () => {
     navigate('/select-role', { state: { fromSwitchWorkspace: true } });
@@ -142,7 +143,7 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
 
   return (
     <>
-      <Group h="100%" px="md" justify="space-between">
+      <Group h="100%" px="md" justify="space-between" wrap="nowrap" style={{ overflow: 'visible' }}>
         {/* ── Left: burger + app title ── */}
         <Group>
           <Burger opened={mobileOpened} onClick={toggleMobile} hiddenFrom="sm" size="sm" />
@@ -329,41 +330,86 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
             </Menu>
           )}
 
-          {/* ── Profile / account menu ── */}
-          <Menu shadow="md" width={200}>
-            <Menu.Target>
-              <Button variant="subtle" leftSection={<Avatar size="sm" radius="xl" />}>
-                <Stack gap={0} align="flex-start">
-                  <Text size="sm" fw={600}>{roleLabel}</Text>
-                  <Text size="xs" c="dimmed">{facilityName}</Text>
+          {/* ── Account: role + name; email + logout alongside on hover ── */}
+          <Box
+            onMouseEnter={() => setAccountHovered(true)}
+            onMouseLeave={() => setAccountHovered(false)}
+            style={{ flexShrink: 0 }}
+          >
+            <UnstyledButton
+              aria-label="Account"
+              aria-expanded={showAccountExtras}
+              styles={(theme) => ({
+                root: {
+                  padding: '6px 10px',
+                  borderRadius: theme.radius.sm,
+                  transition: 'background-color 150ms ease',
+                  '&:hover': {
+                    backgroundColor: theme.colors.gray[0],
+                  },
+                },
+              })}
+            >
+              <Group gap="sm" wrap="nowrap" align="center">
+                <Avatar size="sm" radius="xl" />
+                <Stack gap={0} align="flex-start" style={{ minWidth: 0 }}>
+                  <Text size="sm" fw={600} lineClamp={1}>
+                    {roleLabel}
+                  </Text>
+                  <Text size="xs" c="dimmed" lineClamp={1}>
+                    {profileName || '…'}
+                  </Text>
                 </Stack>
-              </Button>
-            </Menu.Target>
-            <Menu.Dropdown>
-              <Menu.Label>Account</Menu.Label>
-              <Menu.Item leftSection={<IconUser size={14} />}>
-                Profile
-              </Menu.Item>
-
-              {/* Switch Workspace — restored exactly as before */}
-              {assignments.length > 1 && !isOfficer && (
-                <>
-                  <Menu.Divider />
-                  <Menu.Item
-                    leftSection={<IconSwitchVertical size={14} />}
-                    onClick={handleSwitchWorkspace}
+                {showAccountExtras && (
+                  <Group
+                    gap="xs"
+                    wrap="nowrap"
+                    align="center"
+                    pl="xs"
+                    ml="xs"
+                    style={{
+                      borderLeft: '1px solid var(--mantine-color-gray-3)',
+                    }}
                   >
-                    Switch Workspace
-                  </Menu.Item>
-                </>
-              )}
-
-              <Menu.Divider />
-              <Menu.Item color="red" leftSection={<IconLogout size={14} />} onClick={handleLogout}>
-                Logout
-              </Menu.Item>
-            </Menu.Dropdown>
-          </Menu>
+                    {profileEmail ? (
+                      <Text size="xs" c="dimmed" lineClamp={1} maw={180}>
+                        {profileEmail}
+                      </Text>
+                    ) : null}
+                    {assignments.length > 1 && !isOfficer && (
+                      <Tooltip label="Switch workspace">
+                        <ActionIcon
+                          variant="subtle"
+                          size="sm"
+                          aria-label="Switch workspace"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSwitchWorkspace();
+                          }}
+                        >
+                          <IconSwitchVertical size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                    )}
+                    <Tooltip label="Logout">
+                      <ActionIcon
+                        variant="subtle"
+                        color="red"
+                        size="sm"
+                        aria-label="Logout"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleLogout();
+                        }}
+                      >
+                        <IconLogout size={18} />
+                      </ActionIcon>
+                    </Tooltip>
+                  </Group>
+                )}
+              </Group>
+            </UnstyledButton>
+          </Box>
 
         </Group>
       </Group>

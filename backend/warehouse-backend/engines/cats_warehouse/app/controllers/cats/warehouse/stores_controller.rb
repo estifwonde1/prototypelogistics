@@ -1,28 +1,30 @@
 module Cats
   module Warehouse
     class StoresController < BaseController
+      STORE_INCLUDES = [ { warehouse: :warehouse_capacity } ].freeze
+
       def index
         authorize Store
-        stores = policy_scope(Store)
-        
+        stores = policy_scope(Store).includes(*STORE_INCLUDES)
+
         # CRITICAL: Filter by warehouse_id if provided (for warehouse managers with multiple warehouses)
         if params[:warehouse_id].present?
           warehouse_id = params[:warehouse_id].to_i
-          
+
           # Verify user has access to this warehouse
           access = AccessContext.new(user: current_user)
           unless access.can_access_warehouse?(warehouse_id)
             return render_error("Access denied to warehouse #{warehouse_id}", status: :forbidden)
           end
-          
+
           stores = stores.where(warehouse_id: warehouse_id)
         end
-        
+
         render_resource(stores.order(:id), each_serializer: StoreSerializer)
       end
 
       def show
-        store = policy_scope(Store).find(params[:id])
+        store = policy_scope(Store).includes(*STORE_INCLUDES).find(params[:id])
         authorize store
         render_resource(store, serializer: StoreSerializer)
       end
@@ -105,14 +107,8 @@ module Cats
           return render_error("User is not a Storekeeper or Warehouse Manager", status: :unprocessable_entity)
         end
         ensure_storekeeper_role!(user)
-        
-        # A warehouse-level Storekeeper assignment only makes the user eligible
-        # for assignment. Store access must be granted explicitly per store.
-        UserAssignment.where(
-          user_id: user_id,
-          role_name: "Storekeeper",
-          warehouse_id: warehouse.id
-        ).delete_all
+
+        ensure_storekeeper_pool_assignment!(user, warehouse)
 
         # Create store-level assignments.
         store_ids.each do |sid|
@@ -142,6 +138,9 @@ module Cats
         authorize store, :assign_storekeeper?
 
         user_id = params[:user_id]
+        user = Cats::Core::User.find(user_id)
+        ensure_storekeeper_pool_assignment!(user, store.warehouse)
+
         deleted = UserAssignment.where(
           user_id: user_id,
           role_name: "Storekeeper",
@@ -164,6 +163,16 @@ module Cats
         role = Cats::Core::Role.find_by(name: "Storekeeper", application_module: warehouse_module)
         role ||= Cats::Core::Role.find_by(name: "Storekeeper")
         user.roles << role if role && !user.roles.exists?(id: role.id)
+      end
+
+      def ensure_storekeeper_pool_assignment!(user, warehouse)
+        return if user.has_role?("Warehouse Manager")
+
+        UserAssignment.find_or_create_by!(
+          user: user,
+          role_name: "Storekeeper",
+          warehouse_id: warehouse.id
+        )
       end
 
       def store_params

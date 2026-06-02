@@ -4,6 +4,11 @@ Cats::Warehouse::Engine.routes.draw do
     get  "me/assignments",        to: "me#assignments"
     post "me/switch_role",        to: "me#switch_role"
     get  "me/storekeeper_stores", to: "me#storekeeper_stores"
+    get   "me/profile",  to: "me#profile"
+    patch "me/profile",  to: "me#update_profile"
+    patch "me/password", to: "me#change_password"
+
+    get "dashboard/officer", to: "dashboard#officer"
 
     get "notifications", to: "notifications#index"
     get "notifications/unread_count", to: "notifications#unread_count"

@@ -1,13 +1,15 @@
 module Cats
   module Warehouse
     class HubsController < BaseController
+      HUB_INCLUDES = [ :location, :geo, :hub_capacity, :hub_access ].freeze
+
       def index
         authorize Hub
-        render_resource(policy_scope(Hub).order(:id), each_serializer: HubSerializer)
+        render_resource(policy_scope(Hub).includes(*HUB_INCLUDES).order(:id), each_serializer: HubSerializer)
       end
 
       def show
-        hub = policy_scope(Hub).find(params[:id])
+        hub = policy_scope(Hub).includes(*HUB_INCLUDES).find(params[:id])
         authorize hub
         render_resource(hub, serializer: HubSerializer)
       end
@@ -15,14 +17,14 @@ module Cats
       def create
         authorize Hub
         hub = Hub.create!(hub_params)
-        render_resource(hub, status: :created, serializer: HubSerializer)
+        render_resource(Hub.includes(*HUB_INCLUDES).find(hub.id), status: :created, serializer: HubSerializer)
       end
 
       def update
         hub = policy_scope(Hub).find(params[:id])
         authorize hub
         hub.update!(hub_params)
-        render_resource(hub, serializer: HubSerializer)
+        render_resource(Hub.includes(*HUB_INCLUDES).find(hub.id), serializer: HubSerializer)
       end
 
       def destroy

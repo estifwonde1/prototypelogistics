@@ -89,6 +89,7 @@ const WaybillListPage = lazy(() => import('./pages/waybills/WaybillListPage'));
 const WaybillCreatePage = lazy(() => import('./pages/waybills/WaybillCreatePage'));
 const WaybillDetailPage = lazy(() => import('./pages/waybills/WaybillDetailPage'));
 const AdminUsersPage = lazy(() => import('./pages/admin/users/AdminUsersPage'));
+const ProfilePage = lazy(() => import('./pages/profile/ProfilePage'));
 const UserAssignmentsPage = lazy(() => import('./pages/admin/assignments/UserAssignmentsPage'));
 const RolesManagementPage = lazy(() => import('./pages/admin/roles/RolesManagementPage'));
 const LocationsSetupPage = lazy(() => import('./pages/admin/setup/LocationsSetupPage'));
@@ -389,12 +390,16 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'officer/commodities/new',
+        path: 'officer/commodities',
         element: (
           <RequirePermission resource="receipt_orders" action="create">
             <CommodityFormPage />
           </RequirePermission>
         ),
+      },
+      {
+        path: 'officer/commodities/new',
+        element: <Navigate to="/officer/commodities?tab=create" replace />,
       },
       {
         path: 'officer/dispatch-orders',
@@ -723,6 +728,10 @@ export const router = createBrowserRouter([
             <TransferRequestsPage />
           </RequirePermission>
         ),
+      },
+      {
+        path: 'profile',
+        element: <ProfilePage />,
       },
       {
         path: 'admin/users',

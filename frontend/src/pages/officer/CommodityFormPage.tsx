@@ -1,6 +1,6 @@
 import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import dayjs from "dayjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -20,6 +20,7 @@ import {
   Collapse,
   Box,
   Divider,
+  SegmentedControl,
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import {
@@ -158,9 +159,21 @@ function calcPackagedQty(
   };
 }
 
+type CommodityTab = "create" | "existing";
+
 function CommodityFormPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
+
+  const activeTab: CommodityTab =
+    searchParams.get("tab") === "existing" ? "existing" : "create";
+  const isCreateTab = activeTab === "create";
+  const isExistingTab = activeTab === "existing";
+
+  const setActiveTab = (tab: CommodityTab) => {
+    setSearchParams(tab === "create" ? {} : { tab: "existing" }, { replace: true });
+  };
 
   const [name, setName] = useState("");
   const [unitId, setUnitId] = useState<string | null>(null);
@@ -190,23 +203,21 @@ function CommodityFormPage() {
 
   const [previewBatch, setPreviewBatch] = useState(() => generateBatchNo());
 
-  // Commodity definitions created by admin — used for the dropdown
+  // Commodity definitions — shared by create dropdown and existing list grouping
   const { data: commodityDefinitions = [], isLoading: definitionsLoading } =
     useQuery({
       queryKey: ["commodity-definitions"],
       queryFn: () => getCommodityDefinitions(),
     });
 
-  // Actual batches created by officers — used for the list below
+  // Officer-created batches — only needed on Existing tab
   const { data: commodityBatches = [], isLoading: batchesLoading } = useQuery({
     queryKey: ["reference-data", "commodities"],
     queryFn: getCommodityReferences,
+    enabled: isExistingTab,
   });
 
-  const isLoading = definitionsLoading || batchesLoading;
-
-  // Alias for the dropdown
-  const commodities = commodityBatches;
+  const existingListLoading = definitionsLoading || batchesLoading;
 
   // Track which definition the officer selected so we can auto-fill category
   const [selectedDefinitionId, setSelectedDefinitionId] = useState<
@@ -219,11 +230,13 @@ function CommodityFormPage() {
   const { data: units = [] } = useQuery({
     queryKey: ["reference-data", "units"],
     queryFn: () => getUnitReferences(),
+    enabled: isCreateTab,
   });
 
   const { data: categories = [] } = useQuery({
     queryKey: ["reference-data", "categories"],
     queryFn: getCategoryReferences,
+    enabled: isCreateTab,
   });
 
   const createMutation = useMutation({
@@ -363,11 +376,16 @@ function CommodityFormPage() {
     });
   };
 
+  // Packaging units that should be excluded from Default Unit and Unit per Package
+  const packagingAbbreviations = new Set(PACKAGING_UNIT_OPTIONS.map((p) => p.value));
+
   // Unit options for the commodity's default unit and unit-per-package
-  const unitOptions = units.map((u) => ({
-    value: String(u.id),
-    label: u.abbreviation ? `${u.name} (${u.abbreviation})` : u.name,
-  }));
+  const unitOptions = units
+    .filter((u) => !(u.abbreviation && packagingAbbreviations.has(u.abbreviation.toUpperCase())))
+    .map((u) => ({
+      value: String(u.id),
+      label: u.abbreviation ? `${u.name} (${u.abbreviation})` : u.name,
+    }));
 
   const categoryOptions = categories.map((c) => ({
     value: String(c.id),
@@ -414,21 +432,6 @@ function CommodityFormPage() {
       );
     }
   };
-
-  const commodityNameOptions = useMemo(() => {
-    const names = commodities
-      .map((c) => c.name?.trim())
-      .filter((val): val is string => Boolean(val));
-    return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
-  }, [commodities]);
-
-  const normalizedName = name.trim().toLowerCase();
-  const existingNameMatch = useMemo(
-    () =>
-      Boolean(normalizedName) &&
-      commodityNameOptions.some((n) => n.toLowerCase() === normalizedName),
-    [commodityNameOptions, normalizedName]
-  );
 
   // Group: one entry per commodity definition, batches from cats_core_commodities matched by name
   const groupedCommodities = useMemo(() => {
@@ -486,16 +489,32 @@ function CommodityFormPage() {
 
   return (
     <Stack gap="md">
-      <Group>
-        <Button
-          variant="default"
-          leftSection={<IconArrowLeft size={16} />}
-          onClick={() => navigate("/officer/receipt-orders/new")}
-        >
-          Back to Receipt Order
-        </Button>
+      <Group justify="space-between" align="flex-start" wrap="wrap" gap="md">
+        <Title order={2}>Commodity Batch</Title>
+        <SegmentedControl
+          value={activeTab}
+          onChange={(value) => setActiveTab(value as CommodityTab)}
+          data={[
+            { label: "Create New", value: "create" },
+            { label: "Existing Commodities", value: "existing" },
+          ]}
+          style={{ maxWidth: "100%" }}
+        />
       </Group>
 
+      {isCreateTab && (
+        <Group>
+          <Button
+            variant="default"
+            leftSection={<IconArrowLeft size={16} />}
+            onClick={() => navigate("/officer/receipt-orders/new")}
+          >
+            Back to Receipt Order
+          </Button>
+        </Group>
+      )}
+
+      {isCreateTab && (
       <Card padding="lg">
         <Stack gap="md">
           <Title order={3}>Create New Commodity Batch</Title>
@@ -513,7 +532,7 @@ function CommodityFormPage() {
             nothingFoundMessage="No commodity found with that name"
           />
 
-          {existingNameMatch && (
+          {selectedDefinitionId && name && (
             <Text size="sm" c="blue">
               A new batch will be created under <strong>{name}</strong>.
             </Text>
@@ -699,10 +718,12 @@ function CommodityFormPage() {
           </Group>
         </Stack>
       </Card>
+      )}
 
+      {isExistingTab && (
       <Card padding="lg">
         <Stack gap="md">
-          <Group justify="space-between">
+          <Group justify="space-between" wrap="wrap" gap="sm">
             <Title order={3}>Existing Commodities</Title>
             <Badge size="lg" variant="light">
               {filteredGroups.length} Commodit
@@ -710,7 +731,7 @@ function CommodityFormPage() {
             </Badge>
           </Group>
 
-          <Group gap="sm" align="flex-end">
+          <Group gap="sm" align="flex-end" wrap="wrap" grow preventGrowOverflow={false}>
             <TextInput
               placeholder="Search by name, batch number, source type, or source name..."
               leftSection={<IconSearch size={16} />}
@@ -727,7 +748,7 @@ function CommodityFormPage() {
                   </ActionIcon>
                 )
               }
-              style={{ flex: 1 }}
+              style={{ flex: 1, minWidth: 220 }}
             />
             <SearchableSelect
               placeholder="All categories"
@@ -738,11 +759,11 @@ function CommodityFormPage() {
               value={categoryFilter}
               onChange={setCategoryFilter}
               clearable
-              w={160}
+              w={{ base: "100%", sm: 160 }}
             />
           </Group>
 
-          {isLoading ? (
+          {existingListLoading ? (
             <Text>Loading...</Text>
           ) : filteredGroups.length === 0 ? (
             <Text c="dimmed" ta="center" py="xl">
@@ -812,6 +833,7 @@ function CommodityFormPage() {
 
                     <Collapse in={isExpanded}>
                       <Divider my="md" />
+                      <Table.ScrollContainer minWidth={900}>
                       <Table striped highlightOnHover>
                         <Table.Thead>
                           <Table.Tr>
@@ -928,6 +950,7 @@ function CommodityFormPage() {
                           })}
                         </Table.Tbody>
                       </Table>
+                      </Table.ScrollContainer>
                     </Collapse>
                   </Card>
                 );
@@ -936,6 +959,7 @@ function CommodityFormPage() {
           )}
         </Stack>
       </Card>
+      )}
     </Stack>
   );
 }

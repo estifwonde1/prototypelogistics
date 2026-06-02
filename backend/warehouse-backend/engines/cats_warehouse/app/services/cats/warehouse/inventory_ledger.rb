@@ -93,6 +93,11 @@ module Cats
         # never becomes stale after receipts, issues, or adjustments.
         StoreOccupancyUpdater.call(store_id: stack.store_id)
 
+        # Use the unit the user actually entered (e.g. Kuntal) when available.
+        # Falls back to the canonical line unit (e.g. MT) for legacy records.
+        tx_entered_unit_id = (item.respond_to?(:entered_unit_id) && item.entered_unit_id.present?) ? item.entered_unit_id : item.unit_id
+        tx_entered_quantity = (item.respond_to?(:entered_quantity) && item.entered_quantity.present?) ? item.entered_quantity.abs : quantity_delta.abs
+
         StackTransaction.create!(
           source_id: quantity_delta.negative? ? item.stack_id : nil,
           destination_id: quantity_delta.positive? ? item.stack_id : nil,
@@ -100,7 +105,8 @@ module Cats
           quantity: quantity_delta.abs,
           unit_id: item.unit_id,
           inventory_lot_id: item.respond_to?(:inventory_lot_id) ? item.inventory_lot_id : nil,
-          entered_unit_id: item.unit_id,
+          entered_unit_id: tx_entered_unit_id,
+          entered_quantity: tx_entered_quantity,
           base_unit_id: @base_unit_id,
           base_quantity: base_quantity_delta.abs,
           status: "Confirmed",

@@ -52,6 +52,15 @@ RSpec.describe "Storekeeper Warehouse-Level Assignment", type: :request do
       get "/cats_warehouse/v1/stores/#{store3.id}", headers: headers
       expect(response).to have_http_status(:not_found)
     end
+
+    it "does not expose warehouse pool rows as switchable assignments" do
+      headers = auth_headers_for(storekeeper)
+      get "/cats_warehouse/v1/me/assignments", headers: headers
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      expect(json["data"]["assignments"]).to be_empty
+    end
   end
 
   describe "store-level assignment" do
@@ -83,6 +92,17 @@ RSpec.describe "Storekeeper Warehouse-Level Assignment", type: :request do
       
       get "/cats_warehouse/v1/stores/#{store2.id}", headers: headers
       expect(response).to have_http_status(:not_found)
+    end
+
+    it "exposes store-level assignments as switchable assignments" do
+      headers = auth_headers_for(storekeeper)
+      get "/cats_warehouse/v1/me/assignments", headers: headers
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      assignments = json["data"]["assignments"]
+      expect(assignments.length).to eq(1)
+      expect(assignments[0]["store"]["id"]).to eq(store1.id)
     end
   end
 

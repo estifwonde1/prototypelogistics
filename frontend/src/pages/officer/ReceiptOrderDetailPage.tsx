@@ -1063,6 +1063,7 @@ function ReceiptOrderDetailPage() {
       assignments: [{
         store_id: Number(selectedAssignmentStoreId),
         quantity: qtyInOrderUnit > 0 ? qtyInOrderUnit : undefined,
+        quantity_unit_id: entryUnit !== baseUnitId ? entryUnit : undefined,
         notes: assignmentNotes,
         // Include line ID so storekeeper sees only their line
         receipt_order_line_id: visibleLines.length === 1 ? visibleLines[0].id : undefined,
@@ -1320,6 +1321,25 @@ function ReceiptOrderDetailPage() {
         assignment.hub_name ||
         'Assigned location';
 
+      const lineBaseUnitId = line?.unit_id != null ? Number(line.unit_id) : undefined;
+      const storedUnitId = assignment.quantity_unit_id != null ? Number(assignment.quantity_unit_id) : undefined;
+      const commodityId = Number(line?.commodity_id ?? lines[0]?.commodity_id ?? 0);
+
+      // Display quantity in the entered unit when it differs from the line unit
+      let displayQty = assignment.quantity;
+      const effectiveUnitId = storedUnitId ?? lineBaseUnitId;
+      if (
+        storedUnitId != null &&
+        lineBaseUnitId != null &&
+        storedUnitId !== lineBaseUnitId &&
+        assignment.quantity != null
+      ) {
+        const toEntered = findDirectedMultiplier(lineBaseUnitId, storedUnitId, commodityId, uomConversions);
+        if (toEntered != null) {
+          displayQty = Number(assignment.quantity) * toEntered;
+        }
+      }
+
       const unitAbbrev =
         assignment.quantity_unit_abbreviation?.trim() ||
         line?.unit_name?.trim() ||
@@ -1331,7 +1351,7 @@ function ReceiptOrderDetailPage() {
         locationName,
         managerName: assignment.assigned_to_name || 'Assigned by facility setup',
         commodityName: line?.commodity_name || (line?.commodity_id ? `Commodity #${line.commodity_id}` : 'Order level'),
-        quantity: assignment.quantity,
+        quantity: displayQty,
         unitAbbrev,
         status: assignment.status,
       };
@@ -1368,7 +1388,7 @@ function ReceiptOrderDetailPage() {
     }
 
     return rows;
-  }, [assignments, lines, order]);
+  }, [assignments, lines, order, uomConversions]);
   const isDraft = String(order?.status || '').toLowerCase() === 'draft';
 
   const assignmentsTabSummary = useMemo(() => {
@@ -2477,7 +2497,7 @@ function ReceiptOrderDetailPage() {
 
                         <SearchableSelect
                           label="Quantity unit"
-                          description="Saved in the receipt line unit (e.g. mt)."
+                          description="Quantity is saved in the order unit; display shows the selected unit."
                           placeholder="Unit"
                           data={storeAssignUnitOptions}
                           value={assignmentEntryUnitId != null ? String(assignmentEntryUnitId) : undefined}
@@ -2489,9 +2509,26 @@ function ReceiptOrderDetailPage() {
                         <NumberInput
                           label="Quantity to assign"
                           placeholder={
-                            warehouseManagerStoreAssignHints
-                              ? `≤ ${warehouseManagerStoreAssignHints.remaining.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${warehouseManagerStoreAssignHints.baseAbbrev}`
-                              : `Max: ${lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0).toLocaleString()}`
+                            (() => {
+                              if (!warehouseManagerStoreAssignHints) {
+                                return `Max: ${lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0).toLocaleString()}`;
+                              }
+                              const rem = warehouseManagerStoreAssignHints.remaining;
+                              const baseId = warehouseManagerStoreAssignHints.baseUnitId;
+                              const cid = warehouseManagerStoreAssignHints.commodityId;
+                              const entry = assignmentEntryUnitId ?? baseId;
+                              let displayRem = rem;
+                              let displayUnit = warehouseManagerStoreAssignHints.baseAbbrev;
+                              if (entry != null && baseId != null && entry !== baseId) {
+                                const m = findDirectedMultiplier(baseId, entry, cid, uomConversions);
+                                if (m != null) {
+                                  displayRem = rem * m;
+                                  const u = units.find((u) => Number(u.id) === entry);
+                                  if (u) displayUnit = u.abbreviation || u.name;
+                                }
+                              }
+                              return `≤ ${displayRem.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${displayUnit}`;
+                            })()
                           }
                           value={assignmentQuantity || ''}
                           onChange={(val) => setAssignmentQuantity(Number(val) || 0)}
@@ -2522,7 +2559,17 @@ function ReceiptOrderDetailPage() {
                                 qtyBase = assignmentQuantity * m;
                               }
                               if (qtyBase > rem + 0.000001) {
-                                return `Exceeds remaining (${rem.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${warehouseManagerStoreAssignHints.baseAbbrev} left)`;
+                                let displayRem = rem;
+                                let displayUnit = warehouseManagerStoreAssignHints.baseAbbrev;
+                                if (entry !== baseId) {
+                                  const m = findDirectedMultiplier(baseId, entry, cid, uomConversions);
+                                  if (m != null) {
+                                    displayRem = rem * m;
+                                    const u = units.find((u) => Number(u.id) === entry);
+                                    if (u) displayUnit = u.abbreviation || u.name;
+                                  }
+                                }
+                                return `Exceeds remaining (${displayRem.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${displayUnit} left)`;
                               }
                               return null;
                             }

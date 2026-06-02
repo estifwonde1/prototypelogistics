@@ -58,6 +58,7 @@ module Cats
               assigned_by: @actor,
               assigned_to_id: assigned_to_id_for(payload),
               quantity: payload[:quantity],
+              quantity_unit_id: payload[:quantity_unit_id],
               status: payload[:status].present? ? normalize_assignment_status(payload[:status]) : assignment_status
             )
           end
