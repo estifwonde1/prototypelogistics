@@ -18,6 +18,7 @@ development:
   queue:
     <<: *default
     database: <%= ENV.fetch("POSTGRES_QUEUE_DB", "cats_warehouse_development") %>
+    database_tasks: false
 
 test:
   primary:
