@@ -91,9 +91,11 @@ end
 RSpec.describe Cats::Warehouse::ReceiptAuthorizationPolicy, type: :policy do
   let(:hub) { create(:cats_warehouse_hub) }
   let(:hub_warehouse) { create(:cats_warehouse_warehouse, hub: hub) }
-  let(:standalone_warehouse) { create(:cats_warehouse_warehouse, hub: nil) }
   let(:hm) { create(:cats_core_user, role_name: "Hub Manager") }
   let(:wm) { create(:cats_core_user, role_name: "Warehouse Manager") }
+  let(:standalone_warehouse) do
+    create(:cats_warehouse_warehouse, hub: nil, location: create(:cats_core_location), managed_under: "federal")
+  end
 
   before do
     Cats::Warehouse::UserAssignment.create!(user: hm, hub: hub, role_name: "Hub Manager")
@@ -244,7 +246,9 @@ RSpec.describe Cats::Warehouse::ReceiptAuthorizationPolicy, type: :policy do
     end
 
     context "when user is both warehouse manager and storekeeper at a standalone warehouse" do
-      let(:standalone_wh) { create(:cats_warehouse_warehouse, hub: nil) }
+      let(:standalone_wh) do
+        create(:cats_warehouse_warehouse, hub: nil, location: create(:cats_core_location), managed_under: "federal")
+      end
       let!(:sole_store) { create(:cats_warehouse_store, warehouse: standalone_wh) }
       let(:wm_sk) { create(:cats_core_user, role_name: "Warehouse Manager") }
       let!(:standalone_open_ra) do
@@ -376,9 +380,47 @@ RSpec.describe Cats::Warehouse::ReceiptAuthorizationPolicy, type: :policy do
     context "when warehouse has a single store" do
       let!(:sole_store) { create(:cats_warehouse_store, warehouse: warehouse) }
 
-      it "denies manual assignment" do
+      it "denies manual assignment at hub-backed warehouses" do
         policy = described_class.new(wm, ra)
         expect(policy.assign_storekeeper?).to be(false)
+      end
+    end
+
+    context "when standalone warehouse has a single store" do
+      let(:standalone_warehouse) do
+        create(:cats_warehouse_warehouse, hub: nil, location: create(:cats_core_location), managed_under: "federal")
+      end
+      let!(:sole_store) { create(:cats_warehouse_store, warehouse: standalone_warehouse) }
+      let(:standalone_wm) { create(:cats_core_user, role_name: "Warehouse Manager") }
+      let(:standalone_ra) do
+        Cats::Warehouse::ReceiptAuthorization.create!(
+          receipt_order: receipt_order,
+          receipt_order_line: receipt_line,
+          warehouse: standalone_warehouse,
+          store: sole_store,
+          transporter: transporter,
+          authorized_quantity: 10,
+          driver_name: "Driver",
+          driver_id_number: "ID-1",
+          truck_plate_number: "AA-1",
+          waybill_number: "WB-STANDALONE-ASN-#{SecureRandom.hex(4)}",
+          status: Cats::Warehouse::ReceiptAuthorization::PENDING,
+          reference_no: "RA-STANDALONE-ASN-#{SecureRandom.hex(4)}",
+          created_by: hm
+        )
+      end
+
+      before do
+        Cats::Warehouse::UserAssignment.create!(
+          user: standalone_wm,
+          warehouse: standalone_warehouse,
+          role_name: "Warehouse Manager"
+        )
+      end
+
+      it "allows manual assignment for independent warehouse managers" do
+        policy = described_class.new(standalone_wm, standalone_ra)
+        expect(policy.assign_storekeeper?).to be(true)
       end
     end
   end
