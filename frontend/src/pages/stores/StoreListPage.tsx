@@ -13,6 +13,7 @@ import {
   Modal,
   Text,
   Badge,
+  Tooltip,
 } from "@mantine/core";
 import {
   IconPlus,
@@ -362,6 +363,7 @@ function StoreListPage() {
                 const canUpdate = can("stores", "update");
                 const canDelete = can("stores", "delete");
                 const canView = can("stores", "read");
+                const storeHasStock = (store.used_capacity_mt ?? 0) > 0;
 
                 return (
                   <Table.Tr
@@ -447,19 +449,35 @@ function StoreListPage() {
                             <IconEdit size={16} />
                           </ActionIcon>
                         )}
-                        {canDelete && (
-                          <ActionIcon
-                            variant="subtle"
-                            color="red"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setStoreToDelete(store.id);
-                              setDeleteModalOpen(true);
-                            }}
-                          >
-                            <IconTrash size={16} />
-                          </ActionIcon>
-                        )}
+                        {canDelete &&
+                          (storeHasStock ? (
+                            <Tooltip label="Cannot delete a store that has stock. Move or remove stock first.">
+                              <span>
+                                <ActionIcon
+                                  variant="subtle"
+                                  color="red"
+                                  disabled
+                                  onClick={(event) => event.stopPropagation()}
+                                >
+                                  <IconTrash size={16} />
+                                </ActionIcon>
+                              </span>
+                            </Tooltip>
+                          ) : (
+                            <Tooltip label="Delete store">
+                              <ActionIcon
+                                variant="subtle"
+                                color="red"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setStoreToDelete(store.id);
+                                  setDeleteModalOpen(true);
+                                }}
+                              >
+                                <IconTrash size={16} />
+                              </ActionIcon>
+                            </Tooltip>
+                          ))}
                       </Group>
                     </Table.Td>
                   </Table.Tr>

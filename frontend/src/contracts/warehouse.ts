@@ -139,7 +139,7 @@ export const ROLE_CAPABILITIES: Record<RoleSlug, PermissionMatrix> = {
   [ROLES.HUB_MANAGER]: {
     hubs: ['read'],
     warehouses: ['read', 'create', 'update'],
-    stores: ['read'],
+    stores: ['read', 'create', 'update', 'delete'],
     stacks: ['read'],
     grns: ['read'],
     gins: ['read'],
@@ -156,7 +156,7 @@ export const ROLE_CAPABILITIES: Record<RoleSlug, PermissionMatrix> = {
   },
   [ROLES.WAREHOUSE_MANAGER]: {
     warehouses: ['read', 'update'],
-    stores: ['read', 'create', 'update'],
+    stores: ['read', 'create', 'update', 'delete'],
     stacks: ['read', 'create', 'update'],
     grns: ['read', 'create', 'confirm'],
     gins: ['read', 'create', 'confirm'],
