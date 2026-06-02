@@ -51,8 +51,12 @@ import {
   sumWhCapacity,
   sumWhUsed,
   sumWhFree,
-  hubCapacityMt,
   hubWarehouses,
+  hubCapacityFromWarehouses,
+  hubUsedFromWarehouses,
+  hubFreeFromWarehouses,
+  hubUtilPctFromWarehouses,
+  progressBarValue,
 } from './FacilitiesOverviewPage_helpers';
 
 // ── Store detail row (inside expanded warehouse) ──────────────────────────────
@@ -90,7 +94,7 @@ function StoreRow({ store }: { store: Store }) {
       <Table.Td>
         {cap > 0 ? (
           <Group gap={4} wrap="nowrap">
-            <Progress value={p} color={pctColor(p)} size="xs" style={{ flex: 1, minWidth: 50 }} />
+            <Progress value={progressBarValue(p)} color={pctColor(p)} size="xs" style={{ flex: 1, minWidth: 50 }} />
             <Text size="xs" c={pctColor(p)}>{p.toFixed(0)}%</Text>
           </Group>
         ) : <Text size="xs" c="dimmed">—</Text>}
@@ -140,7 +144,7 @@ function WarehouseRow({ warehouse, stores }: { warehouse: Warehouse; stores: Sto
         <Table.Td>
           {capacityMt > 0 ? (
             <Group gap={6} wrap="nowrap">
-              <Progress value={p} color={pctColor(p)} size="sm" style={{ flex: 1, minWidth: 60 }} />
+              <Progress value={progressBarValue(p)} color={pctColor(p)} size="sm" style={{ flex: 1, minWidth: 60 }} />
               <Text size="xs" c={pctColor(p)}>{p.toFixed(0)}%</Text>
             </Group>
           ) : <Text size="sm" c="dimmed">—</Text>}
@@ -163,10 +167,10 @@ function WarehouseRow({ warehouse, stores }: { warehouse: Warehouse; stores: Sto
 function HubRow({ hub, warehouses, stores }: { hub: Hub; warehouses: Warehouse[]; stores: Store[] }) {
   const [open, setOpen] = useState(false);
   const hubWhs     = hubWarehouses(hub, warehouses);
-  const capacityMt = hubCapacityMt(hub);
-  const used       = sumWhUsed(hubWhs);
-  const free       = sumWhFree(hubWhs);
-  const p          = pct(used, capacityMt);
+  const capacityMt = hubCapacityFromWarehouses(hub, warehouses);
+  const used       = hubUsedFromWarehouses(hub, warehouses);
+  const free       = hubFreeFromWarehouses(hub, warehouses);
+  const p          = hubUtilPctFromWarehouses(hub, warehouses);
 
   return (
     <>
@@ -197,7 +201,7 @@ function HubRow({ hub, warehouses, stores }: { hub: Hub; warehouses: Warehouse[]
         <Table.Td>
           {capacityMt > 0 ? (
             <Group gap={6} wrap="nowrap">
-              <Progress value={p} color={pctColor(p)} size="sm" style={{ flex: 1, minWidth: 60 }} />
+              <Progress value={progressBarValue(p)} color={pctColor(p)} size="sm" style={{ flex: 1, minWidth: 60 }} />
               <Text size="xs" c={pctColor(p)}>{p.toFixed(0)}%</Text>
             </Group>
           ) : <Text size="sm" c="dimmed">—</Text>}
@@ -257,7 +261,7 @@ function StandaloneRow({ warehouse, stores }: { warehouse: Warehouse; stores: St
         <Table.Td>
           {capacityMt > 0 ? (
             <Group gap={6} wrap="nowrap">
-              <Progress value={p} color={pctColor(p)} size="sm" style={{ flex: 1, minWidth: 60 }} />
+              <Progress value={progressBarValue(p)} color={pctColor(p)} size="sm" style={{ flex: 1, minWidth: 60 }} />
               <Text size="xs" c={pctColor(p)}>{p.toFixed(0)}%</Text>
             </Group>
           ) : <Text size="sm" c="dimmed">—</Text>}

@@ -33,6 +33,7 @@ import { getHubs } from "../../api/hubs";
 import { getCommodityReferences, getUnitReferences, getUomConversions } from "../../api/referenceData";
 import { useAuthStore } from "../../store/authStore";
 import { normalizeRoleSlug } from '../../contracts/warehouse';
+import { formatWarehouseCapacityLabel } from './FacilitiesOverviewPage_helpers';
 import { findDirectedMultiplier } from '../../utils/uomConversions';
 import { computePackagingPackagesHint } from '../../utils/packagingQuantityHint';
 import type { ReceiptOrderLine } from "../../api/receiptOrders";
@@ -204,7 +205,10 @@ function ReceiptOrderFormPage() {
     () =>
       (warehouses ?? [])
         .filter((w) => w.hub_id == null)
-        .map((w) => ({ value: String(w.id), label: w.name })),
+        .map((w) => {
+          const { label, disabled } = formatWarehouseCapacityLabel(w);
+          return { value: String(w.id), label, disabled };
+        }),
     [warehouses]
   );
 

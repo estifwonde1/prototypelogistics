@@ -1078,6 +1078,71 @@ ActiveRecord::Schema[7.0].define(version: 2026_06_01_000001) do
     t.index ["warehouse_id"], name: "idx_cw_do_assign_wh"
   end
 
+  create_table "cats_warehouse_dispatch_order_authorization_executions", force: :cascade do |t|
+    t.bigint "dispatch_order_authorization_id", null: false
+    t.bigint "dispatch_order_authorization_store_id", null: false
+    t.bigint "storekeeper_id", null: false
+    t.bigint "commodity_id", null: false
+    t.decimal "quantity", precision: 18, scale: 6, null: false
+    t.decimal "base_quantity", precision: 18, scale: 6
+    t.decimal "authorized_quantity", precision: 18, scale: 6
+    t.decimal "shortage_quantity", precision: 18, scale: 6, default: "0.0"
+    t.text "shortage_reason"
+    t.string "commodity_grade"
+    t.bigint "inventory_lot_id"
+    t.string "status", default: "draft", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["commodity_id"], name: "idx_cw_doae_commodity"
+    t.index ["dispatch_order_authorization_id"], name: "idx_cw_doae_auth"
+    t.index ["dispatch_order_authorization_store_id"], name: "idx_cw_doae_store_row"
+  end
+
+  create_table "cats_warehouse_dispatch_order_authorization_stores", force: :cascade do |t|
+    t.bigint "dispatch_order_authorization_id", null: false
+    t.bigint "store_id", null: false
+    t.bigint "commodity_id", null: false
+    t.decimal "authorized_quantity", precision: 18, scale: 6, null: false
+    t.decimal "base_quantity", precision: 18, scale: 6
+    t.decimal "dispatched_quantity", precision: 18, scale: 6, default: "0.0"
+    t.decimal "remaining_quantity", precision: 18, scale: 6
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["commodity_id"], name: "idx_cw_doas_commodity"
+    t.index ["dispatch_order_authorization_id"], name: "idx_cw_doas_auth"
+    t.index ["store_id"], name: "idx_cw_doas_store"
+  end
+
+  create_table "cats_warehouse_dispatch_order_authorizations", force: :cascade do |t|
+    t.bigint "dispatch_order_id", null: false
+    t.bigint "warehouse_id", null: false
+    t.string "reference_no"
+    t.string "status", default: "draft", null: false
+    t.decimal "authorized_quantity", precision: 18, scale: 6, null: false
+    t.decimal "authorized_base_quantity", precision: 18, scale: 6
+    t.bigint "authorized_quantity_input_unit_id"
+    t.decimal "remaining_quantity", precision: 18, scale: 6
+    t.bigint "transporter_id", null: false
+    t.string "driver_name"
+    t.string "driver_id_number"
+    t.string "truck_plate_number"
+    t.string "transporter_name"
+    t.bigint "created_by_id", null: false
+    t.bigint "confirmed_by_id"
+    t.datetime "confirmed_at"
+    t.datetime "driver_confirmed_at"
+    t.bigint "driver_confirmed_by_id"
+    t.datetime "cancelled_at"
+    t.bigint "cancelled_by_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["dispatch_order_id", "warehouse_id"], name: "idx_cw_doa_order_wh"
+    t.index ["dispatch_order_id"], name: "idx_cw_doa_order"
+    t.index ["reference_no"], name: "idx_cw_doa_reference_no", unique: true
+    t.index ["status"], name: "idx_cw_doa_status"
+    t.index ["warehouse_id"], name: "idx_cw_doa_warehouse"
+  end
+
   create_table "cats_warehouse_dispatch_order_lines", force: :cascade do |t|
     t.bigint "dispatch_order_id", null: false
     t.bigint "commodity_id", null: false
@@ -1108,11 +1173,21 @@ ActiveRecord::Schema[7.0].define(version: 2026_06_01_000001) do
     t.datetime "confirmed_at"
     t.bigint "location_id"
     t.string "hierarchical_level"
+    t.string "plan_reference"
+    t.string "officer_level"
+    t.bigint "officer_location_id"
+    t.jsonb "jurisdiction_metadata", default: {}
+    t.bigint "approved_by_id"
+    t.datetime "approved_at"
+    t.bigint "dispatch_plan_id"
+    t.bigint "dispatch_plan_item_id"
     t.index ["confirmed_by_id"], name: "index_cats_warehouse_dispatch_orders_on_confirmed_by_id"
     t.index ["created_by_id"], name: "index_cats_warehouse_dispatch_orders_on_created_by_id"
     t.index ["hierarchical_level"], name: "index_cats_warehouse_dispatch_orders_on_hierarchical_level"
     t.index ["hub_id"], name: "index_cats_warehouse_dispatch_orders_on_hub_id"
     t.index ["location_id"], name: "index_cats_warehouse_dispatch_orders_on_location_id"
+    t.index ["officer_level", "status"], name: "idx_cw_do_officer_level_status"
+    t.index ["plan_reference"], name: "index_cats_warehouse_dispatch_orders_on_plan_reference"
     t.index ["reference_no"], name: "index_cats_warehouse_dispatch_orders_on_reference_no", unique: true
     t.index ["status"], name: "index_cats_warehouse_dispatch_orders_on_status"
     t.index ["warehouse_id"], name: "index_cats_warehouse_dispatch_orders_on_warehouse_id"

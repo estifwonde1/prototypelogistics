@@ -47,6 +47,14 @@ module Cats
               unless wh.capacity_established?
                 raise ArgumentError, "Warehouse #{wh.name} has no established capacity; assign after capacity is configured"
               end
+
+              WarehouseCapacityGuard.ensure_fits!(
+                warehouse: wh,
+                quantity: payload[:quantity],
+                quantity_unit_id: payload[:quantity_unit_id],
+                commodity_id: line&.commodity_id,
+                line_unit_id: line&.unit_id
+              )
             end
 
             created_assignments << ReceiptOrderAssignment.create!(

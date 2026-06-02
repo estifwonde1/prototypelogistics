@@ -39,7 +39,9 @@ import {
 import { useRoleSwitcher } from '../../hooks/useRoleSwitcher';
 import { FacilityPickerModal } from '../role-switcher/FacilityPickerModal';
 import { StorekeeperStorePickerModal } from '../role-switcher/StorekeeperStorePickerModal';
+import { WorkspacePickerModal } from '../role-switcher/WorkspacePickerModal';
 import { normalizeRoleSlug } from '../../contracts/warehouse';
+import { prefetchDashboardForRole } from '../../utils/workspaceSwitch';
 
 interface HeaderProps {
   mobileOpened: boolean;
@@ -70,6 +72,7 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
   const roleLabel = getRoleLabel(role);
   const [notifMenuOpened, setNotifMenuOpened] = useState(false);
   const [accountHovered, setAccountHovered] = useState(false);
+  const [workspacePickerOpened, setWorkspacePickerOpened] = useState(false);
   const activeWarehouseId = activeAssignment?.warehouse?.id;
 
   const { switchState, switchToRole, onFacilitySelected, onStoreSelected, dismissPicker } =
@@ -81,7 +84,6 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
     enabled: Boolean(token),
     staleTime: 10_000,
     refetchOnWindowFocus: true,
-    refetchOnMount: 'always',
   });
 
   const { data: profile } = useQuery({
@@ -112,7 +114,6 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
     staleTime: 0,
     refetchInterval: 20_000,
     refetchOnWindowFocus: true,
-    refetchOnMount: 'always',
   });
 
   const { data: recentNotifications = [] } = useQuery({
@@ -122,7 +123,6 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
     staleTime: 0,
     refetchInterval: 20_000,
     refetchOnWindowFocus: true,
-    refetchOnMount: 'always',
   });
 
   const isOfficer = role && OFFICER_ROLE_SLUGS.includes(role as RoleSlug);
@@ -138,7 +138,7 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
   const showAccountExtras = accountHovered;
 
   const handleSwitchWorkspace = () => {
-    navigate('/select-role', { state: { fromSwitchWorkspace: true } });
+    setWorkspacePickerOpened(true);
   };
 
   return (
@@ -320,6 +320,9 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
                       fw={isActive ? 600 : undefined}
                       c={isActive ? 'blue' : undefined}
                       disabled={isActive}
+                      onMouseEnter={() => {
+                        if (!isActive && slug) prefetchDashboardForRole(slug);
+                      }}
                       onClick={() => { if (!isActive) switchToRole(rName); }}
                     >
                       {getRoleLabel(slug)}
@@ -433,6 +436,11 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
           onSelect={onStoreSelected}
         />
       )}
+
+      <WorkspacePickerModal
+        opened={workspacePickerOpened}
+        onClose={() => setWorkspacePickerOpened(false)}
+      />
     </>
   );
 }

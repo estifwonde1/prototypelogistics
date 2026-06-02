@@ -8,6 +8,10 @@ module Cats
         admin? || hub_manager? || warehouse_manager? || any_officer?
       end
 
+      def warehouse_manager?
+        admin? || user&.has_role?("Warehouse Manager") || user&.has_role?("Quality Assurance")
+      end
+
       private
 
       def any_officer?

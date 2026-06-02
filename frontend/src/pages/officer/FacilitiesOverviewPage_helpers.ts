@@ -42,7 +42,70 @@ export const sumWhUsed = (warehouses: Warehouse[]) =>
 export const sumWhFree = (warehouses: Warehouse[]) =>
   warehouses.reduce((a, w) => a + whFreeMt(w), 0);
 
+/** @deprecated Prefer hubCapacityFromWarehouses — hub DB rollup can be stale */
 export const hubCapacityMt = (hub: Hub) => num(hub.capacity?.total_capacity_mt);
 
 export const hubWarehouses = (hub: Hub, warehouses: Warehouse[]) =>
   warehouses.filter((w) => w.hub_id === hub.id);
+
+export const hubCapacityFromWarehouses = (hub: Hub, warehouses: Warehouse[]) =>
+  sumWhCapacity(hubWarehouses(hub, warehouses));
+
+export const hubUsedFromWarehouses = (hub: Hub, warehouses: Warehouse[]) =>
+  sumWhUsed(hubWarehouses(hub, warehouses));
+
+export const hubFreeFromWarehouses = (hub: Hub, warehouses: Warehouse[]) =>
+  sumWhFree(hubWarehouses(hub, warehouses));
+
+export const hubUtilPctFromWarehouses = (hub: Hub, warehouses: Warehouse[]) =>
+  pct(hubUsedFromWarehouses(hub, warehouses), hubCapacityFromWarehouses(hub, warehouses));
+
+export type CapacityStatus = 'none' | 'available' | 'almost_full' | 'full';
+
+export const warehouseCapacityStatus = (w: Warehouse): CapacityStatus => {
+  if (w.capacity?.capacity_established !== true) return 'none';
+  const remaining = whFreeMt(w);
+  const util = whUtilPct(w);
+  if (remaining <= 0) return 'full';
+  if (util >= 90) return 'almost_full';
+  return 'available';
+};
+
+export function formatWarehouseCapacityLabel(w: Warehouse): {
+  label: string;
+  disabled: boolean;
+  status: CapacityStatus;
+} {
+  const status = warehouseCapacityStatus(w);
+  const remainingFmt = fmt(whFreeMt(w));
+
+  if (status === 'none') {
+    return {
+      label: `${w.name} — capacity not established`,
+      disabled: true,
+      status,
+    };
+  }
+  if (status === 'full') {
+    return {
+      label: `${w.name} — FULL (0 MT remaining)`,
+      disabled: true,
+      status,
+    };
+  }
+  if (status === 'almost_full') {
+    return {
+      label: `${w.name} — Almost full (${remainingFmt} MT remaining)`,
+      disabled: false,
+      status,
+    };
+  }
+  return {
+    label: `${w.name} — ${remainingFmt} MT remaining`,
+    disabled: false,
+    status,
+  };
+}
+
+/** Progress bar value capped at 100; label shows actual utilization (may exceed 100%). */
+export const progressBarValue = (utilPct: number) => Math.min(utilPct, 100);

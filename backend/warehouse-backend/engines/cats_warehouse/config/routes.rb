@@ -9,6 +9,7 @@ Cats::Warehouse::Engine.routes.draw do
     patch "me/password", to: "me#change_password"
 
     get "dashboard/officer", to: "dashboard#officer"
+    get "dashboard/warehouse_manager", to: "dashboard#warehouse_manager"
 
     get "notifications", to: "notifications#index"
     get "notifications/unread_count", to: "notifications#unread_count"

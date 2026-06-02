@@ -17,6 +17,16 @@ import { StatusBadge } from '../../components/common/StatusBadge';
 import { usePermission } from '../../hooks/usePermission';
 import { useAuthStore } from '../../store/authStore';
 import { getFacilityOptions } from '../../api/referenceData';
+import {
+  fmt,
+  hubCapacityFromWarehouses,
+  hubFreeFromWarehouses,
+  hubUsedFromWarehouses,
+  hubUtilPctFromWarehouses,
+  hubWarehouses as warehousesForHub,
+  pctColor,
+} from '../officer/FacilitiesOverviewPage_helpers';
+import type { Warehouse } from '../../types/warehouse';
 
 function HubDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -173,7 +183,7 @@ function HubDetailPage() {
     },
   });
 
-  const hubWarehouses = warehouses?.filter((warehouse) => warehouse.hub_id === Number(id));
+  const hubWarehouseList = warehouses?.filter((warehouse) => warehouse.hub_id === Number(id)) ?? [];
 
   const formatHierarchicalLevel = (value?: string) => {
     if (!value) return '-';
@@ -207,8 +217,8 @@ function HubDetailPage() {
           {(isHubManager || isAdmin) && (
             <Tabs.Tab value="warehouses">
               Warehouses
-              {hubWarehouses && hubWarehouses.length > 0 && (
-                <Badge size="sm" ml="xs" circle>{hubWarehouses.length}</Badge>
+              {hubWarehouseList && hubWarehouseList.length > 0 && (
+                <Badge size="sm" ml="xs" circle>{hubWarehouseList.length}</Badge>
               )}
             </Tabs.Tab>
           )}
@@ -301,11 +311,38 @@ function HubDetailPage() {
               <Grid>
                 <Grid.Col span={{ base: 12, md: 6 }}>
                   <Text size="sm" c="dimmed">Total Area (sqm)</Text>
-                  <Text fw={500}>{hub.capacity?.total_area_sqm ?? 0}</Text>
+                  <Text fw={500}>
+                    {fmt(
+                      warehousesForHub(hub, warehouses as Warehouse[]).reduce(
+                        (sum, w) => sum + Number(w.capacity?.total_area_sqm ?? 0),
+                        0
+                      )
+                    )}
+                  </Text>
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
                   <Text size="sm" c="dimmed">Total Capacity (MT)</Text>
-                  <Text fw={500}>{hub.capacity?.total_capacity_mt ?? 0}</Text>
+                  <Text fw={500}>
+                    {fmt(hubCapacityFromWarehouses(hub, warehouses as Warehouse[]))}
+                  </Text>
+                </Grid.Col>
+                <Grid.Col span={{ base: 12, md: 6 }}>
+                  <Text size="sm" c="dimmed">Used (MT)</Text>
+                  <Text fw={500} c="blue">
+                    {fmt(hubUsedFromWarehouses(hub, warehouses as Warehouse[]))}
+                  </Text>
+                </Grid.Col>
+                <Grid.Col span={{ base: 12, md: 6 }}>
+                  <Text size="sm" c="dimmed">Available (MT)</Text>
+                  <Text fw={500} c="green">
+                    {fmt(hubFreeFromWarehouses(hub, warehouses as Warehouse[]))}
+                  </Text>
+                </Grid.Col>
+                <Grid.Col span={{ base: 12, md: 6 }}>
+                  <Text size="sm" c="dimmed">Utilization</Text>
+                  <Text fw={500} c={pctColor(hubUtilPctFromWarehouses(hub, warehouses as Warehouse[]))}>
+                    {hubUtilPctFromWarehouses(hub, warehouses as Warehouse[]).toFixed(1)}%
+                  </Text>
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
                   <Text size="sm" c="dimmed">Construction Year</Text>
@@ -400,8 +437,8 @@ function HubDetailPage() {
             </Group>
 
             <Stack gap="sm">
-              {hubWarehouses && hubWarehouses.length > 0 ? (
-                hubWarehouses.map((warehouse) => (
+              {hubWarehouseList && hubWarehouseList.length > 0 ? (
+                hubWarehouseList.map((warehouse) => (
                   <Card
                     key={warehouse.id}
                     withBorder
