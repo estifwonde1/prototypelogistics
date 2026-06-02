@@ -21,6 +21,8 @@ import {
   Box,
   Divider,
   SegmentedControl,
+  Modal,
+  Grid,
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import {
@@ -30,6 +32,8 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconSearch,
+  IconEdit,
+  IconBox,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { isAxiosError } from "axios";
@@ -42,7 +46,7 @@ import {
 import { getCommodityDefinitions } from "../../api/commodityDefinitions";
 import type { ApiError } from "../../types/common";
 import type { CreateCommodityPayload } from "../../api/referenceData";
-import type { UnitReference } from "../../types/referenceData";
+import type { UnitReference, CommodityReference } from "../../types/referenceData";
 import { REFERENCE_M3_PER_MT } from "../../utils/capacityCalculator";
 
 // Fixed packaging container options — these are the physical containers/packaging types.
@@ -194,6 +198,7 @@ function CommodityFormPage() {
   const [expandedCommodities, setExpandedCommodities] = useState<Set<string>>(
     new Set()
   );
+  const [selectedBatch, setSelectedBatch] = useState<CommodityReference | null>(null);
 
   const generateBatchNo = () =>
     `BATCH-${dayjs().format("YYYYMMDD")}-${Math.random()
@@ -452,7 +457,7 @@ function CommodityFormPage() {
             (b.name || "").toLowerCase() === definition.name.toLowerCase()
         );
         batches.sort((a, b) => b.id - a.id);
-        return { name: definition.name, batches };
+        return { name: definition.name, group_name: definition.group_name, batches };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [commodityDefinitions, commodityBatches]);
@@ -463,8 +468,7 @@ function CommodityFormPage() {
 
     if (categoryFilter) {
       result = result.filter((group) => {
-        const batch = group.batches[0];
-        return batch?.category_name === categoryFilter;
+        return group.group_name === categoryFilter;
       });
     }
 
@@ -890,7 +894,11 @@ function CommodityFormPage() {
                                 : "—";
 
                             return (
-                              <Table.Tr key={batch.id}>
+                              <Table.Tr 
+                                key={batch.id}
+                                onClick={() => setSelectedBatch(batch as CommodityReference)}
+                                style={{ cursor: "pointer" }}
+                              >
                                 <Table.Td>
                                   <Text
                                     size="sm"
@@ -980,6 +988,106 @@ function CommodityFormPage() {
         </Stack>
       </Card>
       )}
+
+      {/* Batch Details Modal */}
+      <Modal
+        opened={!!selectedBatch}
+        onClose={() => setSelectedBatch(null)}
+        title={
+          <Group gap="xs">
+            <IconBox size={20} color="#228be6" />
+            <Text fw={700} size="lg">{selectedBatch?.batch_no || "Unnamed Batch"}</Text>
+          </Group>
+        }
+        size="lg"
+        padding="xl"
+        radius="md"
+      >
+        {selectedBatch && (() => {
+          const packagingLabel = formatPackaging(
+            selectedBatch.package_size,
+            selectedBatch.package_unit_per_package_name,
+            selectedBatch.package_unit_name
+          );
+
+          const { count: packagedCount, fallback } = calcPackagedQty(
+            selectedBatch.quantity,
+            selectedBatch.unit_abbreviation,
+            selectedBatch.package_size,
+            selectedBatch.package_unit_per_package_name
+          );
+
+          const containerLabel = selectedBatch.package_unit_name ?? "pkg";
+          const packagedQtyLabel = packagedCount !== "—" ? `${packagedCount} ${containerLabel}` : "—";
+
+          return (
+          <Stack gap="xl">
+            <Grid gutter="xl">
+              <Grid.Col span={6}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Commodity Name</Text>
+                <Text size="md" fw={500} mt={4}>{selectedBatch.name || "—"}</Text>
+              </Grid.Col>
+              <Grid.Col span={6}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Category</Text>
+                <Text size="md" fw={500} mt={4}>{selectedBatch.category_name || "—"}</Text>
+              </Grid.Col>
+              <Grid.Col span={6}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Source Type</Text>
+                <Text size="md" fw={500} mt={4}>{selectedBatch.source_type || "—"}</Text>
+              </Grid.Col>
+              <Grid.Col span={6}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Source Name</Text>
+                <Text size="md" fw={500} mt={4}>{selectedBatch.source_name || "—"}</Text>
+              </Grid.Col>
+              
+              <Grid.Col span={12}>
+                <Divider />
+              </Grid.Col>
+
+              <Grid.Col span={4}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Batch Quantity</Text>
+                <Text size="md" fw={600} mt={4}>{selectedBatch.quantity?.toLocaleString() || "—"} {selectedBatch.unit_abbreviation || selectedBatch.unit_name || ""}</Text>
+              </Grid.Col>
+              <Grid.Col span={4}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Allocated Quantity</Text>
+                <Text size="md" fw={600} mt={4} c="orange">{selectedBatch.allocated_quantity != null ? selectedBatch.allocated_quantity.toLocaleString() : "0"} {selectedBatch.unit_abbreviation || ""}</Text>
+              </Grid.Col>
+              <Grid.Col span={4}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Remaining Quantity</Text>
+                <Text size="md" fw={600} mt={4} c={selectedBatch.remaining_quantity != null && selectedBatch.remaining_quantity < 0 ? "red" : "blue"}>{selectedBatch.remaining_quantity != null ? selectedBatch.remaining_quantity.toLocaleString() : "—"} {selectedBatch.unit_abbreviation || ""}</Text>
+              </Grid.Col>
+              
+              <Grid.Col span={12}>
+                <Divider />
+              </Grid.Col>
+
+              <Grid.Col span={4}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Packaging</Text>
+                <Text size="md" fw={500} mt={4}>{packagingLabel}</Text>
+              </Grid.Col>
+              <Grid.Col span={4}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Packaged Qty</Text>
+                <Text size="md" fw={500} mt={4}>
+                  {packagedQtyLabel}
+                  {fallback && packagedCount !== "—" && (
+                    <Text span size="xs" c="dimmed" ml="xs">(qty unit differs)</Text>
+                  )}
+                </Text>
+              </Grid.Col>
+              <Grid.Col span={4}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Volume Per MT</Text>
+                <Text size="md" fw={500} mt={4}>{selectedBatch.volume_per_metric_ton || "—"} CBM</Text>
+              </Grid.Col>
+            </Grid>
+            
+            <Group justify="flex-end" mt="md">
+              <Button variant="default" onClick={() => setSelectedBatch(null)}>Close</Button>
+            </Group>
+          </Stack>
+          );
+        })()}
+      </Modal>
+
     </Stack>
   );
 }
