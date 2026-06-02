@@ -31,6 +31,7 @@ export interface CommodityReference {
   category_id?: number | null;
   category_name?: string | null;
   volume_per_metric_ton?: number;
+  weight_per_unit_kg?: number;
 }
 
 export interface UnitReference {

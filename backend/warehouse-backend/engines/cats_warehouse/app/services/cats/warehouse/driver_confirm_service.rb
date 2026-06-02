@@ -82,12 +82,13 @@ module Cats
         warehouse = @ra.warehouse
 
         grn_item_attrs = inspection.inspection_items.map do |item|
+          recv_qty = item.quantity_received.to_f
+          entered_unit_id = item.entered_unit_id || item.unit_id
           {
             commodity_id:      item.commodity_id,
-            quantity:          item.quantity_received.to_f,
-            unit_id:           item.entered_unit_id || item.unit_id,
-            entered_unit_id:   item.entered_unit_id || item.unit_id,
-            entered_quantity:  item.quantity_received.to_f,
+            quantity:          recv_qty,
+            unit_id:           entered_unit_id,
+            entered_unit_id:   entered_unit_id,
             quality_status:    item.quality_status,
             inventory_lot_id:  item.inventory_lot_id,
             line_reference_no: SourceDetailReference.generate_unique

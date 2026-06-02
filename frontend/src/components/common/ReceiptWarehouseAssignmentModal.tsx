@@ -9,7 +9,7 @@ import { getCommodityReferences } from '../../api/referenceData';
 import type { Store } from '../../types/store';
 import type { Warehouse } from '../../types/warehouse';
 import type { UnitReference, UomConversion } from '../../types/referenceData';
-import { findDirectedMultiplier } from '../../utils/uomConversions';
+import { findDirectedMultiplier, resolveItemToKgMultiplier } from '../../utils/uomConversions';
 import { computePackagingPackagesHint } from '../../utils/packagingQuantityHint';
 import {
   formatWarehouseCapacityLabel,
@@ -69,14 +69,35 @@ function convertQuantityToMt(
   fromUnitId: number,
   commodityId: number,
   units: UnitReference[],
-  uomConversions: UomConversion[]
+  uomConversions: UomConversion[],
+  commodityRefs?: Array<{ id: number; weight_per_unit_kg?: number }>
 ): number | null {
   const mtUnitId = findMtUnitId(units);
   if (!mtUnitId) return quantity;
   if (fromUnitId === mtUnitId) return quantity;
+
+  // Try standard UOM conversion graph first
   const multiplier = findDirectedMultiplier(fromUnitId, mtUnitId, commodityId, uomConversions);
-  if (multiplier == null) return null;
-  return Number((quantity * multiplier).toFixed(6));
+  if (multiplier != null) return Number((quantity * multiplier).toFixed(6));
+
+  // Try inverse path
+  const inverse = findDirectedMultiplier(mtUnitId, fromUnitId, commodityId, uomConversions);
+  if (inverse != null && inverse !== 0) return Number((quantity / inverse).toFixed(6));
+
+  // For ITEM-type units (pcs), use commodity's weight_per_unit_kg → kg → mt
+  const kgMultiplier = resolveItemToKgMultiplier(fromUnitId, commodityId, units, commodityRefs ?? []);
+  if (kgMultiplier != null) {
+    const kgUnit = units.find((u) => (u.abbreviation ?? '').toLowerCase() === 'kg');
+    if (kgUnit) {
+      const kgQty = quantity * kgMultiplier;
+      const kgToMt = findDirectedMultiplier(kgUnit.id, mtUnitId, commodityId, uomConversions);
+      if (kgToMt != null) return Number((kgQty * kgToMt).toFixed(6));
+      const kgToMtInverse = findDirectedMultiplier(mtUnitId, kgUnit.id, commodityId, uomConversions);
+      if (kgToMtInverse != null && kgToMtInverse !== 0) return Number((kgQty / kgToMtInverse).toFixed(6));
+    }
+  }
+
+  return null;
 }
 
 function makeClientId() {
@@ -265,7 +286,8 @@ function ReceiptWarehouseAssignmentModal({
         line.unitId,
         line.commodityId,
         units,
-        uomConversions
+        uomConversions,
+        commodityRefs
       );
 
       if (convertedMt == null) {
@@ -295,7 +317,7 @@ function ReceiptWarehouseAssignmentModal({
     });
 
     return { validations: next, previews };
-  }, [lineMap, rows, uomConversions, units, warehouseRemainingMtById]);
+  }, [lineMap, rows, uomConversions, units, warehouseRemainingMtById, commodityRefs]);
 
   const validations = rowComputation.validations;
   const rowPreviews = rowComputation.previews;

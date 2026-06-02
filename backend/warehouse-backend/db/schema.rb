@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_06_01_000001) do
+ActiveRecord::Schema[7.0].define(version: 2026_06_02_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -141,6 +141,8 @@ ActiveRecord::Schema[7.0].define(version: 2026_06_01_000001) do
     t.string "source_name"
     t.bigint "package_unit_per_package_id"
     t.float "received_quantity", null: false
+    t.bigint "commodity_definition_id"
+    t.decimal "weight_per_unit_kg", precision: 15, scale: 6, default: "1.0", null: false
     t.index ["commodity_category_id"], name: "index_cats_core_commodities_on_commodity_category_id"
     t.index ["package_unit_id"], name: "pu_on_commodity_indx"
     t.index ["package_unit_per_package_id"], name: "index_cats_core_commodities_on_package_unit_per_package_id"
@@ -1152,7 +1154,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_06_01_000001) do
     t.decimal "authorized_base_quantity", precision: 18, scale: 6
     t.bigint "authorized_quantity_input_unit_id"
     t.decimal "remaining_quantity", precision: 18, scale: 6
-    t.bigint "transporter_id", null: false
+    t.bigint "transporter_id"
     t.string "driver_name"
     t.string "driver_id_number"
     t.string "truck_plate_number"
@@ -1166,6 +1168,9 @@ ActiveRecord::Schema[7.0].define(version: 2026_06_01_000001) do
     t.bigint "cancelled_by_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "driver_phone"
+    t.bigint "commodity_id"
+    t.index ["commodity_id"], name: "idx_cw_doa_commodity"
     t.index ["dispatch_order_id", "warehouse_id"], name: "idx_cw_doa_order_wh"
     t.index ["dispatch_order_id"], name: "idx_cw_doa_order"
     t.index ["reference_no"], name: "idx_cw_doa_reference_no", unique: true
@@ -1209,7 +1214,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_06_01_000001) do
     t.datetime "confirmed_at"
     t.bigint "location_id"
     t.string "hierarchical_level"
-    t.string "plan_reference"
+    t.string "dispatch_reference"
     t.string "officer_level"
     t.bigint "officer_location_id"
     t.jsonb "jurisdiction_metadata", default: {}
@@ -1217,14 +1222,15 @@ ActiveRecord::Schema[7.0].define(version: 2026_06_01_000001) do
     t.datetime "approved_at"
     t.bigint "dispatch_plan_id"
     t.bigint "dispatch_plan_item_id"
+    t.string "reference_title"
     t.index ["confirmed_by_id"], name: "index_cats_warehouse_dispatch_orders_on_confirmed_by_id"
     t.index ["created_by_id", "status"], name: "idx_cw_do_created_by_status"
     t.index ["created_by_id"], name: "index_cats_warehouse_dispatch_orders_on_created_by_id"
+    t.index ["dispatch_reference"], name: "index_cats_warehouse_dispatch_orders_on_dispatch_reference"
     t.index ["hierarchical_level"], name: "index_cats_warehouse_dispatch_orders_on_hierarchical_level"
     t.index ["hub_id"], name: "index_cats_warehouse_dispatch_orders_on_hub_id"
     t.index ["location_id"], name: "index_cats_warehouse_dispatch_orders_on_location_id"
     t.index ["officer_level", "status"], name: "idx_cw_do_officer_level_status"
-    t.index ["plan_reference"], name: "index_cats_warehouse_dispatch_orders_on_plan_reference"
     t.index ["reference_no"], name: "index_cats_warehouse_dispatch_orders_on_reference_no", unique: true
     t.index ["status"], name: "index_cats_warehouse_dispatch_orders_on_status"
     t.index ["warehouse_id"], name: "index_cats_warehouse_dispatch_orders_on_warehouse_id"
@@ -2091,6 +2097,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_06_01_000001) do
   add_foreign_key "cats_core_commodities", "cats_core_unit_of_measures", column: "package_unit_id"
   add_foreign_key "cats_core_commodities", "cats_core_unit_of_measures", column: "package_unit_per_package_id"
   add_foreign_key "cats_core_commodities", "cats_core_unit_of_measures", column: "unit_of_measure_id"
+  add_foreign_key "cats_core_commodities", "cats_warehouse_commodity_definitions", column: "commodity_definition_id"
   add_foreign_key "cats_core_commodity_donations", "cats_core_commodity_categories", column: "commodity_category_id"
   add_foreign_key "cats_core_commodity_donations", "cats_core_donors", column: "donor_id"
   add_foreign_key "cats_core_commodity_donations", "cats_core_plans", column: "plan_id"
@@ -2264,6 +2271,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_06_01_000001) do
   add_foreign_key "cats_warehouse_dispatch_order_authorization_stores", "cats_core_commodities", column: "commodity_id"
   add_foreign_key "cats_warehouse_dispatch_order_authorization_stores", "cats_warehouse_dispatch_order_authorizations", column: "dispatch_order_authorization_id"
   add_foreign_key "cats_warehouse_dispatch_order_authorization_stores", "cats_warehouse_stores", column: "store_id"
+  add_foreign_key "cats_warehouse_dispatch_order_authorizations", "cats_core_commodities", column: "commodity_id"
   add_foreign_key "cats_warehouse_dispatch_order_authorizations", "cats_core_transporters", column: "transporter_id"
   add_foreign_key "cats_warehouse_dispatch_order_authorizations", "cats_core_unit_of_measures", column: "authorized_quantity_input_unit_id"
   add_foreign_key "cats_warehouse_dispatch_order_authorizations", "cats_core_users", column: "cancelled_by_id"
