@@ -95,7 +95,7 @@ Below menus, every role has **Account → Profile** and **Account → Logout**.
 ## Tips for new users
 
 1. **Confirm your scope badge** before creating orders or documents.
-2. **Draft first, confirm second** — orders and GRNs/GINs should be reviewed in *Draft* before *Confirm*.
+2. **Draft first, confirm second** — receipt orders and GRNs should be reviewed in *Draft* before *Confirm*.
 3. Use **notifications** when waiting for an assignment.
 4. If a button is missing, your **role may not have permission** — see your role chapter or ask an admin.
 

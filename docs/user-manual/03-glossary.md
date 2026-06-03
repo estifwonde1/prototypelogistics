@@ -15,17 +15,17 @@
 | Term | Meaning |
 |------|---------|
 | **Receipt Order (RO)** | Plan for **incoming** goods: source, destination (hub or warehouse), line items, expected dates. |
-| **Dispatch Order (DO)** | Plan for **outgoing** goods: source warehouse, destination, line items. |
+| **Dispatch Order (DO)** | *(Planned — not in current release.)* Plan for **outgoing** goods: source warehouse, destination, line items. |
 | **Assignment** | Link from an order to a responsible person/facility. Created on the order’s **Assignments** tab. |
 | **Space reservation** | (Where enabled) Reserve storage capacity on a receipt order before goods arrive. |
-| **Stock reservation** | (Where enabled) Reserve commodity quantity on a dispatch order before issue. |
+| **Stock reservation** | *(Planned — not in current release.)* Reserve commodity quantity on a dispatch order before issue. |
 
 ## Operational documents
 
 | Term | Abbreviation | Meaning |
 |------|--------------|---------|
 | **Goods Receipt Note** | **GRN** | Records goods **received** into the warehouse. Updates stock when **confirmed**. |
-| **Goods Issue Note** | **GIN** | Records goods **issued** from the warehouse. Reduces stock when **confirmed**. |
+| **Goods Issue Note** | **GIN** | *(Planned — not in current release.)* Records goods **issued** from the warehouse. Would reduce stock when **confirmed**. |
 | **Receipt Authorization** | **RA** | Authorizes a **truck/load** to deliver against a receipt order. Hub/warehouse managers create RAs; storekeepers **receive** against them. |
 | **Waybill** | — | Transport document for movement of goods. |
 | **Transfer Request** | — | Move stock between stores/stacks; storekeeper creates, warehouse manager approves. |
@@ -45,7 +45,7 @@
 |---------|-----------------|
 | Orders | *Draft*, *Confirmed*, *In Progress*, *Completed* |
 | Assignments | *Pending*, *Assigned*, *Accepted*, *In Progress*, *Completed* |
-| Documents (GRN/GIN) | *Draft*, *Confirmed* |
+| Documents (GRN) | *Draft*, *Confirmed* |
 
 ## Roles (short definitions)
 
@@ -54,13 +54,13 @@ See [README — All roles](README.md#all-roles-in-the-system).
 | Role | One-line purpose |
 |------|------------------|
 | **Admin** | Users, assignments, commodities, hubs/warehouses setup |
-| **Federal Officer** | National receipt/dispatch orders and monitoring |
+| **Federal Officer** | National **receipt orders** (inbound) and monitoring |
 | **Regional Officer** | Region-scoped orders and monitoring |
 | **Zonal Officer** | Zone-scoped orders and monitoring |
 | **Woreda Officer** | Woreda-scoped orders and monitoring |
 | **Kebele Officer** | Kebele-scoped orders and monitoring |
 | **Hub Manager** | Hub dashboard, warehouse assignment, receipt authorizations |
-| **Warehouse Manager** | Stores, stacks, GRN/GIN, transfers, waybills |
+| **Warehouse Manager** | Stores, stacks, GRN, transfers, waybills (inbound context) |
 | **Storekeeper** | Assignments, stack layout, receive RA, GRN drafts |
 
 ## Permission actions

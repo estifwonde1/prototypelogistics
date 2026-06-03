@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Alert, Stack, Title, Group, TextInput, Textarea, Button, Card, Text, NumberInput } from '@mantine/core';
+import { Alert, Stack, Title, Group, TextInput, Textarea, Button, Card, Text } from '@mantine/core';
 import { IconArrowLeft } from '@tabler/icons-react';
 import { SearchableSelect } from '../../../components/common/SearchableSelect';
 import { useForm } from '@mantine/form';
@@ -13,21 +13,16 @@ import { LoadingState } from '../../../components/common/LoadingState';
 import { ErrorState } from '../../../components/common/ErrorState';
 import { dedupOptions } from '../../../utils/dedup';
 import {
+  KEBELE_DROPDOWN_OPTIONS,
+  kebeleNumberFromName,
+  kebeleValueFromNumber,
+} from '../../../constants/kebeleOptions';
+import {
   locationContextFromEntity,
   resolveLocationContextFromQuery,
 } from '../../../utils/locationContext';
 
 const DEFAULT_REGION_NAME = 'Addis Ababa';
-
-const kebeleNumberFromName = (name?: string): number | undefined => {
-  if (!name) return undefined;
-
-  const match = name.match(/\d+/);
-  if (!match) return undefined;
-
-  const value = Number(match[0]);
-  return value >= 1 && value <= 40 ? value : undefined;
-};
 
 export default function HubSetupPage() {
   const navigate = useNavigate();
@@ -142,16 +137,15 @@ export default function HubSetupPage() {
       hub_type: 'regional',
       status: 'active',
       description: '',
-      kebele: '' as number | '',
+      kebele: '',
     },
     validate: {
       name: (value) => (!value ? 'Name is required' : null),
       code: (value) => (!value ? 'Code is required' : null),
       kebele: (value) => {
-        if (value === '' || value === null || value === undefined) return null;
+        if (!value) return null;
         const num = Number(value);
-        if (isNaN(num)) return 'Kebele must be a number';
-        if (num < 1 || num > 40) return 'Kebele must be between 1 and 40';
+        if (isNaN(num) || num < 1 || num > 40) return 'Kebele must be between 01 and 40';
         return null;
       },
     },
@@ -167,7 +161,7 @@ export default function HubSetupPage() {
       hub_type: hub.hub_type,
       status: hub.status,
       description: hub.description || '',
-      kebele: hub.kebele ?? '',
+      kebele: kebeleValueFromNumber(hub.kebele),
     });
 
     const ctx = editLocationContext;
@@ -257,13 +251,15 @@ export default function HubSetupPage() {
 
   const isKebeleProvided = !!(inheritedContext.kebeleId || inheritedContext.kebeleName);
   const isKebeleLocked = isLocationLocked && isKebeleProvided;
-  const lockedKebeleValue = isKebeleLocked ? kebeleNumberFromName(selectedKebeleName) : undefined;
+  const lockedKebeleValue = isKebeleLocked
+    ? kebeleValueFromNumber(kebeleNumberFromName(selectedKebeleName) ?? inheritedContext.kebeleName)
+    : undefined;
 
   const handleSubmit = (values: typeof form.values) => {
     const targetLocationId = kebeleId || woredaId || (isEdit && hub?.location_id ? String(hub.location_id) : null);
     if (!targetLocationId) return;
     const kebeleNumber = isKebeleLocked
-      ? lockedKebeleValue ?? kebeleNumberFromName(selectedKebeleName)
+      ? Number(lockedKebeleValue) || kebeleNumberFromName(selectedKebeleName)
       : values.kebele !== ''
         ? Number(values.kebele)
         : kebeleNumberFromName(selectedKebeleName);
@@ -380,21 +376,21 @@ export default function HubSetupPage() {
                 disabled={woredasLoading || isLocationLocked}
                 description={isLocationLocked ? inheritedContext.woredaName || 'Inherited from location page' : undefined}
               />
-              <NumberInput
+              <SearchableSelect
                 label="Kebele (Optional)"
-                placeholder="1-40"
-                min={1}
-                max={40}
+                data={KEBELE_DROPDOWN_OPTIONS}
+                placeholder="Select kebele"
                 description={
                   isKebeleLocked
                     ? selectedKebeleName || 'Inherited from location page'
-                    : selectedKebeleName || 'Optional'
+                    : 'Select 01 (minimum) through 40 (maximum)'
                 }
                 disabled={isKebeleLocked}
-                value={isKebeleLocked ? (lockedKebeleValue ?? '') : form.values.kebele}
+                clearable={!isKebeleLocked}
+                value={isKebeleLocked ? lockedKebeleValue || null : form.values.kebele || null}
                 onChange={(value) => {
                   if (!isKebeleLocked) {
-                    form.setFieldValue('kebele', value);
+                    form.setFieldValue('kebele', value || '');
                   }
                 }}
                 error={form.errors.kebele}

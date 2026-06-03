@@ -35,12 +35,11 @@ Default home: **Hub Dashboard** (`/hub/dashboard`).
 | hubs | read |
 | warehouses | read, create, update |
 | stores, stacks | read |
-| grns, gins, inspections | read |
+| grns, inspections | read |
 | waybills | read, **create**, **confirm** |
 | receipt_orders | read, **update** (assign warehouse) |
 | receipt_authorizations | read, **create**, **update** |
-| dispatch_orders | read |
-| stock_balances, receipts, dispatches, reports | read |
+| stock_balances, receipts, reports | read |
 
 ## Hub Dashboard
 

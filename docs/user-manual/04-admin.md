@@ -85,7 +85,7 @@ Operational roles only see data for facilities they are assigned to.
 | Users & assignments | Full |
 | Commodities setup | Full |
 | Hubs & warehouses | Create, read, update |
-| Receipt/dispatch orders, GRN/GIN | Not primary admin workflow |
+| Receipt orders, GRN (inbound) | Not primary admin workflow |
 
 ## Troubleshooting
 

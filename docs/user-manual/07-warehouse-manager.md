@@ -2,7 +2,7 @@
 
 ## Role purpose
 
-The **Warehouse Manager** runs operational activity at one **warehouse**: stores, stacks, inbound GRNs, outbound GINs, inspections, waybills, transfer requests, and receipt authorizations (when enabled for your warehouse). You execute officer plans and hub manager warehouse assignments.
+The **Warehouse Manager** runs operational activity at one **warehouse**: stores, stacks, inbound GRNs, inspections, waybills (where used), transfer requests, and receipt authorizations (when enabled for your warehouse). You execute officer **receipt order** plans and hub manager warehouse assignments. **Outbound dispatch and GIN are not implemented** in the current release.
 
 ## Workspace
 
@@ -38,14 +38,13 @@ Default home: **Warehouse Dashboard** (`/warehouse/dashboard`).
 |----------|---------|
 | warehouses | read, update |
 | stores, stacks | read, create, update |
-| grns, gins | read, create, **confirm** |
+| grns | read, create, **confirm** |
 | inspections | read, create, **confirm** |
 | waybills | read, create, **confirm** |
 | receipt_orders | read |
 | receipt_authorizations | read, create, update *(if enabled)* |
 | transfer_requests | read, **update** |
-| dispatch_orders | read |
-| stock_balances, receipts, dispatches, reports | read |
+| stock_balances, receipts, reports | read |
 
 ## Warehouse Dashboard
 
@@ -55,7 +54,7 @@ Typical sections:
 
 - Receipt order counts by status for **this warehouse**
 - Pending assignments needing store assignment
-- GRN/GIN activity summaries
+- GRN activity summaries
 - Store/stack capacity highlights
 - Quick links to create GRN or open receipts
 
@@ -108,16 +107,9 @@ Physical goods arrived; RA (if used) is cleared; quantities and quality are know
 
 **Effect:** Stock balances **increase**; workflow timeline on receipt order updates.
 
-## GIN — Goods Issue Note
+## GIN — Goods Issue Note *(not in current release)*
 
-For **dispatch orders**:
-
-1. **GIN** → **New** (`/gins/new`)
-2. Link dispatch order
-3. Select lots/stacks to issue from
-4. Draft → **Confirm**
-
-**Effect:** Stock **decreases**.
+Outbound **dispatch orders** and **GIN** are **not completed** in this version. Do not use GIN menus for production outbound until a future release documents that workflow.
 
 ## Inspections
 
@@ -147,7 +139,7 @@ Warehouse manager:
 
 ## Waybills
 
-Create and confirm waybills for outbound or inter-facility transport (`/waybills`).
+Create and confirm waybills where your process requires transport documentation (`/waybills`). This is separate from the unimplemented dispatch-order workflow.
 
 ## Reports
 
@@ -163,15 +155,14 @@ Create and confirm waybills for outbound or inter-facility transport (`/waybills
 - Officer or hub manager assigned an order to you
 - Storekeeper accepted assignment
 - Transfer request submitted
-- GRN/GIN confirmation needed (policy-dependent)
+- GRN confirmation needed (policy-dependent)
 
 ## Daily workflow checklist
 
 1. **Dashboard** — unassigned store lines on receipt orders.
 2. **Assign stores** and notify storekeepers.
 3. When trucks arrive: verify **RA**, oversee **GRN** confirmation.
-4. For outbound: process **GIN** against dispatch orders.
-5. Review **transfer requests** and **stock balances** for discrepancies.
+4. Review **transfer requests** and **stock balances** for discrepancies.
 
 ## Common issues
 

@@ -1,6 +1,6 @@
 # Prototypelogistics — System User Manual
 
-This manual is written for **all people who use the warehouse management system** — administrators, officers, hub and warehouse managers, and storekeepers. It explains what the system does, how roles differ, what each screen and button is for, and how work flows from order creation to stock on the shelf and back out again.
+This manual is written for **all people who use the warehouse management system** — administrators, officers, hub and warehouse managers, and storekeepers. It explains what the system does, how roles differ, what each screen and button is for, and how **inbound** work flows from receipt order creation to stock on the shelf. **Outbound dispatch is not completed** in the current release; where older text mentioned dispatch, it is marked as planned or out of scope.
 
 ## How to use this manual
 
@@ -22,7 +22,7 @@ This manual is written for **all people who use the warehouse management system*
 | 06 | [Hub Manager](06-hub-manager.md) | Hub Managers |
 | 07 | [Warehouse Manager](07-warehouse-manager.md) | Warehouse Managers |
 | 08 | [Storekeeper](08-storekeeper.md) | Storekeepers |
-| 09 | [Shared modules reference](11-shared-modules.md) | GRN, GIN, stacks, reports — all operational roles |
+| 09 | [Shared modules reference](11-shared-modules.md) | GRN, stacks, reports — all operational roles |
 | 10 | [End-to-end workflows](12-end-to-end-workflows.md) | Cross-role process maps |
 
 ## All roles in the system
@@ -32,13 +32,13 @@ The system supports **nine user roles**. Your account may have one or several; y
 | Display name | Primary purpose |
 |--------------|-----------------|
 | **Admin** | User and facility setup; commodities; assignments |
-| **Federal Officer** | National-level receipt/dispatch orders and facility monitoring |
+| **Federal Officer** | National-level **receipt orders** (inbound) and facility monitoring |
 | **Regional Officer** | Region-scoped orders and facility monitoring |
 | **Zonal Officer** | Zone-scoped orders and facility monitoring |
 | **Woreda Officer** | Woreda-scoped orders and facility monitoring |
 | **Kebele Officer** | Kebele-scoped orders and facility monitoring |
 | **Hub Manager** | Hub-level warehouse assignment and receipt authorizations |
-| **Warehouse Manager** | Warehouse operations: stores, stacks, GRN/GIN, transfers |
+| **Warehouse Manager** | Warehouse operations: stores, stacks, GRN, transfers |
 | **Storekeeper** | Store-level stacking, assignments, physical receipt |
 
 These are the only roles that appear when an administrator creates or edits a user.
@@ -52,7 +52,7 @@ These are the only roles that appear when an administrator creates or edits a us
 ## Related technical docs (for implementers)
 
 - [WORKFLOW.md](../WORKFLOW.md) — developer setup and assignment flows
-- [OFFICER_WORKFLOW.md](../OFFICER_WORKFLOW.md) — officer receipt/dispatch detail
+- [OFFICER_WORKFLOW.md](../OFFICER_WORKFLOW.md) — officer receipt-order detail (inbound)
 - [LOGIN_CREDENTIALS.md](../LOGIN_CREDENTIALS.md) — test account passwords (non-production)
 
 ---

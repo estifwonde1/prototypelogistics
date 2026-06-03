@@ -4,9 +4,9 @@
 
 **Prototypelogistics** is a warehouse and logistics management application. It helps organizations:
 
-- Plan **incoming** shipments (receipt orders) and **outgoing** shipments (dispatch orders)
+- Plan and execute **incoming** shipments (**receipt orders** through assignment, receipt authorization, and **GRN**)
 - Assign work from officers down to hub managers, warehouse managers, and storekeepers
-- Record physical stock movements with formal documents (**GRN**, **GIN**, **Receipt Authorization**, **Waybills**)
+- Record inbound stock with formal documents (**GRN**, **Receipt Authorization**; **waybills** where used for transport context)
 - Track **where** goods sit (hub → warehouse → store → stack) and **how much** is available (stock balances, bin cards)
 - Maintain an audit trail of who did what and when
 
@@ -28,13 +28,15 @@ Location (geographic area)
 
 **Hub Managers** oversee a hub and the warehouses under it. They assign incoming receipt orders to specific warehouses and manage **Receipt Authorizations** (truck-level authorization to deliver).
 
-**Warehouse Managers** run day-to-day warehouse operations: stores, stacks, goods receipt notes (GRN), goods issue notes (GIN), waybills, and transfer requests.
+**Warehouse Managers** run day-to-day warehouse operations: stores, stacks, goods receipt notes (GRN), transfer requests, and related inbound tasks.
 
 **Storekeepers** work inside a **store**. They accept assignments, prepare stacking space, receive trucks against authorizations, and help create operational documents at store level.
 
 **Admins** configure users, roles, commodities, and facilities.
 
-## Two main business flows
+## Main business flow (current release)
+
+The **implemented** end-to-end path today is **inbound only**. Outbound dispatch (dispatch orders, GIN, and the officer-to-warehouse issue chain) is **not completed** in this version of the system.
 
 ### Inbound (receiving)
 
@@ -46,15 +48,9 @@ Location (geographic area)
 6. **Hub Manager / Warehouse Manager** creates **Receipt Authorization(s)** for trucks arriving at the gate.
 7. Physical receipt: **GRN** is created and confirmed by the warehouse manager; stock balances update.
 
-### Outbound (dispatching)
-
-1. **Officer** creates and confirms a **Dispatch Order** (what leaves, from which warehouse, to whom).
-2. **Officer** assigns **Warehouse Manager**.
-3. **Warehouse Manager** creates **GIN**, selects stacks/lots, confirms issue.
-4. **Waybills** may document transport where required.
-
 ## What the system is not (current scope)
 
+- **Outbound dispatch** — **Dispatch orders**, **GIN** (goods issue), officer outbound assignments, and the full dispatch workflow are **not implemented** in this release. Do not train users on those steps until a future version ships them.
 - Hub distribution to FDPs and beneficiaries is **not** in this version.
 - External ERP or SMS integrations are **not** required — the system is self-contained.
 - **Routes registry** (standard paths between locations) is planned but not fully exposed in the UI yet.

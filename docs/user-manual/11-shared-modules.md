@@ -67,11 +67,9 @@ Paths: `/officer/receipt-orders`, `/receipt-orders/:id` (aliases).
 
 ---
 
-## Dispatch Orders
+## Dispatch Orders *(not in current release)*
 
-Paths: `/officer/dispatch-orders`, `/officer/dispatch-orders/:id`.
-
-Same tab pattern as receipt orders; assignments target warehouse managers; stock reservations on dispatch.
+Outbound **dispatch orders** are **not implemented** for end users in this version. Paths such as `/officer/dispatch-orders` may exist in code but are **out of scope** for training and operations until a future release.
 
 ---
 
@@ -88,13 +86,9 @@ Same tab pattern as receipt orders; assignments target warehouse managers; stock
 
 ---
 
-## GIN — Goods Issue Notes (`/gins`)
+## GIN — Goods Issue Notes (`/gins`) *(not in current release)*
 
-Same pattern as GRN for **outbound**:
-
-- Link **dispatch order**
-- Select stacks/lots to issue
-- Draft → Confirm (WH Manager)
+**GIN** and the outbound issue workflow are **not completed** in this version. Do not document or train on GIN until dispatch is shipped.
 
 ---
 
@@ -145,14 +139,13 @@ Use for reconciliation and audits.
 
 ---
 
-## Receipts & Dispatches aggregate lists
+## Receipts aggregate list
 
 | List | Path | Content |
 |------|------|---------|
 | Receipts | `/receipts` | Inbound receipt documents summary |
-| Dispatches | `/dispatches` | Outbound dispatch documents summary |
 
-Mostly read-only monitoring for hub manager and officers.
+Mostly read-only monitoring for hub manager and officers. An outbound **Dispatches** list is **not part of the completed system** in this release.
 
 ---
 

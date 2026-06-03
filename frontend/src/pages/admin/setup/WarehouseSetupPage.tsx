@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Alert, Button, Card, Group, Stack, Text, TextInput, Textarea, Title, NumberInput } from '@mantine/core';
+import { Alert, Button, Card, Group, Stack, Text, TextInput, Textarea, Title } from '@mantine/core';
 import { IconArrowLeft } from '@tabler/icons-react';
 import { SearchableSelect } from '../../../components/common/SearchableSelect';
 import { useForm } from '@mantine/form';
@@ -14,6 +14,11 @@ import { ErrorState } from '../../../components/common/ErrorState';
 import { LoadingState } from '../../../components/common/LoadingState';
 import { dedupOptions } from '../../../utils/dedup';
 import { RentalAgreementUpload } from '../../../components/common/RentalAgreementUpload';
+import {
+  KEBELE_DROPDOWN_OPTIONS,
+  kebeleNumberFromName,
+  kebeleValueFromNumber,
+} from '../../../constants/kebeleOptions';
 import {
   locationContextFromEntity,
   resolveLocationContextFromQuery,
@@ -33,16 +38,6 @@ const OWNERSHIP_TYPE_OPTIONS = [
 ];
 
 const DEFAULT_REGION_NAME = 'Addis Ababa';
-
-const kebeleNumberFromName = (name?: string): number | undefined => {
-  if (!name) return undefined;
-
-  const match = name.match(/\d+/);
-  if (!match) return undefined;
-
-  const value = Number(match[0]);
-  return value >= 1 && value <= 40 ? value : undefined;
-};
 
 export default function WarehouseSetupPage() {
   const navigate = useNavigate();
@@ -129,7 +124,7 @@ export default function WarehouseSetupPage() {
       managed_under: editParentHubId ? 'Hub' : MANAGED_UNDER_OPTIONS[0].value,
       ownership_type: 'self_owned',
       description: '',
-      kebele: '' as number | '',
+      kebele: '',
     },
     validate: {
       code: (value) => (!value ? 'Code is required' : null),
@@ -137,10 +132,9 @@ export default function WarehouseSetupPage() {
       managed_under: (value) => (!value ? 'Hierarchical level is required' : null),
       ownership_type: (value) => (!value ? 'Ownership type is required' : null),
       kebele: (value) => {
-        if (value === '' || value === null || value === undefined) return null;
+        if (!value) return null;
         const num = Number(value);
-        if (isNaN(num)) return 'Kebele must be a number';
-        if (num < 1 || num > 40) return 'Kebele must be between 1 and 40';
+        if (isNaN(num) || num < 1 || num > 40) return 'Kebele must be between 01 and 40';
         return null;
       },
     },
@@ -232,7 +226,7 @@ export default function WarehouseSetupPage() {
       managed_under: warehouse.managed_under || (warehouse.hub_id ? 'Hub' : MANAGED_UNDER_OPTIONS[0].value),
       ownership_type: warehouse.ownership_type || 'self_owned',
       description: warehouse.description || '',
-      kebele: warehouse.kebele ?? '',
+      kebele: kebeleValueFromNumber(warehouse.kebele),
     });
 
     const ctx = editLocationContext;
@@ -349,7 +343,9 @@ export default function WarehouseSetupPage() {
       : !!(inheritedContextFromQuery.kebeleId || inheritedContextFromQuery.kebeleName);
   const isKebeleLocked = isLocationLocked && isKebeleProvided;
   const lockedKebeleValue = isKebeleLocked
-    ? (hub?.kebele ?? kebeleNumberFromName(selectedKebeleName))
+    ? kebeleValueFromNumber(
+        warehouse?.kebele ?? hub?.kebele ?? kebeleNumberFromName(selectedKebeleName)
+      )
     : undefined;
 
   const canSubmit = !!effectiveWoredaId || (isEdit && !!warehouse?.location_id);
@@ -378,7 +374,7 @@ export default function WarehouseSetupPage() {
     }
 
     const kebeleNumber = isKebeleLocked
-      ? lockedKebeleValue ?? kebeleNumberFromName(selectedKebeleName)
+      ? Number(lockedKebeleValue) || kebeleNumberFromName(selectedKebeleName)
       : values.kebele !== ''
         ? Number(values.kebele)
         : kebeleNumberFromName(selectedKebeleName);
@@ -522,21 +518,21 @@ export default function WarehouseSetupPage() {
                       : undefined
                 }
               />
-              <NumberInput
+              <SearchableSelect
                 label="Kebele (Optional)"
-                placeholder="1-40"
-                min={1}
-                max={40}
+                data={KEBELE_DROPDOWN_OPTIONS}
+                placeholder="Select kebele"
                 description={
                   isKebeleLocked
                     ? selectedKebeleName || 'Inherited from location or hub'
-                    : selectedKebeleName || 'Optional'
+                    : 'Select 01 (minimum) through 40 (maximum)'
                 }
                 disabled={isKebeleLocked}
-                value={isKebeleLocked ? (lockedKebeleValue ?? '') : form.values.kebele}
+                clearable={!isKebeleLocked}
+                value={isKebeleLocked ? lockedKebeleValue || null : form.values.kebele || null}
                 onChange={(value) => {
                   if (!isKebeleLocked) {
-                    form.setFieldValue('kebele', value);
+                    form.setFieldValue('kebele', value || '');
                   }
                 }}
                 error={form.errors.kebele}

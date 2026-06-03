@@ -54,11 +54,11 @@ Default home: **Storekeeper Dashboard** (`/storekeeper/dashboard`).
 |----------|---------|
 | warehouses, stores | read |
 | stacks | read, create, update |
-| grns, gins | read, create *(no confirm)* |
+| grns | read, create *(no confirm)* |
 | inspections | read, create |
 | transfer_requests | read, **create** |
-| receipt_orders, dispatch_orders | read |
-| stock_balances, receipts, dispatches, reports | read |
+| receipt_orders | read |
+| stock_balances, receipts, reports | read |
 
 ## Storekeeper Dashboard
 
@@ -145,8 +145,8 @@ Navigate **Stacks** or **Stack Layout** manually:
 ## What storekeepers do not do
 
 - Assign warehouses or stores on receipt orders
-- Confirm GRNs/GINs (unless policy extended)
-- Create receipt orders or dispatch orders
+- Confirm GRNs (unless policy extended)
+- Create receipt orders (officers create orders; storekeepers do not)
 - Manage users or hub-level RAs (hub manager path)
 
 ## Notifications

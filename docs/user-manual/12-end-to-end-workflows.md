@@ -2,6 +2,8 @@
 
 Cross-role process maps. Use with your role chapter for button-level detail.
 
+**Scope:** This manual documents **inbound** workflows only. **Outbound dispatch** (dispatch orders, GIN) is **not completed** in the current system.
+
 ---
 
 ## Workflow A — Hub-scoped inbound (full chain)
@@ -47,24 +49,7 @@ Officer → Warehouse Manager → Storekeeper → RA (optional) → GRN
 
 ---
 
-## Workflow C — Outbound dispatch
-
-```
-Officer → Warehouse Manager → GIN → Waybill
-```
-
-| # | Role | Action | System result |
-|---|------|--------|---------------|
-| 1 | Officer | Create & **confirm** dispatch order | DO confirmed |
-| 2 | Officer | Assign **warehouse manager** | WH manager notified |
-| 3 | WH Manager | Create **GIN** → select stacks | Draft GIN |
-| 4 | WH Manager | **Confirm GIN** | Stock decreased |
-| 5 | WH Manager | **Waybill** (if required) | Transport doc |
-| 6 | Officer | **Workflow Timeline** | Audit trail |
-
----
-
-## Workflow D — Inter-store transfer
+## Workflow C — Inter-store transfer
 
 ```
 Storekeeper → Warehouse Manager
@@ -92,7 +77,7 @@ Storekeeper → Warehouse Manager
 ## Document status progression
 
 **Orders:** Draft → Confirmed → In Progress → Completed  
-**GRN / GIN:** Draft → Confirmed (stock moves on confirm)  
+**GRN:** Draft → Confirmed (stock increases on confirm). **GIN** (outbound) is not in the current release.  
 **Receipt Authorization:** Created → received → reconciled to GRN
 
 ---
@@ -102,12 +87,10 @@ Storekeeper → Warehouse Manager
 | Document | Primary creator | Primary confirmer |
 |----------|-----------------|-------------------|
 | Receipt Order | Officer | Officer |
-| Dispatch Order | Officer | Officer |
 | Assignment | Officer / Hub Mgr / WH Mgr | — |
 | Receipt Authorization | Hub Mgr / WH Mgr | — |
 | GRN | Storekeeper / WH Mgr | WH Manager |
-| GIN | WH Manager | WH Manager |
-| Waybill | Hub Mgr / WH Mgr | Same |
+| Waybill | Hub Mgr / WH Mgr | Same *(inbound/transport context where used)* |
 | Transfer Request | Storekeeper | WH Manager |
 
 ---
@@ -120,6 +103,5 @@ Storekeeper → Warehouse Manager
 4. WH Manager — store assignment + GRN confirm  
 5. Storekeeper — accept, stacks, receive  
 6. Officer — workflow timeline  
-7. Dispatch order → GIN  
 
 Return to [User Manual index](README.md)

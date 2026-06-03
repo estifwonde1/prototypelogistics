@@ -4,21 +4,23 @@
 
 **Officers** coordinate logistics **without** performing warehouse floor work. They:
 
-- Create and confirm **Receipt Orders** (inbound) and **Dispatch Orders** (outbound)
-- Assign **Hub Managers** or **Warehouse Managers** to execute orders
+- Create and confirm **Receipt Orders** (inbound)
+- Assign **Hub Managers** or **Warehouse Managers** to execute receipt orders
 - Monitor **facilities** capacity and status across their scope
-- Track **workflow timelines** from order creation through GRN/GIN completion
+- Track **workflow timelines** from receipt order creation through **GRN** completion
 - Manage **commodity** definitions (Federal Officer; sub-federal officers per policy)
 
-Officers **cannot** create GRNs/GINs, edit stacks, or accept storekeeper assignments.
+**Dispatch orders (outbound)** are **not implemented** in the current release. Officer menus or technical docs that reference dispatch should be ignored for day-to-day training until a future version ships outbound.
+
+Officers **cannot** create GRNs, edit stacks, or accept storekeeper assignments.
 
 ## Officer role variants
 
-There are **five** officer roles. They share receipt/dispatch order permissions but differ in **geographic scope** and **dashboard data**.
+There are **five** officer roles. They share **receipt order** permissions but differ in **geographic scope** and **dashboard data**.
 
 | Role | Scope | Menu |
 |------|-------|------|
-| **Federal Officer** | System-wide | Dashboard, Facilities, Receipt Orders, Commodities; dispatch via dashboard |
+| **Federal Officer** | System-wide | Dashboard, Facilities, Receipt Orders, Commodities |
 | **Regional Officer** | Assigned region | Dashboard, Facilities, Receipt Orders, Commodities |
 | **Zonal Officer** | Assigned zone | Same as regional |
 | **Woreda Officer** | Assigned woreda | Same as regional |
@@ -37,8 +39,6 @@ There are **five** officer roles. They share receipt/dispatch order permissions 
 | **Receipt Orders** | `/officer/receipt-orders` | List, create, edit, confirm, assign |
 | **Commodities** | `/officer/commodities` | View/create commodities |
 
-Dispatch orders: **dashboard** quick actions and `/officer/dispatch-orders` routes.
-
 ## Sidebar — Regional / Zonal / Woreda / Kebele
 
 **Overview:** Dashboard, Facilities  
@@ -46,7 +46,7 @@ Dispatch orders: **dashboard** quick actions and `/officer/dispatch-orders` rout
 
 ## Dashboard (`/officer/dashboard`)
 
-- Receipt and dispatch order counts by status (Draft, Confirmed, In Progress, Completed)
+- Receipt order counts by status (Draft, Confirmed, In Progress, Completed)
 - Hub/warehouse totals (Federal and Regional officers may see warehouse breakdown)
 
 ### Quick actions
@@ -54,9 +54,7 @@ Dispatch orders: **dashboard** quick actions and `/officer/dispatch-orders` rout
 | Button | Navigates to |
 |--------|--------------|
 | **Create Receipt Order** | `/officer/receipt-orders/new` |
-| **Create Dispatch Order** | `/officer/dispatch-orders/new` |
 | **View Receipt Orders** | `/officer/receipt-orders` |
-| **View Dispatch Orders** | `/officer/dispatch-orders` |
 | **Facilities Overview** | `/officer/facilities` |
 
 ## Receipt Orders
@@ -83,13 +81,6 @@ Dispatch orders: **dashboard** quick actions and `/officer/dispatch-orders` rout
 | **Workflow Timeline** | Audit trail |
 | **Receipt Authorizations** | View RAs from hub/warehouse managers |
 
-## Dispatch Orders
-
-- Create at `/officer/dispatch-orders/new`
-- Confirm → **Assignments** → assign **Warehouse Manager**
-- **Stock Reservations** (where enabled)
-- Track through **Workflow Timeline** after GIN
-
 ## Facilities Overview
 
 Capacity usage across hubs/warehouses; **full** / **almost full** indicators. Check before creating orders.
@@ -115,7 +106,5 @@ Capacity usage across hubs/warehouses; **full** / **almost full** indicators. Ch
 3. Storekeeper accepts → stack layout.
 4. Managers create **RA** and **GRN**.
 5. Officer monitors **Workflow Timeline**.
-
-Outbound: Officer → Warehouse Manager → **GIN**.
 
 Next: [Hub Manager](06-hub-manager.md) · [End-to-end workflows](12-end-to-end-workflows.md)
