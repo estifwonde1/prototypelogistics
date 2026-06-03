@@ -157,11 +157,6 @@ function HubEditRedirect() {
   return <Navigate to={`/admin/setup/hubs?id=${id}`} replace />;
 }
 
-function WarehouseEditRedirect() {
-  const { id } = useParams();
-  return <Navigate to={`/admin/setup/warehouses?id=${id}`} replace />;
-}
-
 const EntryRoute = () => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated());
   const role = useAuthStore((state) => state.role);
@@ -501,7 +496,7 @@ export const router = createBrowserRouter([
         path: 'warehouses/:id/edit',
         element: (
           <RequirePermission resource="warehouses" action="update">
-            <WarehouseEditRedirect />
+            <WarehouseFormPage />
           </RequirePermission>
         ),
       },
