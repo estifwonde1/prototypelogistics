@@ -31,6 +31,7 @@ import {
 import { getWarehouses } from "../../api/warehouses";
 import { getHubs } from "../../api/hubs";
 import { getCommodityReferences, getUnitReferences, getUomConversions } from "../../api/referenceData";
+import { getCommodityDefinitions } from "../../api/commodityDefinitions";
 import { useAuthStore } from "../../store/authStore";
 import { normalizeRoleSlug } from '../../contracts/warehouse';
 import { formatWarehouseCapacityLabel } from './FacilitiesOverviewPage_helpers';
@@ -111,6 +112,11 @@ function ReceiptOrderFormPage() {
   const hydratedRef = useRef<string | null>(null);
 
   // ── Data queries ──
+  const { data: commodityDefinitions = [] } = useQuery({
+    queryKey: ["reference-data", "commodity-definitions"],
+    queryFn: getCommodityDefinitions,
+  });
+
   const { data: commodities = [] } = useQuery({
     queryKey: ["reference-data", "commodities"],
     queryFn: () => getCommodityReferences(),
@@ -164,22 +170,15 @@ function ReceiptOrderFormPage() {
 
   // ── Derived: unique commodity names ──
   const commodityNameOptions = useMemo(() => {
-    const seen = new Set<string>();
-    return commodities
-      .filter((c) => {
-        const key = c.name || `Commodity #${c.id}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .map((c) => ({ value: String(c.id), label: c.name || `Commodity #${c.id}` }))
+    return commodityDefinitions
+      .map((d) => ({ value: String(d.id), label: d.name }))
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, [commodities]);
+  }, [commodityDefinitions]);
 
   // ── Derived: batches for selected commodity ──
   const batchOptions = useMemo(() => {
     if (!selectedCommodityId) return [];
-    const selectedName = commodities.find((c) => String(c.id) === selectedCommodityId)?.name;
+    const selectedName = commodityDefinitions.find((d) => String(d.id) === selectedCommodityId)?.name;
     if (!selectedName) return [];
     return commodities
       .filter((c) => {
@@ -193,7 +192,7 @@ function ReceiptOrderFormPage() {
         value: String(c.id),
         label: c.batch_no || `Batch #${c.id}`,
       }));
-  }, [commodities, selectedCommodityId, selectedBatchId]);
+  }, [commodities, commodityDefinitions, selectedCommodityId, selectedBatchId]);
 
   // ── Hub / warehouse options ──
   const hubOptions = useMemo(
@@ -325,7 +324,7 @@ function ReceiptOrderFormPage() {
   // ── Hydrate edit form ──
   useEffect(() => {
     if (!isEdit || !existingOrder) return;
-    if (commodities.length === 0) return;
+    if (commodities.length === 0 || commodityDefinitions.length === 0) return;
     const key = `${id}:${existingOrder.updated_at ?? existingOrder.id}`;
     if (hydratedRef.current === key) return;
     hydratedRef.current = key;
@@ -337,13 +336,15 @@ function ReceiptOrderFormPage() {
     const rawLines = existingOrder.lines ?? existingOrder.receipt_order_lines ?? [];
     if (rawLines.length > 0) {
       const first = rawLines[0];
-      setSelectedCommodityId(first.commodity_id ? String(first.commodity_id) : null);
+      const batch = commodities.find((c) => c.id === first.commodity_id);
+      const definition = commodityDefinitions.find((d) => d.name === batch?.name);
+
+      setSelectedCommodityId(definition ? String(definition.id) : null);
       setSelectedBatchId(first.commodity_id ? String(first.commodity_id) : null);
       setUnitId(first.unit_id ? String(first.unit_id) : null);
       setPackagingUnitId(first.packaging_unit_id ? String(first.packaging_unit_id) : null);
       setPackagingSize(first.packaging_size ?? null);
 
-      const batch = commodities.find((c) => c.id === first.commodity_id);
       setBatchQuantity(batch?.quantity ?? 0);
       setCommodityNumericId(batch?.id ?? null);
 
@@ -374,7 +375,7 @@ function ReceiptOrderFormPage() {
       });
       setDestinations(rows.length > 0 ? rows : [newDestinationRow()]);
     }
-  }, [isEdit, existingOrder, id, commodities]);
+  }, [isEdit, existingOrder, id, commodities, commodityDefinitions]);
 
   // ── Mutations ──
   const createMutation = useMutation({

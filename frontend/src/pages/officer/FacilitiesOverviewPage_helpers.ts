@@ -77,34 +77,14 @@ export function formatWarehouseCapacityLabel(w: Warehouse): {
   status: CapacityStatus;
 } {
   const status = warehouseCapacityStatus(w);
-  const remainingFmt = fmt(whFreeMt(w));
 
   if (status === 'none') {
-    return {
-      label: `${w.name} — capacity not established`,
-      disabled: true,
-      status,
-    };
+    return { label: w.name, disabled: true, status };
   }
   if (status === 'full') {
-    return {
-      label: `${w.name} — FULL (0 MT remaining)`,
-      disabled: true,
-      status,
-    };
+    return { label: w.name, disabled: true, status };
   }
-  if (status === 'almost_full') {
-    return {
-      label: `${w.name} — Almost full (${remainingFmt} MT remaining)`,
-      disabled: false,
-      status,
-    };
-  }
-  return {
-    label: `${w.name} — ${remainingFmt} MT remaining`,
-    disabled: false,
-    status,
-  };
+  return { label: w.name, disabled: false, status };
 }
 
 /** Progress bar value capped at 100; label shows actual utilization (may exceed 100%). */
