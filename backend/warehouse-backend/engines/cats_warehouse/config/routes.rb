@@ -37,6 +37,7 @@ Cats::Warehouse::Engine.routes.draw do
     delete "reference_data/commodities/:id", to: "reference_data#destroy_commodity"
     get "reference_data/categories", to: "reference_data#categories"
     post "reference_data/categories", to: "reference_data#create_category"
+    patch "reference_data/categories/:id", to: "reference_data#update_category"
     delete "reference_data/categories/:id", to: "reference_data#destroy_category"
 
     resources :commodity_definitions, only: [ :index, :create, :update, :destroy ]

@@ -33,6 +33,10 @@ module Cats
         admin?
       end
 
+      def update_category?
+        admin?
+      end
+
       def destroy_category?
         admin?
       end

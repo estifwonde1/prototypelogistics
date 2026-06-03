@@ -25,6 +25,7 @@ import {
 import {
   getCategoryReferences,
   createCategory,
+  updateCategory,
   deleteCategory,
 } from '../../../api/referenceData';
 import type { CommodityCategory } from '../../../types/referenceData';
@@ -57,6 +58,7 @@ export default function CommoditiesSetupPage() {
 
   // ── Category state ────────────────────────────────────────────────────────
   const [createCategoryModalOpen, setCreateCategoryModalOpen] = useState(false);
+  const [editCategoryTarget, setEditCategoryTarget] = useState<CommodityCategory | null>(null);
   const [deleteCategoryTarget, setDeleteCategoryTarget] = useState<CommodityCategory | null>(null);
   const [categoryGroupFilter, setCategoryGroupFilter] = useState<string | null>(null);
 
@@ -225,6 +227,36 @@ export default function CommoditiesSetupPage() {
     },
   });
 
+  // ── Category Edit ─────────────────────────────────────────────────────────
+  const editCategoryForm = useForm({
+    initialValues: { name: '', code: '', parent_id: '' },
+    validate: {
+      name: (v) => (!v.trim() ? 'Category name is required' : null),
+      parent_id: (v) => (!v ? 'Commodity group is required' : null),
+    },
+  });
+
+  const updateCategoryMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: number; payload: { name: string; code?: string; parent_id?: number | null } }) =>
+      updateCategory(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['reference-data', 'categories'] });
+      queryClient.invalidateQueries({ queryKey: ['commodity-definitions'] });
+      notifications.show({ title: 'Success', message: 'Category updated', color: 'green' });
+      setEditCategoryTarget(null);
+      editCategoryForm.reset();
+    },
+    onError: (error: unknown) => {
+      notifications.show({
+        title: 'Error',
+        message:
+          (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) ||
+          'Failed to update category',
+        color: 'red',
+      });
+    },
+  });
+
   // ── Category Delete ───────────────────────────────────────────────────────
   const deleteCategoryMutation = useMutation({
     mutationFn: (id: number) => deleteCategory(id),
@@ -291,6 +323,27 @@ export default function CommoditiesSetupPage() {
       name: values.name.trim(),
       code: values.code.trim() || undefined,
       parent_id: values.parent_id ? parseInt(values.parent_id) : null,
+    });
+  });
+
+  const openEditCategory = (cat: CommodityCategory) => {
+    setEditCategoryTarget(cat);
+    editCategoryForm.setValues({
+      name: cat.name,
+      code: cat.code ?? '',
+      parent_id: cat.parent_id ? String(cat.parent_id) : '',
+    });
+  };
+
+  const handleUpdateCategory = editCategoryForm.onSubmit((values) => {
+    if (!editCategoryTarget) return;
+    updateCategoryMutation.mutate({
+      id: editCategoryTarget.id,
+      payload: {
+        name: values.name.trim(),
+        code: values.code.trim() || undefined,
+        parent_id: values.parent_id ? parseInt(values.parent_id) : null,
+      },
     });
   });
 
@@ -532,7 +585,7 @@ export default function CommoditiesSetupPage() {
                       <Table.Th>Category Name</Table.Th>
                       <Table.Th>Code</Table.Th>
                       <Table.Th>Group</Table.Th>
-                      <Table.Th style={{ width: 80, textAlign: 'right' }}>Actions</Table.Th>
+                      <Table.Th style={{ width: 100, textAlign: 'right' }}>Actions</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
@@ -561,6 +614,17 @@ export default function CommoditiesSetupPage() {
                           </Table.Td>
                           <Table.Td>
                             <Group gap={4} justify="flex-end">
+                              <Tooltip label="Edit category" withArrow>
+                                <ActionIcon
+                                  variant="subtle"
+                                  color="blue"
+                                  size="sm"
+                                  onClick={() => openEditCategory(cat)}
+                                  aria-label="Edit category"
+                                >
+                                  <IconEdit size={14} />
+                                </ActionIcon>
+                              </Tooltip>
                               <Tooltip label="Delete category" withArrow>
                                 <ActionIcon
                                   variant="subtle"
@@ -752,6 +816,47 @@ export default function CommoditiesSetupPage() {
               </Button>
               <Button type="submit" loading={createCategoryMutation.isPending} leftSection={<IconPlus size={16} />}>
                 Create
+              </Button>
+            </Group>
+          </Stack>
+        </form>
+      </Modal>
+
+      {/* ── Edit Category Modal ── */}
+      <Modal
+        opened={!!editCategoryTarget}
+        onClose={() => { setEditCategoryTarget(null); editCategoryForm.reset(); }}
+        title={<Text fw={600} size="lg">Edit Category</Text>}
+        centered
+        radius="md"
+      >
+        <form onSubmit={handleUpdateCategory}>
+          <Stack gap="md">
+            <SearchableSelect
+              label="Commodity Group"
+              placeholder="Select a group (Food or Non-Food)"
+              data={groupSelectOptions}
+              required
+              {...editCategoryForm.getInputProps('parent_id')}
+            />
+            <TextInput
+              label="Category Name"
+              placeholder="e.g. Cereals, Hygiene Supplies"
+              required
+              {...editCategoryForm.getInputProps('name')}
+            />
+            <TextInput
+              label="Code"
+              placeholder="e.g. CRL, HYG (optional)"
+              {...editCategoryForm.getInputProps('code')}
+            />
+            <Divider />
+            <Group justify="flex-end">
+              <Button variant="default" onClick={() => { setEditCategoryTarget(null); editCategoryForm.reset(); }}>
+                Cancel
+              </Button>
+              <Button type="submit" loading={updateCategoryMutation.isPending}>
+                Save Changes
               </Button>
             </Group>
           </Stack>
