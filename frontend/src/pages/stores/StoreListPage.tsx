@@ -174,8 +174,8 @@ function StoreListPage() {
       });
     },
     onSuccess: async (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["stores"] });
-      queryClient.invalidateQueries({ queryKey: ["store-storekeepers"] });
+      await refetch();
+      queryClient.invalidateQueries({ queryKey: ["store-storekeepers"], exact: false });
       await refreshCurrentUserAssignments(variables.userId);
       notifications.show({
         title: "Success",
@@ -203,8 +203,8 @@ function StoreListPage() {
       userId: number;
     }) => unassignStorekeeper(storeId, userId),
     onSuccess: async (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["stores"] });
-      queryClient.invalidateQueries({ queryKey: ["store-storekeepers"] });
+      await refetch();
+      queryClient.invalidateQueries({ queryKey: ["store-storekeepers"], exact: false });
       await refreshCurrentUserAssignments(variables.userId);
       notifications.show({
         title: "Success",

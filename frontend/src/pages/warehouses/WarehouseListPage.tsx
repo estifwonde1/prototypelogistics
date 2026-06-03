@@ -90,14 +90,22 @@ function WarehouseListPage() {
     const matchesSearch =
       warehouse.name.toLowerCase().includes(search.toLowerCase()) ||
       warehouse.code.toLowerCase().includes(search.toLowerCase());
-    const matchesHub = !hubFilter || warehouse.hub_id?.toString() === hubFilter;
+    let matchesHub = true;
+    if (hubFilter === '__independent__') {
+      matchesHub = warehouse.hub_id == null;
+    } else if (hubFilter) {
+      matchesHub = warehouse.hub_id?.toString() === hubFilter;
+    }
     return matchesSearch && matchesHub;
   });
 
-  const hubOptions = hubs?.map((hub) => ({
-    value: hub.id.toString(),
-    label: `${hub.name} (${hub.code})`,
-  }));
+  const hubOptions = [
+    { value: '__independent__', label: 'Independent (No Hub)' },
+    ...(hubs?.map((hub) => ({
+      value: hub.id.toString(),
+      label: `${hub.name} (${hub.code})`,
+    })) || []),
+  ];
 
   if (isLoading) {
     return <LoadingState message="Loading warehouses..." />;
@@ -200,7 +208,7 @@ function WarehouseListPage() {
                     <Table.Td>
                       <StatusBadge status={warehouse.status} />
                     </Table.Td>
-                    <Table.Td>{warehouse.hub_name || hub?.name || '-'}</Table.Td>
+                    <Table.Td>{warehouse.hub_name || hub?.name || 'Independent'}</Table.Td>
                     <Table.Td>{warehouse.subcity_name || '-'}</Table.Td>
                     <Table.Td>{warehouse.woreda_name || warehouse.location_name || '-'}</Table.Td>
                     <Table.Td>

@@ -1,7 +1,7 @@
 module Cats
   module Warehouse
     class StoresController < BaseController
-      STORE_INCLUDES = [ { warehouse: :warehouse_capacity } ].freeze
+      STORE_INCLUDES = [ { warehouse: :warehouse_capacity }, { user_assignments: :user } ].freeze
 
       def index
         authorize Store

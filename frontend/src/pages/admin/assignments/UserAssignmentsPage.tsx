@@ -43,7 +43,7 @@ export default function UserAssignmentsPage() {
   const isKebeleOfficer = roleName === 'Kebele Officer';
   const isFederalOfficer = roleName === 'Federal Officer';
   const isWarehouseRole = roleName === 'Warehouse Manager' || roleName === 'Storekeeper';
-  const canAssign = !!roleName && !!userId && !isFederalOfficer;
+  const canAssign = !!roleName && !!userId && !isFederalOfficer && selectedIds.length > 0;
 
   const { data: regions } = useQuery({
     queryKey: ['assignment-regions'],
@@ -96,6 +96,8 @@ export default function UserAssignmentsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-assignments', roleName] });
       notifications.show({ title: 'Success', message: 'Assignments updated', color: 'green' });
+      setUserId(null);
+      setSelectedIds([]);
     },
     onError: (err: any) => {
       notifications.show({
