@@ -981,6 +981,21 @@ find_or_create_with(
   { role_name: "Storekeeper" }
 )
 
+puts "Syncing warehouse manager contacts from assignments..."
+[
+  [warehouse_manager_user, warehouses[0]],
+  [warehouse_manager_user_2, warehouses[1]]
+].each do |user, warehouse|
+  next if warehouse.blank?
+
+  contacts = warehouse.warehouse_contacts || Cats::Warehouse::WarehouseContacts.new(warehouse: warehouse)
+  manager_name = [user.first_name, user.last_name].compact.join(" ").strip
+  manager_name = user.email if manager_name.empty?
+  contacts.manager_name = manager_name
+  contacts.contact_phone = user.phone_number if user.phone_number.present?
+  contacts.contact_email = user.email if user.email.present?
+  contacts.save!
+end
 
 ui_seed = Rails.root.join("db", "seeds", "ui.rb")
 load(ui_seed) if File.exist?(ui_seed)

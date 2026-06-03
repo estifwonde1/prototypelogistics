@@ -130,7 +130,14 @@ function ReceiptOrdersListPage() {
     });
   }, [orders, search, statusFilter, warehouseFilter]);
 
-  const statusOptions = [...RECEIPT_ORDER_STATUS_FILTER_OPTIONS];
+  const statusOptions = useMemo(() => {
+    if (isWarehouseManager || isHubManager) {
+      return RECEIPT_ORDER_STATUS_FILTER_OPTIONS.filter(
+        (opt) => opt.value !== 'Draft' && opt.value !== 'Cancelled'
+      );
+    }
+    return [...RECEIPT_ORDER_STATUS_FILTER_OPTIONS];
+  }, [isWarehouseManager, isHubManager]);
 
   const warehouseOptions = [
     { value: NO_DESTINATION_WAREHOUSE_VALUE, label: 'No destination warehouse' },

@@ -61,6 +61,31 @@ module Cats
         blockers << "capacity_not_established" unless capacity_established?
         blockers
       end
+
+      def assigned_warehouse_manager
+        assignment = UserAssignment.includes(:user)
+                                   .where(warehouse_id: id, role_name: "Warehouse Manager")
+                                   .order(id: :desc)
+                                   .first
+        assignment&.user
+      end
+
+      def live_warehouse_contact_payload
+        user = assigned_warehouse_manager
+        fallback = warehouse_contacts
+
+        manager_name = [user&.first_name, user&.last_name].compact.join(" ").strip
+        manager_name = user&.email if manager_name.blank?
+
+        {
+          id: fallback&.id,
+          warehouse_id: id,
+          manager_name: manager_name.presence || fallback&.manager_name,
+          contact_phone: user&.phone_number.presence || fallback&.contact_phone,
+          contact_email: user&.email.presence || fallback&.contact_email
+        }
+      end
+
       private
 
       def inherit_location_and_management_from_hub

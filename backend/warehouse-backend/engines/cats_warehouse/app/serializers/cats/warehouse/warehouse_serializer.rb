@@ -6,13 +6,17 @@ module Cats
       attributes :id, :code, :name, :warehouse_type, :status, :operational, :operational_blockers,
                  :description, :location_id, :location_name,
                  :kebele, :hub_id, :hub_name, :geo_id, :managed_under, :ownership_type,
-                 :rental_agreement_document, :created_at, :updated_at, :assigned_manager
+                 :rental_agreement_document, :created_at, :updated_at, :assigned_manager,
+                 :warehouse_contacts
 
       has_one :warehouse_capacity, serializer: WarehouseCapacitySerializer
       has_one :warehouse_access, serializer: WarehouseAccessSerializer
       has_one :warehouse_infra, serializer: WarehouseInfraSerializer
-      has_one :warehouse_contacts, serializer: WarehouseContactsSerializer
       has_one :geo, serializer: GeoSerializer
+
+      def warehouse_contacts
+        object.live_warehouse_contact_payload
+      end
 
       def operational
         object.operational?

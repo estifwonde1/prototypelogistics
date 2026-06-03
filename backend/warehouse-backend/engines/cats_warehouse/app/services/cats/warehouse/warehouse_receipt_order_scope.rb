@@ -1,7 +1,12 @@
+# frozen_string_literal: true
+
 module Cats
   module Warehouse
     # Warehouse-scoped receipt orders: direct warehouse_id, assignments, or active RAs.
+    # Excludes draft/cancelled — facility roles only see orders after officer confirmation.
     class WarehouseReceiptOrderScope
+      include ContractConstants
+
       def self.relation_for_warehouse(warehouse_id:)
         warehouse_id = warehouse_id.to_i
         store_ids = Store.where(warehouse_id: warehouse_id).pluck(:id)
@@ -28,6 +33,7 @@ module Cats
         ReceiptOrder
           .where(warehouse_id: warehouse_id)
           .or(ReceiptOrder.where(id: assigned_order_ids))
+          .where(status: RECEIPT_ORDER_OPERATIONAL_STATUSES)
       end
     end
   end
