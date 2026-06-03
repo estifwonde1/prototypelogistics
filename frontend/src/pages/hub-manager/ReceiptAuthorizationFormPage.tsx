@@ -45,18 +45,22 @@ function lineForAssignment(
 /** Planned assignment rows eligible for RA truck authorization (role-aware). */
 function plannedRaAssignments(
   assignments: ReceiptOrderAssignment[],
-  opts: { isStandaloneWM: boolean; scopedWarehouseId?: number }
+  opts: { isStandaloneWM: boolean; scopedWarehouseId?: number; standaloneStores?: { id: number }[] }
 ): ReceiptOrderAssignment[] {
   const active = assignments.filter(
-    (a) => a.warehouse_id != null && !isAssignmentRejected(a.status)
+    (a) => !isAssignmentRejected(a.status)
   );
   if (opts.isStandaloneWM && opts.scopedWarehouseId != null) {
+    const storeIds = new Set((opts.standaloneStores ?? []).map((s) => Number(s.id)));
     return active.filter(
       (a) =>
-        a.store_id != null && Number(a.warehouse_id) === Number(opts.scopedWarehouseId)
+        a.store_id != null &&
+        (a.warehouse_id != null
+          ? Number(a.warehouse_id) === Number(opts.scopedWarehouseId)
+          : storeIds.has(Number(a.store_id)))
     );
   }
-  return active.filter((a) => a.store_id == null);
+  return active.filter((a) => a.warehouse_id != null && a.store_id == null);
 }
 
 function plannedWarehouseIdsOnLine(
@@ -266,8 +270,9 @@ export default function ReceiptAuthorizationFormPage() {
       plannedRaAssignments(assignmentsAll, {
         isStandaloneWM: isWarehouseManager && isStandaloneAssignment,
         scopedWarehouseId,
+        standaloneStores,
       }),
-    [assignmentsAll, isWarehouseManager, isStandaloneAssignment, scopedWarehouseId]
+    [assignmentsAll, isWarehouseManager, isStandaloneAssignment, scopedWarehouseId, standaloneStores]
   );
   const orderLines = useMemo(
     () => selectedOrder?.receipt_order_lines ?? selectedOrder?.lines ?? [],

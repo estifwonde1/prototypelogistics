@@ -184,6 +184,69 @@ module Cats
         render_error(e.record.errors.full_messages.to_sentence, status: :unprocessable_entity)
       end
 
+      # PATCH /reference_data/categories/:id
+      def update_category
+        authorize :reference_data, :update_category?, policy_class: ReferenceDataPolicy
+
+        category = Cats::Core::CommodityCategory.find_by(id: params[:id])
+        unless category
+          return render_error("Category not found", status: :not_found)
+        end
+
+        # Groups (roots) cannot be renamed via this endpoint to keep the Food/Non-Food hierarchy stable.
+        if category.is_root?
+          return render_error("Top-level commodity groups cannot be renamed here.", status: :unprocessable_entity)
+        end
+
+        payload = params.require(:category).permit(:name, :code, :parent_id)
+
+        name = payload[:name]&.strip
+        if name.blank?
+          return render_error("Category name is required", status: :unprocessable_entity)
+        end
+
+        # Resolve new parent if provided (can be used to move between groups)
+        parent_id = payload.key?(:parent_id) ? payload[:parent_id].presence : category.parent_id
+        parent = nil
+        if parent_id.present?
+          parent = Cats::Core::CommodityCategory.find_by(id: parent_id)
+          unless parent
+            return render_error("Parent category not found", status: :not_found)
+          end
+          unless parent.is_root?
+            return render_error("Categories can only be nested one level deep", status: :unprocessable_entity)
+          end
+        end
+
+        # Check for duplicate name at the same level (excluding the current record)
+        scope = if parent.present?
+          parent.children.where("LOWER(name) = ? AND id != ?", name.downcase, category.id)
+        else
+          Cats::Core::CommodityCategory.roots.where("LOWER(name) = ? AND id != ?", name.downcase, category.id)
+        end
+        if scope.exists?
+          return render_error("A category with this name already exists at this level", status: :unprocessable_entity)
+        end
+
+        category.name = name
+        if payload[:code].present?
+          code = payload[:code].strip
+          if code != category.code && Cats::Core::CommodityCategory.exists?(code: code)
+            return render_error("A category with code '#{code}' already exists", status: :unprocessable_entity)
+          end
+          category.code = code
+        end
+        category.parent = parent if parent.present?
+        category.save!
+
+        all_categories = Cats::Core::CommodityCategory.order(:name, :id).to_a
+        category_map = all_categories.index_by(&:id)
+
+        render_success({ category: serialize_category(category, category_map) })
+      rescue ActiveRecord::RecordInvalid => e
+        render_error(e.record.errors.full_messages.to_sentence, status: :unprocessable_entity)
+      end
+
       # DELETE /reference_data/categories/:id
       def destroy_category
         authorize :reference_data, :destroy_category?, policy_class: ReferenceDataPolicy

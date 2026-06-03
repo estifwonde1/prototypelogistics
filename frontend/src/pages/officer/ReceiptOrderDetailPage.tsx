@@ -336,12 +336,22 @@ function computeWarehouseManagerStoreRemaining(
   }
 
   const stores = storesPayload ?? [];
+  const belongsToRestrictedLines = (a: ReceiptOrderAssignment) => {
+    if (!restrict || restrict.size === 0) return true;
+    if (a.receipt_order_line_id == null) return restrict.size <= 1;
+    return restrict.has(Number(a.receipt_order_line_id));
+  };
   const assigned = assignments
     .filter((a) => {
       if (a.store_id == null) return false;
+      if (!belongsToRestrictedLines(a)) return false;
       if (a.warehouse_id != null && Number(a.warehouse_id) === Number(userWarehouseId)) return true;
       const store = stores.find((s) => Number(s.id) === Number(a.store_id));
-      return !!store && Number(store.warehouse_id) === Number(userWarehouseId);
+      if (store) return Number(store.warehouse_id) === Number(userWarehouseId);
+      // Warehouse-manager receipt-order payloads are already scoped by the backend
+      // to this warehouse and its stores. Count visible store rows even when the
+      // assign-store lookup has not been opened/loaded yet.
+      return a.warehouse_id == null;
     })
     .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
   return { pool, assigned, remaining: pool - assigned };
@@ -615,16 +625,20 @@ function ReceiptOrderDetailPage() {
   const allHubs = (allHubsQuery.data as { id: number; name: string }[]) || [];
 
   const isIndependentWarehouseContext = useMemo(() => {
-    if (!isWarehouseManager || userWarehouseId == null) return false;
-    const activeWarehouse = allWarehouses.find((w) => Number(w.id) === Number(userWarehouseId));
-    if (activeWarehouse) return activeWarehouse.hub_id == null;
-    return (
-      order?.warehouse_id != null &&
-      Number(order.warehouse_id) === Number(userWarehouseId) &&
-      order.hub_id == null &&
-      activeAssignment?.hub?.id == null
-    );
-  }, [isWarehouseManager, userWarehouseId, allWarehouses, order, activeAssignment]);
+    const candidateWarehouseIds = new Set<number>();
+    if (isWarehouseManager && userWarehouseId != null) candidateWarehouseIds.add(Number(userWarehouseId));
+    if (order?.warehouse_id != null) candidateWarehouseIds.add(Number(order.warehouse_id));
+    (order?.assignments ?? order?.receipt_order_assignments ?? []).forEach((assignment) => {
+      if (assignment.warehouse_id != null) candidateWarehouseIds.add(Number(assignment.warehouse_id));
+    });
+
+    if (candidateWarehouseIds.size !== 1) return false;
+    const [warehouseId] = [...candidateWarehouseIds];
+    const warehouse = allWarehouses.find((w) => Number(w.id) === Number(warehouseId));
+    if (warehouse) return warehouse.hub_id == null;
+
+    return order?.warehouse_id != null && Number(order.warehouse_id) === warehouseId && order.hub_id == null;
+  }, [isWarehouseManager, userWarehouseId, allWarehouses, order]);
 
   const allStoresQuery = useQuery({
     queryKey: ['stores', { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],

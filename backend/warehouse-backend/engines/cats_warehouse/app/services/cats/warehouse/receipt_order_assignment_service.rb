@@ -57,11 +57,16 @@ module Cats
               )
             end
 
+            store = payload[:store_id].present? ? Store.find_by(id: payload[:store_id]) : nil
+            resolved_warehouse_id = payload[:warehouse_id].presence || 
+                                    store&.warehouse_id || 
+                                    @order.warehouse_id
+
             created_assignments << ReceiptOrderAssignment.create!(
               receipt_order: @order,
               receipt_order_line: line,
               hub_id: assignment_hub_id,
-              warehouse_id: payload[:warehouse_id] || @order.warehouse_id,
+              warehouse_id: resolved_warehouse_id,
               store_id: payload[:store_id],
               assigned_by: @actor,
               assigned_to_id: assigned_to_id_for(payload),

@@ -188,4 +188,23 @@ RSpec.describe Cats::Warehouse::ReceiptOrderAssignmentService, "warehouse capaci
 
     expect { service.call }.to change(Cats::Warehouse::ReceiptOrderAssignment, :count).by(1)
   end
+
+  it "resolves warehouse_id from store_id when store_id is present but warehouse_id is omitted" do
+    store = Cats::Warehouse::Store.find_by(warehouse_id: warehouse.id) || create(:cats_warehouse_store, warehouse: warehouse)
+    service = described_class.new(
+      order: receipt_order,
+      actor: actor,
+      assignments: [
+        {
+          receipt_order_line_id: receipt_line.id,
+          store_id: store.id,
+          quantity: 10
+        }
+      ]
+    )
+
+    expect { service.call }.to change(Cats::Warehouse::ReceiptOrderAssignment, :count).by(1)
+    assignment = Cats::Warehouse::ReceiptOrderAssignment.last
+    expect(assignment.warehouse_id).to eq(warehouse.id)
+  end
 end
