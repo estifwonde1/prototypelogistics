@@ -46,7 +46,15 @@ module Cats
         Rails.logger.info "DEBUG: Creating assignments from destinations for order #{@order.id}"
         @order.receipt_order_lines.each do |line|
           Rails.logger.info "DEBUG: Processing line #{line.id} with notes: '#{line.notes}'"
-          destination_info = parse_destination_from_line_notes(line.notes)
+          destination_info = nil
+          if line.respond_to?(:destination_hub_id) && line.destination_hub_id.present?
+            hub = Hub.find_by(id: line.destination_hub_id)
+            destination_info = { type: 'hub', hub: hub } if hub
+          elsif line.respond_to?(:destination_warehouse_id) && line.destination_warehouse_id.present?
+            warehouse = Warehouse.find_by(id: line.destination_warehouse_id)
+            destination_info = { type: 'warehouse', warehouse: warehouse } if warehouse
+          end
+          destination_info ||= parse_destination_from_line_notes(line.notes)
           Rails.logger.info "DEBUG: Parsed destination info: #{destination_info.inspect}"
           
           unless destination_info

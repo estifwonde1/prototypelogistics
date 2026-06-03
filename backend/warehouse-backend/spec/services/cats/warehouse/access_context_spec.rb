@@ -110,6 +110,38 @@ RSpec.describe Cats::Warehouse::AccessContext, type: :service do
         expect(warehouse_ids).to contain_exactly(warehouse.id)
       end
     end
+
+    context "with multiple roles (Hub Manager and Warehouse Manager)" do
+      let(:user) { create(:cats_core_user) }
+      let(:hub_warehouse) { create(:cats_warehouse_warehouse, hub: hub) }
+      let(:standalone_warehouse) { create(:cats_warehouse_warehouse, hub: nil) }
+
+      before do
+        # User is Hub Manager for the hub
+        Cats::Warehouse::UserAssignment.create!(
+          user: user,
+          role_name: "Hub Manager",
+          hub: hub
+        )
+        # User is Warehouse Manager for the standalone warehouse
+        Cats::Warehouse::UserAssignment.create!(
+          user: user,
+          role_name: "Warehouse Manager",
+          warehouse: standalone_warehouse
+        )
+        # Explicitly assign roles
+        user.roles << Cats::Core::Role.find_or_create_by!(name: "Hub Manager")
+        user.roles << Cats::Core::Role.find_or_create_by!(name: "Warehouse Manager")
+      end
+
+      it "includes both hub warehouses and standalone warehouses" do
+        access = described_class.new(user: user)
+        warehouse_ids = access.accessible_warehouse_ids.pluck(:id)
+
+        expect(warehouse_ids).to include(hub_warehouse.id)
+        expect(warehouse_ids).to include(standalone_warehouse.id)
+      end
+    end
   end
 
   describe "#storekeeper_warehouse_ids" do

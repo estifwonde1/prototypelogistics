@@ -110,17 +110,19 @@ module Cats
       end
 
       def accessible_warehouse_ids
-        return Warehouse.select(:id) if admin?
-        # Hub Manager before Warehouse Manager: hub users only see warehouses under their assigned hub(s),
-        # not standalone warehouses tied only to a Warehouse Manager assignment.
-        return Warehouse.where(hub_id: assigned_hub_ids).select(:id) if hub_manager?
-        return assigned_warehouse_ids if warehouse_manager?
-        return Warehouse.select(:id) if officer_full_access?
-        return Warehouse.where(location_id: officer_location_scope_ids).select(:id) if officer?
-        # Storekeeper can access warehouses from both direct warehouse assignments and store assignments
-        return (storekeeper_warehouse_ids + Store.where(id: assigned_store_ids).select(:warehouse_id).pluck(:warehouse_id)).uniq if storekeeper?
+        return Warehouse.pluck(:id) if admin? || officer_full_access?
 
-        []
+        wids = []
+        wids += Warehouse.where(hub_id: assigned_hub_ids).pluck(:id) if hub_manager?
+        wids += assigned_warehouse_ids if warehouse_manager?
+        wids += Warehouse.where(location_id: officer_location_scope_ids).pluck(:id) if officer?
+
+        if storekeeper?
+          wids += storekeeper_warehouse_ids
+          wids += Store.where(id: assigned_store_ids).pluck(:warehouse_id)
+        end
+
+        Warehouse.where(id: wids.uniq.compact).pluck(:id)
       end
 
       def accessible_store_ids
