@@ -77,8 +77,12 @@ export default function ProfilePage() {
       passwordForm.reset();
       notifications.show({ title: 'Success', message: 'Password changed successfully', color: 'green' });
     },
-    onError: (err: Error) => {
-      notifications.show({ title: 'Error', message: err.message || 'Failed to change password', color: 'red' });
+    onError: (err: any) => {
+      if (err.response?.status===422){
+        passwordForm.setFieldError('current_password','Incorrect Current password ');
+      } else {
+        notifications.show({ title: 'Error', message: err.message || 'Failed to change password', color: 'red' });
+      }
     },
   });
 
