@@ -42,10 +42,16 @@ module Cats
       end
 
       def call
+        tx_entered_unit_id = (item.respond_to?(:entered_unit_id) && item.entered_unit_id.present?) ? item.entered_unit_id : item.unit_id
+
         balance = locked_balance
         balance.quantity = balance.quantity.to_f + quantity_delta
         balance.base_quantity = balance.base_quantity.to_f + base_quantity_delta
         balance.base_unit_id ||= @base_unit_id
+
+        if quantity_delta.positive? && tx_entered_unit_id.present?
+          balance.entered_unit_id = tx_entered_unit_id
+        end
         balance.available_quantity = balance.quantity.to_f - balance.reserved_quantity.to_f if balance.respond_to?(:available_quantity)
 
         ensure_non_negative!(balance.base_quantity, "stock balance")
@@ -95,8 +101,7 @@ module Cats
 
         # Use the unit the user actually entered (e.g. Kuntal) when available.
         # Falls back to the canonical line unit (e.g. MT) for legacy records.
-        tx_entered_unit_id = (item.respond_to?(:entered_unit_id) && item.entered_unit_id.present?) ? item.entered_unit_id : item.unit_id
-
+        # (tx_entered_unit_id is now defined at the top of the method)
         # Determine the entered quantity.  Three scenarios:
         #
         #  1. The item already stores entered_quantity (e.g. InspectionItem) → use it.
