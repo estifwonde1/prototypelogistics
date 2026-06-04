@@ -39,11 +39,13 @@ module Cats
       end
 
       def batch_no
-        object.inventory_lot&.batch_no.presence || object.line_reference_no
+        object.inventory_lot&.batch_no.presence ||
+          object.commodity&.batch_no.presence ||
+          object.line_reference_no
       end
 
       def expiry_date
-        object.inventory_lot&.expiry_date
+        object.inventory_lot&.expiry_date || object.commodity&.best_use_before
       end
 
       def entered_unit_name

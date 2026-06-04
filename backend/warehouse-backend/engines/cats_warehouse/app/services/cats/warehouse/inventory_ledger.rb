@@ -96,7 +96,27 @@ module Cats
         # Use the unit the user actually entered (e.g. Kuntal) when available.
         # Falls back to the canonical line unit (e.g. MT) for legacy records.
         tx_entered_unit_id = (item.respond_to?(:entered_unit_id) && item.entered_unit_id.present?) ? item.entered_unit_id : item.unit_id
-        tx_entered_quantity = (item.respond_to?(:entered_quantity) && item.entered_quantity.present?) ? item.entered_quantity.abs : quantity_delta.abs
+
+        # Determine the entered quantity.  Three scenarios:
+        #
+        #  1. The item already stores entered_quantity (e.g. InspectionItem) → use it.
+        #  2. The item has entered_unit_id ≠ unit_id but no entered_quantity
+        #     column (e.g. GrnItem) → reverse-convert from line unit to entered
+        #     unit so the StackTransaction shows "10 Kuntal" instead of "1 MT".
+        #  3. Neither → fall back to the raw quantity delta.
+        tx_entered_quantity =
+          if item.respond_to?(:entered_quantity) && item.entered_quantity.present?
+            item.entered_quantity.to_f.abs
+          elsif tx_entered_unit_id != item.unit_id
+            UomConversionResolver.convert(
+              quantity_delta.abs,
+              from_unit_id: item.unit_id,
+              to_unit_id:   tx_entered_unit_id,
+              commodity_id: item.commodity_id
+            ).to_f.abs
+          else
+            quantity_delta.abs
+          end
 
         StackTransaction.create!(
           source_id: quantity_delta.negative? ? item.stack_id : nil,

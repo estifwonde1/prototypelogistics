@@ -1304,7 +1304,11 @@ export default function StackLayoutPage() {
                 <Button
                   color="green"
                   leftSection={<IconCheck size={16} />}
-                  disabled={!canPlaceDriverArrivalGoods || Object.values(placements).every(q => q === 0)}
+                  disabled={
+                    !canPlaceDriverArrivalGoods || 
+                    Object.values(placements).every(q => q === 0) || 
+                    (selectedDriverArrivalRA && Object.values(placements).reduce((s, q) => s + q, 0) > Number(selectedDriverArrivalRA.my_inspection?.total_received ?? selectedDriverArrivalRA.authorized_quantity))
+                  }
                   onClick={() => setFinishStackingModalOpen(true)}
                   radius="md"
                 >
@@ -2079,6 +2083,11 @@ export default function StackLayoutPage() {
                     label={`Quantity to place${primaryUnit ? ` (${primaryUnit})` : ''}`}
                     description={`Remaining to assign: ${convertRaLineToInput(totalToPlaceLine - Object.values(placements).reduce((s, q) => s + q, 0), selectedRA).toLocaleString(undefined, { maximumFractionDigits: 3 })} ${primaryUnit}. Adjust any stack freely.`}
                     value={currentQtyPrimary || ''}
+                    error={
+                      !incompatible && totalToPlaceLine - Object.values(placements).reduce((s, q) => s + q, 0) < 0
+                        ? 'Cannot exceed total received quantity'
+                        : undefined
+                    }
                     onChange={(val) => {
                       const rawPrimary = Number(val) || 0;
                       const lineQty = convertRaInputToLine(rawPrimary, selectedRA);
