@@ -63,8 +63,10 @@ module Cats
             attrs = { user: user, role_name: role_name }
             case role_name
             when "Hub Manager"
+              Cats::Warehouse::UserAssignment.clear_other_hub_managers!(hub_id: id, user_id: user.id)
               attrs[:hub_id] = id
             when "Warehouse Manager"
+              Cats::Warehouse::UserAssignment.clear_other_warehouse_managers!(warehouse_id: id, user_id: user.id)
               attrs[:warehouse_id] = id
             when "Storekeeper"
               # Admin assigns at warehouse level
@@ -82,6 +84,10 @@ module Cats
 
           if role_name == "Hub Manager"
             assignments.each { |assignment| sync_hub_manager_contacts!(user, assignment.hub_id) }
+          end
+
+          if role_name == "Warehouse Manager"
+            assignments.each { |assignment| sync_warehouse_manager_contacts!(user, assignment.warehouse_id) }
           end
 
           render_success(assignments: assignments.map { |a| assignment_payload(a) }, status: :created)
@@ -117,13 +123,20 @@ module Cats
             existing_ids = Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name).pluck(:hub_id)
             create_ids = ids - existing_ids
             create_ids.each do |id|
+              Cats::Warehouse::UserAssignment.clear_other_hub_managers!(hub_id: id, user_id: user.id)
               find_or_create_with(Cats::Warehouse::UserAssignment, user: user, role_name: role_name, hub_id: id)
             end
             ids.each { |id| sync_hub_manager_contacts!(user, id) }
           when "Warehouse Manager"
             existing_ids = Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name).pluck(:warehouse_id)
             create_ids = ids - existing_ids
-            create_ids.each { |id| find_or_create_with(Cats::Warehouse::UserAssignment, user: user, role_name: role_name, warehouse_id: id) }
+            delete_ids = existing_ids - ids
+            Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name, warehouse_id: delete_ids).delete_all if delete_ids.any?
+            create_ids.each do |id|
+              Cats::Warehouse::UserAssignment.clear_other_warehouse_managers!(warehouse_id: id, user_id: user.id)
+              find_or_create_with(Cats::Warehouse::UserAssignment, user: user, role_name: role_name, warehouse_id: id)
+            end
+            ids.each { |id| sync_warehouse_manager_contacts!(user, id) }
           when "Officer"
             existing_ids = Cats::Warehouse::UserAssignment.where(user_id: user.id, role_name: role_name).pluck(:warehouse_id)
             create_ids = ids - existing_ids
@@ -236,6 +249,21 @@ module Cats
           return unless hub
 
           contacts = hub.hub_contacts || Cats::Warehouse::HubContacts.new(hub: hub)
+          manager_name = [user.first_name, user.last_name].compact.join(" ").strip
+          manager_name = user.email if manager_name.empty?
+          contacts.manager_name = manager_name
+          contacts.contact_phone = user.phone_number if user.phone_number.present?
+          contacts.contact_email = user.email if user.email.present?
+          contacts.save!
+        end
+
+        def sync_warehouse_manager_contacts!(user, warehouse_id)
+          return if warehouse_id.blank?
+
+          warehouse = Cats::Warehouse::Warehouse.find_by(id: warehouse_id)
+          return unless warehouse
+
+          contacts = warehouse.warehouse_contacts || Cats::Warehouse::WarehouseContacts.new(warehouse: warehouse)
           manager_name = [user.first_name, user.last_name].compact.join(" ").strip
           manager_name = user.email if manager_name.empty?
           contacts.manager_name = manager_name

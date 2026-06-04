@@ -2,18 +2,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  TextInput,
-  Table,
-  ActionIcon,
-  Modal,
-  Text,
-  Select,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, TextInput, Table, ActionIcon, Modal, Text } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { IconPlus, IconSearch, IconEdit, IconTrash } from '@tabler/icons-react';
 import { getWarehouses, deleteWarehouse } from '../../api/warehouses';
 import { getHubs } from '../../api/hubs';
@@ -47,18 +37,18 @@ function WarehouseListPage() {
   const userHubId = activeAssignment?.hub?.id;
   const isHubManager = roleSlug === 'hub_manager';
 
-  // Debug logging
-  console.log('=== WarehouseListPage Debug ===');
-  console.log('Active Assignment:', activeAssignment);
-  console.log('Role Slug:', roleSlug);
-  console.log('User Hub ID:', userHubId);
-  console.log('Is Hub Manager:', isHubManager);
+  const createWarehousePath =
+    isHubManager && userHubId
+      ? `/warehouses/new?hub_id=${userHubId}`
+      : '/admin/setup/locations?flow=warehouse';
+
+  const editWarehousePath = (warehouseId: number) =>
+    isHubManager ? `/warehouses/${warehouseId}/edit` : `/admin/setup/warehouses?id=${warehouseId}`;
 
   const { data: warehouses = [], isLoading, error, refetch } = useQuery({
     queryKey: ['warehouses', { hub_id: isHubManager ? userHubId : undefined }],
     queryFn: () => {
       const params = isHubManager && userHubId ? { hub_id: userHubId } : {};
-      console.log('Fetching warehouses with params:', params);
       return getWarehouses(params);
     },
   });
@@ -100,14 +90,22 @@ function WarehouseListPage() {
     const matchesSearch =
       warehouse.name.toLowerCase().includes(search.toLowerCase()) ||
       warehouse.code.toLowerCase().includes(search.toLowerCase());
-    const matchesHub = !hubFilter || warehouse.hub_id?.toString() === hubFilter;
+    let matchesHub = true;
+    if (hubFilter === '__independent__') {
+      matchesHub = warehouse.hub_id == null;
+    } else if (hubFilter) {
+      matchesHub = warehouse.hub_id?.toString() === hubFilter;
+    }
     return matchesSearch && matchesHub;
   });
 
-  const hubOptions = hubs?.map((hub) => ({
-    value: hub.id.toString(),
-    label: `${hub.name} (${hub.code})`,
-  }));
+  const hubOptions = [
+    { value: '__independent__', label: 'Independent (No Hub)' },
+    ...(hubs?.map((hub) => ({
+      value: hub.id.toString(),
+      label: `${hub.name} (${hub.code})`,
+    })) || []),
+  ];
 
   if (isLoading) {
     return <LoadingState message="Loading warehouses..." />;
@@ -134,7 +132,7 @@ function WarehouseListPage() {
         {canCreate && (
           <Button
             leftSection={<IconPlus size={16} />}
-            onClick={() => navigate('/admin/setup/locations')}
+            onClick={() => navigate(createWarehousePath)}
           >
             Create Warehouse
           </Button>
@@ -150,7 +148,7 @@ function WarehouseListPage() {
           style={{ flex: 1, maxWidth: 400 }}
         />
         {canReadHubs && (
-          <Select
+          <SearchableSelect
             placeholder="Filter by hub"
             data={hubOptions || []}
             value={hubFilter}
@@ -173,7 +171,7 @@ function WarehouseListPage() {
             !search && !hubFilter && canCreate
               ? {
                   label: 'Create Warehouse',
-                  onClick: () => navigate('/warehouses/new'),
+                  onClick: () => navigate(createWarehousePath),
                 }
               : undefined
           }
@@ -210,7 +208,7 @@ function WarehouseListPage() {
                     <Table.Td>
                       <StatusBadge status={warehouse.status} />
                     </Table.Td>
-                    <Table.Td>{warehouse.hub_name || hub?.name || '-'}</Table.Td>
+                    <Table.Td>{warehouse.hub_name || hub?.name || 'Independent'}</Table.Td>
                     <Table.Td>{warehouse.subcity_name || '-'}</Table.Td>
                     <Table.Td>{warehouse.woreda_name || warehouse.location_name || '-'}</Table.Td>
                     <Table.Td>
@@ -226,7 +224,7 @@ function WarehouseListPage() {
                           <ActionIcon
                             variant="subtle"
                             color="gray"
-                            onClick={() => navigate(`/warehouses/${warehouse.id}/edit`)}
+                            onClick={() => navigate(editWarehousePath(warehouse.id))}
                           >
                             <IconEdit size={16} />
                           </ActionIcon>

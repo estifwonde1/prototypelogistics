@@ -127,6 +127,24 @@ RSpec.describe Cats::Warehouse::ReceiptOrderPolicy, type: :policy do
     puts "Skipping property-based tests - rantly gem not available"
     
     # Fallback unit tests when rantly is not available
+    describe "facility roles and draft receipt orders" do
+      it "denies show? to warehouse manager for draft orders" do
+        warehouse = create(:cats_warehouse_warehouse)
+        wm = create(:cats_core_user, role_name: "Warehouse Manager")
+        Cats::Warehouse::UserAssignment.create!(
+          user: wm,
+          warehouse: warehouse,
+          role_name: "Warehouse Manager"
+        )
+        order = create_order_at_level(hierarchical_level: "Federal", created_by: create(:cats_core_user), status: "draft")
+        order.update_columns(warehouse_id: warehouse.id)
+
+        policy = described_class.new(wm, order)
+        expect(policy.show?).to eq(false)
+        expect(policy.workflow?).to eq(false)
+      end
+    end
+
     describe "Basic policy tests (fallback)" do
       it "blocks access to higher-level orders" do
         region = create(:cats_core_location, location_type: "Region")

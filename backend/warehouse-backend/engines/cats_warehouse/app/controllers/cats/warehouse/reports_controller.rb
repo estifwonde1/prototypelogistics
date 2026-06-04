@@ -127,7 +127,8 @@ module Cats
 
           if batch_no.present?
             transactions = transactions.select do |tx|
-              tx.inventory_lot&.batch_no.to_s.strip.casecmp?(batch_no)
+              tx_batch = tx.inventory_lot&.batch_no.presence || stock_card_transaction_commodity(tx)&.batch_no
+              tx_batch.to_s.strip.casecmp?(batch_no)
             end
           end
         rescue ArgumentError => e
@@ -167,6 +168,19 @@ module Cats
           transaction.inventory_lot&.commodity_id.presence ||
           transaction.destination&.commodity_id.presence ||
           transaction.source&.commodity_id
+      end
+
+      def stock_card_transaction_commodity(transaction)
+        item = stock_card_reference_item(transaction)
+        if item&.respond_to?(:commodity) && item.commodity
+          item.commodity
+        elsif item&.respond_to?(:commodity_id) && item.commodity_id.present?
+          Cats::Core::Commodity.find_by(id: item.commodity_id)
+        elsif transaction.inventory_lot&.commodity
+          transaction.inventory_lot.commodity
+        elsif (cid = stock_card_transaction_commodity_id(transaction))
+          Cats::Core::Commodity.find_by(id: cid)
+        end
       end
 
       def stock_card_reference_item(transaction)

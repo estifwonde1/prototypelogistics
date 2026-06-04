@@ -2,22 +2,8 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  Card,
-  Text,
-  Badge,
-  SimpleGrid,
-  Divider,
-  Alert,
-  NumberInput,
-  Select,
-  Textarea,
-  Progress,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, Card, Text, Badge, SimpleGrid, Divider, Alert, NumberInput, Textarea, Progress } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import {
   IconArrowLeft,
   IconCheck,
@@ -297,29 +283,19 @@ export default function StorekeeperRADetailPage() {
           <Button variant="default" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate(-1)}>
             Back
           </Button>
-          <Title order={2}>Driver Arrival</Title>
+          <Title order={2}>Receive Receipt</Title>
           <Badge color={statusColor(ra.status)} variant="light" size="lg">
             {statusLabel(ra.status)}
           </Badge>
         </Group>
 
-        {canDriverConfirm && (
-          <Button
-            color="green"
-            leftSection={<IconTruckDelivery size={16} />}
-            onClick={() => driverConfirmMutation.mutate(myInspection.id)}
-            loading={driverConfirmMutation.isPending}
-          >
-            Driver Confirmed Delivery
-          </Button>
-        )}
       </Group>
 
       <Text size="sm" c="dimmed" style={{ fontFamily: 'monospace' }}>{ra.reference_no}</Text>
 
       {canDriverConfirm && (
         <Alert icon={<IconTruckDelivery size={16} />} color="blue" variant="light" title="Action Required">
-          Goods received. Click &quot;Driver Confirmed Delivery&quot; above to generate your GRN.
+          Goods received. Confirm driver delivery in the Driver Confirmation section to generate your GRN.
         </Alert>
       )}
 
@@ -487,7 +463,7 @@ export default function StorekeeperRADetailPage() {
                   )}
                 </Stack>
 
-                <Select
+                <SearchableSelect
                   label="Grade / Condition"
                   data={['Good', 'Fair', 'Poor', 'Damaged', 'Infested', 'Wet']}
                   value={grade}
@@ -553,9 +529,21 @@ export default function StorekeeperRADetailPage() {
           {myGrn ? (
             <Text size="sm" c="dimmed">Driver confirmed. GRN generated.</Text>
           ) : myInspection ? (
-            <Text size="sm" c="dimmed">
-              Goods received. Use the &quot;Driver Confirmed Delivery&quot; button at the top of this page.
-            </Text>
+            <Stack gap="sm">
+              <Text size="sm" c="dimmed">
+                Goods received. Confirm driver delivery to generate your GRN.
+              </Text>
+              <Group justify="flex-end">
+                <Button
+                  color="green"
+                  leftSection={<IconTruckDelivery size={16} />}
+                  onClick={() => driverConfirmMutation.mutate(myInspection.id)}
+                  loading={driverConfirmMutation.isPending}
+                >
+                  Driver Confirmed Delivery
+                </Button>
+              </Group>
+            </Stack>
           ) : (
             <Text size="sm" c="dimmed">
               Receive the goods first, then confirm driver delivery.
@@ -569,26 +557,30 @@ export default function StorekeeperRADetailPage() {
         <Stack gap="sm">
           <Title order={4}>Goods Received Note (GRN)</Title>
           {myGrn ? (
-            <Group>
-              <Text size="sm" style={{ fontFamily: 'monospace' }} fw={600}>
-                {myGrn.reference_no || `GRN #${myGrn.id}`}
-              </Text>
-              <Badge color={myGrn.status === 'confirmed' ? 'green' : 'blue'} variant="light">
-                {myGrn.status ? myGrn.status.charAt(0).toUpperCase() + myGrn.status.slice(1) : 'Draft'}
-              </Badge>
-              <Button
-                variant="subtle"
-                size="xs"
-                rightSection={<IconExternalLink size={14} />}
-                onClick={() => navigate(`/grns/${myGrn.id}`)}
-              >
-                View GRN
-              </Button>
-              {myGrn.status === 'draft' && (
+            <Stack gap="md">
+              <Group>
+                <Text size="sm" style={{ fontFamily: 'monospace' }} fw={600}>
+                  {myGrn.reference_no || `GRN #${myGrn.id}`}
+                </Text>
+                <Badge color={myGrn.status === 'confirmed' ? 'green' : 'blue'} variant="light">
+                  {myGrn.status ? myGrn.status.charAt(0).toUpperCase() + myGrn.status.slice(1) : 'Draft'}
+                </Badge>
+              </Group>
+              <Group>
                 <Button
-                  size="xs"
-                  variant="light"
+                  variant="filled"
                   color="cyan"
+                  size="md"
+                  rightSection={<IconExternalLink size={16} />}
+                  onClick={() => navigate(`/grns/${myGrn.id}?returnTo=/storekeeper/receipt-authorizations/${ra.id}`)}
+                >
+                  View GRN
+                </Button>
+                <Button
+                  size="md"
+                  variant="filled"
+                  color="teal"
+                  leftSection={<IconClipboardCheck size={16} />}
                   onClick={() => {
                     navigate(
                       `/stacks/layout?receipt_authorization_id=${encodeURIComponent(String(ra.id))}`
@@ -597,8 +589,8 @@ export default function StorekeeperRADetailPage() {
                 >
                   Go to Stacking
                 </Button>
-              )}
-            </Group>
+              </Group>
+            </Stack>
           ) : (
             <Alert icon={<IconAlertCircle size={16} />} color="gray" variant="light">
               GRN will be generated after Driver Confirmation.

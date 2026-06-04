@@ -1,27 +1,8 @@
 import { useLocation, useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  Card,
-  Table,
-  Text,
-  SimpleGrid,
-  Dialog,
-  Tabs,
-  Select,
-  Textarea,
-  NumberInput,
-  TextInput,
-  Alert,
-  Divider,
-  Badge,
-  Progress,
-  Anchor,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, Card, Table, Text, SimpleGrid, Dialog, Tabs, Textarea, NumberInput, TextInput, Alert, Divider, Badge, Progress, Anchor } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { notifications } from '@mantine/notifications';
 import {
   getReceiptOrder,
@@ -43,7 +24,6 @@ import { getWarehouses } from '../../api/warehouses';
 import { getHubs } from '../../api/hubs';
 import { getCommodityReferences, getUnitReferences, getUomConversions } from '../../api/referenceData';
 import { StatusBadge } from '../../components/common/StatusBadge';
-import { ScopeBadge } from '../../components/common/ScopeBadge';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { ReservationCard } from '../../components/common/ReservationCard';
@@ -328,6 +308,7 @@ function computeWarehouseManagerStoreRemaining(
   opts?: {
     receiptAuthorizations?: ReceiptAuthorization[];
     restrictWarehouseRowsToLineIds?: Set<number> | null;
+    unquantifiedWarehouseRowQuantity?: number;
   }
 ): { pool: number; assigned: number; remaining: number } {
   let whRows = warehouseOnlyAssignmentsForManager(assignments, userWarehouseId);
@@ -339,7 +320,11 @@ function computeWarehouseManagerStoreRemaining(
     });
   }
 
-  const assignmentPool = whRows.reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+  const unquantifiedWarehouseRowQuantity = Number(opts?.unquantifiedWarehouseRowQuantity ?? 0);
+  const assignmentPool = whRows.reduce((s, a) => {
+    if (a.quantity != null) return s + Number(a.quantity);
+    return s + unquantifiedWarehouseRowQuantity;
+  }, 0);
 
   let pool = assignmentPool;
   if (assignmentPool <= 1e-6 && opts?.receiptAuthorizations?.length) {
@@ -351,12 +336,22 @@ function computeWarehouseManagerStoreRemaining(
   }
 
   const stores = storesPayload ?? [];
+  const belongsToRestrictedLines = (a: ReceiptOrderAssignment) => {
+    if (!restrict || restrict.size === 0) return true;
+    if (a.receipt_order_line_id == null) return restrict.size <= 1;
+    return restrict.has(Number(a.receipt_order_line_id));
+  };
   const assigned = assignments
     .filter((a) => {
       if (a.store_id == null) return false;
+      if (!belongsToRestrictedLines(a)) return false;
       if (a.warehouse_id != null && Number(a.warehouse_id) === Number(userWarehouseId)) return true;
       const store = stores.find((s) => Number(s.id) === Number(a.store_id));
-      return !!store && Number(store.warehouse_id) === Number(userWarehouseId);
+      if (store) return Number(store.warehouse_id) === Number(userWarehouseId);
+      // Warehouse-manager receipt-order payloads are already scoped by the backend
+      // to this warehouse and its stores. Count visible store rows even when the
+      // assign-store lookup has not been opened/loaded yet.
+      return a.warehouse_id == null;
     })
     .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
   return { pool, assigned, remaining: pool - assigned };
@@ -628,6 +623,22 @@ function ReceiptOrderDetailPage() {
     enabled: !!order,
   });
   const allHubs = (allHubsQuery.data as { id: number; name: string }[]) || [];
+
+  const isIndependentWarehouseContext = useMemo(() => {
+    const candidateWarehouseIds = new Set<number>();
+    if (isWarehouseManager && userWarehouseId != null) candidateWarehouseIds.add(Number(userWarehouseId));
+    if (order?.warehouse_id != null) candidateWarehouseIds.add(Number(order.warehouse_id));
+    (order?.assignments ?? order?.receipt_order_assignments ?? []).forEach((assignment) => {
+      if (assignment.warehouse_id != null) candidateWarehouseIds.add(Number(assignment.warehouse_id));
+    });
+
+    if (candidateWarehouseIds.size !== 1) return false;
+    const [warehouseId] = [...candidateWarehouseIds];
+    const warehouse = allWarehouses.find((w) => Number(w.id) === Number(warehouseId));
+    if (warehouse) return warehouse.hub_id == null;
+
+    return order?.warehouse_id != null && Number(order.warehouse_id) === warehouseId && order.hub_id == null;
+  }, [isWarehouseManager, userWarehouseId, allWarehouses, order]);
 
   const allStoresQuery = useQuery({
     queryKey: ['stores', { warehouse_id: isWarehouseManager ? userWarehouseId : undefined }],
@@ -1009,6 +1020,7 @@ function ReceiptOrderDetailPage() {
         {
           receiptAuthorizations,
           restrictWarehouseRowsToLineIds: restrictLines.size > 0 ? restrictLines : null,
+          unquantifiedWarehouseRowQuantity: visibleLines.reduce((s, l) => s + Number(l.quantity ?? 0), 0),
         }
       );
       const whOnly = warehouseOnlyAssignmentsForManager(assignments, userWarehouseId).filter((a) => {
@@ -1051,6 +1063,7 @@ function ReceiptOrderDetailPage() {
       assignments: [{
         store_id: Number(selectedAssignmentStoreId),
         quantity: qtyInOrderUnit > 0 ? qtyInOrderUnit : undefined,
+        quantity_unit_id: entryUnit !== baseUnitId ? entryUnit : undefined,
         notes: assignmentNotes,
         // Include line ID so storekeeper sees only their line
         receipt_order_line_id: visibleLines.length === 1 ? visibleLines[0].id : undefined,
@@ -1136,9 +1149,13 @@ function ReceiptOrderDetailPage() {
       }
       // Fall back: lines with destination_warehouse_id matching
       const byDest = lines.filter(l => l.destination_warehouse_id === warehouseId);
+      if (byDest.length > 0) return byDest;
+      if (order.warehouse_id != null && Number(order.warehouse_id) === Number(warehouseId)) {
+        return lines;
+      }
       // Do NOT fall back to all lines — if this warehouse has no assignment yet,
       // return empty so the manager doesn't see the full hub quantity.
-      return byDest;
+      return [];
     }
 
     if (roleSlug === 'storekeeper') {
@@ -1178,6 +1195,7 @@ function ReceiptOrderDetailPage() {
       {
         receiptAuthorizations,
         restrictWarehouseRowsToLineIds: lineRestrict.size > 0 ? lineRestrict : null,
+        unquantifiedWarehouseRowQuantity: visibleLines.reduce((s, l) => s + Number(l.quantity ?? 0), 0),
       }
     );
     const primaryLine = visibleLines[0] ?? lines[0];
@@ -1201,8 +1219,11 @@ function ReceiptOrderDetailPage() {
     }
 
     const u = baseAbbrev || 'order unit';
+    const allocationLabel = isIndependentWarehouseContext
+      ? 'Warehouse order quantity'
+      : 'Warehouse allocation (all hub→warehouse rows for you)';
     const detailLines = [
-      `Warehouse allocation (all hub→warehouse rows for you): ${pool.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${u}${poolKntl}`,
+      `${allocationLabel}: ${pool.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${u}${poolKntl}`,
       `Already assigned to stores here: ${assigned.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${u}${assignedKntl}`,
       `Remaining for stores: ${remaining.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${u}${remainingKntl}`,
     ];
@@ -1217,6 +1238,7 @@ function ReceiptOrderDetailPage() {
     uomConversions,
     units,
     receiptAuthorizations,
+    isIndependentWarehouseContext,
   ]);
 
   const storeAssignmentPackagingHint = useMemo(() => {
@@ -1299,6 +1321,25 @@ function ReceiptOrderDetailPage() {
         assignment.hub_name ||
         'Assigned location';
 
+      const lineBaseUnitId = line?.unit_id != null ? Number(line.unit_id) : undefined;
+      const storedUnitId = assignment.quantity_unit_id != null ? Number(assignment.quantity_unit_id) : undefined;
+      const commodityId = Number(line?.commodity_id ?? lines[0]?.commodity_id ?? 0);
+
+      // Display quantity in the entered unit when it differs from the line unit
+      let displayQty = assignment.quantity;
+      const effectiveUnitId = storedUnitId ?? lineBaseUnitId;
+      if (
+        storedUnitId != null &&
+        lineBaseUnitId != null &&
+        storedUnitId !== lineBaseUnitId &&
+        assignment.quantity != null
+      ) {
+        const toEntered = findDirectedMultiplier(lineBaseUnitId, storedUnitId, commodityId, uomConversions);
+        if (toEntered != null) {
+          displayQty = Number(assignment.quantity) * toEntered;
+        }
+      }
+
       const unitAbbrev =
         assignment.quantity_unit_abbreviation?.trim() ||
         line?.unit_name?.trim() ||
@@ -1310,7 +1351,7 @@ function ReceiptOrderDetailPage() {
         locationName,
         managerName: assignment.assigned_to_name || 'Assigned by facility setup',
         commodityName: line?.commodity_name || (line?.commodity_id ? `Commodity #${line.commodity_id}` : 'Order level'),
-        quantity: assignment.quantity,
+        quantity: displayQty,
         unitAbbrev,
         status: assignment.status,
       };
@@ -1347,7 +1388,7 @@ function ReceiptOrderDetailPage() {
     }
 
     return rows;
-  }, [assignments, lines, order]);
+  }, [assignments, lines, order, uomConversions]);
   const isDraft = String(order?.status || '').toLowerCase() === 'draft';
 
   const assignmentsTabSummary = useMemo(() => {
@@ -1383,6 +1424,7 @@ function ReceiptOrderDetailPage() {
         {
           receiptAuthorizations,
           restrictWarehouseRowsToLineIds: lineIdSet.size > 0 ? lineIdSet : null,
+          unquantifiedWarehouseRowQuantity: linesForScope.reduce((s, l) => s + Number(l.quantity ?? 0), 0),
         }
       );
       warehouseReceived = pool;
@@ -1424,6 +1466,9 @@ function ReceiptOrderDetailPage() {
       warehouseReceived,
       storeAssigned,
       remaining,
+      warehouseReceivedTitle: isIndependentWarehouseContext
+        ? 'Total order quantity at warehouse'
+        : 'Total received at warehouse (from hub)',
       warehouseReceivedLabel: withKntlSuffix(
         warehouseReceived,
         baseUnitId,
@@ -1464,6 +1509,7 @@ function ReceiptOrderDetailPage() {
     units,
     uomConversions,
     receiptAuthorizations,
+    isIndependentWarehouseContext,
   ]);
 
   // For storekeepers: GRN can only be created after inspection is completed (has at least one confirmed inspection)
@@ -1571,7 +1617,6 @@ function ReceiptOrderDetailPage() {
         <div>
           <Group gap="sm" align="center">
             <Title order={2}>Receipt Order RO-{order.id}</Title>
-            <ScopeBadge locationName={order.location_name} hierarchicalLevel={order.hierarchical_level} />
           </Group>
           <Text c="dimmed" size="sm">
             Created on {new Date(order.created_at).toLocaleDateString()}
@@ -1928,38 +1973,7 @@ function ReceiptOrderDetailPage() {
                                 );
                               }
                               if (isHub) {
-                                const unit =
-                                  line.unit_name?.trim() ||
-                                  (line.unit_id ? `unit #${line.unit_id}` : '');
-                                return (
-                                  <Stack gap={4}>
-                                    <Group gap={6} wrap="nowrap" align="baseline">
-                                      <Text fw={700} component="span">
-                                        {hubAssignedTotal.toLocaleString()}
-                                      </Text>
-                                      <Text size="sm" c="dimmed" component="span">
-                                        of
-                                      </Text>
-                                      <Text fw={600} component="span">
-                                        {hubOrderedTotal.toLocaleString()}
-                                      </Text>
-                                      {unit ? (
-                                        <Text size="xs" c="dimmed" component="span">
-                                          {unit}
-                                        </Text>
-                                      ) : null}
-                                    </Group>
-                                    {hubRemaining > 1e-6 ? (
-                                      <Text size="xs" c="dimmed">
-                                        {hubRemaining.toLocaleString()} still to assign to a warehouse
-                                      </Text>
-                                    ) : hubOrderedTotal > 0 ? (
-                                      <Text size="xs" c="green.7">
-                                        Fully assigned to warehouses
-                                      </Text>
-                                    ) : null}
-                                  </Stack>
-                                );
+                                return <Text fw={600}>{line.quantity}</Text>;
                               }
                               return <Text fw={600}>{line.quantity}</Text>;
                             })()}
@@ -2092,14 +2106,14 @@ function ReceiptOrderDetailPage() {
                                   error={Number(receiptQty) > remaining && remaining > 0 ? `Exceeds remaining (${remaining.toLocaleString()})` : null}
                                   required
                                 />
-                                <Select
+                                <SearchableSelect
                                   label="Condition"
                                   data={['Good', 'Damaged', 'Infested', 'Wet', 'Other']}
                                   value={receiptCondition}
                                   onChange={setReceiptCondition}
                                   required
                                 />
-                                <Select
+                                <SearchableSelect
                                   label="Grade"
                                   placeholder="Select grade"
                                   data={['Grade 1', 'Grade 2', 'Grade 3', 'Grade A', 'Grade B', 'Grade C', 'Substandard', 'Unknown']}
@@ -2132,7 +2146,7 @@ function ReceiptOrderDetailPage() {
                                       })()}
                                       description="Bags that were dispatched but did not arrive"
                                     />
-                                    <Select
+                                    <SearchableSelect
                                       label="Loss Type"
                                       placeholder="Select reason"
                                       data={['Theft', 'Damage', 'Infested', 'Wet', 'Other']}
@@ -2241,7 +2255,7 @@ function ReceiptOrderDetailPage() {
                 <Group gap="xl" align="flex-start" wrap="wrap">
                   <div>
                     <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                      Total received at warehouse (from hub)
+                      {assignmentsTabSummary.warehouseReceivedTitle}
                     </Text>
                     <Text size="sm" fw={700}>
                       {assignmentsTabSummary.warehouseReceivedLabel}
@@ -2377,7 +2391,7 @@ function ReceiptOrderDetailPage() {
                           Could not load available managers.
                         </Text>
                       ) : null}
-                      <Select
+                      <SearchableSelect
                         label="Manager"
                         placeholder={
                           assignableManagersLoading
@@ -2422,7 +2436,7 @@ function ReceiptOrderDetailPage() {
 
                       <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
                         <Stack gap="xs">
-                          <Select
+                          <SearchableSelect
                             label="Store"
                             placeholder={
                               assignableManagersLoading
@@ -2481,9 +2495,9 @@ function ReceiptOrderDetailPage() {
                           )}
                         </Stack>
 
-                        <Select
+                        <SearchableSelect
                           label="Quantity unit"
-                          description="Saved in the receipt line unit (e.g. mt)."
+                          description="Quantity is saved in the order unit; display shows the selected unit."
                           placeholder="Unit"
                           data={storeAssignUnitOptions}
                           value={assignmentEntryUnitId != null ? String(assignmentEntryUnitId) : undefined}
@@ -2495,9 +2509,26 @@ function ReceiptOrderDetailPage() {
                         <NumberInput
                           label="Quantity to assign"
                           placeholder={
-                            warehouseManagerStoreAssignHints
-                              ? `≤ ${warehouseManagerStoreAssignHints.remaining.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${warehouseManagerStoreAssignHints.baseAbbrev}`
-                              : `Max: ${lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0).toLocaleString()}`
+                            (() => {
+                              if (!warehouseManagerStoreAssignHints) {
+                                return `Max: ${lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0).toLocaleString()}`;
+                              }
+                              const rem = warehouseManagerStoreAssignHints.remaining;
+                              const baseId = warehouseManagerStoreAssignHints.baseUnitId;
+                              const cid = warehouseManagerStoreAssignHints.commodityId;
+                              const entry = assignmentEntryUnitId ?? baseId;
+                              let displayRem = rem;
+                              let displayUnit = warehouseManagerStoreAssignHints.baseAbbrev;
+                              if (entry != null && baseId != null && entry !== baseId) {
+                                const m = findDirectedMultiplier(baseId, entry, cid, uomConversions);
+                                if (m != null) {
+                                  displayRem = rem * m;
+                                  const u = units.find((u) => Number(u.id) === entry);
+                                  if (u) displayUnit = u.abbreviation || u.name;
+                                }
+                              }
+                              return `≤ ${displayRem.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${displayUnit}`;
+                            })()
                           }
                           value={assignmentQuantity || ''}
                           onChange={(val) => setAssignmentQuantity(Number(val) || 0)}
@@ -2528,7 +2559,17 @@ function ReceiptOrderDetailPage() {
                                 qtyBase = assignmentQuantity * m;
                               }
                               if (qtyBase > rem + 0.000001) {
-                                return `Exceeds remaining (${rem.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${warehouseManagerStoreAssignHints.baseAbbrev} left)`;
+                                let displayRem = rem;
+                                let displayUnit = warehouseManagerStoreAssignHints.baseAbbrev;
+                                if (entry !== baseId) {
+                                  const m = findDirectedMultiplier(baseId, entry, cid, uomConversions);
+                                  if (m != null) {
+                                    displayRem = rem * m;
+                                    const u = units.find((u) => Number(u.id) === entry);
+                                    if (u) displayUnit = u.abbreviation || u.name;
+                                  }
+                                }
+                                return `Exceeds remaining (${displayRem.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${displayUnit} left)`;
                               }
                               return null;
                             }
@@ -2781,7 +2822,7 @@ function ReceiptOrderDetailPage() {
                   </Group>
 
                   <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-                    <Select
+                    <SearchableSelect
                       label="Store"
                       placeholder={
                         storesLoading ? 'Loading stores…' : 'Select store'

@@ -1,22 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Badge,
-  Button,
-  Card,
-  Divider,
-  Group,
-  Loader,
-  NumberInput,
-  Select,
-  SimpleGrid,
-  Stack,
-  Text,
-  TextInput,
-  ThemeIcon,
-  Title,
-} from '@mantine/core';
+import { Badge, Button, Card, Divider, Group, Loader, NumberInput, SimpleGrid, Stack, Text, TextInput, ThemeIcon, Title } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { useForm } from '@mantine/form';
 import { IconArrowLeft, IconBox, IconDeviceFloppy, IconRuler3, IconSearch, IconStack2 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
@@ -530,7 +516,7 @@ function StackFormPage() {
                 />
 
                 {/* ── Reference Search (auto-fill from receipt order) ── */}
-                <Select
+                <SearchableSelect
                   label="Search Receipt Order"
                   placeholder="Type RO-21 or select assigned order..."
                   data={refSearchOptions}
@@ -562,7 +548,7 @@ function StackFormPage() {
                     styles={inputStyles}
                     {...form.getInputProps('code')}
                   />
-                  <Select
+                  <SearchableSelect
                     key={`ref-select-${form.values.commodity_id}`}
                     label="Batch / Reference"
                     placeholder="Choose batch"
@@ -575,7 +561,7 @@ function StackFormPage() {
                 </Group>
 
                 <Group grow align="flex-start">
-                  <Select
+                  <SearchableSelect
                     label="Store"
                     placeholder="Select store"
                     searchable
@@ -583,7 +569,7 @@ function StackFormPage() {
                     styles={inputStyles}
                     {...form.getInputProps('store_id')}
                   />
-                  <Select
+                  <SearchableSelect
                     label="Commodity"
                     placeholder="Select commodity"
                     searchable
@@ -601,14 +587,14 @@ function StackFormPage() {
                 </Group>
 
                 <Group grow align="flex-start">
-                  <Select
+                  <SearchableSelect
                     label="Commodity Status"
                     placeholder="Select status"
                     data={commodityStatusOptions}
                     styles={inputStyles}
                     {...form.getInputProps('commodity_status')}
                   />
-                  <Select
+                  <SearchableSelect
                     label="Stack Status"
                     placeholder="Select status"
                     data={stackStatusOptions}
@@ -779,7 +765,7 @@ function StackFormPage() {
                     styles={inputStyles}
                     {...form.getInputProps('quantity')}
                   />
-                  <Select
+                  <SearchableSelect
                     label="Unit Of Measure"
                     placeholder="Select unit"
                     searchable

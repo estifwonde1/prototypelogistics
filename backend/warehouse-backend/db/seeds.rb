@@ -369,7 +369,7 @@ puts "Seeding core reference data..."
 units = {
   kg: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "kg" }, { name: "Kilogram", unit_type: Cats::Core::UnitOfMeasure::WEIGHT }),
   mt: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "mt" }, { name: "Metric Ton", unit_type: Cats::Core::UnitOfMeasure::WEIGHT }),
-  kntl: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "kntl" }, { name: "Kuntal (100 kg)", unit_type: Cats::Core::UnitOfMeasure::WEIGHT }),
+  kntl: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "kntl" }, { name: "Kuntal", unit_type: Cats::Core::UnitOfMeasure::WEIGHT }),
   lb: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "lb" }, { name: "Pound", unit_type: Cats::Core::UnitOfMeasure::WEIGHT }),
   l: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "l" }, { name: "Liter", unit_type: Cats::Core::UnitOfMeasure::VOLUME }),
   pcs: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "pcs" }, { name: "Pieces", unit_type: Cats::Core::UnitOfMeasure::ITEM }),
@@ -981,6 +981,21 @@ find_or_create_with(
   { role_name: "Storekeeper" }
 )
 
+puts "Syncing warehouse manager contacts from assignments..."
+[
+  [warehouse_manager_user, warehouses[0]],
+  [warehouse_manager_user_2, warehouses[1]]
+].each do |user, warehouse|
+  next if warehouse.blank?
+
+  contacts = warehouse.warehouse_contacts || Cats::Warehouse::WarehouseContacts.new(warehouse: warehouse)
+  manager_name = [user.first_name, user.last_name].compact.join(" ").strip
+  manager_name = user.email if manager_name.empty?
+  contacts.manager_name = manager_name
+  contacts.contact_phone = user.phone_number if user.phone_number.present?
+  contacts.contact_email = user.email if user.email.present?
+  contacts.save!
+end
 
 ui_seed = Rails.root.join("db", "seeds", "ui.rb")
 load(ui_seed) if File.exist?(ui_seed)

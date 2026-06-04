@@ -10,6 +10,7 @@ module Cats
       belongs_to :store, class_name: "Cats::Warehouse::Store", optional: true
       belongs_to :assigned_by, class_name: "Cats::Core::User"
       belongs_to :assigned_to, class_name: "Cats::Core::User", optional: true
+      belongs_to :quantity_unit, class_name: "Cats::Core::UnitOfMeasure", optional: true
 
       has_many :space_reservations, class_name: "Cats::Warehouse::SpaceReservation", dependent: :nullify
 

@@ -18,7 +18,6 @@ import {
 } from '@mantine/core';
 import {
   IconArrowLeft,
-  IconEdit,
   IconInfoCircle,
   IconBox,
   IconRuler,
@@ -30,7 +29,6 @@ import { getWarehouses } from '../../api/warehouses';
 import { getStacks } from '../../api/stacks';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
-import { usePermission } from '../../hooks/usePermission';
 import { allocatedStoreMt, storeUsableVolumeM3 } from '../../utils/capacityCalculator';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -70,8 +68,6 @@ function SectionCard({ title, icon, children }: {
 function StoreDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { can } = usePermission();
-  const canEdit = can('stores', 'update');
 
   const { data: store, isLoading, error, refetch } = useQuery({
     queryKey: ['stores', id],
@@ -160,15 +156,6 @@ function StoreDetailPage() {
             {store.temporary ? 'Temporary' : 'Permanent'}
           </Badge>
         </Group>
-        {canEdit && (
-          <Button
-            leftSection={<IconEdit size={16} />}
-            variant="light"
-            onClick={() => navigate(`/stores/${id}/edit`)}
-          >
-            Edit Store
-          </Button>
-        )}
       </Group>
 
       {/* ── Basic Information ── */}

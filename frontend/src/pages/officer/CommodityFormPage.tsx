@@ -1,5 +1,6 @@
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import dayjs from "dayjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -9,7 +10,6 @@ import {
   Group,
   TextInput,
   NumberInput,
-  Select,
   Card,
   Text,
   Table,
@@ -20,6 +20,9 @@ import {
   Collapse,
   Box,
   Divider,
+  SegmentedControl,
+  Modal,
+  Grid,
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import {
@@ -29,6 +32,8 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconSearch,
+  IconEdit,
+  IconBox,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { isAxiosError } from "axios";
@@ -41,7 +46,7 @@ import {
 import { getCommodityDefinitions } from "../../api/commodityDefinitions";
 import type { ApiError } from "../../types/common";
 import type { CreateCommodityPayload } from "../../api/referenceData";
-import type { UnitReference } from "../../types/referenceData";
+import type { UnitReference, CommodityReference } from "../../types/referenceData";
 import { REFERENCE_M3_PER_MT } from "../../utils/capacityCalculator";
 
 // Fixed packaging container options — these are the physical containers/packaging types.
@@ -158,9 +163,21 @@ function calcPackagedQty(
   };
 }
 
+type CommodityTab = "create" | "existing";
+
 function CommodityFormPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
+
+  const activeTab: CommodityTab =
+    searchParams.get("tab") === "existing" ? "existing" : "create";
+  const isCreateTab = activeTab === "create";
+  const isExistingTab = activeTab === "existing";
+
+  const setActiveTab = (tab: CommodityTab) => {
+    setSearchParams(tab === "create" ? {} : { tab: "existing" }, { replace: true });
+  };
 
   const [name, setName] = useState("");
   const [unitId, setUnitId] = useState<string | null>(null);
@@ -168,7 +185,7 @@ function CommodityFormPage() {
   const [expiryDate, setExpiryDate] = useState<Date | null>(null);
   const [batchNo, setBatchNo] = useState("");
   const [autoGenBatch, setAutoGenBatch] = useState(true);
-  const [quantity, setQuantity] = useState<number | string>(1);
+  const [quantity, setQuantity] = useState<number | string>("");
   // packageUnitAbbr holds the abbreviation string (e.g. "BAG") for the packaging container
   const [packageUnitAbbr, setPackageUnitAbbr] = useState<string | null>(null);
   const [packageSize, setPackageSize] = useState<number | string>("");
@@ -181,6 +198,7 @@ function CommodityFormPage() {
   const [expandedCommodities, setExpandedCommodities] = useState<Set<string>>(
     new Set()
   );
+  const [selectedBatch, setSelectedBatch] = useState<CommodityReference | null>(null);
 
   const generateBatchNo = () =>
     `BATCH-${dayjs().format("YYYYMMDD")}-${Math.random()
@@ -190,23 +208,21 @@ function CommodityFormPage() {
 
   const [previewBatch, setPreviewBatch] = useState(() => generateBatchNo());
 
-  // Commodity definitions created by admin — used for the dropdown
+  // Commodity definitions — shared by create dropdown and existing list grouping
   const { data: commodityDefinitions = [], isLoading: definitionsLoading } =
     useQuery({
       queryKey: ["commodity-definitions"],
       queryFn: () => getCommodityDefinitions(),
     });
 
-  // Actual batches created by officers — used for the list below
+  // Officer-created batches — only needed on Existing tab
   const { data: commodityBatches = [], isLoading: batchesLoading } = useQuery({
     queryKey: ["reference-data", "commodities"],
     queryFn: getCommodityReferences,
+    enabled: isExistingTab,
   });
 
-  const isLoading = definitionsLoading || batchesLoading;
-
-  // Alias for the dropdown
-  const commodities = commodityBatches;
+  const existingListLoading = definitionsLoading || batchesLoading;
 
   // Track which definition the officer selected so we can auto-fill category
   const [selectedDefinitionId, setSelectedDefinitionId] = useState<
@@ -215,15 +231,18 @@ function CommodityFormPage() {
   const [volumePerMetricTon, setVolumePerMetricTon] = useState<number | string>(
     REFERENCE_M3_PER_MT
   );
+  const [weightPerUnitKg, setWeightPerUnitKg] = useState<number | string>(1.0);
 
   const { data: units = [] } = useQuery({
     queryKey: ["reference-data", "units"],
     queryFn: () => getUnitReferences(),
+    enabled: isCreateTab,
   });
 
   const { data: categories = [] } = useQuery({
     queryKey: ["reference-data", "categories"],
     queryFn: getCategoryReferences,
+    enabled: isCreateTab,
   });
 
   const createMutation = useMutation({
@@ -241,7 +260,7 @@ function CommodityFormPage() {
       setBatchNo("");
       setAutoGenBatch(true);
       setPreviewBatch(generateBatchNo());
-      setQuantity(1);
+      setQuantity("");
       setUnitId(null);
       setPackageUnitAbbr(null);
       setPackageSize("");
@@ -252,6 +271,7 @@ function CommodityFormPage() {
       setSourceName("");
       setSelectedDefinitionId(null);
       setVolumePerMetricTon(REFERENCE_M3_PER_MT);
+      setWeightPerUnitKg(1.0);
       notifications.show({
         title: "Success",
         message: `Commodity "${newCommodity.name}" created successfully`,
@@ -360,14 +380,25 @@ function CommodityFormPage() {
             ? volumePerMetricTon
             : parseFloat(String(volumePerMetricTon)) || REFERENCE_M3_PER_MT
           : REFERENCE_M3_PER_MT,
+      weight_per_unit_kg:
+        weightPerUnitKg !== "" && weightPerUnitKg != null && Number(weightPerUnitKg) > 0
+          ? typeof weightPerUnitKg === "number"
+            ? weightPerUnitKg
+            : parseFloat(String(weightPerUnitKg)) || 1.0
+          : 1.0,
     });
   };
 
+  // Packaging units that should be excluded from Default Unit and Unit per Package
+  const packagingAbbreviations = new Set(PACKAGING_UNIT_OPTIONS.map((p) => p.value));
+
   // Unit options for the commodity's default unit and unit-per-package
-  const unitOptions = units.map((u) => ({
-    value: String(u.id),
-    label: u.abbreviation ? `${u.name} (${u.abbreviation})` : u.name,
-  }));
+  const unitOptions = units
+    .filter((u) => !(u.abbreviation && packagingAbbreviations.has(u.abbreviation.toUpperCase())))
+    .map((u) => ({
+      value: String(u.id),
+      label: u.abbreviation ? `${u.name} (${u.abbreviation})` : u.name,
+    }));
 
   const categoryOptions = categories.map((c) => ({
     value: String(c.id),
@@ -396,6 +427,7 @@ function CommodityFormPage() {
       setName("");
       setCategory(null);
       setVolumePerMetricTon(REFERENCE_M3_PER_MT);
+      setWeightPerUnitKg(1.0);
       return;
     }
     const definition = commodityDefinitions.find((d) => String(d.id) === val);
@@ -412,23 +444,9 @@ function CommodityFormPage() {
           ? definition.volume_per_metric_ton
           : REFERENCE_M3_PER_MT
       );
+      setWeightPerUnitKg(1.0);
     }
   };
-
-  const commodityNameOptions = useMemo(() => {
-    const names = commodities
-      .map((c) => c.name?.trim())
-      .filter((val): val is string => Boolean(val));
-    return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
-  }, [commodities]);
-
-  const normalizedName = name.trim().toLowerCase();
-  const existingNameMatch = useMemo(
-    () =>
-      Boolean(normalizedName) &&
-      commodityNameOptions.some((n) => n.toLowerCase() === normalizedName),
-    [commodityNameOptions, normalizedName]
-  );
 
   // Group: one entry per commodity definition, batches from cats_core_commodities matched by name
   const groupedCommodities = useMemo(() => {
@@ -439,7 +457,7 @@ function CommodityFormPage() {
             (b.name || "").toLowerCase() === definition.name.toLowerCase()
         );
         batches.sort((a, b) => b.id - a.id);
-        return { name: definition.name, batches };
+        return { name: definition.name, group_name: definition.group_name, batches };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [commodityDefinitions, commodityBatches]);
@@ -450,8 +468,7 @@ function CommodityFormPage() {
 
     if (categoryFilter) {
       result = result.filter((group) => {
-        const batch = group.batches[0];
-        return batch?.category_name === categoryFilter;
+        return group.group_name === categoryFilter;
       });
     }
 
@@ -486,21 +503,37 @@ function CommodityFormPage() {
 
   return (
     <Stack gap="md">
-      <Group>
-        <Button
-          variant="default"
-          leftSection={<IconArrowLeft size={16} />}
-          onClick={() => navigate("/officer/receipt-orders/new")}
-        >
-          Back to Receipt Order
-        </Button>
+      <Group justify="space-between" align="flex-start" wrap="wrap" gap="md">
+        <Title order={2}>Commodity Batch</Title>
+        <SegmentedControl
+          value={activeTab}
+          onChange={(value) => setActiveTab(value as CommodityTab)}
+          data={[
+            { label: "Create New", value: "create" },
+            { label: "Existing Commodities", value: "existing" },
+          ]}
+          style={{ maxWidth: "100%" }}
+        />
       </Group>
 
+      {isCreateTab && (
+        <Group>
+          <Button
+            variant="default"
+            leftSection={<IconArrowLeft size={16} />}
+            onClick={() => navigate("/officer/receipt-orders/new")}
+          >
+            Back to Receipt Order
+          </Button>
+        </Group>
+      )}
+
+      {isCreateTab && (
       <Card padding="lg">
         <Stack gap="md">
           <Title order={3}>Create New Commodity Batch</Title>
 
-          <Select
+          <SearchableSelect
             label="Commodity Name"
             placeholder="Type to search (e.g. Rice, Wheat...)"
             required
@@ -513,13 +546,13 @@ function CommodityFormPage() {
             nothingFoundMessage="No commodity found with that name"
           />
 
-          {existingNameMatch && (
+          {selectedDefinitionId && name && (
             <Text size="sm" c="blue">
               A new batch will be created under <strong>{name}</strong>.
             </Text>
           )}
 
-          <Select
+          <SearchableSelect
             label="Source Type"
             placeholder="Select source type"
             required
@@ -585,14 +618,14 @@ function CommodityFormPage() {
           <NumberInput
             label="Quantity"
             placeholder="e.g. 1000"
-            min={1}
+            min={0}
             value={quantity}
             onChange={setQuantity}
             description="Must be greater than 0"
             required
           />
 
-          <Select
+          <SearchableSelect
             label="Default Unit"
             placeholder="Select unit"
             data={unitOptions}
@@ -606,7 +639,7 @@ function CommodityFormPage() {
           {/* Packaging section */}
           <Divider label="Packaging" labelPosition="left" />
 
-          <Select
+          <SearchableSelect
             label="Packaging Unit"
             placeholder="Select packaging unit"
             data={PACKAGING_UNIT_OPTIONS}
@@ -628,7 +661,7 @@ function CommodityFormPage() {
               description="Numeric amount per package"
             />
 
-            <Select
+            <SearchableSelect
               label="Unit per Package"
               placeholder="Select unit"
               data={unitOptions}
@@ -657,7 +690,7 @@ function CommodityFormPage() {
 
           <Divider />
 
-          <Select
+          <SearchableSelect
             label="Category"
             placeholder="Auto-filled when commodity is selected"
             data={categoryOptions}
@@ -676,6 +709,16 @@ function CommodityFormPage() {
             value={volumePerMetricTon}
             onChange={setVolumePerMetricTon}
             description="Cubic meters per metric ton for warehouse capacity. Pre-filled from the catalog; defaults to 1.25."
+          />
+
+          <NumberInput
+            label="Weight per Unit (kg)"
+            placeholder="1.0"
+            min={0.001}
+            decimalScale={6}
+            value={weightPerUnitKg}
+            onChange={setWeightPerUnitKg}
+            description="How many kg one piece/unit weighs. Used to convert pcs → kg → MT for warehouse capacity. Defaults to 1.0 kg/unit."
           />
 
           <DateInput
@@ -699,10 +742,12 @@ function CommodityFormPage() {
           </Group>
         </Stack>
       </Card>
+      )}
 
+      {isExistingTab && (
       <Card padding="lg">
         <Stack gap="md">
-          <Group justify="space-between">
+          <Group justify="space-between" wrap="wrap" gap="sm">
             <Title order={3}>Existing Commodities</Title>
             <Badge size="lg" variant="light">
               {filteredGroups.length} Commodit
@@ -710,7 +755,7 @@ function CommodityFormPage() {
             </Badge>
           </Group>
 
-          <Group gap="sm" align="flex-end">
+          <Group gap="sm" align="flex-end" wrap="wrap" grow preventGrowOverflow={false}>
             <TextInput
               placeholder="Search by name, batch number, source type, or source name..."
               leftSection={<IconSearch size={16} />}
@@ -727,9 +772,9 @@ function CommodityFormPage() {
                   </ActionIcon>
                 )
               }
-              style={{ flex: 1 }}
+              style={{ flex: 1, minWidth: 220 }}
             />
-            <Select
+            <SearchableSelect
               placeholder="All categories"
               data={[
                 { value: "Food", label: "Food" },
@@ -738,11 +783,11 @@ function CommodityFormPage() {
               value={categoryFilter}
               onChange={setCategoryFilter}
               clearable
-              w={160}
+              w={{ base: "100%", sm: 160 }}
             />
           </Group>
 
-          {isLoading ? (
+          {existingListLoading ? (
             <Text>Loading...</Text>
           ) : filteredGroups.length === 0 ? (
             <Text c="dimmed" ta="center" py="xl">
@@ -812,6 +857,7 @@ function CommodityFormPage() {
 
                     <Collapse in={isExpanded}>
                       <Divider my="md" />
+                      <Table.ScrollContainer minWidth={900}>
                       <Table striped highlightOnHover>
                         <Table.Thead>
                           <Table.Tr>
@@ -848,7 +894,11 @@ function CommodityFormPage() {
                                 : "—";
 
                             return (
-                              <Table.Tr key={batch.id}>
+                              <Table.Tr 
+                                key={batch.id}
+                                onClick={() => setSelectedBatch(batch as CommodityReference)}
+                                style={{ cursor: "pointer" }}
+                              >
                                 <Table.Td>
                                   <Text
                                     size="sm"
@@ -928,6 +978,7 @@ function CommodityFormPage() {
                           })}
                         </Table.Tbody>
                       </Table>
+                      </Table.ScrollContainer>
                     </Collapse>
                   </Card>
                 );
@@ -936,6 +987,107 @@ function CommodityFormPage() {
           )}
         </Stack>
       </Card>
+      )}
+
+      {/* Batch Details Modal */}
+      <Modal
+        opened={!!selectedBatch}
+        onClose={() => setSelectedBatch(null)}
+        title={
+          <Group gap="xs">
+            <IconBox size={20} color="#228be6" />
+            <Text fw={700} size="lg">{selectedBatch?.batch_no || "Unnamed Batch"}</Text>
+          </Group>
+        }
+        size="lg"
+        padding="xl"
+        radius="md"
+      >
+        {selectedBatch && (() => {
+          const packagingLabel = formatPackaging(
+            selectedBatch.package_size,
+            selectedBatch.package_unit_per_package_name,
+            selectedBatch.package_unit_name
+          );
+
+          const { count: packagedCount, fallback } = calcPackagedQty(
+            selectedBatch.quantity,
+            selectedBatch.unit_abbreviation,
+            selectedBatch.package_size,
+            selectedBatch.package_unit_per_package_name
+          );
+
+          const containerLabel = selectedBatch.package_unit_name ?? "pkg";
+          const packagedQtyLabel = packagedCount !== "—" ? `${packagedCount} ${containerLabel}` : "—";
+
+          return (
+          <Stack gap="xl">
+            <Grid gutter="xl">
+              <Grid.Col span={6}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Commodity Name</Text>
+                <Text size="md" fw={500} mt={4}>{selectedBatch.name || "—"}</Text>
+              </Grid.Col>
+              <Grid.Col span={6}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Category</Text>
+                <Text size="md" fw={500} mt={4}>{selectedBatch.category_name || "—"}</Text>
+              </Grid.Col>
+              <Grid.Col span={6}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Source Type</Text>
+                <Text size="md" fw={500} mt={4}>{selectedBatch.source_type || "—"}</Text>
+              </Grid.Col>
+              <Grid.Col span={6}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Source Name</Text>
+                <Text size="md" fw={500} mt={4}>{selectedBatch.source_name || "—"}</Text>
+              </Grid.Col>
+              
+              <Grid.Col span={12}>
+                <Divider />
+              </Grid.Col>
+
+              <Grid.Col span={4}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Batch Quantity</Text>
+                <Text size="md" fw={600} mt={4}>{selectedBatch.quantity?.toLocaleString() || "—"} {selectedBatch.unit_abbreviation || selectedBatch.unit_name || ""}</Text>
+              </Grid.Col>
+              <Grid.Col span={4}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Allocated Quantity</Text>
+                <Text size="md" fw={600} mt={4} c="orange">{selectedBatch.allocated_quantity != null ? selectedBatch.allocated_quantity.toLocaleString() : "0"} {selectedBatch.unit_abbreviation || ""}</Text>
+              </Grid.Col>
+              <Grid.Col span={4}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Remaining Quantity</Text>
+                <Text size="md" fw={600} mt={4} c={selectedBatch.remaining_quantity != null && selectedBatch.remaining_quantity < 0 ? "red" : "blue"}>{selectedBatch.remaining_quantity != null ? selectedBatch.remaining_quantity.toLocaleString() : "—"} {selectedBatch.unit_abbreviation || ""}</Text>
+              </Grid.Col>
+              
+              <Grid.Col span={12}>
+                <Divider />
+              </Grid.Col>
+
+              <Grid.Col span={4}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Packaging</Text>
+                <Text size="md" fw={500} mt={4}>{packagingLabel}</Text>
+              </Grid.Col>
+              <Grid.Col span={4}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Packaged Qty</Text>
+                <Text size="md" fw={500} mt={4}>
+                  {packagedQtyLabel}
+                  {fallback && packagedCount !== "—" && (
+                    <Text span size="xs" c="dimmed" ml="xs">(qty unit differs)</Text>
+                  )}
+                </Text>
+              </Grid.Col>
+              <Grid.Col span={4}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Volume Per MT</Text>
+                <Text size="md" fw={500} mt={4}>{selectedBatch.volume_per_metric_ton || "—"} CBM</Text>
+              </Grid.Col>
+            </Grid>
+            
+            <Group justify="flex-end" mt="md">
+              <Button variant="default" onClick={() => setSelectedBatch(null)}>Close</Button>
+            </Group>
+          </Stack>
+          );
+        })()}
+      </Modal>
+
     </Stack>
   );
 }

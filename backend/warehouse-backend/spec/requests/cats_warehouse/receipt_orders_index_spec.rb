@@ -42,6 +42,32 @@ RSpec.describe "GET /cats_warehouse/v1/receipt_orders warehouse filter + RA visi
     Cats::Warehouse::UserAssignment.create!(user: wm, warehouse: wh_target, role_name: "Warehouse Manager")
   end
 
+  it "does not return draft receipt orders for warehouse manager before officer confirmation" do
+    draft_ro = Cats::Warehouse::ReceiptOrder.create!(
+      warehouse: wh_target,
+      created_by: actor,
+      status: Cats::Warehouse::ContractConstants::DOCUMENT_STATUSES[:draft],
+      reference_no: "RO-IDX-DRAFT-#{SecureRandom.hex(4)}",
+      received_date: Date.current
+    )
+    Cats::Warehouse::ReceiptOrderLine.create!(
+      receipt_order: draft_ro,
+      commodity: commodity,
+      unit: unit,
+      quantity: 10,
+      line_reference_no: "RL-IDX-DRAFT-#{SecureRandom.hex(4)}"
+    )
+
+    get "/cats_warehouse/v1/receipt_orders",
+        params: { warehouse_id: wh_target.id },
+        headers: auth_headers_for(wm)
+
+    expect(response).to have_http_status(:ok)
+    body = JSON.parse(response.body)
+    ids = (body["data"] || []).map { |row| row["id"] || row.with_indifferent_access[:id] }
+    expect(ids).not_to include(draft_ro.id)
+  end
+
   it "returns receipt orders linked only by a non-cancelled ReceiptAuthorization at that warehouse" do
     Cats::Warehouse::ReceiptAuthorization.create!(
       receipt_order: receipt_order,

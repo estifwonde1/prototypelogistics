@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_05_22_100000) do
+ActiveRecord::Schema[7.0].define(version: 2026_06_01_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -140,6 +140,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_22_100000) do
     t.string "source_type"
     t.string "source_name"
     t.bigint "package_unit_per_package_id"
+    t.float "received_quantity", null: false
     t.index ["commodity_category_id"], name: "index_cats_core_commodities_on_commodity_category_id"
     t.index ["package_unit_id"], name: "pu_on_commodity_indx"
     t.index ["package_unit_per_package_id"], name: "index_cats_core_commodities_on_package_unit_per_package_id"
@@ -1055,6 +1056,36 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_22_100000) do
     t.index ["name"], name: "index_cats_warehouse_commodity_definitions_on_name", unique: true
   end
 
+  create_table "cats_warehouse_dispatch_line_destination_allocations", force: :cascade do |t|
+    t.bigint "dispatch_order_line_id", null: false
+    t.bigint "destination_location_id", null: false
+    t.string "destination_location_type"
+    t.decimal "quantity", precision: 18, scale: 6, null: false
+    t.bigint "unit_id", null: false
+    t.decimal "base_quantity", precision: 18, scale: 6
+    t.bigint "base_unit_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["destination_location_id"], name: "idx_cw_dlda_dest_loc"
+    t.index ["dispatch_order_line_id"], name: "idx_cw_dlda_line"
+    t.index ["unit_id"], name: "idx_cw_dlda_unit"
+  end
+
+  create_table "cats_warehouse_dispatch_line_source_allocations", force: :cascade do |t|
+    t.bigint "dispatch_order_line_id", null: false
+    t.bigint "warehouse_id", null: false
+    t.decimal "quantity", precision: 18, scale: 6, null: false
+    t.bigint "unit_id", null: false
+    t.decimal "base_quantity", precision: 18, scale: 6
+    t.bigint "base_unit_id"
+    t.string "warehouse_ownership_type"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["dispatch_order_line_id"], name: "idx_cw_dlsa_line"
+    t.index ["unit_id"], name: "idx_cw_dlsa_unit"
+    t.index ["warehouse_id"], name: "idx_cw_dlsa_warehouse"
+  end
+
   create_table "cats_warehouse_dispatch_order_assignments", force: :cascade do |t|
     t.bigint "dispatch_order_id", null: false
     t.bigint "dispatch_order_line_id"
@@ -1077,6 +1108,71 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_22_100000) do
     t.index ["warehouse_id"], name: "idx_cw_do_assign_wh"
   end
 
+  create_table "cats_warehouse_dispatch_order_authorization_executions", force: :cascade do |t|
+    t.bigint "dispatch_order_authorization_id", null: false
+    t.bigint "dispatch_order_authorization_store_id", null: false
+    t.bigint "storekeeper_id", null: false
+    t.bigint "commodity_id", null: false
+    t.decimal "quantity", precision: 18, scale: 6, null: false
+    t.decimal "base_quantity", precision: 18, scale: 6
+    t.decimal "authorized_quantity", precision: 18, scale: 6
+    t.decimal "shortage_quantity", precision: 18, scale: 6, default: "0.0"
+    t.text "shortage_reason"
+    t.string "commodity_grade"
+    t.bigint "inventory_lot_id"
+    t.string "status", default: "draft", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["commodity_id"], name: "idx_cw_doae_commodity"
+    t.index ["dispatch_order_authorization_id"], name: "idx_cw_doae_auth"
+    t.index ["dispatch_order_authorization_store_id"], name: "idx_cw_doae_store_row"
+  end
+
+  create_table "cats_warehouse_dispatch_order_authorization_stores", force: :cascade do |t|
+    t.bigint "dispatch_order_authorization_id", null: false
+    t.bigint "store_id", null: false
+    t.bigint "commodity_id", null: false
+    t.decimal "authorized_quantity", precision: 18, scale: 6, null: false
+    t.decimal "base_quantity", precision: 18, scale: 6
+    t.decimal "dispatched_quantity", precision: 18, scale: 6, default: "0.0"
+    t.decimal "remaining_quantity", precision: 18, scale: 6
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["commodity_id"], name: "idx_cw_doas_commodity"
+    t.index ["dispatch_order_authorization_id"], name: "idx_cw_doas_auth"
+    t.index ["store_id"], name: "idx_cw_doas_store"
+  end
+
+  create_table "cats_warehouse_dispatch_order_authorizations", force: :cascade do |t|
+    t.bigint "dispatch_order_id", null: false
+    t.bigint "warehouse_id", null: false
+    t.string "reference_no"
+    t.string "status", default: "draft", null: false
+    t.decimal "authorized_quantity", precision: 18, scale: 6, null: false
+    t.decimal "authorized_base_quantity", precision: 18, scale: 6
+    t.bigint "authorized_quantity_input_unit_id"
+    t.decimal "remaining_quantity", precision: 18, scale: 6
+    t.bigint "transporter_id", null: false
+    t.string "driver_name"
+    t.string "driver_id_number"
+    t.string "truck_plate_number"
+    t.string "transporter_name"
+    t.bigint "created_by_id", null: false
+    t.bigint "confirmed_by_id"
+    t.datetime "confirmed_at"
+    t.datetime "driver_confirmed_at"
+    t.bigint "driver_confirmed_by_id"
+    t.datetime "cancelled_at"
+    t.bigint "cancelled_by_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["dispatch_order_id", "warehouse_id"], name: "idx_cw_doa_order_wh"
+    t.index ["dispatch_order_id"], name: "idx_cw_doa_order"
+    t.index ["reference_no"], name: "idx_cw_doa_reference_no", unique: true
+    t.index ["status"], name: "idx_cw_doa_status"
+    t.index ["warehouse_id"], name: "idx_cw_doa_warehouse"
+  end
+
   create_table "cats_warehouse_dispatch_order_lines", force: :cascade do |t|
     t.bigint "dispatch_order_id", null: false
     t.bigint "commodity_id", null: false
@@ -1084,6 +1180,12 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_22_100000) do
     t.bigint "unit_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "base_unit_id"
+    t.decimal "base_quantity", precision: 18, scale: 6
+    t.bigint "packaging_unit_id"
+    t.decimal "packaging_size", precision: 18, scale: 6
+    t.integer "package_count"
+    t.text "remarks"
     t.index ["commodity_id"], name: "index_cats_warehouse_dispatch_order_lines_on_commodity_id"
     t.index ["dispatch_order_id"], name: "index_dispatch_order_lines_on_order_id"
     t.index ["unit_id"], name: "index_cats_warehouse_dispatch_order_lines_on_unit_id"
@@ -1107,14 +1209,39 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_22_100000) do
     t.datetime "confirmed_at"
     t.bigint "location_id"
     t.string "hierarchical_level"
+    t.string "plan_reference"
+    t.string "officer_level"
+    t.bigint "officer_location_id"
+    t.jsonb "jurisdiction_metadata", default: {}
+    t.bigint "approved_by_id"
+    t.datetime "approved_at"
+    t.bigint "dispatch_plan_id"
+    t.bigint "dispatch_plan_item_id"
     t.index ["confirmed_by_id"], name: "index_cats_warehouse_dispatch_orders_on_confirmed_by_id"
+    t.index ["created_by_id", "status"], name: "idx_cw_do_created_by_status"
     t.index ["created_by_id"], name: "index_cats_warehouse_dispatch_orders_on_created_by_id"
     t.index ["hierarchical_level"], name: "index_cats_warehouse_dispatch_orders_on_hierarchical_level"
     t.index ["hub_id"], name: "index_cats_warehouse_dispatch_orders_on_hub_id"
     t.index ["location_id"], name: "index_cats_warehouse_dispatch_orders_on_location_id"
+    t.index ["officer_level", "status"], name: "idx_cw_do_officer_level_status"
+    t.index ["plan_reference"], name: "index_cats_warehouse_dispatch_orders_on_plan_reference"
     t.index ["reference_no"], name: "index_cats_warehouse_dispatch_orders_on_reference_no", unique: true
     t.index ["status"], name: "index_cats_warehouse_dispatch_orders_on_status"
     t.index ["warehouse_id"], name: "index_cats_warehouse_dispatch_orders_on_warehouse_id"
+  end
+
+  create_table "cats_warehouse_dispatch_stack_allocations", force: :cascade do |t|
+    t.bigint "dispatch_order_authorization_execution_id"
+    t.bigint "gin_id"
+    t.bigint "stack_id", null: false
+    t.decimal "quantity", precision: 18, scale: 6, null: false
+    t.decimal "base_quantity", precision: 18, scale: 6
+    t.string "commodity_grade"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["dispatch_order_authorization_execution_id"], name: "idx_cw_dsa_execution"
+    t.index ["gin_id"], name: "idx_cw_dsa_gin"
+    t.index ["stack_id"], name: "idx_cw_dsa_stack"
   end
 
   create_table "cats_warehouse_geos", force: :cascade do |t|
@@ -1166,12 +1293,13 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_22_100000) do
     t.bigint "dispatch_order_id"
     t.string "workflow_status"
     t.bigint "generated_from_waybill_id"
+    t.bigint "dispatch_order_authorization_id"
     t.index ["approved_by_id"], name: "index_cats_warehouse_gins_on_approved_by_id"
     t.index ["destination_type", "destination_id"], name: "index_cats_warehouse_gins_on_destination"
+    t.index ["dispatch_order_authorization_id"], name: "idx_cw_gins_doa"
     t.index ["dispatch_order_id"], name: "index_cats_warehouse_gins_on_dispatch_order_id"
     t.index ["generated_from_waybill_id"], name: "index_cats_warehouse_gins_on_generated_from_waybill_id"
     t.index ["issued_by_id"], name: "index_cats_warehouse_gins_on_issued_by_id"
-    t.index ["warehouse_id", "created_at"], name: "index_gins_on_warehouse_and_created_at"
     t.index ["warehouse_id"], name: "index_cats_warehouse_gins_on_warehouse_id"
   end
 
@@ -1223,7 +1351,6 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_22_100000) do
     t.index ["receipt_order_id"], name: "index_cats_warehouse_grns_on_receipt_order_id"
     t.index ["received_by_id"], name: "index_cats_warehouse_grns_on_received_by_id"
     t.index ["source_type", "source_id"], name: "index_cats_warehouse_grns_on_source"
-    t.index ["warehouse_id", "created_at"], name: "index_grns_on_warehouse_and_created_at"
     t.index ["warehouse_id"], name: "index_cats_warehouse_grns_on_warehouse_id"
   end
 
@@ -1362,38 +1489,48 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_22_100000) do
   end
 
   create_table "cats_warehouse_inventory_lots", force: :cascade do |t|
-    t.bigint "commodity_id", null: false
-    t.string "batch_no", null: false
-    t.date "expiry_date"
-    t.string "description"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
     t.bigint "warehouse_id"
+    t.bigint "commodity_id", null: false
     t.string "source_type"
     t.bigint "source_id"
     t.string "lot_code"
+    t.string "batch_no", null: false
+    t.date "expiry_date"
     t.date "manufactured_on"
     t.date "received_on"
-    t.string "status", default: "Active"
+    t.string "status", default: "Active", null: false
+    t.string "description"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
     t.index ["commodity_id"], name: "index_cats_warehouse_inventory_lots_on_commodity_id"
+    t.index ["source_type", "source_id"], name: "idx_cw_inventory_lots_source"
     t.index ["source_type", "source_id"], name: "index_cats_warehouse_inventory_lots_on_source"
     t.index ["warehouse_id", "commodity_id", "batch_no", "expiry_date"], name: "idx_lot_warehouse_commodity_batch_expiry", unique: true
     t.index ["warehouse_id"], name: "index_cats_warehouse_inventory_lots_on_warehouse_id"
   end
 
-  create_table "cats_warehouse_notifications", force: :cascade do |t|
-    t.bigint "user_id", null: false
-    t.string "title", null: false
-    t.text "message"
-    t.string "event_type"
-    t.string "notifiable_type"
-    t.bigint "notifiable_id"
-    t.datetime "read_at"
+  create_table "cats_warehouse_packaging_transactions", force: :cascade do |t|
+    t.string "transaction_type", null: false
+    t.bigint "warehouse_id", null: false
+    t.bigint "commodity_id", null: false
+    t.decimal "quantity", precision: 18, scale: 6, null: false
+    t.decimal "base_quantity", precision: 18, scale: 6
+    t.bigint "unit_id", null: false
+    t.bigint "packaging_unit_id"
+    t.decimal "packaging_size", precision: 18, scale: 6
+    t.integer "package_count"
+    t.datetime "occurred_at", null: false
+    t.string "reference_order_type", null: false
+    t.bigint "reference_order_id", null: false
+    t.bigint "dispatch_order_authorization_execution_id"
+    t.bigint "created_by_id", null: false
+    t.string "status", default: "posted", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["notifiable_type", "notifiable_id"], name: "index_cats_warehouse_notifications_on_notifiable"
-    t.index ["user_id", "read_at"], name: "index_notifications_on_user_and_read_at"
-    t.index ["user_id"], name: "index_cats_warehouse_notifications_on_user_id"
+    t.index ["commodity_id"], name: "idx_cw_pt_commodity"
+    t.index ["reference_order_type", "reference_order_id"], name: "idx_cw_pt_reference"
+    t.index ["unit_id"], name: "idx_cw_pt_unit"
+    t.index ["warehouse_id"], name: "idx_cw_pt_wh"
   end
 
   create_table "cats_warehouse_receipt_authorizations", force: :cascade do |t|
@@ -1450,9 +1587,11 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_22_100000) do
     t.string "status", default: "Assigned", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "quantity_unit_id"
     t.index ["assigned_by_id"], name: "idx_cw_ro_assign_by"
     t.index ["assigned_to_id"], name: "idx_cw_ro_assign_to"
     t.index ["hub_id"], name: "idx_cw_ro_assign_hub"
+    t.index ["quantity_unit_id"], name: "idx_cw_ro_assign_qty_unit"
     t.index ["receipt_order_id"], name: "idx_cw_ro_assign_order"
     t.index ["receipt_order_line_id"], name: "idx_cw_ro_assign_line"
     t.index ["status"], name: "index_cats_warehouse_receipt_order_assignments_on_status"
@@ -1643,7 +1782,9 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_22_100000) do
     t.bigint "reserved_by_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "dispatch_order_authorization_id"
     t.index ["commodity_id"], name: "idx_cw_stock_res_comm"
+    t.index ["dispatch_order_authorization_id"], name: "idx_cw_stock_res_doa"
     t.index ["dispatch_order_id"], name: "idx_cw_stock_res_order"
     t.index ["dispatch_order_line_id", "warehouse_id", "store_id", "stack_id", "inventory_lot_id"], name: "idx_cw_stock_reservations_line_location", unique: true
     t.index ["dispatch_order_line_id"], name: "idx_cw_stock_res_line"
@@ -1739,16 +1880,31 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_22_100000) do
     t.index ["warehouse_id"], name: "index_cats_warehouse_transfer_requests_on_warehouse_id"
   end
 
+  create_table "cats_warehouse_transport_records", force: :cascade do |t|
+    t.bigint "dispatch_order_id", null: false
+    t.bigint "warehouse_id", null: false
+    t.string "driver_name", null: false
+    t.string "license_number"
+    t.string "vehicle_plate", null: false
+    t.string "phone"
+    t.bigint "recorded_by_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["dispatch_order_id", "warehouse_id"], name: "idx_cw_tr_order_wh_unique", unique: true
+    t.index ["dispatch_order_id"], name: "idx_cw_tr_order"
+    t.index ["warehouse_id"], name: "idx_cw_tr_warehouse"
+  end
+
   create_table "cats_warehouse_uom_conversions", force: :cascade do |t|
     t.bigint "commodity_id"
     t.bigint "from_unit_id", null: false
     t.bigint "to_unit_id", null: false
     t.decimal "multiplier", precision: 15, scale: 6, null: false
+    t.string "conversion_type"
+    t.boolean "active", default: true, null: false
     t.boolean "is_inter_unit", default: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.string "conversion_type"
-    t.boolean "active", default: true, null: false
     t.index ["commodity_id"], name: "index_cats_warehouse_uom_conversions_on_commodity_id"
     t.index ["from_unit_id"], name: "index_cats_warehouse_uom_conversions_on_from_unit_id"
     t.index ["to_unit_id"], name: "index_cats_warehouse_uom_conversions_on_to_unit_id"
@@ -1796,10 +1952,10 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_22_100000) do
     t.string "ownership_type"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.float "length_m"
-    t.float "width_m"
-    t.float "height_m"
     t.integer "usable_space_percentage", default: 75, null: false
+    t.decimal "length_m", precision: 15, scale: 4
+    t.decimal "width_m", precision: 15, scale: 4
+    t.decimal "height_m", precision: 15, scale: 4
     t.decimal "usable_volume_m3", precision: 15, scale: 4
     t.datetime "capacity_established_at"
     t.index ["warehouse_id"], name: "index_cats_warehouse_warehouse_capacity_on_warehouse_id"
@@ -1892,9 +2048,11 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_22_100000) do
     t.bigint "prepared_by_id"
     t.string "workflow_status"
     t.bigint "auto_generated_gin_id"
+    t.bigint "dispatch_order_authorization_id"
     t.index ["auto_generated_gin_id"], name: "index_cats_warehouse_waybills_on_auto_generated_gin_id"
     t.index ["destination_location_id"], name: "index_cats_warehouse_waybills_on_destination_location_id"
     t.index ["dispatch_id"], name: "index_cats_warehouse_waybills_on_dispatch_id"
+    t.index ["dispatch_order_authorization_id"], name: "idx_cw_waybills_doa"
     t.index ["dispatch_order_id"], name: "index_cats_warehouse_waybills_on_dispatch_order_id"
     t.index ["prepared_by_id"], name: "index_cats_warehouse_waybills_on_prepared_by_id"
     t.index ["source_location_id"], name: "index_cats_warehouse_waybills_on_source_location_id"
@@ -1911,7 +2069,6 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_22_100000) do
     t.datetime "occurred_at", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["actor_id", "occurred_at"], name: "index_workflow_events_on_actor_and_occurred_at"
     t.index ["actor_id"], name: "idx_cw_workflow_actor"
     t.index ["entity_type", "entity_id", "occurred_at"], name: "idx_cw_workflow_events_entity_time"
     t.index ["event_type"], name: "index_cats_warehouse_workflow_events_on_event_type"
@@ -2085,6 +2242,14 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_22_100000) do
   add_foreign_key "cats_core_users", "cats_core_application_modules", column: "application_module_id"
   add_foreign_key "cats_core_users_cats_core_roles", "cats_core_roles", column: "role_id"
   add_foreign_key "cats_core_users_cats_core_roles", "cats_core_users", column: "user_id"
+  add_foreign_key "cats_warehouse_dispatch_line_destination_allocations", "cats_core_locations", column: "destination_location_id"
+  add_foreign_key "cats_warehouse_dispatch_line_destination_allocations", "cats_core_unit_of_measures", column: "base_unit_id"
+  add_foreign_key "cats_warehouse_dispatch_line_destination_allocations", "cats_core_unit_of_measures", column: "unit_id"
+  add_foreign_key "cats_warehouse_dispatch_line_destination_allocations", "cats_warehouse_dispatch_order_lines", column: "dispatch_order_line_id"
+  add_foreign_key "cats_warehouse_dispatch_line_source_allocations", "cats_core_unit_of_measures", column: "base_unit_id"
+  add_foreign_key "cats_warehouse_dispatch_line_source_allocations", "cats_core_unit_of_measures", column: "unit_id"
+  add_foreign_key "cats_warehouse_dispatch_line_source_allocations", "cats_warehouse_dispatch_order_lines", column: "dispatch_order_line_id"
+  add_foreign_key "cats_warehouse_dispatch_line_source_allocations", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_dispatch_order_assignments", "cats_core_users", column: "assigned_by_id"
   add_foreign_key "cats_warehouse_dispatch_order_assignments", "cats_core_users", column: "assigned_to_id"
   add_foreign_key "cats_warehouse_dispatch_order_assignments", "cats_warehouse_dispatch_order_lines", column: "dispatch_order_line_id"
@@ -2092,14 +2257,34 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_22_100000) do
   add_foreign_key "cats_warehouse_dispatch_order_assignments", "cats_warehouse_hubs", column: "hub_id"
   add_foreign_key "cats_warehouse_dispatch_order_assignments", "cats_warehouse_stores", column: "store_id"
   add_foreign_key "cats_warehouse_dispatch_order_assignments", "cats_warehouse_warehouses", column: "warehouse_id"
+  add_foreign_key "cats_warehouse_dispatch_order_authorization_executions", "cats_core_commodities", column: "commodity_id"
+  add_foreign_key "cats_warehouse_dispatch_order_authorization_executions", "cats_core_users", column: "storekeeper_id"
+  add_foreign_key "cats_warehouse_dispatch_order_authorization_executions", "cats_warehouse_dispatch_order_authorization_stores", column: "dispatch_order_authorization_store_id"
+  add_foreign_key "cats_warehouse_dispatch_order_authorization_executions", "cats_warehouse_dispatch_order_authorizations", column: "dispatch_order_authorization_id"
+  add_foreign_key "cats_warehouse_dispatch_order_authorization_stores", "cats_core_commodities", column: "commodity_id"
+  add_foreign_key "cats_warehouse_dispatch_order_authorization_stores", "cats_warehouse_dispatch_order_authorizations", column: "dispatch_order_authorization_id"
+  add_foreign_key "cats_warehouse_dispatch_order_authorization_stores", "cats_warehouse_stores", column: "store_id"
+  add_foreign_key "cats_warehouse_dispatch_order_authorizations", "cats_core_transporters", column: "transporter_id"
+  add_foreign_key "cats_warehouse_dispatch_order_authorizations", "cats_core_unit_of_measures", column: "authorized_quantity_input_unit_id"
+  add_foreign_key "cats_warehouse_dispatch_order_authorizations", "cats_core_users", column: "cancelled_by_id"
+  add_foreign_key "cats_warehouse_dispatch_order_authorizations", "cats_core_users", column: "confirmed_by_id"
+  add_foreign_key "cats_warehouse_dispatch_order_authorizations", "cats_core_users", column: "created_by_id"
+  add_foreign_key "cats_warehouse_dispatch_order_authorizations", "cats_core_users", column: "driver_confirmed_by_id"
+  add_foreign_key "cats_warehouse_dispatch_order_authorizations", "cats_warehouse_dispatch_orders", column: "dispatch_order_id"
+  add_foreign_key "cats_warehouse_dispatch_order_authorizations", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_dispatch_order_lines", "cats_core_commodities", column: "commodity_id"
   add_foreign_key "cats_warehouse_dispatch_order_lines", "cats_core_unit_of_measures", column: "unit_id"
   add_foreign_key "cats_warehouse_dispatch_order_lines", "cats_warehouse_dispatch_orders", column: "dispatch_order_id"
   add_foreign_key "cats_warehouse_dispatch_orders", "cats_core_locations", column: "location_id"
+  add_foreign_key "cats_warehouse_dispatch_orders", "cats_core_locations", column: "officer_location_id"
+  add_foreign_key "cats_warehouse_dispatch_orders", "cats_core_users", column: "approved_by_id"
   add_foreign_key "cats_warehouse_dispatch_orders", "cats_core_users", column: "confirmed_by_id"
   add_foreign_key "cats_warehouse_dispatch_orders", "cats_core_users", column: "created_by_id"
   add_foreign_key "cats_warehouse_dispatch_orders", "cats_warehouse_hubs", column: "hub_id"
   add_foreign_key "cats_warehouse_dispatch_orders", "cats_warehouse_warehouses", column: "warehouse_id"
+  add_foreign_key "cats_warehouse_dispatch_stack_allocations", "cats_warehouse_dispatch_order_authorization_executions", column: "dispatch_order_authorization_execution_id"
+  add_foreign_key "cats_warehouse_dispatch_stack_allocations", "cats_warehouse_gins", column: "gin_id"
+  add_foreign_key "cats_warehouse_dispatch_stack_allocations", "cats_warehouse_stacks", column: "stack_id"
   add_foreign_key "cats_warehouse_gin_items", "cats_core_commodities", column: "commodity_id"
   add_foreign_key "cats_warehouse_gin_items", "cats_core_unit_of_measures", column: "base_unit_id"
   add_foreign_key "cats_warehouse_gin_items", "cats_core_unit_of_measures", column: "entered_unit_id"
@@ -2110,6 +2295,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_22_100000) do
   add_foreign_key "cats_warehouse_gin_items", "cats_warehouse_stores", column: "store_id"
   add_foreign_key "cats_warehouse_gins", "cats_core_users", column: "approved_by_id"
   add_foreign_key "cats_warehouse_gins", "cats_core_users", column: "issued_by_id"
+  add_foreign_key "cats_warehouse_gins", "cats_warehouse_dispatch_order_authorizations", column: "dispatch_order_authorization_id"
   add_foreign_key "cats_warehouse_gins", "cats_warehouse_dispatch_orders", column: "dispatch_order_id"
   add_foreign_key "cats_warehouse_gins", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_gins", "cats_warehouse_waybills", column: "generated_from_waybill_id"
@@ -2149,7 +2335,11 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_22_100000) do
   add_foreign_key "cats_warehouse_inventory_adjustments", "cats_warehouse_stacks", column: "stack_id"
   add_foreign_key "cats_warehouse_inventory_lots", "cats_core_commodities", column: "commodity_id"
   add_foreign_key "cats_warehouse_inventory_lots", "cats_warehouse_warehouses", column: "warehouse_id"
-  add_foreign_key "cats_warehouse_notifications", "cats_core_users", column: "user_id"
+  add_foreign_key "cats_warehouse_packaging_transactions", "cats_core_commodities", column: "commodity_id"
+  add_foreign_key "cats_warehouse_packaging_transactions", "cats_core_unit_of_measures", column: "packaging_unit_id"
+  add_foreign_key "cats_warehouse_packaging_transactions", "cats_core_unit_of_measures", column: "unit_id"
+  add_foreign_key "cats_warehouse_packaging_transactions", "cats_core_users", column: "created_by_id"
+  add_foreign_key "cats_warehouse_packaging_transactions", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_receipt_authorizations", "cats_core_transporters", column: "transporter_id"
   add_foreign_key "cats_warehouse_receipt_authorizations", "cats_core_unit_of_measures", column: "authorized_quantity_input_unit_id"
   add_foreign_key "cats_warehouse_receipt_authorizations", "cats_core_users", column: "assigned_storekeeper_by_id"
@@ -2162,6 +2352,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_22_100000) do
   add_foreign_key "cats_warehouse_receipt_authorizations", "cats_warehouse_receipt_orders", column: "receipt_order_id"
   add_foreign_key "cats_warehouse_receipt_authorizations", "cats_warehouse_stores", column: "store_id"
   add_foreign_key "cats_warehouse_receipt_authorizations", "cats_warehouse_warehouses", column: "warehouse_id"
+  add_foreign_key "cats_warehouse_receipt_order_assignments", "cats_core_unit_of_measures", column: "quantity_unit_id"
   add_foreign_key "cats_warehouse_receipt_order_assignments", "cats_core_users", column: "assigned_by_id"
   add_foreign_key "cats_warehouse_receipt_order_assignments", "cats_core_users", column: "assigned_to_id"
   add_foreign_key "cats_warehouse_receipt_order_assignments", "cats_warehouse_hubs", column: "hub_id"
@@ -2207,6 +2398,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_22_100000) do
   add_foreign_key "cats_warehouse_stock_reservations", "cats_core_commodities", column: "commodity_id"
   add_foreign_key "cats_warehouse_stock_reservations", "cats_core_unit_of_measures", column: "unit_id"
   add_foreign_key "cats_warehouse_stock_reservations", "cats_core_users", column: "reserved_by_id"
+  add_foreign_key "cats_warehouse_stock_reservations", "cats_warehouse_dispatch_order_authorizations", column: "dispatch_order_authorization_id"
   add_foreign_key "cats_warehouse_stock_reservations", "cats_warehouse_dispatch_order_lines", column: "dispatch_order_line_id"
   add_foreign_key "cats_warehouse_stock_reservations", "cats_warehouse_dispatch_orders", column: "dispatch_order_id"
   add_foreign_key "cats_warehouse_stock_reservations", "cats_warehouse_inventory_lots", column: "inventory_lot_id"
@@ -2229,6 +2421,9 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_22_100000) do
   add_foreign_key "cats_warehouse_transfer_requests", "cats_warehouse_stores", column: "destination_store_id"
   add_foreign_key "cats_warehouse_transfer_requests", "cats_warehouse_stores", column: "source_store_id"
   add_foreign_key "cats_warehouse_transfer_requests", "cats_warehouse_warehouses", column: "warehouse_id"
+  add_foreign_key "cats_warehouse_transport_records", "cats_core_users", column: "recorded_by_id"
+  add_foreign_key "cats_warehouse_transport_records", "cats_warehouse_dispatch_orders", column: "dispatch_order_id"
+  add_foreign_key "cats_warehouse_transport_records", "cats_warehouse_warehouses", column: "warehouse_id"
   add_foreign_key "cats_warehouse_uom_conversions", "cats_core_commodities", column: "commodity_id"
   add_foreign_key "cats_warehouse_uom_conversions", "cats_core_unit_of_measures", column: "from_unit_id"
   add_foreign_key "cats_warehouse_uom_conversions", "cats_core_unit_of_measures", column: "to_unit_id"
@@ -2256,6 +2451,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_22_100000) do
   add_foreign_key "cats_warehouse_waybills", "cats_core_locations", column: "destination_location_id"
   add_foreign_key "cats_warehouse_waybills", "cats_core_locations", column: "source_location_id"
   add_foreign_key "cats_warehouse_waybills", "cats_core_users", column: "prepared_by_id"
+  add_foreign_key "cats_warehouse_waybills", "cats_warehouse_dispatch_order_authorizations", column: "dispatch_order_authorization_id"
   add_foreign_key "cats_warehouse_waybills", "cats_warehouse_dispatch_orders", column: "dispatch_order_id"
   add_foreign_key "cats_warehouse_waybills", "cats_warehouse_gins", column: "auto_generated_gin_id"
   add_foreign_key "cats_warehouse_workflow_events", "cats_core_users", column: "actor_id"

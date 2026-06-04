@@ -42,10 +42,16 @@ module Cats
       end
 
       def call
+        tx_entered_unit_id = (item.respond_to?(:entered_unit_id) && item.entered_unit_id.present?) ? item.entered_unit_id : item.unit_id
+
         balance = locked_balance
         balance.quantity = balance.quantity.to_f + quantity_delta
         balance.base_quantity = balance.base_quantity.to_f + base_quantity_delta
         balance.base_unit_id ||= @base_unit_id
+
+        if quantity_delta.positive? && tx_entered_unit_id.present?
+          balance.entered_unit_id = tx_entered_unit_id
+        end
         balance.available_quantity = balance.quantity.to_f - balance.reserved_quantity.to_f if balance.respond_to?(:available_quantity)
 
         ensure_non_negative!(balance.base_quantity, "stock balance")
@@ -93,6 +99,30 @@ module Cats
         # never becomes stale after receipts, issues, or adjustments.
         StoreOccupancyUpdater.call(store_id: stack.store_id)
 
+        # Use the unit the user actually entered (e.g. Kuntal) when available.
+        # Falls back to the canonical line unit (e.g. MT) for legacy records.
+        # (tx_entered_unit_id is now defined at the top of the method)
+        # Determine the entered quantity.  Three scenarios:
+        #
+        #  1. The item already stores entered_quantity (e.g. InspectionItem) → use it.
+        #  2. The item has entered_unit_id ≠ unit_id but no entered_quantity
+        #     column (e.g. GrnItem) → reverse-convert from line unit to entered
+        #     unit so the StackTransaction shows "10 Kuntal" instead of "1 MT".
+        #  3. Neither → fall back to the raw quantity delta.
+        tx_entered_quantity =
+          if item.respond_to?(:entered_quantity) && item.entered_quantity.present?
+            item.entered_quantity.to_f.abs
+          elsif tx_entered_unit_id != item.unit_id
+            UomConversionResolver.convert(
+              quantity_delta.abs,
+              from_unit_id: item.unit_id,
+              to_unit_id:   tx_entered_unit_id,
+              commodity_id: item.commodity_id
+            ).to_f.abs
+          else
+            quantity_delta.abs
+          end
+
         StackTransaction.create!(
           source_id: quantity_delta.negative? ? item.stack_id : nil,
           destination_id: quantity_delta.positive? ? item.stack_id : nil,
@@ -100,7 +130,8 @@ module Cats
           quantity: quantity_delta.abs,
           unit_id: item.unit_id,
           inventory_lot_id: item.respond_to?(:inventory_lot_id) ? item.inventory_lot_id : nil,
-          entered_unit_id: item.unit_id,
+          entered_unit_id: tx_entered_unit_id,
+          entered_quantity: tx_entered_quantity,
           base_unit_id: @base_unit_id,
           base_quantity: base_quantity_delta.abs,
           status: "Confirmed",
@@ -174,14 +205,25 @@ module Cats
       end
 
       def check_incoming_volume!(stack, incoming_base_qty)
+        incoming_mt = base_qty_to_mt(incoming_base_qty)
+
         incoming_m3 = VolumeCalculator.call(
           commodity: item.commodity,
-          base_quantity: incoming_base_qty
+          base_quantity: incoming_mt
         )
 
-        incoming_mt = incoming_base_qty.to_f
+        # Compute actual remaining volume from goods already on the stack,
+        # rather than relying on occupied_volume (which is 0 or full volume).
+        current_goods_m3 = if stack.base_quantity.to_f > 0
+          VolumeCalculator.call(
+            commodity: stack.commodity || item.commodity,
+            base_quantity: base_qty_to_mt(stack.base_quantity.to_f)
+          ) || 0.0
+        else
+          0.0
+        end
 
-        stack_remaining = stack.volume.to_f - stack.occupied_volume.to_f
+        stack_remaining = [stack.volume.to_f - current_goods_m3, 0.0].max
         if incoming_m3 > stack_remaining + 1e-6
           raise Cats::Warehouse::InsufficientSpaceError,
                 "Insufficient stack capacity: incoming #{incoming_m3.round(4)} m³ " \
@@ -190,7 +232,7 @@ module Cats
         end
 
         if stack.max_capacity_mt.present?
-          stack_used_mt = stack.base_quantity.to_f
+          stack_used_mt = base_qty_to_mt(stack.base_quantity.to_f)
           if stack_used_mt + incoming_mt > stack.max_capacity_mt.to_f + 1e-6
             raise Cats::Warehouse::InsufficientSpaceError,
                   "Insufficient stack capacity: incoming #{incoming_mt.round(4)} MT " \
@@ -224,6 +266,51 @@ module Cats
           raise Cats::Warehouse::InsufficientSpaceError,
                 "Insufficient warehouse capacity: incoming #{incoming_mt.round(4)} MT " \
                 "exceeds remaining warehouse capacity #{wh_usage.remaining_mt.round(4)} MT"
+        end
+      end
+
+      # Convert a quantity in the commodity's base unit to MT.
+      def base_qty_to_mt(qty)
+        base_unit = Cats::Core::UnitOfMeasure.find_by(id: @base_unit_id)
+        return qty.to_f if base_unit.blank? || base_unit.abbreviation.to_s.downcase == "mt"
+
+        mt_unit_id = Cats::Core::UnitOfMeasure
+          .where("LOWER(abbreviation) = ?", "mt")
+          .order(:id)
+          .pick(:id)
+        return qty.to_f if mt_unit_id.blank?
+        return qty.to_f if @base_unit_id.to_i == mt_unit_id.to_i
+
+        case base_unit.unit_type
+        when Cats::Core::UnitOfMeasure::ITEM
+          commodity = item.commodity
+          wpu = commodity&.weight_per_unit_kg.to_f
+          wpu = 1.0 if wpu <= 0
+          qty_kg = qty.to_f * wpu
+          kg_unit = Cats::Core::UnitOfMeasure.find_by("LOWER(abbreviation) = ?", "kg")
+          return qty_kg * 0.001 unless kg_unit
+
+          UomConversionResolver.convert(
+            qty_kg,
+            from_unit_id: kg_unit.id,
+            to_unit_id: mt_unit_id,
+            commodity_id: nil
+          )
+        when Cats::Core::UnitOfMeasure::VOLUME
+          commodity = item.commodity
+          vpm = commodity&.volume_per_metric_ton.to_f
+          vpm = CommodityDensityResolver.default_density if vpm <= 0
+          qty_m3 = qty.to_f * 0.001
+          qty_m3 / vpm
+        when Cats::Core::UnitOfMeasure::WEIGHT
+          UomConversionResolver.convert(
+            qty.to_f,
+            from_unit_id: @base_unit_id,
+            to_unit_id: mt_unit_id,
+            commodity_id: item.commodity_id
+          )
+        else
+          qty.to_f
         end
       end
     end

@@ -76,11 +76,13 @@ module Cats
       end
 
       def batch_no
-        object.inventory_lot&.batch_no
+        object.inventory_lot&.batch_no.presence ||
+          commodity_record&.batch_no
       end
 
       def expiry_date
-        object.inventory_lot&.expiry_date
+        object.inventory_lot&.expiry_date ||
+          commodity_record&.try(:best_use_before)
       end
 
       def entered_unit_name

@@ -14,7 +14,7 @@ module Cats
           
           # Verify user has access to this warehouse
           access = AccessContext.new(user: current_user)
-          unless access.accessible_warehouse_ids.include?(warehouse_id)
+          unless access.can_access_warehouse?(warehouse_id)
             return render_error("Access denied to warehouse #{warehouse_id}", status: :forbidden)
           end
           

@@ -77,15 +77,9 @@ module Cats
       end
 
       def assigned_store_ids
-        # Get direct store-level assignments
-        direct_store_ids = UserAssignment.where(user_id: user&.id, role_name: "Storekeeper").pluck(:store_id).compact
-        
-        # Get warehouse-level assignments and expand to all stores in those warehouses
-        warehouse_ids = storekeeper_warehouse_ids
-        warehouse_store_ids = warehouse_ids.present? ? Store.where(warehouse_id: warehouse_ids).pluck(:id) : []
-        
-        # Merge both: union direct store assignments and expanded warehouse-level store assignments
-        (direct_store_ids + warehouse_store_ids).uniq
+        # Warehouse-level Storekeeper assignments only make the user available
+        # for assignment by a manager. Store access is explicit per store.
+        UserAssignment.where(user_id: user&.id, role_name: "Storekeeper").pluck(:store_id).compact
       end
 
       def assigned_officer_warehouse_ids
@@ -116,17 +110,19 @@ module Cats
       end
 
       def accessible_warehouse_ids
-        return Warehouse.select(:id) if admin?
-        # Hub Manager before Warehouse Manager: hub users only see warehouses under their assigned hub(s),
-        # not standalone warehouses tied only to a Warehouse Manager assignment.
-        return Warehouse.where(hub_id: assigned_hub_ids).select(:id) if hub_manager?
-        return assigned_warehouse_ids if warehouse_manager?
-        return Warehouse.select(:id) if officer_full_access?
-        return Warehouse.where(location_id: officer_location_scope_ids).select(:id) if officer?
-        # Storekeeper can access warehouses from both direct warehouse assignments and store assignments
-        return (storekeeper_warehouse_ids + Store.where(id: assigned_store_ids).select(:warehouse_id).pluck(:warehouse_id)).uniq if storekeeper?
+        return Warehouse.pluck(:id) if admin? || officer_full_access?
 
-        []
+        wids = []
+        wids += Warehouse.where(hub_id: assigned_hub_ids).pluck(:id) if hub_manager?
+        wids += assigned_warehouse_ids if warehouse_manager?
+        wids += Warehouse.where(location_id: officer_location_scope_ids).pluck(:id) if officer?
+
+        if storekeeper?
+          wids += storekeeper_warehouse_ids
+          wids += Store.where(id: assigned_store_ids).pluck(:warehouse_id)
+        end
+
+        Warehouse.where(id: wids.uniq.compact).pluck(:id)
       end
 
       def accessible_store_ids
@@ -160,6 +156,20 @@ module Cats
           ids.where(id: store_id).exists?
         else
           Array(ids).map(&:to_i).include?(store_id.to_i)
+        end
+      end
+
+      def can_access_warehouse?(warehouse_id)
+        return true if admin?
+
+        wid = warehouse_id.to_i
+        return false if wid <= 0
+
+        ids = accessible_warehouse_ids
+        if ids.is_a?(ActiveRecord::Relation)
+          ids.where(id: wid).exists?
+        else
+          Array(ids).map(&:to_i).include?(wid)
         end
       end
     end

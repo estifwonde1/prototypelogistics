@@ -1,18 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  TextInput,
-  Table,
-  ActionIcon,
-  Text,
-  Select,
-  Badge,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, TextInput, Table, ActionIcon, Text, Badge } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { IconPlus, IconSearch, IconEye } from '@tabler/icons-react';
 import { getReceiptOrders, type ReceiptOrder } from '../../api/receiptOrders';
 import { getWarehouses } from '../../api/warehouses';
@@ -140,7 +130,14 @@ function ReceiptOrdersListPage() {
     });
   }, [orders, search, statusFilter, warehouseFilter]);
 
-  const statusOptions = [...RECEIPT_ORDER_STATUS_FILTER_OPTIONS];
+  const statusOptions = useMemo(() => {
+    if (isWarehouseManager || isHubManager) {
+      return RECEIPT_ORDER_STATUS_FILTER_OPTIONS.filter(
+        (opt) => opt.value !== 'Draft' && opt.value !== 'Cancelled'
+      );
+    }
+    return [...RECEIPT_ORDER_STATUS_FILTER_OPTIONS];
+  }, [isWarehouseManager, isHubManager]);
 
   const warehouseOptions = [
     { value: NO_DESTINATION_WAREHOUSE_VALUE, label: 'No destination warehouse' },
@@ -191,20 +188,22 @@ function ReceiptOrdersListPage() {
           onChange={(e) => setSearch(e.target.value)}
           style={{ flex: 1, maxWidth: 400 }}
         />
-        <Select
+        <SearchableSelect
           placeholder="Filter by status"
           data={statusOptions}
           value={statusFilter}
           onChange={setStatusFilter}
           clearable
+          searchable
           style={{ width: 200 }}
         />
-        <Select
+        <SearchableSelect
           placeholder="Filter by warehouse"
           data={warehouseOptions}
           value={warehouseFilter}
           onChange={setWarehouseFilter}
           clearable
+          searchable
           style={{ width: 200 }}
         />
       </Group>
@@ -236,16 +235,14 @@ function ReceiptOrdersListPage() {
                 <Table.Th>Order ID</Table.Th>
                 <Table.Th>Source</Table.Th>
                 <Table.Th>Destination</Table.Th>
-                <Table.Th>Jurisdiction</Table.Th>
+                <Table.Th>Commodity</Table.Th>
                 <Table.Th>Status</Table.Th>
-                <Table.Th>Items</Table.Th>
                 <Table.Th>Created</Table.Th>
                 <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {filteredOrders?.map((order) => {
-                const isFederal = !order.location_name || !order.hierarchical_level || order.hierarchical_level === 'Federal';
                 return (
                   <Table.Tr
                     key={order.id}
@@ -286,19 +283,18 @@ function ReceiptOrdersListPage() {
                       })()}
                     </Table.Td>
                     <Table.Td>
-                      {isFederal ? (
-                        <Badge color="gray" variant="light" size="sm">Federal</Badge>
-                      ) : (
-                        <Badge color="blue" variant="light" size="sm">
-                          {order.location_name} — {order.hierarchical_level}
-                        </Badge>
-                      )}
+                      {(() => {
+                        const lines = order.receipt_order_lines ?? order.lines ?? [];
+                        const commodities = [...new Set(lines.map((l: any) => l.commodity_name).filter(Boolean))];
+                        return commodities.length > 0 ? (
+                          <Text size="sm">{commodities.join(', ')}</Text>
+                        ) : (
+                          <Text size="sm" c="dimmed">—</Text>
+                        );
+                      })()}
                     </Table.Td>
                     <Table.Td>
                       <StatusBadge status={order.status} />
-                    </Table.Td>
-                    <Table.Td>
-                      {order.receipt_order_lines?.length ?? order.lines?.length ?? 0}
                     </Table.Td>
                     <Table.Td>
                       {new Date(order.created_at).toLocaleDateString()}

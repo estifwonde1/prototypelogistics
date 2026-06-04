@@ -1,22 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import {
-  Alert,
-  Badge,
-  Button,
-  Card,
-  Collapse,
-  Divider,
-  Group,
-  Select,
-  SimpleGrid,
-  Stack as MantineStack,
-  Table,
-  Tabs,
-  Text,
-  TextInput,
-  Title,
-} from '@mantine/core';
+import { Alert, Badge, Button, Card, Collapse, Divider, Group, SimpleGrid, Stack as MantineStack, Table, Tabs, Text, TextInput, Title } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import {
   IconArchive,
   IconBox,
@@ -275,7 +260,7 @@ export default function BinCardReportPage() {
       </Group>
 
       <Group align="flex-end">
-        <Select
+        <SearchableSelect
           label="Store"
           placeholder={storeOptions.length ? 'Select a store' : 'No stores available'}
           data={storeOptions}

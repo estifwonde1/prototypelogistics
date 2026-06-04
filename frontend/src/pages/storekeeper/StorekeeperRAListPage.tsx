@@ -90,8 +90,8 @@ export default function StorekeeperRAListPage() {
       }),
   });
 
-  if (isLoading) return <LoadingState message="Loading driver arrivals..." />;
-  if (error) return <ErrorState message="Failed to load driver arrivals" onRetry={refetch} />;
+  if (isLoading) return <LoadingState message="Loading receipt authorizations..." />;
+  if (error) return <ErrorState message="Failed to load receipt authorizations" onRetry={refetch} />;
 
   // Filter to active/pending only (not closed/cancelled)
   const activeRAs = allRAs.filter((ra) => ra.status === 'pending' || ra.status === 'active');
@@ -110,7 +110,7 @@ export default function StorekeeperRAListPage() {
     <Stack gap="md">
       <Group>
         <IconTruck size={28} />
-        <Title order={2}>Driver Arrivals</Title>
+        <Title order={2}>Receipt Authorizations</Title>
       </Group>
 
       <Text c="dimmed">
@@ -271,7 +271,7 @@ export default function StorekeeperRAListPage() {
       )}
 
       {activeRAs.length === 0 && (
-        <Alert color="blue" title="No driver arrivals">
+        <Alert color="blue" title="No receipt authorizations">
           You have no incoming trucks right now. New arrivals appear here when a receipt authorization is created for your warehouse or assigned to you by your warehouse manager.
         </Alert>
       )}

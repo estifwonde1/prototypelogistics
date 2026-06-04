@@ -1,26 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import {
-  Alert,
-  Badge,
-  Button,
-  Card,
-  Divider,
-  Group,
-  Loader,
-  Modal,
-  NumberInput,
-  Progress,
-  Select,
-  SimpleGrid,
-  Stack,
-  Text,
-  TextInput,
-  ThemeIcon,
-  Title,
-  Tooltip,
-} from '@mantine/core';
+import { Alert, Badge, Button, Card, Divider, Group, Loader, Modal, NumberInput, Progress, SimpleGrid, Stack, Text, TextInput, ThemeIcon, Title, Tooltip } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { useForm } from '@mantine/form';
 import {
   IconBox,
@@ -317,7 +299,7 @@ function createInitialValues(storeId: string | null): StackFormValues {
     commodity_name: '',
     length: 6,
     width: 4,
-    height: 3,
+    height: 0,
     start_x: 0,
     start_y: 0,
     quantity: 0,
@@ -415,10 +397,10 @@ export default function StackLayoutPage() {
     return pickAccessibleStoreId(
       [
         effectivePickerStoreId ? Number(effectivePickerStoreId) : null,
-        userStoreId ?? null,
         isDriverArrivalStacking && driverArrivalRAById?.store_id != null
           ? driverArrivalRAById.store_id
           : null,
+        userStoreId ?? null,
       ],
       accessibleStoreIds
     );
@@ -751,6 +733,14 @@ export default function StackLayoutPage() {
     }
   }, [isStorekeeper, userStoreId, storeId]);
 
+  /** When creating a new stack, inherit height from the selected store. */
+  useEffect(() => {
+    if (!modalOpened || selectedStack) return;
+    if (selectedStore && (!form.values.height || form.values.height === 0)) {
+      form.setFieldValue('height', selectedStore.height);
+    }
+  }, [modalOpened, selectedStack, selectedStore]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** If definitions load after opening edit, attach definition id from stack commodity name. */
   useEffect(() => {
     if (!modalOpened || !selectedStack || form.values.id !== selectedStack.id) return;
@@ -932,7 +922,7 @@ export default function StackLayoutPage() {
         commodity_name: stack.commodity_name || '',
         length: stack.length,
         width: stack.width,
-        height: stack.height,
+        height: selectedStore ? selectedStore.height : stack.height,
         start_x: stack.start_x ?? 1,
         start_y: stack.start_y ?? 1,
         quantity: stack.quantity,
@@ -942,7 +932,11 @@ export default function StackLayoutPage() {
       });
     } else {
       setSelectedStack(null);
-      form.setValues(createInitialValues(resolvedStoreId));
+      const defaults = createInitialValues(resolvedStoreId);
+      if (selectedStore) {
+        defaults.height = selectedStore.height;
+      }
+      form.setValues(defaults);
     }
 
     setModalOpened(true);
@@ -995,6 +989,7 @@ export default function StackLayoutPage() {
       ...createInitialValues(resolvedStoreId),
       length: roundToTwo(length),
       width: roundToTwo(width),
+      height: selectedStore ? selectedStore.height : 0,
       start_x: roundToTwo(startX),
       start_y: roundToTwo(startY),
     });
@@ -1198,7 +1193,7 @@ export default function StackLayoutPage() {
           }}
         >
           <Group justify="space-between" align="flex-start">
-            <Select
+            <SearchableSelect
               value={resolvedStoreId}
               onChange={setStoreId}
               data={storeOptions}
@@ -1267,11 +1262,11 @@ export default function StackLayoutPage() {
                   <Text size="xs" fw={800} c="#42506a" tt="uppercase" style={{ letterSpacing: '0.12em' }}>
                     Receipt Authorization
                   </Text>
-                  <Select
+                  <SearchableSelect
                     placeholder={
                       driverArrivalRAsForStacking.length === 0
                         ? 'No active RA with Draft GRN for this truck'
-                        : 'Receipt Authorization for this driver arrival'
+                        : 'Receipt Authorization for this receipt'
                     }
                     data={driverArrivalRAsForStacking.map((ra) => ({
                       value: String(ra.id),
@@ -1293,7 +1288,7 @@ export default function StackLayoutPage() {
                   />
                   {driverArrivalRAsForStacking.length === 0 && (
                     <Text size="xs" c="dimmed">
-                      This driver arrival is not ready for stacking yet. Go to{' '}
+                      This receipt is not ready for stacking yet. Go to{' '}
                       <Text
                         component="a"
                         href="/storekeeper/receipt-authorizations"
@@ -1309,7 +1304,11 @@ export default function StackLayoutPage() {
                 <Button
                   color="green"
                   leftSection={<IconCheck size={16} />}
-                  disabled={!canPlaceDriverArrivalGoods || Object.values(placements).every(q => q === 0)}
+                  disabled={
+                    !canPlaceDriverArrivalGoods || 
+                    Object.values(placements).every(q => q === 0) || 
+                    (selectedDriverArrivalRA && Object.values(placements).reduce((s, q) => s + q, 0) > Number(selectedDriverArrivalRA.my_inspection?.total_received ?? selectedDriverArrivalRA.authorized_quantity))
+                  }
                   onClick={() => setFinishStackingModalOpen(true)}
                   radius="md"
                 >
@@ -1323,10 +1322,7 @@ export default function StackLayoutPage() {
           {canPlaceDriverArrivalGoods && (() => {
             const selectedRA = selectedDriverArrivalRA;
             if (!selectedRA) return null;
-            const uLine = raQuantityUnit(selectedRA);
-            const uDisp = raDisplayUnit(selectedRA);
             const primaryUnit = raPrimaryUnit(selectedRA);
-            const useInputUnit = raUsesInputUnit(selectedRA);
             const totalToPlaceLine = Number(selectedRA.my_inspection?.total_received ?? selectedRA.authorized_quantity);
             const totalPlacedLine = Object.values(placements).reduce((s, q) => s + q, 0);
             const remainingLine = totalToPlaceLine - totalPlacedLine;
@@ -1344,9 +1340,9 @@ export default function StackLayoutPage() {
                   </Group>
                   <Progress value={placedPct} color={remainingLine < 0 ? 'red' : remainingLine === 0 ? 'green' : 'blue'} size="md" radius="xl" />
                   <Group gap="xl">
-                    <Text size="xs" c="dimmed">To place (received): <strong>{fmtPrimary(totalToPlaceLine)} {primaryUnit}</strong>{useInputUnit && uLine ? <span> ({totalToPlaceLine.toLocaleString()} {uLine})</span> : null}</Text>
-                    <Text size="xs" c="dimmed">Placed: <strong>{fmtPrimary(totalPlacedLine)} {primaryUnit}</strong>{useInputUnit && uLine ? <span> ({totalPlacedLine.toLocaleString()} {uLine})</span> : null}</Text>
-                    <Text size="xs" c="dimmed">Remaining: <strong>{fmtPrimary(remainingLine)} {primaryUnit}</strong>{useInputUnit && uLine ? <span> ({remainingLine.toLocaleString()} {uLine})</span> : null}</Text>
+                    <Text size="xs" c="dimmed">To place (received): <strong>{fmtPrimary(totalToPlaceLine)} {primaryUnit}</strong></Text>
+                    <Text size="xs" c="dimmed">Placed: <strong>{fmtPrimary(totalPlacedLine)} {primaryUnit}</strong></Text>
+                    <Text size="md" c="#1d3354">Remaining: <strong>{fmtPrimary(remainingLine)}</strong> <strong>{primaryUnit}</strong></Text>
                   </Group>
                   {Object.entries(placements).filter(([, q]) => q > 0).length > 0 ? (
                     <Stack gap={4}>
@@ -1357,7 +1353,7 @@ export default function StackLayoutPage() {
                         return (
                           <Group key={stackId} gap="xs">
                             <Text size="xs" style={{ fontFamily: 'monospace' }}>{stack?.code || `Stack #${stackId}`}</Text>
-                            <Text size="xs" c="blue" fw={600}>{fmtPrimary(qtyLine)} {primaryUnit}{useInputUnit && uLine ? <span> ({qtyLine.toLocaleString()} {uLine})</span> : null}</Text>
+                            <Text size="xs" c="blue" fw={600}>{fmtPrimary(qtyLine)} {primaryUnit}</Text>
                             <Button size="xs" variant="subtle" color="red" style={{ padding: '0 4px', height: 18 }} onClick={() => setPlacements(p => { const n = {...p}; delete n[stackId]; return n; })}>×</Button>
                           </Group>
                         );
@@ -1790,11 +1786,12 @@ export default function StackLayoutPage() {
         overlayProps={{ blur: 6, color: '#1d3557', opacity: 0.35 }}
         styles={{
           content: {
-            overflow: 'hidden',
             backgroundColor: '#ffffff',
           },
           body: {
             padding: 0,
+            overflowY: 'auto',
+            maxHeight: 'calc(90vh - 2rem)',
           },
         }}
       >
@@ -1838,7 +1835,7 @@ export default function StackLayoutPage() {
                 styles={baseInputStyles}
                 {...form.getInputProps('code')}
               />
-              <Select
+              <SearchableSelect
                 label="Stack Status"
                 data={stackStatusOptions}
                 styles={baseInputStyles}
@@ -1931,14 +1928,9 @@ export default function StackLayoutPage() {
               <NumberInput
                 label="Height (m)"
                 decimalScale={2}
-                min={0}
-                placeholder={stackDimHints ? `Max ${stackDimHints.maxHeightM} m` : undefined}
-                description={stackHeightError ? undefined : dimensionValidLabel(stackHeightStatus)}
-                error={stackHeightError}
-                styles={{
-                  ...baseInputStyles,
-                  ...dimensionInputBorderStyle(stackHeightStatus),
-                }}
+                disabled
+                description={selectedStore ? `Inherited from store — ${selectedStore.height} m` : undefined}
+                styles={baseInputStyles}
                 {...form.getInputProps('height')}
               />
             </Group>
@@ -2046,11 +2038,6 @@ export default function StackLayoutPage() {
         const primaryUnit = raPrimaryUnit(selectedRA);
         const useInputUnit = raUsesInputUnit(selectedRA);
         const totalToPlaceLine = Number(selectedRA.my_inspection?.total_received ?? selectedRA.authorized_quantity);
-        const alreadyPlacedLine = Object.entries(placements)
-          .filter(([sid]) => sid !== String(placementModalStack.id))
-          .reduce((s, [, q]) => s + q, 0);
-        const maxForThisStackLine = Math.max(0, totalToPlaceLine - alreadyPlacedLine);
-        const maxForThisStackPrimary = convertRaLineToInput(maxForThisStackLine, selectedRA);
         const currentQtyLine = placements[String(placementModalStack.id)] || 0;
         const currentQtyPrimary = convertRaLineToInput(Number(currentQtyLine), selectedRA);
 
@@ -2062,6 +2049,7 @@ export default function StackLayoutPage() {
 
         return (
           <Modal
+            key={placementModalStack.id}
             opened={!!placementModalStack}
             onClose={() => setPlacementModalStack(null)}
             title={<Text fw={700}>Place Goods — {placementModalStack.code}</Text>}
@@ -2093,40 +2081,44 @@ export default function StackLayoutPage() {
                 <>
                   <NumberInput
                     label={`Quantity to place${primaryUnit ? ` (${primaryUnit})` : ''}`}
-                    description={
-                      useInputUnit && uLine
-                        ? `Maximum for this stack: ${maxForThisStackPrimary.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${primaryUnit} (${maxForThisStackLine.toLocaleString()} ${uLine}). Enter amounts in ${primaryUnit} — same unit you used when receiving goods.`
-                        : `Maximum for this stack: ${maxForThisStackLine.toLocaleString()}${uLine ? ` ${uLine}` : ''}. Enter amounts in the same unit as received on file.`
-                    }
+                    description={`Remaining to assign: ${convertRaLineToInput(totalToPlaceLine - Object.values(placements).reduce((s, q) => s + q, 0), selectedRA).toLocaleString(undefined, { maximumFractionDigits: 3 })} ${primaryUnit}. Adjust any stack freely.`}
                     value={currentQtyPrimary || ''}
+                    error={
+                      !incompatible && totalToPlaceLine - Object.values(placements).reduce((s, q) => s + q, 0) < 0
+                        ? 'Cannot exceed total received quantity'
+                        : undefined
+                    }
                     onChange={(val) => {
                       const rawPrimary = Number(val) || 0;
-                      const cappedPrimary = Math.min(rawPrimary, maxForThisStackPrimary);
-                      const lineQty = convertRaInputToLine(cappedPrimary, selectedRA);
+                      const lineQty = convertRaInputToLine(rawPrimary, selectedRA);
                       setPlacements((p) => ({
                         ...p,
                         [String(placementModalStack.id)]: lineQty,
                       }));
                     }}
-                    min={0}
-                    max={maxForThisStackPrimary}
-                    clampBehavior="strict"
                     decimalScale={3}
-                    disabled={maxForThisStackLine <= 0}
                   />
                   {useInputUnit && Number(currentQtyLine) > 0 && uLine ? (
                     <Text size="xs" c="dimmed">
                       = {Number(currentQtyLine).toLocaleString(undefined, { maximumFractionDigits: 3 })} {uLine} (system record)
                     </Text>
                   ) : null}
-                  {maxForThisStackLine <= 0 && (
-                    <Text size="xs" c="orange">All goods have already been assigned to other stacks.</Text>
-                  )}
                 </>
               )}
 
               <Group justify="flex-end">
-                <Button variant="light" onClick={() => setPlacementModalStack(null)}>
+                <Button
+                  variant="light"
+                  onClick={() => {
+                    setPlacementModalStack(null);
+                    if (!incompatible && canPlaceDriverArrivalGoods) {
+                      const totalPlacedNow = Object.values(placements).reduce((s, q) => s + q, 0);
+                      if (totalToPlaceLine - totalPlacedNow === 0) {
+                        finishStackingMutation.mutate();
+                      }
+                    }
+                  }}
+                >
                   {incompatible ? 'Close' : 'Done'}
                 </Button>
               </Group>
@@ -2151,17 +2143,11 @@ export default function StackLayoutPage() {
                 <Text size="sm">{ra.driver_name} — {ra.truck_plate_number}</Text>
                 <Text size="sm">
                   Hub authorized: {raDisplayQty(ra).toLocaleString(undefined, { maximumFractionDigits: 3 })}{raDisplayUnit(ra) ? ` ${raDisplayUnit(ra)}` : ''}
-                  {raDisplayUnit(ra) && raQuantityUnit(ra) && raDisplayUnit(ra) !== raQuantityUnit(ra) ? (
-                    <span> (= {Number(ra.authorized_quantity).toLocaleString()} {raQuantityUnit(ra)})</span>
-                  ) : null}
                   {ra.my_inspection?.total_received != null && Number(ra.my_inspection.total_received) !== Number(ra.authorized_quantity) && (
                     <span>
                       {' '}· Received:{' '}
                       {Number((Number(ra.my_inspection.total_received) * raLineToInputMultiplier(ra)).toFixed(6)).toLocaleString(undefined, { maximumFractionDigits: 3 })}
                       {raDisplayUnit(ra) ? ` ${raDisplayUnit(ra)}` : ''}
-                      {raDisplayUnit(ra) && raQuantityUnit(ra) && raDisplayUnit(ra) !== raQuantityUnit(ra) ? (
-                        <span> (= {Number(ra.my_inspection.total_received).toLocaleString()} {raQuantityUnit(ra)})</span>
-                      ) : null}
                     </span>
                   )}
                 </Text>

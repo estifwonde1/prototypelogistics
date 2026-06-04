@@ -19,19 +19,27 @@ module Cats
       end
 
       def source_type
-        case object[:source_type].to_s.demodulize
+        raw = object[:source_type].to_s.demodulize.presence
+        case raw
         when "Grn"
           "GRN"
+        when nil, ""
+          # Auto-generated GRNs from the RA flow don't have an explicit source.
+          # Fall back to the receipt order as the logical source document.
+          object.receipt_order_id.present? ? "Receipt Order" : nil
         else
-          object[:source_type].to_s.demodulize.presence
+          raw
         end
       end
 
       def source_reference
-        return unless object.source.present?
-        return object.source.reference_no if object.source.respond_to?(:reference_no)
+        if object.source.present?
+          return object.source.reference_no if object.source.respond_to?(:reference_no)
+          return object.source.id
+        end
 
-        object.source.id
+        # Fall back to receipt order reference when no explicit source
+        object.receipt_order&.reference_no
       end
 
       def warehouse_name
