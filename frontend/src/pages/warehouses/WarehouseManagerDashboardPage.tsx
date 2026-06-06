@@ -245,19 +245,19 @@ export default function WarehouseManagerDashboardPage() {
             ))}
           </SimpleGrid>
         ) : stockBalances.length > 0 ? (
-          <SimpleGrid cols={{ base: 2, sm: 4, md: 6 }}>
-            {stockBalances.map((stock) => (
-              <Card key={stock.id} withBorder p="sm" radius="md">
-                <Text size="xs" c="dimmed" fw={700} truncate>{stock.commodity_name}</Text>
-                <Group justify="space-between" align="flex-end" mt={4}>
-                  <Text fw={700} size="lg">{(stock.quantity || 0).toLocaleString()}</Text>
-                  <Text size="xs" c="dimmed">{stock.unit_name}</Text>
-                </Group>
-              </Card>
-            ))}
-          </SimpleGrid>
-        ) : (
-          <Text c="dimmed" py="xl" ta="center">No inventory records found for this warehouse.</Text>
+          <SimpleGrid cols={{ base: 2, sm: 4, md: 6 }}>
+            {stockBalances.map((stock) => (
+              <Card key={stock.id} withBorder p="sm" radius="md">
+                <Text size="xs" c="dimmed" fw={700} truncate>{stock.commodity_name}</Text>
+                <Group justify="space-between" align="flex-end" mt={4}>
+                  <Text fw={700} size="lg">{(stock.entered_quantity ?? stock.quantity || 0).toLocaleString()}</Text>
+                  <Text size="xs" c="dimmed">{stock.entered_unit_name || stock.unit_name}</Text>
+                </Group>
+              </Card>
+            ))}
+          </SimpleGrid>
+        ) : (
+          <Text c="dimmed" py="xl" ta="center">No inventory records found for this warehouse.</Text>
         )}
       </Paper>
 

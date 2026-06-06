@@ -30,26 +30,15 @@ module Cats
       end
 
       def unit_name
-        entered = object.entered_unit
-        entered ? entered.name : object.unit&.name
+        object.unit&.name
       end
 
       def unit_abbreviation
-        entered = object.entered_unit
-        entered ? entered.abbreviation : object.unit&.abbreviation
+        object.unit&.abbreviation
       end
 
       def quantity
-        if object.entered_unit_id.present? && object.entered_unit_id != object.unit_id
-          UomConversionResolver.convert(
-            object.quantity,
-            from_unit_id: object.unit_id,
-            to_unit_id: object.entered_unit_id,
-            commodity_id: object.commodity_id
-          )
-        else
-          object.quantity
-        end
+        object.quantity
       end
 
       def lot_batch_no

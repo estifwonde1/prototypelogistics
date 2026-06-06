@@ -885,8 +885,8 @@ function WarehouseDetailPage() {
                       <Table.Td>{stock.commodity_name || stock.commodity_batch_no || stock.commodity_id}</Table.Td>
                       <Table.Td>{stock.store_name || stock.store_code || stock.store_id || '-'}</Table.Td>
                       <Table.Td>{stock.stack_code || stock.stack_id || '-'}</Table.Td>
-                      <Table.Td>{stock.quantity}</Table.Td>
-                      <Table.Td>{stock.unit_abbreviation || stock.unit_name || stock.unit_id}</Table.Td>
+                      <Table.Td>{stock.entered_quantity ?? stock.quantity}</Table.Td>
+                      <Table.Td>{stock.entered_unit_abbreviation || stock.entered_unit_name || stock.unit_abbreviation || stock.unit_name || stock.unit_id}</Table.Td>
                     </Table.Tr>
                   ))}
                 </Table.Tbody>

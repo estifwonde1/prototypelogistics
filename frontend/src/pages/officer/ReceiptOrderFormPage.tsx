@@ -341,7 +341,7 @@ function ReceiptOrderFormPage() {
 
       setSelectedCommodityId(definition ? String(definition.id) : null);
       setSelectedBatchId(first.commodity_id ? String(first.commodity_id) : null);
-      setUnitId(first.unit_id ? String(first.unit_id) : null);
+      setUnitId(batch?.unit_id ? String(batch.unit_id) : (first.unit_id ? String(first.unit_id) : null));
       setPackagingUnitId(first.packaging_unit_id ? String(first.packaging_unit_id) : null);
       setPackagingSize(first.packaging_size ?? null);
 
