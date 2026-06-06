@@ -382,8 +382,15 @@ module Cats
 
         allocated_quantity = Cats::Warehouse::ReceiptOrderLine
           .where(commodity_id: commodity.id)
-          .sum(:quantity)
-          .to_f
+          .pluck(:quantity, :unit_id)
+          .sum do |qty, unit_id|
+            Cats::Warehouse::UomConversionResolver.convert(
+              qty.to_f,
+              from_unit_id: unit_id,
+              to_unit_id: commodity.unit_of_measure_id,
+              commodity_id: commodity.id
+            )
+          end.to_f
 
         # Use received_quantity for original batch amount (preserved on create),
         # fall back to reconstructed value for pre-migration records

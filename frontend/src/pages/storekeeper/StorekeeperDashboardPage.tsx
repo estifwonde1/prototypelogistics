@@ -338,7 +338,7 @@ export default function StorekeeperDashboardPage() {
                   <List.Item key={stock.id}>
                     <Group justify="space-between" style={{ width: '100%' }}>
                       <Text size="sm" fw={500}>{stock.commodity_name}</Text>
-                      <Text size="sm" fw={700}>{(stock.quantity || 0).toLocaleString()} {stock.unit_name}</Text>
+                      <Text size="sm" fw={700}>{(stock.entered_quantity ?? stock.quantity || 0).toLocaleString()} {stock.entered_unit_name || stock.unit_name}</Text>
                     </Group>
                   </List.Item>
                 ))}

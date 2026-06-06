@@ -274,8 +274,15 @@ module Cats
           commodity = Cats::Core::Commodity.find_by(id: line.commodity_id)
           next unless commodity
 
-          if line.quantity.to_f > commodity.quantity.to_f
-            raise ArgumentError, "Insufficient batch quantity for #{commodity.name || commodity.batch_no}. Available: #{commodity.quantity}, Requested: #{line.quantity}"
+          converted_qty = Cats::Warehouse::UomConversionResolver.convert(
+            line.quantity.to_f,
+            from_unit_id: line.unit_id,
+            to_unit_id: commodity.unit_of_measure_id,
+            commodity_id: commodity.id
+          )
+
+          if converted_qty > commodity.quantity.to_f
+            raise ArgumentError, "Insufficient batch quantity for #{commodity.name || commodity.batch_no}. Available: #{commodity.quantity}, Requested: #{converted_qty} (converted)"
           end
         end
 
@@ -1013,7 +1020,14 @@ module Cats
           commodity = Cats::Core::Commodity.find_by(id: line.commodity_id)
           next unless commodity
 
-          new_qty = commodity.quantity.to_f - line.quantity.to_f
+          converted_qty = Cats::Warehouse::UomConversionResolver.convert(
+            line.quantity.to_f,
+            from_unit_id: line.unit_id,
+            to_unit_id: commodity.unit_of_measure_id,
+            commodity_id: commodity.id
+          )
+
+          new_qty = commodity.quantity.to_f - converted_qty
           commodity.update_column(:quantity, [new_qty, 0].max)
         end
       end
@@ -1026,7 +1040,14 @@ module Cats
           commodity = Cats::Core::Commodity.find_by(id: line.commodity_id)
           next unless commodity
 
-          commodity.update_column(:quantity, commodity.quantity.to_f + line.quantity.to_f)
+          converted_qty = Cats::Warehouse::UomConversionResolver.convert(
+            line.quantity.to_f,
+            from_unit_id: line.unit_id,
+            to_unit_id: commodity.unit_of_measure_id,
+            commodity_id: commodity.id
+          )
+
+          commodity.update_column(:quantity, commodity.quantity.to_f + converted_qty)
         end
       end
 
