@@ -61,9 +61,11 @@ const ReceiptOrderFormPage = lazyWithReload(() => import('./pages/officer/Receip
 const ReceiptOrderDetailPage = lazyWithReload(() => import('./pages/officer/ReceiptOrderDetailPage'));
 const CommodityFormPage = lazyWithReload(() => import('./pages/officer/CommodityFormPage'));
 const CommoditiesSetupPage = lazyWithReload(() => import('./pages/admin/setup/CommoditiesSetupPage'));
-const DispatchOrdersListPage = lazyWithReload(() => import('./pages/officer/DispatchOrdersListPage'));
-const DispatchOrderFormPage = lazyWithReload(() => import('./pages/officer/DispatchOrderFormPage'));
 const DispatchOrderDetailPage = lazyWithReload(() => import('./pages/officer/DispatchOrderDetailPage'));
+const DispatchPlanListPage = lazyWithReload(() => import('./pages/officer/DispatchPlanListPage'));
+const DispatchPlanFormPage = lazyWithReload(() => import('./pages/officer/DispatchPlanFormPage'));
+const FdpSetupPage = lazyWithReload(() => import('./pages/admin/setup/FdpSetupPage'));
+const DispatchAuthorizationListPage = lazyWithReload(() => import('./pages/hub-manager/DispatchAuthorizationListPage'));
 const HubListPage = lazyWithReload(() => import('./pages/hubs/HubListPage'));
 const HubDetailPage = lazyWithReload(() => import('./pages/hubs/HubDetailPage'));
 const HubFormPage = lazyWithReload(() => import('./pages/hubs/HubFormPage'));
@@ -155,6 +157,11 @@ const RequireAdmin = ({ children }: { children: ReactNode }) => {
 function HubEditRedirect() {
   const { id } = useParams();
   return <Navigate to={`/admin/setup/hubs?id=${id}`} replace />;
+}
+
+function RedirectOfficerDispatchOrderToPlan() {
+  const { id } = useParams();
+  return <Navigate to={`/officer/dispatch-plan/${id}`} replace />;
 }
 
 const EntryRoute = () => {
@@ -273,6 +280,22 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: 'hub/dispatch-authorizations',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <DispatchAuthorizationListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'hub/dispatch-authorizations/:id',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <DispatchOrderDetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
         path: 'warehouse/dashboard',
         element: (
           <RequirePermission resource="warehouses" action="read">
@@ -317,6 +340,22 @@ export const router = createBrowserRouter([
             <RequireStandaloneWarehouseRa requireCreate>
               <ReceiptAuthorizationFormPage />
             </RequireStandaloneWarehouseRa>
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/dispatch-authorizations',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <DispatchAuthorizationListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/dispatch-authorizations/:id',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <DispatchOrderDetailPage />
           </RequirePermission>
         ),
       },
@@ -398,27 +437,15 @@ export const router = createBrowserRouter([
       },
       {
         path: 'officer/dispatch-orders',
-        element: (
-          <RequirePermission resource="dispatch_orders" action="read">
-            <DispatchOrdersListPage />
-          </RequirePermission>
-        ),
+        element: <Navigate to="/officer/dispatch-plan" replace />,
       },
       {
         path: 'officer/dispatch-orders/new',
-        element: (
-          <RequirePermission resource="dispatch_orders" action="create">
-            <DispatchOrderFormPage />
-          </RequirePermission>
-        ),
+        element: <Navigate to="/officer/dispatch-plan/new" replace />,
       },
       {
         path: 'officer/dispatch-orders/:id',
-        element: (
-          <RequirePermission resource="dispatch_orders" action="read">
-            <DispatchOrderDetailPage />
-          </RequirePermission>
-        ),
+        element: <RedirectOfficerDispatchOrderToPlan />,
       },
       {
         path: 'dispatch-orders/:id',
@@ -430,9 +457,29 @@ export const router = createBrowserRouter([
       },
       {
         path: 'officer/dispatch-orders/:id/edit',
+        element: <RedirectOfficerDispatchOrderToPlan />,
+      },
+      {
+        path: 'officer/dispatch-plan',
         element: (
-          <RequirePermission resource="dispatch_orders" action="update">
-            <DispatchOrderFormPage />
+          <RequirePermission resource="dispatch_orders" action="read">
+            <DispatchPlanListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/dispatch-plan/new',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="create">
+            <DispatchPlanFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/dispatch-plan/:id',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <DispatchOrderDetailPage />
           </RequirePermission>
         ),
       },
@@ -781,6 +828,14 @@ export const router = createBrowserRouter([
         element: (
           <RequireAdmin>
             <CommoditiesSetupPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: 'admin/setup/fdps',
+        element: (
+          <RequireAdmin>
+            <FdpSetupPage />
           </RequireAdmin>
         ),
       },

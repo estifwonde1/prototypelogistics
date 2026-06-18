@@ -21,7 +21,10 @@ Cats::Warehouse::Engine.routes.draw do
       resources :roles, only: [ :index, :create, :destroy ]
       resources :user_assignments, only: [ :index, :create, :destroy ]
       patch "user_assignments/bulk", to: "user_assignments#bulk_update"
+      resources :fdps, only: [ :index, :show, :create, :update, :destroy ]
     end
+
+    resources :fdps, only: [ :index, :show, :create, :update, :destroy ]
 
     get "locations/regions", to: "locations#regions"
     get "locations/zones", to: "locations#zones"

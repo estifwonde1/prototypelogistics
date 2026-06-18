@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useMatch } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { Stack, Title, Button, Group, Card, Table, Text, SimpleGrid, Dialog, Tabs, Textarea, NumberInput } from '@mantine/core';
@@ -26,6 +26,7 @@ import { usePermission } from '../../hooks/usePermission';
 function DispatchOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const isDispatchPlanRoute = Boolean(useMatch('/officer/dispatch-plan/:id'));
   const queryClient = useQueryClient();
   const { can } = usePermission();
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
@@ -85,7 +86,7 @@ function DispatchOrderDetailPage() {
         message: 'Dispatch Order deleted successfully',
         color: 'green',
       });
-      navigate('/officer/dispatch-orders');
+      navigate(isDispatchPlanRoute ? '/officer/dispatch-plan' : '/officer/dispatch-orders');
     },
     onError: (error: unknown) => {
       notifications.show({
@@ -201,14 +202,27 @@ function DispatchOrderDetailPage() {
   const assignments = order.assignments || [];
   const stockReservations = order.stock_reservations || [];
   const isDraft = order.status === 'Draft';
-  const canCreateGin = can('gins', 'create') && !isDraft;
+  const canCreateGin = !isDispatchPlanRoute && can('gins', 'create') && !isDraft;
+  const showOperationalTabs = !isDispatchPlanRoute && !isDraft;
+  const sourceFacilityNames = new Set<string>();
+  (order.lines ?? []).forEach((line) => {
+    const sourceName = line.hub_name || line.warehouse_name;
+    if (sourceName) sourceFacilityNames.add(sourceName);
+  });
+  if (sourceFacilityNames.size === 0 && order.source_warehouse_name) {
+    sourceFacilityNames.add(order.source_warehouse_name);
+  }
+  const sourceFacilityLabel = Array.from(sourceFacilityNames).join(', ') || '—';
+  const dispatchPlanLabel = order.response_plan_ref || order.reference_no || `DP-${order.id}`;
 
   return (
     <Stack gap="md">
       <Group justify="space-between">
         <div>
           <Group gap="sm" align="center">
-            <Title order={2}>Dispatch Order DO-{order.id}</Title>
+            <Title order={2}>
+              {isDispatchPlanRoute ? `Dispatch Plan ${dispatchPlanLabel}` : `Dispatch Order DO-${order.id}`}
+            </Title>
             <ScopeBadge locationName={order.location_name} hierarchicalLevel={order.hierarchical_level} />
           </Group>
           <Text c="dimmed" size="sm">
@@ -232,13 +246,13 @@ function DispatchOrderDetailPage() {
       <Tabs value={activeTab} onChange={(value) => setActiveTab(value || 'details')}>
         <Tabs.List>
           <Tabs.Tab value="details">Details</Tabs.Tab>
-          {!isDraft && (
+          {showOperationalTabs && (
             <>
               <Tabs.Tab value="assignments">Assignments</Tabs.Tab>
               <Tabs.Tab value="stock-reservations">Stock Reservations</Tabs.Tab>
-              <Tabs.Tab value="workflow">Workflow Timeline</Tabs.Tab>
             </>
           )}
+          {!isDraft && <Tabs.Tab value="workflow">Workflow Timeline</Tabs.Tab>}
         </Tabs.List>
 
         <Tabs.Panel value="details" pt="md">
@@ -248,10 +262,28 @@ function DispatchOrderDetailPage() {
                 <SimpleGrid cols={{ base: 1, sm: 2 }}>
                   <div>
                     <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                      Source Warehouse
+                      Response Plan Ref
                     </Text>
                     <Text size="sm" fw={600} mt="xs">
-                      {order.source_warehouse_name || 'N/A'}
+                      {order.response_plan_ref || '—'}
+                    </Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                      Approval Date
+                    </Text>
+                    <Text size="sm" fw={600} mt="xs">
+                      {order.approval_date
+                        ? new Date(order.approval_date).toLocaleDateString()
+                        : '—'}
+                    </Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+                      Source Facility
+                    </Text>
+                    <Text size="sm" fw={600} mt="xs">
+                      {sourceFacilityLabel}
                     </Text>
                   </div>
                   <div>
@@ -259,7 +291,7 @@ function DispatchOrderDetailPage() {
                       Destination
                     </Text>
                     <Text size="sm" fw={600} mt="xs">
-                      {order.destination_type} - {order.destination_name}
+                      {order.fdp_name || order.destination_name || 'Per line FDP'}
                     </Text>
                   </div>
                   <div>
@@ -267,7 +299,9 @@ function DispatchOrderDetailPage() {
                       Expected Pickup
                     </Text>
                     <Text size="sm" fw={600} mt="xs">
-                      {new Date(order.expected_pickup_date).toLocaleDateString()}
+                      {order.expected_pickup_date
+                        ? new Date(order.expected_pickup_date).toLocaleDateString()
+                        : '—'}
                     </Text>
                   </div>
                   <div>
@@ -279,13 +313,13 @@ function DispatchOrderDetailPage() {
                     </Text>
                   </div>
                 </SimpleGrid>
-                {order.notes && (
+                {(order.description || order.notes) && (
                   <div>
                     <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-                      Notes
+                      Description
                     </Text>
                     <Text size="sm" mt="xs">
-                      {order.notes}
+                      {order.description || order.notes}
                     </Text>
                   </div>
                 )}
@@ -296,23 +330,33 @@ function DispatchOrderDetailPage() {
               <Text size="sm" fw={600} mb="md">
                 Order Items
               </Text>
-              <Table.ScrollContainer minWidth={600}>
+              <Table.ScrollContainer minWidth={900}>
                 <Table striped>
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Commodity</Table.Th>
+                      <Table.Th>Source</Table.Th>
                       <Table.Th>Quantity</Table.Th>
                       <Table.Th>Unit</Table.Th>
-                      <Table.Th>Notes</Table.Th>
+                      <Table.Th>FDP</Table.Th>
+                      <Table.Th>Expected Receive</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
                     {order.lines?.map((line, index) => (
-                      <Table.Tr key={index}>
-                        <Table.Td>{line.commodity_id}</Table.Td>
+                      <Table.Tr key={line.id ?? index}>
+                        <Table.Td>{line.commodity_name || line.commodity_id}</Table.Td>
+                        <Table.Td>
+                          {line.hub_name || line.warehouse_name || line.warehouse_id || '—'}
+                        </Table.Td>
                         <Table.Td>{line.quantity}</Table.Td>
-                        <Table.Td>{line.unit_id}</Table.Td>
-                        <Table.Td>{line.notes || '-'}</Table.Td>
+                        <Table.Td>{line.unit_name || line.unit_id}</Table.Td>
+                        <Table.Td>{line.fdp_name || '—'}</Table.Td>
+                        <Table.Td>
+                          {line.expected_receive_at
+                            ? new Date(line.expected_receive_at).toLocaleString()
+                            : '—'}
+                        </Table.Td>
                       </Table.Tr>
                     ))}
                   </Table.Tbody>
@@ -323,12 +367,14 @@ function DispatchOrderDetailPage() {
             <Group justify="flex-end">
               {isDraft && (
                 <>
-                  <Button
-                    variant="light"
-                    onClick={() => navigate(`/officer/dispatch-orders/${order.id}/edit`)}
-                  >
-                    Edit
-                  </Button>
+                  {!isDispatchPlanRoute && (
+                    <Button
+                      variant="light"
+                      onClick={() => navigate(`/officer/dispatch-orders/${order.id}/edit`)}
+                    >
+                      Edit
+                    </Button>
+                  )}
                   <Button
                     color="red"
                     variant="light"
@@ -346,7 +392,10 @@ function DispatchOrderDetailPage() {
                 </>
               )}
               {!isDraft && (
-                <Button variant="light" onClick={() => navigate('/officer/dispatch-orders')}>
+                <Button
+                  variant="light"
+                  onClick={() => navigate(isDispatchPlanRoute ? '/officer/dispatch-plan' : '/officer/dispatch-orders')}
+                >
                   Back to List
                 </Button>
               )}
@@ -354,141 +403,145 @@ function DispatchOrderDetailPage() {
           </Stack>
         </Tabs.Panel>
 
-        <Tabs.Panel value="assignments" pt="md">
-          <Stack gap="md">
-            <Group justify="space-between">
-              <Text fw={600}>Warehouse Assignments</Text>
-              {order.status === 'Confirmed' && (
-                <Button
-                  size="sm"
-                  onClick={() => setShowAssignmentForm(true)}
-                >
-                  + Assign Warehouse
-                </Button>
-              )}
-            </Group>
-
-            {assignments.length === 0 ? (
-              <Text c="dimmed">No assignments yet</Text>
-            ) : (
-              assignments.map((assignment) => (
-                <AssignmentCard
-                  key={assignment.id}
-                  assignment={assignment}
-                />
-              ))
-            )}
-
-            {showAssignmentForm && (
-              <Card shadow="sm" padding="lg" radius="md" withBorder>
-                <Stack gap="md">
-                  <SearchableSelect
-                    label="Assign to User"
-                    placeholder="Select warehouse manager"
-                    data={[
-                      { value: '1', label: 'Manager 1' },
-                      { value: '2', label: 'Manager 2' },
-                    ]}
-                    value={selectedUserId}
-                    onChange={setSelectedUserId}
-                  />
-                  <Textarea
-                    label="Notes"
-                    placeholder="Assignment notes..."
-                    value={assignmentNotes}
-                    onChange={(e) => setAssignmentNotes(e.target.value)}
-                  />
-                  <Group gap="sm">
+        {showOperationalTabs && (
+          <>
+            <Tabs.Panel value="assignments" pt="md">
+              <Stack gap="md">
+                <Group justify="space-between">
+                  <Text fw={600}>Warehouse Assignments</Text>
+                  {order.status === 'Confirmed' && (
                     <Button
-                      onClick={handleCreateAssignment}
-                      loading={isLoading_}
+                      size="sm"
+                      onClick={() => setShowAssignmentForm(true)}
                     >
-                      Create Assignment
+                      + Assign Warehouse
                     </Button>
-                    <Button
-                      variant="light"
-                      onClick={() => setShowAssignmentForm(false)}
-                    >
-                      Cancel
-                    </Button>
-                  </Group>
-                </Stack>
-              </Card>
-            )}
-          </Stack>
-        </Tabs.Panel>
+                  )}
+                </Group>
 
-        <Tabs.Panel value="stock-reservations" pt="md">
-          <Stack gap="md">
-            <Group justify="space-between">
-              <Text fw={600}>Reserved Stock</Text>
-              {order.status === 'Confirmed' && (
-                <Button
-                  size="sm"
-                  onClick={() => setShowStockReservationForm(true)}
-                >
-                  + Reserve Stock
-                </Button>
-              )}
-            </Group>
+                {assignments.length === 0 ? (
+                  <Text c="dimmed">No assignments yet</Text>
+                ) : (
+                  assignments.map((assignment) => (
+                    <AssignmentCard
+                      key={assignment.id}
+                      assignment={assignment}
+                    />
+                  ))
+                )}
 
-            {stockReservations.length === 0 ? (
-              <Text c="dimmed">No stock reservations yet</Text>
-            ) : (
-              stockReservations.map((reservation) => (
-                <ReservationCard
-                  key={reservation.id}
-                  reservation={reservation}
-                  type="stock"
-                />
-              ))
-            )}
+                {showAssignmentForm && (
+                  <Card shadow="sm" padding="lg" radius="md" withBorder>
+                    <Stack gap="md">
+                      <SearchableSelect
+                        label="Assign to User"
+                        placeholder="Select warehouse manager"
+                        data={[
+                          { value: '1', label: 'Manager 1' },
+                          { value: '2', label: 'Manager 2' },
+                        ]}
+                        value={selectedUserId}
+                        onChange={setSelectedUserId}
+                      />
+                      <Textarea
+                        label="Notes"
+                        placeholder="Assignment notes..."
+                        value={assignmentNotes}
+                        onChange={(e) => setAssignmentNotes(e.target.value)}
+                      />
+                      <Group gap="sm">
+                        <Button
+                          onClick={handleCreateAssignment}
+                          loading={isLoading_}
+                        >
+                          Create Assignment
+                        </Button>
+                        <Button
+                          variant="light"
+                          onClick={() => setShowAssignmentForm(false)}
+                        >
+                          Cancel
+                        </Button>
+                      </Group>
+                    </Stack>
+                  </Card>
+                )}
+              </Stack>
+            </Tabs.Panel>
 
-            {showStockReservationForm && (
-              <Card shadow="sm" padding="lg" radius="md" withBorder>
-                <Stack gap="md">
-                  <SearchableSelect
-                    label="Commodity"
-                    placeholder="Select commodity"
-                    data={[
-                      { value: '1', label: 'Commodity 1' },
-                      { value: '2', label: 'Commodity 2' },
-                    ]}
-                    value={selectedCommodityId}
-                    onChange={setSelectedCommodityId}
-                  />
-                  <NumberInput
-                    label="Quantity to Reserve"
-                    placeholder="Enter quantity"
-                    value={reservedQuantity}
-                    onChange={(value) => setReservedQuantity(Number(value))}
-                    min={0}
-                  />
-                  <Textarea
-                    label="Notes"
-                    placeholder="Reservation notes..."
-                    value={stockReservationNotes}
-                    onChange={(e) => setStockReservationNotes(e.target.value)}
-                  />
-                  <Group gap="sm">
+            <Tabs.Panel value="stock-reservations" pt="md">
+              <Stack gap="md">
+                <Group justify="space-between">
+                  <Text fw={600}>Reserved Stock</Text>
+                  {order.status === 'Confirmed' && (
                     <Button
-                      onClick={handleCreateStockReservation}
-                      loading={isLoading_}
+                      size="sm"
+                      onClick={() => setShowStockReservationForm(true)}
                     >
-                      Reserve Stock
+                      + Reserve Stock
                     </Button>
-                    <Button
-                      variant="light"
-                      onClick={() => setShowStockReservationForm(false)}
-                    >
-                      Cancel
-                    </Button>
-                  </Group>
-                </Stack>
-              </Card>
-            )}
-          </Stack>
-        </Tabs.Panel>
+                  )}
+                </Group>
+
+                {stockReservations.length === 0 ? (
+                  <Text c="dimmed">No stock reservations yet</Text>
+                ) : (
+                  stockReservations.map((reservation) => (
+                    <ReservationCard
+                      key={reservation.id}
+                      reservation={reservation}
+                      type="stock"
+                    />
+                  ))
+                )}
+
+                {showStockReservationForm && (
+                  <Card shadow="sm" padding="lg" radius="md" withBorder>
+                    <Stack gap="md">
+                      <SearchableSelect
+                        label="Commodity"
+                        placeholder="Select commodity"
+                        data={[
+                          { value: '1', label: 'Commodity 1' },
+                          { value: '2', label: 'Commodity 2' },
+                        ]}
+                        value={selectedCommodityId}
+                        onChange={setSelectedCommodityId}
+                      />
+                      <NumberInput
+                        label="Quantity to Reserve"
+                        placeholder="Enter quantity"
+                        value={reservedQuantity}
+                        onChange={(value) => setReservedQuantity(Number(value))}
+                        min={0}
+                      />
+                      <Textarea
+                        label="Notes"
+                        placeholder="Reservation notes..."
+                        value={stockReservationNotes}
+                        onChange={(e) => setStockReservationNotes(e.target.value)}
+                      />
+                      <Group gap="sm">
+                        <Button
+                          onClick={handleCreateStockReservation}
+                          loading={isLoading_}
+                        >
+                          Reserve Stock
+                        </Button>
+                        <Button
+                          variant="light"
+                          onClick={() => setShowStockReservationForm(false)}
+                        >
+                          Cancel
+                        </Button>
+                      </Group>
+                    </Stack>
+                  </Card>
+                )}
+              </Stack>
+            </Tabs.Panel>
+          </>
+        )}
 
         <Tabs.Panel value="workflow" pt="md">
           <WorkflowTimeline events={workflowEvents} />
@@ -502,7 +555,7 @@ function DispatchOrderDetailPage() {
         size="sm"
       >
         <Text size="sm" mb="md">
-          This will lock the order and create workflow for warehouse managers.
+          This will lock the plan and send it to the selected hub or independent warehouse.
         </Text>
         <Group justify="flex-end">
           <Button variant="light" onClick={() => setConfirmDialogOpen(false)}>

@@ -3,11 +3,34 @@ module Cats
     class DispatchOrderSerializer < ApplicationSerializer
       attributes :id, :reference_no, :name, :status, :dispatched_date, :destination_type, :destination_id, :destination_reference,
                  :hub_id, :hub_name, :warehouse_id, :warehouse_name, :warehouse_code,
+                 :source_warehouse_id, :source_warehouse_name, :expected_pickup_date,
                  :created_by_id, :created_by_name, :confirmed_by_id, :confirmed_by_name, :confirmed_at,
                  :description, :created_at, :updated_at,
-                 :location_id, :hierarchical_level, :location_name
+                 :location_id, :hierarchical_level, :location_name,
+                 :response_plan_ref, :approval_date, :response_type, :fdp_id, :fdp_name
 
       has_many :dispatch_order_lines, serializer: Cats::Warehouse::DispatchOrderLineSerializer
+      has_many :lines, serializer: Cats::Warehouse::DispatchOrderLineSerializer
+
+      def lines
+        object.dispatch_order_lines
+      end
+
+      def source_warehouse_id
+        object.warehouse_id
+      end
+
+      def source_warehouse_name
+        object.warehouse&.name
+      end
+
+      def expected_pickup_date
+        object.dispatched_date
+      end
+
+      def fdp_name
+        object.fdp&.name
+      end
       has_many :dispatch_order_assignments, serializer: Cats::Warehouse::DispatchOrderAssignmentSerializer
       has_many :stock_reservations, serializer: Cats::Warehouse::StockReservationSerializer
 
