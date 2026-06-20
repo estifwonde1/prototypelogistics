@@ -121,6 +121,11 @@ Cats::Warehouse::Engine.routes.draw do
       get :workflow, on: :member
     end
 
+    resources :dispatch_order_authorizations, only: [ :index, :show, :create, :update ] do
+      post :confirm, on: :member
+      post :cancel, on: :member
+    end
+
     resources :grns, only: [ :index, :show, :create ] do
       post :confirm, on: :member
     end

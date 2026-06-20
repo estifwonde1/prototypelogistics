@@ -224,6 +224,17 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               path: "/hub/receipt-authorizations",
               resource: "receipt_authorizations",
             },
+          ],
+        },
+        {
+          label: "Dispatches",
+          items: [
+            {
+              label: "Dispatches",
+              icon: <IconTruck size={20} />,
+              path: "/hub/dispatches",
+              resource: "dispatch_orders",
+            },
             {
               label: "Dispatch Authorization",
               icon: <IconClipboardList size={20} />,
@@ -285,6 +296,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
           : []),
         ...(wmIsStandalone
           ? [
+              {
+                label: "Dispatches",
+                icon: <IconTruck size={20} />,
+                path: "/warehouse/dispatches",
+                resource: "dispatch_orders" as Resource,
+              },
               {
                 label: "Dispatch Authorization",
                 icon: <IconClipboardList size={20} />,

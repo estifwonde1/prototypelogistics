@@ -7,7 +7,8 @@ module Cats
                  :created_by_id, :created_by_name, :confirmed_by_id, :confirmed_by_name, :confirmed_at,
                  :description, :created_at, :updated_at,
                  :location_id, :hierarchical_level, :location_name,
-                 :response_plan_ref, :approval_date, :response_type, :fdp_id, :fdp_name
+                 :response_plan_ref, :approval_date, :response_type, :fdp_id, :fdp_name,
+                 :total_ordered_quantity, :total_authorized_quantity, :remaining_quantity
 
       has_many :dispatch_order_lines, serializer: Cats::Warehouse::DispatchOrderLineSerializer
       has_many :lines, serializer: Cats::Warehouse::DispatchOrderLineSerializer
@@ -66,6 +67,28 @@ module Cats
 
       def location_name
         object.location&.name
+      end
+
+      # Total quantity ordered across all lines (sum of line quantities in their own units —
+      # used as a simple reference total for display; canonical comparison uses line-level units).
+      def total_ordered_quantity
+        object.dispatch_order_lines.sum { |l| l.quantity.to_f }
+      end
+
+      # Total quantity already covered by confirmed Dispatch Authorizations for this order.
+      def total_authorized_quantity
+        DispatchOrderAuthorization
+          .where(dispatch_order_id: object.id, status: DispatchOrderAuthorization::CONFIRMED)
+          .sum(:authorized_quantity)
+          .to_f
+      end
+
+      # Remaining quantity available for new Dispatch Authorizations.
+      # When <= 0 the order is fully covered and should not accept new DAs.
+      def remaining_quantity
+        ordered = total_ordered_quantity
+        authorized = total_authorized_quantity
+        [ordered - authorized, 0].max.round(4)
       end
     end
   end

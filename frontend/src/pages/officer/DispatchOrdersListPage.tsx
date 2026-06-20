@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Stack, Title, Button, Group, TextInput, Table, ActionIcon, Text, Badge } from '@mantine/core';
+import { Stack, Title, Button, Group, TextInput, Table, ActionIcon, Text } from '@mantine/core';
 import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { IconPlus, IconSearch, IconEye } from '@tabler/icons-react';
 import { getDispatchOrders } from '../../api/dispatchOrders';
@@ -154,7 +154,6 @@ function DispatchOrdersListPage() {
                 <Table.Th>Order ID</Table.Th>
                 <Table.Th>Source</Table.Th>
                 <Table.Th>Destination</Table.Th>
-                <Table.Th>Jurisdiction</Table.Th>
                 <Table.Th>Status</Table.Th>
                 <Table.Th>Items</Table.Th>
                 <Table.Th>Created</Table.Th>
@@ -162,26 +161,17 @@ function DispatchOrdersListPage() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {filteredOrders?.map((order) => {
-                const isFederal = !order.location_name || !order.hierarchical_level || order.hierarchical_level === 'Federal';
-                return (
+              {filteredOrders?.map((order) => (
                   <Table.Tr
                     key={order.id}
                     style={{ cursor: 'pointer' }}
                     onClick={() => navigate(`/officer/dispatch-orders/${order.id}`)}
                   >
                     <Table.Td style={{ fontWeight: 600 }}>DO-{order.id}</Table.Td>
-                    <Table.Td>{order.source_warehouse_name || 'N/A'}</Table.Td>
-                    <Table.Td>{order.destination_name}</Table.Td>
                     <Table.Td>
-                      {isFederal ? (
-                        <Badge color="gray" variant="light" size="sm">Federal</Badge>
-                      ) : (
-                        <Badge color="blue" variant="light" size="sm">
-                          {order.location_name} — {order.hierarchical_level}
-                        </Badge>
-                      )}
+                      {order.hub_id != null ? (order.source_warehouse_name || 'N/A') : '—'}
                     </Table.Td>
+                    <Table.Td>{order.destination_name}</Table.Td>
                     <Table.Td>
                       <StatusBadge status={order.status} />
                     </Table.Td>
@@ -201,8 +191,7 @@ function DispatchOrdersListPage() {
                       </Group>
                     </Table.Td>
                   </Table.Tr>
-                );
-              })}
+              ))}
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>

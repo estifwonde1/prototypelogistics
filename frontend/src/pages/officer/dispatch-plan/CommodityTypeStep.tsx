@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Group, Radio, Stack, Text } from '@mantine/core';
 import { SearchableSelect } from '../../../components/common/SearchableSelect';
-import type { CommodityReference } from '../../../types/referenceData';
+import type { CommodityReference, UnitReference } from '../../../types/referenceData';
 import type { CommodityDefinition } from '../../../api/commodityDefinitions';
 import type { CommodityGroup, CommodityLineDraft } from './types';
 import { buildGroupedCommodityOptions } from './commodityGrouping';
@@ -10,13 +10,23 @@ interface CommodityTypeStepProps {
   value: CommodityLineDraft;
   commodities: CommodityReference[];
   definitions: CommodityDefinition[];
+  units: UnitReference[];
   onChange: (patch: Partial<CommodityLineDraft>) => void;
 }
 
-export function CommodityTypeStep({ value, commodities, definitions, onChange }: CommodityTypeStepProps) {
+export function CommodityTypeStep({ value, commodities, definitions, units, onChange }: CommodityTypeStepProps) {
   const commodityOptions = useMemo(
     () => buildGroupedCommodityOptions(definitions, commodities, value.commodityGroup),
     [definitions, commodities, value.commodityGroup]
+  );
+
+  const unitOptions = useMemo(
+    () =>
+      units.map((u) => ({
+        value: u.id.toString(),
+        label: u.name,
+      })),
+    [units]
   );
 
   const handleGroupChange = (group: string) => {
@@ -26,6 +36,7 @@ export function CommodityTypeStep({ value, commodities, definitions, onChange }:
       commodityBatchIds: [],
       commodityLabel: '',
       unitId: 0,
+      unitLabel: undefined,
       sourceAllocations: [],
       sourceType: null,
       sourceKey: null,
@@ -58,6 +69,16 @@ export function CommodityTypeStep({ value, commodities, definitions, onChange }:
     });
   };
 
+  const handleUnitChange = (unitId: string | null) => {
+    const unit = units.find((u) => u.id.toString() === unitId);
+    onChange({
+      unitId: unit ? unit.id : 0,
+      unitLabel: unit ? (unit.abbreviation || unit.name) : undefined,
+    });
+  };
+
+  const selectedUnitId = value.unitId ? value.unitId.toString() : null;
+
   return (
     <Stack gap="md">
       <div>
@@ -83,6 +104,17 @@ export function CommodityTypeStep({ value, commodities, definitions, onChange }:
         disabled={!value.commodityGroup}
         required
       />
+      {value.commodityName && (
+        <SearchableSelect
+          label="Unit"
+          placeholder="Select unit"
+          data={unitOptions}
+          value={selectedUnitId}
+          onChange={handleUnitChange}
+          searchable
+          required
+        />
+      )}
     </Stack>
   );
 }

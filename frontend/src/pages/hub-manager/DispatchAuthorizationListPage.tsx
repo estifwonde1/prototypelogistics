@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Stack, Title, Group, Card, Table, Text, Badge, SimpleGrid } from '@mantine/core';
+import { Stack, Title, Group, Card, Table, Text, Badge, SimpleGrid, Button } from '@mantine/core';
+import { IconPlus } from '@tabler/icons-react';
 import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { getDispatchOrders } from '../../api/dispatchOrders';
 import type { DispatchOrder } from '../../api/dispatchOrders';
@@ -49,6 +50,11 @@ export default function DispatchAuthorizationListPage() {
     );
   }, [orders]);
 
+  const hubAssignedLinesForOrder = (order: DispatchOrder) => {
+    if (!isHubManager || !userHubId) return order.lines ?? [];
+    return (order.lines ?? []).filter((line) => line.hub_id === userHubId);
+  };
+
   const filteredOrders = useMemo(() => {
     if (!statusFilter) return inboundDispatches;
     return inboundDispatches.filter((order) => order.status === statusFilter);
@@ -59,14 +65,17 @@ export default function DispatchAuthorizationListPage() {
   const completed = inboundDispatches.filter((o) => o.status === 'Completed').length;
 
   const fdpLabelForOrder = (order: DispatchOrder) => {
+    const lines = hubAssignedLinesForOrder(order);
+
     const lineFdpIds = new Set(
-      (order.lines ?? [])
+      (lines ?? [])
         .map((line) => line.fdp_id)
         .filter((id): id is number => id != null)
     );
+
     if (lineFdpIds.size > 1) return 'Multiple FDPs';
     if (lineFdpIds.size === 1) {
-      const line = order.lines?.find((l) => l.fdp_id != null);
+      const line = lines?.find((l) => l.fdp_id != null);
       return line?.fdp_name || order.fdp_name || order.destination_name || '—';
     }
     return order.fdp_name || order.destination_name || '—';
@@ -85,7 +94,9 @@ export default function DispatchAuthorizationListPage() {
       <div>
         <Title order={2}>Dispatch Authorization</Title>
         <Text c="dimmed" size="sm">
-          Receive and authorize inbound dispatches executed from officer dispatch plans
+          {isHubManager
+            ? 'My assigned dispatches (filtered to the active hub)'
+            : 'Receive and authorize inbound dispatches executed from officer dispatch plans'}
         </Text>
       </div>
 
@@ -116,7 +127,7 @@ export default function DispatchAuthorizationListPage() {
         </Card>
       </SimpleGrid>
 
-      <Group>
+      <Group justify="space-between">
         <SearchableSelect
           placeholder="All statuses"
           data={OPERATIONAL_STATUSES.map((s) => ({ value: s, label: s }))}
@@ -125,6 +136,12 @@ export default function DispatchAuthorizationListPage() {
           clearable
           w={200}
         />
+        <Button
+          leftSection={<IconPlus size={16} />}
+          onClick={() => navigate(`${isHubManager ? '/hub' : '/warehouse'}/dispatch-authorizations/new`)}
+        >
+          Create Dispatch Authorization
+        </Button>
       </Group>
 
       {filteredOrders.length === 0 ? (
@@ -138,7 +155,7 @@ export default function DispatchAuthorizationListPage() {
               <Table.Tr>
                 <Table.Th>Reference</Table.Th>
                 <Table.Th>FDP</Table.Th>
-                <Table.Th>Source Warehouse</Table.Th>
+                {isHubManager && <Table.Th>Source Warehouse</Table.Th>}
                 <Table.Th>Commodity Lines</Table.Th>
                 <Table.Th>Status</Table.Th>
                 <Table.Th>Expected Date</Table.Th>
@@ -159,13 +176,21 @@ export default function DispatchAuthorizationListPage() {
                   <Table.Td>
                     <Text size="sm">{fdpLabelForOrder(order)}</Text>
                   </Table.Td>
+                  {isHubManager && (
                   <Table.Td>
                     <Text size="sm">{order.source_warehouse_name || '—'}</Text>
                   </Table.Td>
+                  )}
                   <Table.Td>
-                    <Badge variant="light" size="sm">
-                      {order.lines?.length ?? 0} item{(order.lines?.length ?? 0) === 1 ? '' : 's'}
-                    </Badge>
+                    {(() => {
+                      const lines = hubAssignedLinesForOrder(order);
+                      const count = lines.length ?? 0;
+                      return (
+                        <Badge variant="light" size="sm">
+                          {count} item{count === 1 ? '' : 's'}
+                        </Badge>
+                      );
+                    })()}
                   </Table.Td>
                   <Table.Td>
                     <StatusBadge status={order.status} />

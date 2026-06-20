@@ -9,6 +9,10 @@ module Cats
       belongs_to :issued_by, class_name: "Cats::Core::User"
       belongs_to :approved_by, class_name: "Cats::Core::User", optional: true
       belongs_to :dispatch_order, class_name: "Cats::Warehouse::DispatchOrder", optional: true
+      belongs_to :dispatch_order_authorization,
+                 class_name: "Cats::Warehouse::DispatchOrderAuthorization",
+                 optional: true,
+                 foreign_key: :dispatch_order_authorization_id
       belongs_to :generated_from_waybill, class_name: "Cats::Warehouse::Waybill", optional: true
 
       has_many :gin_items, class_name: "Cats::Warehouse::GinItem", dependent: :destroy

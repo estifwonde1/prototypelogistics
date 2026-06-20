@@ -3,11 +3,10 @@ import type { DispatchPlanLineDraft, DispatchPlanReferenceDraft } from './types'
 
 interface ExecuteStepProps {
   reference: DispatchPlanReferenceDraft;
-  jurisdictionLabel: string;
   lines: DispatchPlanLineDraft[];
 }
 
-export function ExecuteStep({ reference, jurisdictionLabel, lines }: ExecuteStepProps) {
+export function ExecuteStep({ reference, lines }: ExecuteStepProps) {
   return (
     <Stack gap="md">
       <Card withBorder padding="md">
@@ -15,10 +14,6 @@ export function ExecuteStep({ reference, jurisdictionLabel, lines }: ExecuteStep
           Response Plan
         </Text>
         <SimpleGrid cols={{ base: 1, sm: 2 }}>
-          <Text size="sm">
-            <Text span c="dimmed">Jurisdiction: </Text>
-            {jurisdictionLabel}
-          </Text>
           <Text size="sm">
             <Text span c="dimmed">Reference: </Text>
             {reference.responsePlanRef}

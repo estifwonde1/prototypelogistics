@@ -84,13 +84,13 @@ export function FdpReceiveStep({ value, onChange }: FdpReceiveStepProps) {
             FDP Destination
           </Text>
           <Badge variant="light" color="blue">
-            {fdps.length} in your jurisdiction{isFetching ? '…' : ''}
+            {fdps.length} FDPs available{isFetching ? '…' : ''}
           </Badge>
         </Group>
         <SearchableSelect
           label="Select FDP"
-          placeholder={fdps.length ? 'Open to list all, or type to search by name' : 'No FDPs in your jurisdiction'}
-          description="All FDPs in your jurisdiction are listed. Type in the field to filter by FDP name."
+          placeholder={fdps.length ? 'Open to list all, or type to search by name' : 'No FDPs available'}
+          description="All FDPs are listed. Type in the field to filter by FDP name."
           data={fdpOptions}
           value={value.fdpId}
           onChange={handleFdpChange}

@@ -66,6 +66,9 @@ function DispatchPlanListPage() {
   };
 
   const sourceLabelForPlan = (plan: DispatchOrder) => {
+    // For independent warehouse orders (no hub), hide source info from officer view
+    if (plan.hub_id == null) return '—';
+
     const sourceNames = new Set<string>();
 
     (plan.lines ?? []).forEach((line) => {
@@ -174,7 +177,6 @@ function DispatchPlanListPage() {
                 <Table.Th>FDP</Table.Th>
                 <Table.Th>Lines</Table.Th>
                 <Table.Th>Source</Table.Th>
-                <Table.Th>Jurisdiction</Table.Th>
                 <Table.Th>Status</Table.Th>
                 <Table.Th>Expected Date</Table.Th>
                 <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>
@@ -182,10 +184,6 @@ function DispatchPlanListPage() {
             </Table.Thead>
             <Table.Tbody>
               {filteredPlans.map((plan) => {
-                const isFederal =
-                  !plan.location_name ||
-                  !plan.hierarchical_level ||
-                  plan.hierarchical_level === 'Federal';
                 return (
                   <Table.Tr
                     key={plan.id}
@@ -203,17 +201,6 @@ function DispatchPlanListPage() {
                       </Badge>
                     </Table.Td>
                     <Table.Td>{sourceLabelForPlan(plan)}</Table.Td>
-                    <Table.Td>
-                      {isFederal ? (
-                        <Badge color="gray" variant="light" size="sm">
-                          Federal
-                        </Badge>
-                      ) : (
-                        <Badge color="blue" variant="light" size="sm">
-                          {plan.location_name} — {plan.hierarchical_level}
-                        </Badge>
-                      )}
-                    </Table.Td>
                     <Table.Td>
                       <StatusBadge status={plan.status} />
                     </Table.Td>

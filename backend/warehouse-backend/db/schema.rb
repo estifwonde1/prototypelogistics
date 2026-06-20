@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_06_18_000002) do
+ActiveRecord::Schema[7.0].define(version: 2026_06_20_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1169,6 +1169,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_06_18_000002) do
     t.datetime "updated_at", null: false
     t.string "driver_phone"
     t.bigint "commodity_id"
+    t.decimal "authorized_quantity_input", precision: 15, scale: 6
     t.index ["commodity_id"], name: "idx_cw_doa_commodity"
     t.index ["dispatch_order_id", "warehouse_id"], name: "idx_cw_doa_order_wh"
     t.index ["dispatch_order_id"], name: "idx_cw_doa_order"

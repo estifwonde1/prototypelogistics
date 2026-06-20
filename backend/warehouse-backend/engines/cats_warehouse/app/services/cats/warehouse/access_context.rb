@@ -17,7 +17,11 @@ module Cats
       end
 
       def warehouse_manager?
-        user&.has_role?("Warehouse Manager")
+        user&.has_role?("Warehouse Manager") || independent_warehouse_manager?
+      end
+
+      def independent_warehouse_manager?
+        user&.has_role?("Independent Warehouse Manager")
       end
 
       def storekeeper?
@@ -43,7 +47,7 @@ module Cats
       end
 
       def assigned_warehouse_ids
-        UserAssignment.where(user_id: user&.id, role_name: "Warehouse Manager").pluck(:warehouse_id).compact
+        UserAssignment.where(user_id: user&.id, role_name: ["Warehouse Manager", "Independent Warehouse Manager"]).pluck(:warehouse_id).compact
       end
 
       def assigned_receipt_authorizer_hub_ids

@@ -13,9 +13,12 @@ import {
 } from '@mantine/core';
 import { IconPlus, IconTrash } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
+import { SearchableSelect } from '../../../components/common/SearchableSelect';
 import type { StockBalance } from '../../../types/stockBalance';
 import type { Warehouse } from '../../../types/warehouse';
+import type { UnitReference, UomConversion } from '../../../types/referenceData';
 import type { CommodityLineDraft, SourceAllocationDraft, SourceFacilityType } from './types';
+import { convertQuantityToTargetUnit } from '../../../utils/uomConversions';
 
 export interface SourceOption {
   key: string;
@@ -26,6 +29,7 @@ export interface SourceOption {
   hubName?: string | null;
   availableQty: number;
   unitLabel?: string;
+  unitId?: number;
   label: string;
 }
 
@@ -33,6 +37,8 @@ interface SourceQuantityStepProps {
   value: CommodityLineDraft;
   stockBalances: StockBalance[];
   warehouses: Warehouse[];
+  units: UnitReference[];
+  uomConversions: UomConversion[];
   onChange: (patch: Partial<CommodityLineDraft>) => void;
 }
 
@@ -49,13 +55,14 @@ export function buildSourceOptions(
   if (!sourceType) return [];
 
   const warehouseById = new Map(warehouses.map((w) => [w.id, w]));
-  const byWarehouse = new Map<number, { quantity: number; unitLabel?: string }>();
+  const byWarehouse = new Map<number, { quantity: number; unitLabel?: string; unitId?: number }>();
 
   stockBalances.forEach((balance) => {
     const existing = byWarehouse.get(balance.warehouse_id);
     const nextQty = (existing?.quantity ?? 0) + toQuantity(balance.quantity);
     const unitLabel = existing?.unitLabel || balance.unit_abbreviation || balance.unit_name || undefined;
-    byWarehouse.set(balance.warehouse_id, { quantity: nextQty, unitLabel });
+    const unitId = existing?.unitId ?? balance.unit_id ?? undefined;
+    byWarehouse.set(balance.warehouse_id, { quantity: nextQty, unitLabel, unitId });
   });
 
   if (sourceType === 'independent') {
@@ -73,6 +80,7 @@ export function buildSourceOptions(
           hubName: null,
           availableQty: info.quantity,
           unitLabel: info.unitLabel,
+          unitId: info.unitId,
           label: `${warehouse.name} — Available: ${info.quantity.toFixed(2)} ${info.unitLabel ?? ''}`,
         };
       })
@@ -82,7 +90,7 @@ export function buildSourceOptions(
 
   const byHub = new Map<
     number,
-    { quantity: number; unitLabel?: string; hubName: string; warehouseId: number; warehouseName: string }
+    { quantity: number; unitLabel?: string; unitId?: number; hubName: string; warehouseId: number; warehouseName: string }
   >();
 
   Array.from(byWarehouse.entries()).forEach(([warehouseId, info]) => {
@@ -95,6 +103,7 @@ export function buildSourceOptions(
     byHub.set(warehouse.hub_id, {
       quantity: nextQty,
       unitLabel: info.unitLabel || existing?.unitLabel,
+      unitId: info.unitId ?? existing?.unitId,
       hubName: warehouse.hub_name ?? `Hub #${warehouse.hub_id}`,
       warehouseId: pickWarehouse ? warehouseId : existing!.warehouseId,
       warehouseName: pickWarehouse ? warehouse.name : existing!.warehouseName,
@@ -111,6 +120,7 @@ export function buildSourceOptions(
       hubName: info.hubName,
       availableQty: info.quantity,
       unitLabel: info.unitLabel,
+      unitId: info.unitId,
       label: `${info.hubName} — Available: ${info.quantity.toFixed(2)} ${info.unitLabel ?? ''}`,
     }))
     .sort((a, b) => a.label.localeCompare(b.label));
@@ -148,31 +158,60 @@ function resetPendingSource(): Partial<CommodityLineDraft> {
   };
 }
 
-export function SourceQuantityStep({ value, stockBalances, warehouses, onChange }: SourceQuantityStepProps) {
+export function SourceQuantityStep({ value, stockBalances, warehouses, units, uomConversions, onChange }: SourceQuantityStepProps) {
   const baseSourceOptions = useMemo(
     () => buildSourceOptions(stockBalances, warehouses, value.sourceType),
     [stockBalances, warehouses, value.sourceType]
   );
+
+  const sourceUnitId = baseSourceOptions[0]?.unitId ?? null;
+
+  const conversionFactor = useMemo(() => {
+    if (!sourceUnitId || !value.unitId || sourceUnitId === value.unitId) return null;
+    const commodityId = value.commodityBatchIds[0] ?? 0;
+    return convertQuantityToTargetUnit(1, sourceUnitId, value.unitId, commodityId, uomConversions);
+  }, [sourceUnitId, value.unitId, value.commodityBatchIds, uomConversions]);
 
   const sourceOptions = useMemo(
     () =>
       baseSourceOptions
         .map((option) => {
           const remaining = remainingAvailable(option, value.sourceAllocations);
-          const unitLabel = option.unitLabel ?? '';
+          const converted = conversionFactor != null ? remaining * conversionFactor : remaining;
+          const displayUnit = value.unitLabel ?? option.unitLabel ?? '';
           return {
             ...option,
-            remainingQty: remaining,
-            label: `${option.sourceType === 'hub' ? option.hubName : option.warehouseName} — Available: ${remaining.toFixed(2)} ${unitLabel}`,
+            remainingQty: converted,
+            unitLabel: displayUnit || option.unitLabel,
+            label: `${option.sourceType === 'hub' ? option.hubName : option.warehouseName} — Available: ${converted.toFixed(2)} ${displayUnit}`,
           };
         })
         .filter((option) => option.remainingQty > 0),
-    [baseSourceOptions, value.sourceAllocations]
+    [baseSourceOptions, value.sourceAllocations, conversionFactor, value.unitLabel]
   );
 
   const selectedSource = sourceOptions.find((opt) => opt.key === value.sourceKey);
   const totalAllocated = value.sourceAllocations.reduce((sum, allocation) => sum + allocation.quantity, 0);
   const unitLabel = value.unitLabel ?? value.sourceAllocations[0]?.unitLabel ?? '';
+
+  const unitOptions = useMemo(
+    () =>
+      units.map((u) => ({
+        value: u.id.toString(),
+        label: u.name,
+      })),
+    [units]
+  );
+
+  const handleUnitChange = (unitId: string | null) => {
+    const unit = units.find((u) => u.id.toString() === unitId);
+    onChange({
+      unitId: unit ? unit.id : 0,
+      unitLabel: unit ? (unit.abbreviation || unit.name) : undefined,
+    });
+  };
+
+  const selectedUnitId = value.unitId ? value.unitId.toString() : null;
 
   const handleSourceTypeChange = (type: string) => {
     onChange({
@@ -337,7 +376,7 @@ export function SourceQuantityStep({ value, stockBalances, warehouses, onChange 
 
           {sourceOptions.length === 0 ? (
             <Alert color="yellow" title="No stock available">
-              No {value.sourceType === 'hub' ? 'hubs' : 'independent warehouses'} in your jurisdiction hold remaining
+              No {value.sourceType === 'hub' ? 'hubs' : 'independent warehouses'} with remaining
               stock for this commodity.
             </Alert>
           ) : (
@@ -376,6 +415,16 @@ export function SourceQuantityStep({ value, stockBalances, warehouses, onChange 
                 : undefined
             }
             required
+          />
+          <SearchableSelect
+            label="Unit"
+            placeholder="Select unit"
+            data={unitOptions}
+            value={selectedUnitId}
+            onChange={handleUnitChange}
+            searchable
+            required
+            style={{ minWidth: 140 }}
           />
           <Button leftSection={<IconPlus size={16} />} onClick={handleAddSource}>
             Add Source

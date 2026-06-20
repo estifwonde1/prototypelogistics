@@ -59,6 +59,7 @@ export type Resource =
   | 'dispatches'
   | 'receipt_orders'
   | 'dispatch_orders'
+  | 'dispatch_order_authorizations'
   | 'transfer_requests'
   | 'receipt_authorizations'
   | 'reports';
@@ -152,6 +153,8 @@ export const ROLE_CAPABILITIES: Record<RoleSlug, PermissionMatrix> = {
     receipt_orders: ['read', 'update'],
     receipt_authorizations: ['read', 'create', 'update'],
     dispatch_orders: ['read'],
+    // Needed for /hub/dispatch-authorizations/new and list/detail routes
+    dispatch_order_authorizations: ['read', 'create', 'update'],
     reports: ['read'],
   },
   [ROLES.WAREHOUSE_MANAGER]: {
@@ -168,6 +171,7 @@ export const ROLE_CAPABILITIES: Record<RoleSlug, PermissionMatrix> = {
     receipt_orders: ['read'],
     receipt_authorizations: ['read', 'create', 'update'],
     dispatch_orders: ['read'],
+    dispatch_order_authorizations: ['read', 'create', 'update'],
     transfer_requests: ['read', 'update'],
     reports: ['read'],
   },

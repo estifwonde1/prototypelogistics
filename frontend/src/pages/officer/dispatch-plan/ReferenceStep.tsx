@@ -4,7 +4,6 @@ import { SearchableSelect } from '../../../components/common/SearchableSelect';
 import type { DispatchPlanReferenceDraft } from './types';
 
 interface ReferenceStepProps {
-  jurisdictionLabel: string;
   value: DispatchPlanReferenceDraft;
   onChange: (patch: Partial<DispatchPlanReferenceDraft>) => void;
 }
@@ -15,11 +14,10 @@ const responseTypeOptions = [
   { value: 'Other', label: 'Other' },
 ];
 
-export function ReferenceStep({ jurisdictionLabel, value, onChange }: ReferenceStepProps) {
+export function ReferenceStep({ value, onChange }: ReferenceStepProps) {
   return (
     <>
       <SimpleGrid cols={{ base: 1, sm: 2 }}>
-        <TextInput label="Jurisdiction" value={jurisdictionLabel} disabled description="Based on your role" />
         <TextInput
           label="Response Plan Reference Number"
           placeholder="Enter reference number"

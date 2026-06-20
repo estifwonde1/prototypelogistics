@@ -26,6 +26,8 @@ export interface DispatchOrder {
   id: number;
   source_warehouse_id?: number;
   source_warehouse_name?: string;
+  hub_id?: number | null;
+  hub_name?: string | null;
   destination_type?: string;
   destination_name?: string;
   expected_pickup_date?: string;
@@ -50,6 +52,10 @@ export interface DispatchOrder {
   fdp_id?: number | null;
   fdp_name?: string | null;
   reference_no?: string | null;
+  // Quantity tracking for DA filtering
+  total_ordered_quantity?: number | null;
+  total_authorized_quantity?: number | null;
+  remaining_quantity?: number | null;
 }
 
 export interface CreateDispatchOrderPayload {

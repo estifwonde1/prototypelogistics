@@ -1,4 +1,4 @@
-import { useParams, useNavigate, useMatch } from 'react-router-dom';
+import { useParams, useNavigate, useMatch, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { Stack, Title, Button, Group, Card, Table, Text, SimpleGrid, Dialog, Tabs, Textarea, NumberInput } from '@mantine/core';
@@ -22,13 +22,22 @@ import { WorkflowTimeline } from '../../components/common/WorkflowTimeline';
 import type { ApiError } from '../../types/common';
 import { useState } from 'react';
 import { usePermission } from '../../hooks/usePermission';
+import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 
 function DispatchOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isDispatchPlanRoute = Boolean(useMatch('/officer/dispatch-plan/:id'));
+  const location = useLocation();
+  const isHubAuthorizationRoute =
+    Boolean(useMatch('/hub/dispatch-authorizations/:id')) ||
+    location.pathname.startsWith('/hub/dispatch-authorizations/');
   const queryClient = useQueryClient();
   const { can } = usePermission();
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || useAuthStore((state) => state.role));
+  const userHubId = activeAssignment?.hub?.id;
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('details');
   
@@ -204,8 +213,14 @@ function DispatchOrderDetailPage() {
   const isDraft = order.status === 'Draft';
   const canCreateGin = !isDispatchPlanRoute && can('gins', 'create') && !isDraft;
   const showOperationalTabs = !isDispatchPlanRoute && !isDraft;
+
+  const hubAssignedLines =
+    isHubAuthorizationRoute && userHubId
+      ? (order.lines ?? []).filter((line) => line.hub_id === userHubId)
+      : (order.lines ?? []);
+
   const sourceFacilityNames = new Set<string>();
-  (order.lines ?? []).forEach((line) => {
+  (hubAssignedLines ?? []).forEach((line) => {
     const sourceName = line.hub_name || line.warehouse_name;
     if (sourceName) sourceFacilityNames.add(sourceName);
   });
@@ -213,6 +228,11 @@ function DispatchOrderDetailPage() {
     sourceFacilityNames.add(order.source_warehouse_name);
   }
   const sourceFacilityLabel = Array.from(sourceFacilityNames).join(', ') || '—';
+
+  // Source warehouse info is only shown to hub managers (isHubAuthorizationRoute).
+  // For independent warehouses (hub_id === null), hide source facility from non-hub-manager views.
+  const isIndependentOrder = order.hub_id == null;
+  const showSourceFacility = isHubAuthorizationRoute || !isIndependentOrder;
   const dispatchPlanLabel = order.response_plan_ref || order.reference_no || `DP-${order.id}`;
 
   return (
@@ -278,6 +298,7 @@ function DispatchOrderDetailPage() {
                         : '—'}
                     </Text>
                   </div>
+                  {showSourceFacility && (
                   <div>
                     <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
                       Source Facility
@@ -286,6 +307,7 @@ function DispatchOrderDetailPage() {
                       {sourceFacilityLabel}
                     </Text>
                   </div>
+                  )}
                   <div>
                     <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
                       Destination
@@ -343,7 +365,7 @@ function DispatchOrderDetailPage() {
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
-                    {order.lines?.map((line, index) => (
+                    {hubAssignedLines?.map((line, index) => (
                       <Table.Tr key={line.id ?? index}>
                         <Table.Td>{line.commodity_name || line.commodity_id}</Table.Td>
                         <Table.Td>
@@ -394,7 +416,15 @@ function DispatchOrderDetailPage() {
               {!isDraft && (
                 <Button
                   variant="light"
-                  onClick={() => navigate(isDispatchPlanRoute ? '/officer/dispatch-plan' : '/officer/dispatch-orders')}
+                  onClick={() => {
+                    if (isHubAuthorizationRoute) {
+                      navigate('/hub/dispatch-authorizations');
+                    } else if (isDispatchPlanRoute) {
+                      navigate('/officer/dispatch-plan');
+                    } else {
+                      navigate('/officer/dispatch-orders');
+                    }
+                  }}
                 >
                   Back to List
                 </Button>

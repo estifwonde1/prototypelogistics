@@ -205,5 +205,18 @@ RSpec.describe Cats::Warehouse::AccessContext, type: :service do
       expect(access.can_access_warehouse?(warehouse.id)).to be(true)
       expect(access.can_access_warehouse?(other_warehouse.id)).to be(false)
     end
+
+    it "allows independent warehouse manager access to assigned warehouses" do
+      iwm = create(:cats_core_user, role_name: "Independent Warehouse Manager")
+      Cats::Warehouse::UserAssignment.create!(
+        user: iwm,
+        role_name: "Independent Warehouse Manager",
+        warehouse: warehouse
+      )
+      access = described_class.new(user: iwm)
+
+      expect(access.can_access_warehouse?(warehouse.id)).to be(true)
+      expect(access.can_access_warehouse?(other_warehouse.id)).to be(false)
+    end
   end
 end

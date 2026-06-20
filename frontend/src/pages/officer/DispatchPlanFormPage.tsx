@@ -16,7 +16,7 @@ import { IconAlertCircle } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { createDispatchOrder, confirmDispatchOrder } from '../../api/dispatchOrders';
 import { getWarehouses } from '../../api/warehouses';
-import { getCommodityReferences } from '../../api/referenceData';
+import { getCommodityReferences, getUnitReferences, getUomConversions } from '../../api/referenceData';
 import { getCommodityDefinitions } from '../../api/commodityDefinitions';
 import { getStockBalances } from '../../api/stockBalances';
 import { useAuthStore } from '../../store/authStore';
@@ -43,9 +43,6 @@ function DispatchPlanFormPage() {
   const queryClient = useQueryClient();
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
   const location = activeAssignment?.location;
-  const jurisdictionLabel = location
-    ? `${location.name} (${location.location_type})`
-    : 'Federal / System-wide';
 
   const isSubFederalOfficer = activeAssignment?.role_name
     ? SUB_FEDERAL_ROLES.includes(activeAssignment.role_name)
@@ -71,6 +68,16 @@ function DispatchPlanFormPage() {
   const { data: definitions = [] } = useQuery({
     queryKey: ['commodity-definitions'],
     queryFn: getCommodityDefinitions,
+  });
+
+  const { data: units = [] } = useQuery({
+    queryKey: ['reference-data', 'units'],
+    queryFn: getUnitReferences,
+  });
+
+  const { data: uomConversions = [] } = useQuery({
+    queryKey: ['reference-data', 'uom-conversions'],
+    queryFn: getUomConversions,
   });
 
   const { data: warehouses = [] } = useQuery({
@@ -286,7 +293,7 @@ function DispatchPlanFormPage() {
         <Stepper active={activeStep} onStepClick={setActiveStep} allowNextStepsSelect={false}>
           <Stepper.Step label="Reference" description="Plan details">
             <Stack pt="md">
-              <ReferenceStep jurisdictionLabel={jurisdictionLabel} value={reference} onChange={patchReference} />
+              <ReferenceStep value={reference} onChange={patchReference} />
             </Stack>
           </Stepper.Step>
           <Stepper.Step label="Commodity" description="Type and item">
@@ -295,6 +302,7 @@ function DispatchPlanFormPage() {
                 value={currentLine}
                 commodities={commodities}
                 definitions={definitions}
+                units={units}
                 onChange={patchCurrentLine}
               />
             </Stack>
@@ -305,6 +313,8 @@ function DispatchPlanFormPage() {
                 value={currentLine}
                 stockBalances={stockBalances}
                 warehouses={warehouses}
+                units={units}
+                uomConversions={uomConversions}
                 onChange={patchCurrentLine}
               />
             </Stack>
@@ -329,7 +339,7 @@ function DispatchPlanFormPage() {
           </Stepper.Step>
           <Stepper.Step label="Execute" description="Review and submit">
             <Stack pt="md">
-              <ExecuteStep reference={reference} jurisdictionLabel={jurisdictionLabel} lines={addedLines} />
+              <ExecuteStep reference={reference} lines={addedLines} />
             </Stack>
           </Stepper.Step>
         </Stepper>
