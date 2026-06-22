@@ -17,7 +17,24 @@ module Cats
                  :cancelled_at,
                  :created_by_name,
                  :created_at, :updated_at,
-                 :authorization_stores
+                 :authorization_stores,
+                 :assigned_storekeeper_id,
+                 :assigned_storekeeper_name,
+                 :assigned_storekeeper_at,
+                 :awaiting_storekeeper_assignment,
+                 :my_gin,
+                 :direct_to_storekeepers,
+                 :store_id, :store_name
+
+      has_one :my_gin, serializer: GinSerializer
+
+      def my_gin
+        return nil unless current_user
+
+        object.gins.find do |g|
+          g.issued_by_id == current_user.id
+        end
+      end
 
       def dispatch_order_reference_no
         object.dispatch_order&.reference_no || "DO-#{object.dispatch_order_id}"
@@ -37,9 +54,9 @@ module Cats
 
       def authorized_quantity_input
         v = object.authorized_quantity_input
-        return v.to_f if v.present?
+        return object.authorized_quantity.to_f if v.nil? || v.to_f <= 0
 
-        object.authorized_quantity.to_f
+        v.to_f
       end
 
       def authorized_quantity_input_unit_id
@@ -92,6 +109,28 @@ module Cats
           }
         end
       end
+
+      def assigned_storekeeper_name
+        user = object.assigned_storekeeper
+        return nil unless user
+
+        [user.first_name, user.last_name].compact.join(" ").presence || user.email
+      end
+
+      def awaiting_storekeeper_assignment
+        return false if direct_to_storekeepers
+
+        object.assigned_storekeeper_id.blank?
+      end
+
+      def direct_to_storekeepers
+        SingleStoreWarehouse.single_store?(object.warehouse_id)
+      end
+
+      def store_name
+        object.store&.name
+      end
+
       private
 
       # Safely resolve commodity name without crashing when Cats::Core::Commodity#name

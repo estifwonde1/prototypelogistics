@@ -1,7 +1,7 @@
 module Cats
   module Warehouse
     class GinCreator
-      def initialize(warehouse:, issued_on:, issued_by:, items:, destination: nil, reference_no: nil, status: "draft")
+      def initialize(warehouse:, issued_on:, issued_by:, items:, destination: nil, reference_no: nil, status: "draft", transporter_id: nil, truck_plate_number: nil, driver_name: nil, driver_id_number: nil)
         @warehouse = warehouse
         @issued_on = issued_on
         @issued_by = issued_by
@@ -9,6 +9,10 @@ module Cats
         @destination = destination
         @reference_no = reference_no
         @status = status
+        @transporter_id = transporter_id
+        @truck_plate_number = truck_plate_number
+        @driver_name = driver_name
+        @driver_id_number = driver_id_number
       end
 
       def call
@@ -21,7 +25,11 @@ module Cats
             issued_by: @issued_by,
             destination: @destination,
             reference_no: @reference_no,
-            status: @status
+            status: @status,
+            transporter_id: @transporter_id,
+            truck_plate_number: @truck_plate_number,
+            driver_name: @driver_name,
+            driver_id_number: @driver_id_number
           )
 
           @items.each do |item|

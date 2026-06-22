@@ -10,16 +10,20 @@ import {
 } from '@mantine/core';
 import { IconCheck, IconTruck, IconAlertCircle } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
+import { useState } from 'react';
 import {
   getDispatchOrderAuthorization,
   confirmDispatchOrderAuthorization,
   cancelDispatchOrderAuthorization,
+  getAssignableStorekeepers,
+  assignStorekeeperToDa,
 } from '../../api/dispatchOrderAuthorizations';
 import type { DispatchOrderAuthorization } from '../../api/dispatchOrderAuthorizations';
 import { useAuthStore } from '../../store/authStore';
 import { normalizeRoleSlug } from '../../contracts/warehouse';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import type { ApiError } from '../../types/common';
 
 function statusColor(status: DispatchOrderAuthorization['status']) {
@@ -42,6 +46,7 @@ export default function DADetailPage() {
   const isAdmin = roleSlug === 'admin' || roleSlug === 'superadmin';
   const isHubManager       = roleSlug === 'hub_manager';
   const isWarehouseManager = roleSlug === 'warehouse_manager';
+  const isStorekeeper      = roleSlug === 'storekeeper';
 
   const basePath = location.pathname.startsWith('/warehouse')
     ? '/warehouse/dispatch-authorizations'
@@ -84,11 +89,64 @@ export default function DADetailPage() {
     },
   });
 
+  const [selectedStorekeeperId, setSelectedStorekeeperId] = useState<string | null>(null);
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
+  const [showReassign, setShowReassign] = useState(false);
+
+  // Load assignable storekeepers if we have a warehouse_id
+  const { data: assignableStorekeepers = [], isLoading: storekeepersLoading } = useQuery({
+    queryKey: ['dispatch_order_assignable_storekeepers', dao?.warehouse_id],
+    queryFn: () => getAssignableStorekeepers(dao!.warehouse_id),
+    enabled: !!dao?.warehouse_id && (isAdmin || isWarehouseManager),
+  });
+
+  const assignMutation = useMutation({
+    mutationFn: () =>
+      assignStorekeeperToDa(Number(id), {
+        storekeeper_user_id: Number(selectedStorekeeperId),
+        store_id: selectedStoreId ? Number(selectedStoreId) : undefined,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dispatch_order_authorizations'] });
+      notifications.show({ title: 'Success', message: 'Storekeeper assigned.', color: 'green' });
+      setShowReassign(false);
+      refetch();
+    },
+    onError: (e: unknown) => {
+      notifications.show({
+        title: 'Error',
+        message: (isAxiosError<ApiError>(e) ? e.response?.data?.error?.message : undefined) || 'Failed to assign',
+        color: 'red',
+      });
+    },
+  });
+
   if (isLoading) return <LoadingState message="Loading Dispatch Authorization…" />;
   if (error || !dao) return <ErrorState message="Failed to load Dispatch Authorization." onRetry={refetch} />;
 
   const canConfirm = dao.status === 'draft' && (isAdmin || isHubManager || isWarehouseManager);
   const canCancel  = dao.status === 'draft' && (isAdmin || isHubManager || isWarehouseManager);
+
+  const directToStorekeepers = !!dao.direct_to_storekeepers;
+  const canManageAssignment =
+    (isAdmin || isWarehouseManager) &&
+    !directToStorekeepers &&
+    (dao.status === 'draft' || dao.status === 'confirmed');
+  const awaitingAssignment = !!dao.awaiting_storekeeper_assignment;
+  const showAssignBlock = canManageAssignment && (awaitingAssignment || showReassign);
+  const canReassign = canManageAssignment && !awaitingAssignment && !!dao.assigned_storekeeper_id;
+
+  const storekeeperOptions = assignableStorekeepers.map((sk) => ({
+    value: String(sk.id),
+    label: sk.store_name ? `${sk.name} (${sk.store_name})` : sk.name,
+  }));
+  const storeOptions = Array.from(
+    new Map(
+      assignableStorekeepers
+        .filter((sk) => sk.store_id != null)
+        .map((sk) => [String(sk.store_id), sk.store_name || `Store #${sk.store_id}`])
+    ).entries()
+  ).map(([value, label]) => ({ value, label }));
 
   const displayQty = Number(dao.authorized_quantity_input ?? dao.authorized_quantity);
   const displayUnit = dao.authorized_quantity_input_unit_abbreviation
@@ -212,6 +270,75 @@ export default function DADetailPage() {
           </SimpleGrid>
         </Stack>
       </Card>
+
+      {/* Storekeeper Assignment */}
+      {(isWarehouseManager || isAdmin) && directToStorekeepers && (
+        <Alert color="teal" icon={<IconTruck size={16} />}>
+          This warehouse has a single store. All storekeepers were notified automatically — no manual assignment is required.
+        </Alert>
+      )}
+
+      {(isWarehouseManager || isAdmin) && !directToStorekeepers && (
+        <Card shadow="sm" padding="lg" radius="md" withBorder>
+          <Stack gap="sm">
+            <Text fw={700} size="sm" tt="uppercase" c="dimmed">
+              Store assignment
+            </Text>
+            {!awaitingAssignment && dao.assigned_storekeeper_name && !showReassign && (
+              <Group justify="space-between">
+                <Text>
+                  Assigned to <strong>{dao.assigned_storekeeper_name}</strong>
+                  {dao.assigned_storekeeper_at
+                    ? ` on ${new Date(dao.assigned_storekeeper_at).toLocaleString()}`
+                    : ''}
+                </Text>
+                {canReassign && (
+                  <Button variant="light" size="xs" onClick={() => setShowReassign(true)}>
+                    Reassign
+                  </Button>
+                )}
+              </Group>
+            )}
+            {showAssignBlock && (
+              <Stack gap="xs">
+                <SearchableSelect
+                  label="Storekeeper"
+                  placeholder={storekeepersLoading ? 'Loading…' : 'Select storekeeper'}
+                  data={storekeeperOptions}
+                  value={selectedStorekeeperId}
+                  onChange={setSelectedStorekeeperId}
+                  searchable
+                  disabled={storekeepersLoading || storekeeperOptions.length === 0}
+                />
+                {storeOptions.length > 0 && (
+                  <SearchableSelect
+                    label="Store (optional)"
+                    placeholder="Use storekeeper default"
+                    data={storeOptions}
+                    value={selectedStoreId}
+                    onChange={setSelectedStoreId}
+                    clearable
+                  />
+                )}
+                <Group>
+                  <Button
+                    onClick={() => assignMutation.mutate()}
+                    loading={assignMutation.isPending}
+                    disabled={!selectedStorekeeperId}
+                  >
+                    {awaitingAssignment ? 'Assign store' : 'Save assignment'}
+                  </Button>
+                  {!awaitingAssignment && (
+                    <Button variant="default" onClick={() => setShowReassign(false)}>
+                      Cancel
+                    </Button>
+                  )}
+                </Group>
+              </Stack>
+            )}
+          </Stack>
+        </Card>
+      )}
 
       {/* Store Allocations */}
       {dao.authorization_stores && dao.authorization_stores.length > 0 && (

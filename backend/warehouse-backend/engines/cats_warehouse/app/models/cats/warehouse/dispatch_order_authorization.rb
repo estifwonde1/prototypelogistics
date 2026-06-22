@@ -22,6 +22,12 @@ module Cats
                                        foreign_key: :driver_confirmed_by_id
       belongs_to :cancelled_by,    class_name: "Cats::Core::User", optional: true,
                                    foreign_key: :cancelled_by_id
+
+      belongs_to :assigned_storekeeper, class_name: "Cats::Core::User", optional: true,
+                                        foreign_key: :assigned_storekeeper_id
+      belongs_to :assigned_storekeeper_by, class_name: "Cats::Core::User", optional: true,
+                                           foreign_key: :assigned_storekeeper_by_id
+      belongs_to :store, class_name: "Cats::Warehouse::Store", optional: true
       belongs_to :authorized_quantity_input_unit,
                  class_name: "Cats::Core::UnitOfMeasure",
                  optional: true,

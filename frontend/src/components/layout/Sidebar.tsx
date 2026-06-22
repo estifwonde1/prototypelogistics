@@ -12,6 +12,7 @@ import {
   IconUserCheck,
   IconInbox,
   IconTruck,
+  IconTruckDelivery,
   IconReportAnalytics,
   IconClipboardList,
   IconMapPin,
@@ -292,6 +293,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
                 path: "/warehouse/receipt-authorizations",
                 resource: "receipt_authorizations" as Resource,
               },
+              {
+                label: "Dispatch Authorizations",
+                icon: <IconClipboardList size={20} />,
+                path: "/warehouse/dispatch-authorizations",
+                resource: "dispatch_orders" as Resource,
+              },
             ]
           : []),
         ...(wmIsStandalone
@@ -300,12 +307,6 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
                 label: "Dispatches",
                 icon: <IconTruck size={20} />,
                 path: "/warehouse/dispatches",
-                resource: "dispatch_orders" as Resource,
-              },
-              {
-                label: "Dispatch Authorization",
-                icon: <IconClipboardList size={20} />,
-                path: "/warehouse/dispatch-authorizations",
                 resource: "dispatch_orders" as Resource,
               },
             ]
@@ -388,6 +389,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               icon: <IconTruck size={20} />,
               path: "/storekeeper/receipt-authorizations",
               resource: "receipt_orders",
+            },
+            {
+              label: "Dispatch Authorizations",
+              icon: <IconTruckDelivery size={20} />,
+              path: "/storekeeper/dispatch-authorizations",
+              resource: "dispatch_orders",
             },
           ],
         },

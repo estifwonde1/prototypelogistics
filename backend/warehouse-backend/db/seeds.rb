@@ -459,25 +459,25 @@ project = find_or_create_with(
 
 # Step 2: Create commodities (assigned to leaf categories, not top-level groups)
 commodities = [
-  { batch_no: "ADD-RICE-001",     description: "Rice",          category: cat_cereals, unit: units[:kg] },
-  { batch_no: "ADD-WHEAT-001",    description: "Wheat Flour",   category: cat_cereals, unit: units[:kg] },
-  { batch_no: "ADD-OIL-001",      description: "Cooking Oil",   category: cat_oils,    unit: units[:l] },
-  { batch_no: "ADD-BEAN-001",     description: "Beans",         category: cat_pulses,  unit: units[:kg] },
-  { batch_no: "ADD-SOAP-001",     description: "Soap Bars",     category: cat_hygiene, unit: units[:pcs] },
-  { batch_no: "ADD-BLANKET-001",  description: "Blankets",      category: cat_shelter, unit: units[:pcs] },
-  { batch_no: "ADD-JERRYCAN-001", description: "Jerry Cans",    category: cat_nfis,    unit: units[:pcs] },
-  { batch_no: "ADD-BAG-001",      description: "Storage Bags",  category: cat_nfis,    unit: units[:bag] }
+  { batch_no: "ADD-RICE-001",     description: "Rice",          commodity_code: "RICE",     category: cat_cereals, unit: units[:kg] },
+  { batch_no: "ADD-WHEAT-001",    description: "Wheat Flour",   commodity_code: "WHEAT",    category: cat_cereals, unit: units[:kg] },
+  { batch_no: "ADD-OIL-001",      description: "Cooking Oil",   commodity_code: "OIL",      category: cat_oils,    unit: units[:l] },
+  { batch_no: "ADD-BEAN-001",     description: "Beans",         commodity_code: "BEANS",    category: cat_pulses,  unit: units[:kg] },
+  { batch_no: "ADD-SOAP-001",     description: "Soap Bars",     commodity_code: "SOAP",     category: cat_hygiene, unit: units[:pcs] },
+  { batch_no: "ADD-BLANKET-001",  description: "Blankets",      commodity_code: "BLANKET",  category: cat_shelter, unit: units[:pcs] },
+  { batch_no: "ADD-JERRYCAN-001", description: "Jerry Cans",    commodity_code: "JERRYCAN", category: cat_nfis,    unit: units[:pcs] },
+  { batch_no: "ADD-BAG-001",      description: "Storage Bags",  commodity_code: "STOREBAG", category: cat_nfis,    unit: units[:bag] }
 ].map do |c|
   # Create a Commodity Definition so it's available in the frontend dropdown
   if Object.const_defined?("Cats::Warehouse::CommodityDefinition")
     commodity_def = Cats::Warehouse::CommodityDefinition.find_or_initialize_by(name: c[:description])
     if commodity_def.new_record?
       commodity_def.commodity_category_id = c[:category].id
+      commodity_def.commodity_code = c[:commodity_code]
       begin
         commodity_def.save!
       rescue ActiveRecord::RecordInvalid => e
         puts "  Warning: Could not create commodity definition '#{c[:description]}': #{e.message}"
-        # Try to find existing record
         commodity_def = Cats::Warehouse::CommodityDefinition.find_by(name: c[:description])
       end
     end
@@ -492,6 +492,7 @@ commodities = [
       unit_of_measure: c[:unit],
       project_id: project.id,   # <-- add this line
       quantity: 1000,
+      received_quantity: 0,
       best_use_before: Date.today + 365,
       status: Cats::Core::Commodity::DRAFT,
       arrival_status: Cats::Core::Commodity::AT_SOURCE,
@@ -762,7 +763,8 @@ warehouses.each_with_index do |warehouse, idx|
       height_m: 10,
       usable_space_percentage: 75,
       no_of_stores: 2,
-      ownership_type: "Government"
+      ownership_type: "Government",
+      capacity_established_at: Time.current
     }
   )
   find_or_create_with(
@@ -860,7 +862,11 @@ grn_items = commodities.first(3).map.with_index do |commodity, idx|
 end
 
 if grn.status != "confirmed"
-  Cats::Warehouse::GrnConfirmer.new(grn: grn, approved_by: warehouse_manager_user).call
+  begin
+    Cats::Warehouse::GrnConfirmer.new(grn: grn, approved_by: warehouse_manager_user).call
+  rescue => e
+    puts "  Warning: Could not confirm GRN: #{e.message}"
+  end
 end
 
 gin = find_or_create_with(
@@ -889,7 +895,11 @@ commodities.first(2).each_with_index do |commodity, idx|
 end
 
 if gin.status != "confirmed"
-  Cats::Warehouse::GinConfirmer.new(gin: gin, approved_by: warehouse_manager_user).call
+  begin
+    Cats::Warehouse::GinConfirmer.new(gin: gin, approved_by: warehouse_manager_user).call
+  rescue => e
+    puts "  Warning: Could not confirm GIN: #{e.message}"
+  end
 end
 
 waybill = find_or_create_with(

@@ -20,6 +20,7 @@ import { useAuthStore } from '../../store/authStore';
 import { normalizeRoleSlug } from '../../contracts/warehouse';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
+import { useWarehouseManagerRaAccess } from '../../hooks/useWarehouseManagerRaAccess';
 
 function statusColor(status: DispatchOrderAuthorization['status']) {
   switch (status) {
@@ -43,6 +44,9 @@ export default function DAListPage() {
   const basePath = location.pathname.startsWith('/warehouse')
     ? '/warehouse/dispatch-authorizations'
     : '/hub/dispatch-authorizations';
+
+  const { isStandaloneWarehouse } = useWarehouseManagerRaAccess();
+  const canCreate = isHubManager || isStandaloneWarehouse;
 
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
@@ -81,7 +85,9 @@ export default function DAListPage() {
         <Text c="dimmed" size="sm">
           {isHubManager
             ? "Create and manage dispatch authorizations for your hub's warehouses."
-            : 'Create and manage dispatch authorizations from your warehouse.'}
+            : canCreate
+              ? 'Create and manage dispatch authorizations from your warehouse.'
+              : 'View and manage dispatch authorizations assigned to your warehouse.'}
         </Text>
       </div>
 
@@ -113,12 +119,14 @@ export default function DAListPage() {
           clearable
           w={200}
         />
-        <Button
-          leftSection={<IconPlus size={16} />}
-          onClick={() => navigate(`${basePath}/new`)}
-        >
-          Create Dispatch Authorization
-        </Button>
+        {canCreate && (
+          <Button
+            leftSection={<IconPlus size={16} />}
+            onClick={() => navigate(`${basePath}/new`)}
+          >
+            Create Dispatch Authorization
+          </Button>
+        )}
       </Group>
 
       {filtered.length === 0 ? (

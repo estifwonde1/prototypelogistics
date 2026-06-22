@@ -18,6 +18,13 @@ export interface Gin {
     status: string;
   };
   generated_from_waybill_id?: number;
+  transporter_id?: number;
+  truck_plate_number?: string;
+  driver_name?: string;
+  driver_id_number?: string;
+  driver_confirmed_at?: string;
+  driver_confirmed_by_id?: number;
+  driver_confirmed_by_name?: string;
 }
 
 export interface GinItem {

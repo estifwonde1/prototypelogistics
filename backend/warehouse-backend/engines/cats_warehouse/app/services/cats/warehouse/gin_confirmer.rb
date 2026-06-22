@@ -8,6 +8,7 @@ module Cats
 
       def call
         @gin.ensure_confirmable!
+        raise ArgumentError, "GIN must be confirmed by the driver before it can be finalized" if @gin.driver_confirmed_at.blank?
 
         Gin.transaction do
           old_status = @gin.status

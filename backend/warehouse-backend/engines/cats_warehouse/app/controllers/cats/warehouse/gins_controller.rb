@@ -25,10 +25,23 @@ module Cats
           items: payload[:items],
           destination: PolymorphicReferenceResolver.resolve_destination(payload[:destination_type], payload[:destination_id]),
           reference_no: payload[:reference_no],
-          status: payload[:status] || "draft"
+          status: payload[:status] || "draft",
+          transporter_id: payload[:transporter_id],
+          truck_plate_number: payload[:truck_plate_number],
+          driver_name: payload[:driver_name],
+          driver_id_number: payload[:driver_id_number]
         ).call
 
         render_resource(gin, status: :created, serializer: GinSerializer)
+      end
+
+      def driver_confirm
+        gin = policy_scope(Gin).find(params[:id])
+        authorize gin, :driver_confirm?
+        actor = Cats::Core::User.find(params[:driver_confirmed_by_id]) if params[:driver_confirmed_by_id].present?
+        
+        GinDriverConfirmService.new(gin: gin, actor: actor).call
+        render_resource(gin, serializer: GinSerializer)
       end
 
       def confirm
@@ -53,6 +66,11 @@ module Cats
           :status,
           :destination_type,
           :destination_id,
+          :transporter_id,
+          :truck_plate_number,
+          :driver_name,
+          :driver_id_number,
+          :dispatch_order_authorization_id,
           items: [
             :commodity_id,
             :quantity,

@@ -62,9 +62,7 @@ module Cats
             transporter:                    transporter,
             transporter_name:               payload[:transporter_name].to_s.strip.presence,
             authorized_quantity:            authorized_qty,
-            # `authorized_quantity_input` may not be a persisted column in every deployment.
-            # Serializer can derive the display value via `authorized_quantity` fallback.
-            # Keep it out of persisted attributes to avoid ActiveModel::UnknownAttributeError.
+            authorized_quantity_input:      raw_input_qty,
             authorized_quantity_input_unit: input_unit,
             driver_name:                    payload[:driver_name],
             driver_id_number:               payload[:driver_id_number],
@@ -146,7 +144,58 @@ module Cats
         render_resource(dao, serializer: DispatchOrderAuthorizationSerializer)
       end
 
+      def assign_storekeeper
+        dao = find_dao
+        authorize dao, :assign_storekeeper?
+
+        payload = assign_storekeeper_params
+        dao = DispatchOrderAuthorizationStorekeeperAssigner.call(
+          dispatch_order_authorization: dao,
+          actor:                        current_user,
+          storekeeper_user_id:          payload[:storekeeper_user_id],
+          store_id:                     payload[:store_id]
+        )
+
+        render_resource(dao, serializer: DispatchOrderAuthorizationSerializer)
+      end
+
+      def assignable_storekeepers
+        authorize DispatchOrderAuthorization, :assignable_storekeepers?
+        warehouse_id = params[:warehouse_id].presence&.to_i
+        raise ArgumentError, "warehouse_id is required" if warehouse_id.blank?
+
+        access = AccessContext.new(user: current_user)
+        unless access.accessible_warehouse_ids.map(&:to_i).include?(warehouse_id)
+          raise Pundit::NotAuthorizedError, "Access denied to warehouse #{warehouse_id}"
+        end
+
+        store_ids = Store.where(warehouse_id: warehouse_id).pluck(:id)
+        assignments = UserAssignment
+                        .includes(:user, :store)
+                        .where(role_name: "Storekeeper")
+                        .where("warehouse_id = ? OR store_id IN (?)", warehouse_id, store_ids.presence || [0])
+
+        users = assignments.map(&:user).compact.uniq(&:id)
+        payload = users.map do |user|
+          ua = assignments.find { |a| a.user_id == user.id }
+          {
+            id: user.id,
+            name: [user.first_name, user.last_name].compact.join(" ").presence || user.email,
+            email: user.email,
+            store_id: ua&.store_id,
+            store_name: ua&.store&.name
+          }
+        end
+
+        render_success(storekeepers: payload)
+      end
+
       private
+
+      def assign_storekeeper_params
+        payload = params.require(:payload)
+        payload.permit(:storekeeper_user_id, :store_id)
+      end
 
       def find_dao
         policy_scope(DispatchOrderAuthorization)

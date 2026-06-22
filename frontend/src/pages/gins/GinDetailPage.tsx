@@ -12,8 +12,8 @@ import {
   Grid,
   Modal,
 } from '@mantine/core';
-import { IconArrowLeft, IconCheck } from '@tabler/icons-react';
-import { getGin, confirmGin } from '../../api/gins';
+import { IconArrowLeft, IconCheck, IconTruck } from '@tabler/icons-react';
+import { getGin, confirmGin, driverConfirmGin } from '../../api/gins';
 import { getWarehouses } from '../../api/warehouses';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
@@ -25,6 +25,7 @@ import { DocumentStatus } from '../../utils/constants';
 import { useState } from 'react';
 import type { ApiError } from '../../types/common';
 import { usePermission } from '../../hooks/usePermission';
+import { useAuthStore } from '../../store/authStore';
 
 function GinDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -72,9 +73,41 @@ function GinDetailPage() {
     },
   });
 
+  const driverConfirmMutation = useMutation({
+    mutationFn: driverConfirmGin,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['gin', id] });
+      notifications.show({
+        title: 'Success',
+        message: 'Driver confirmed quantities successfully',
+        color: 'green',
+      });
+    },
+    onError: (error: unknown) => {
+      notifications.show({
+        title: 'Error',
+        message:
+          (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) ||
+          'Failed to record driver confirmation',
+        color: 'red',
+      });
+    },
+  });
+
+  const loggedInUserId = useAuthStore((s) => s.userId);
+
   const handleConfirm = () => {
     if (id) {
       confirmMutation.mutate(Number(id));
+    }
+  };
+
+  const handleDriverConfirm = () => {
+    if (id && loggedInUserId) {
+      driverConfirmMutation.mutate(
+        { id: Number(id), payload: { driver_confirmed_by_id: loggedInUserId } } as any,
+        // using object config due to the way I exported it
+      );
     }
   };
 
@@ -118,8 +151,20 @@ function GinDetailPage() {
             leftSection={<IconCheck size={16} />}
             color="green"
             onClick={() => setConfirmModalOpen(true)}
+            disabled={!gin.driver_confirmed_at}
+            title={!gin.driver_confirmed_at ? "Driver must confirm before finalization" : ""}
           >
             Confirm GIN
+          </Button>
+        )}
+        {isDraft && canConfirmGin && !gin.driver_confirmed_at && (
+          <Button
+            leftSection={<IconTruck size={16} />}
+            color="blue"
+            onClick={handleDriverConfirm}
+            loading={driverConfirmMutation.isPending}
+          >
+            Driver Confirm
           </Button>
         )}
       </Group>
@@ -196,6 +241,60 @@ function GinDetailPage() {
                   Approved By
                 </Text>
                 <Text fw={600}>{gin.approved_by_id}</Text>
+              </Grid.Col>
+            )}
+          </Grid>
+        </Stack>
+      </Card>
+
+      <Card shadow="sm" padding="lg" radius="md" withBorder>
+        <Stack gap="md">
+          <Title order={4}>Transporter & Driver Details</Title>
+          <Grid>
+            <Grid.Col span={{ base: 12, sm: 6 }}>
+              <Text size="sm" c="dimmed">
+                Transporter ID
+              </Text>
+              <Text fw={600}>{gin.transporter_id || '-'}</Text>
+            </Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 6 }}>
+              <Text size="sm" c="dimmed">
+                Truck Plate Number
+              </Text>
+              <Text fw={600}>{gin.truck_plate_number || '-'}</Text>
+            </Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 6 }}>
+              <Text size="sm" c="dimmed">
+                Driver Name
+              </Text>
+              <Text fw={600}>{gin.driver_name || '-'}</Text>
+            </Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 6 }}>
+              <Text size="sm" c="dimmed">
+                Driver ID Number
+              </Text>
+              <Text fw={600}>{gin.driver_id_number || '-'}</Text>
+            </Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 6 }}>
+              <Text size="sm" c="dimmed">
+                Driver Confirmed At
+              </Text>
+              {gin.driver_confirmed_at ? (
+                <Text fw={600} c="green">
+                  {new Date(gin.driver_confirmed_at).toLocaleString()}
+                </Text>
+              ) : (
+                <Text fw={600} c="orange">
+                  Pending
+                </Text>
+              )}
+            </Grid.Col>
+            {gin.driver_confirmed_by_name && (
+              <Grid.Col span={{ base: 12, sm: 6 }}>
+                <Text size="sm" c="dimmed">
+                  Driver Confirmation Recorded By
+                </Text>
+                <Text fw={600}>{gin.driver_confirmed_by_name}</Text>
               </Grid.Col>
             )}
           </Grid>

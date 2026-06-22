@@ -11,6 +11,7 @@ module Cats
           parts << hub_manager_scope(access)       if access.hub_manager?
           parts << warehouse_manager_scope(access) if access.warehouse_manager?
           parts << officer_scope(access)           if access.officer?
+          parts << storekeeper_scope(access)       if access.storekeeper?
 
           return scope.none if parts.empty?
           return parts.first if parts.length == 1
@@ -32,8 +33,14 @@ module Cats
         end
 
         def officer_scope(_access)
-          # Officers can see all dispatch authorizations (read-only oversight)
           scope.all
+        end
+
+        def storekeeper_scope(access)
+          # Storekeepers see DAs for their warehouse (via their store)
+          store_ids  = access.assigned_store_ids
+          wh_ids     = Store.where(id: store_ids).pluck(:warehouse_id).compact.uniq
+          scope.where(warehouse_id: wh_ids)
         end
       end
 
@@ -45,6 +52,7 @@ module Cats
         return true if access.warehouse_manager?
         return true if officer?
         return true if independent_warehouse_manager?
+        return true if storekeeper?
 
         false
       end
@@ -60,6 +68,16 @@ module Cats
 
         return true if access.admin?
         return true if access.hub_manager?
+        return true if access.warehouse_manager?
+        return true if independent_warehouse_manager?
+
+        false
+      end
+
+      def assignable_storekeepers?
+        access = AccessContext.new(user: user)
+
+        return true if access.admin?
         return true if access.warehouse_manager?
         return true if independent_warehouse_manager?
 
@@ -98,6 +116,18 @@ module Cats
         return false unless record.draft?
 
         create?
+      end
+
+      def assign_storekeeper?
+        return false unless record.is_a?(DispatchOrderAuthorization)
+
+        if warehouse_manager? || independent_warehouse_manager?
+          access = AccessContext.new(user: user)
+          wh_ids = Array(access.assigned_warehouse_ids).map(&:to_i)
+          return wh_ids.include?(record.warehouse_id.to_i)
+        end
+
+        admin?
       end
 
       private

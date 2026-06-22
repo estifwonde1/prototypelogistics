@@ -35,6 +35,8 @@ import { SearchableSelect } from '../../components/common/SearchableSelect';
 import {
   createDispatchOrderAuthorization,
   confirmDispatchOrderAuthorization,
+  getAssignableStorekeepers,
+  assignStorekeeperToDa,
 } from '../../api/dispatchOrderAuthorizations';
 import type { CreateDispatchOrderAuthorizationPayload } from '../../api/dispatchOrderAuthorizations';
 import { getDispatchOrders } from '../../api/dispatchOrders';
@@ -105,6 +107,9 @@ export default function DAFormPage() {
   const [driverPhone, setDriverPhone] = useState('');
   const [truckPlate, setTruckPlate] = useState('');
 
+  // Storekeeper assignment
+  const [selectedStorekeeperId, setSelectedStorekeeperId] = useState<string | null>(null);
+
   // ── Queries ───────────────────────────────────────────────────────────────
 
   const { data: dispatchOrders = [] } = useQuery({
@@ -155,6 +160,12 @@ export default function DAFormPage() {
   const { data: allStockBalances = [] } = useQuery({
     queryKey: ['stock_balances'],
     queryFn: () => getStockBalances({}),
+  });
+
+  const { data: assignableStorekeepers = [], isLoading: storekeepersLoading } = useQuery({
+    queryKey: ['dispatch_order_assignable_storekeepers', userWarehouseId],
+    queryFn: () => getAssignableStorekeepers(userWarehouseId!),
+    enabled: isWarehouseManager && !!userWarehouseId,
   });
 
   // ── Derived data ──────────────────────────────────────────────────────────
@@ -255,6 +266,18 @@ export default function DAFormPage() {
         label: c.name ?? `Commodity #${c.id}`,
       })),
     [commodities]
+  );
+
+  const directToStorekeepers = isWarehouseManager && stores.length === 1;
+  const collectStorekeeperAssignment = isWarehouseManager && assignableStorekeepers.length > 0 && !directToStorekeepers;
+  const showIndependentAssignmentSection = collectStorekeeperAssignment;
+  const storekeeperOptions = useMemo(
+    () =>
+      assignableStorekeepers.map((sk: any) => ({
+        value: String(sk.id),
+        label: sk.store_name ? `${sk.name} (${sk.store_name})` : sk.name,
+      })),
+    [assignableStorekeepers]
   );
 
   // ── UOM preview (hub manager flow) ────────────────────────────────────────
@@ -425,12 +448,37 @@ export default function DAFormPage() {
       if (shouldConfirm) return confirmDispatchOrderAuthorization(dao.id);
       return dao;
     },
-    onSuccess: (dao: any) => {
+    onSuccess: async (dao: any) => {
       queryClient.invalidateQueries({ queryKey: ['dispatch_order_authorizations'] });
       queryClient.invalidateQueries({ queryKey: ['dispatch_orders'] });
+
+      let assignedStorekeeper = false;
+      if (selectedStorekeeperId && !directToStorekeepers) {
+        try {
+          await assignStorekeeperToDa(dao.id, {
+            storekeeper_user_id: Number(selectedStorekeeperId),
+          });
+          assignedStorekeeper = true;
+          queryClient.invalidateQueries({ queryKey: ['dispatch_order_authorizations', dao.id] });
+          queryClient.invalidateQueries({ queryKey: ['dispatch_order_assignable_storekeepers'] });
+        } catch (error: unknown) {
+          notifications.show({
+            title: 'Storekeeper assignment failed',
+            message:
+              (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) ||
+              'Dispatch Authorization was created. Assign the storekeeper from the detail page.',
+            color: 'orange',
+          });
+        }
+      }
+
       notifications.show({
         title: 'Success',
-        message: `Dispatch Authorization ${dao.reference_no} ${dao.status === 'confirmed' ? 'confirmed' : 'saved as draft'} successfully`,
+        message: assignedStorekeeper
+          ? `Dispatch Authorization ${dao.reference_no} ${dao.status === 'confirmed' ? 'confirmed' : 'saved as draft'}. The selected storekeeper will be notified.`
+          : directToStorekeepers
+            ? `Dispatch Authorization ${dao.reference_no} ${dao.status === 'confirmed' ? 'confirmed' : 'saved as draft'}. Storekeepers at this warehouse will be notified automatically.`
+            : `Dispatch Authorization ${dao.reference_no} ${dao.status === 'confirmed' ? 'confirmed' : 'saved as draft'} successfully`,
         color: 'green',
       });
       navigate(`${basePath}/${dao.id}`);
@@ -872,6 +920,45 @@ export default function DAFormPage() {
               ))}
             </>
           )}
+
+          {showIndependentAssignmentSection || directToStorekeepers ? (
+            <>
+              <Divider
+                label={
+                  collectStorekeeperAssignment
+                    ? 'Store Assignment'
+                    : directToStorekeepers
+                      ? 'Store Notification'
+                      : 'Store Assignment'
+                }
+                labelPosition="left"
+              />
+              {directToStorekeepers ? (
+                <Alert color="teal" variant="light">
+                  This warehouse has a single store. All eligible storekeepers will be notified automatically when this
+                  truck is authorized — no manual assignment is required.
+                </Alert>
+              ) : (
+                <Alert color="blue" variant="light">
+                  {collectStorekeeperAssignment
+                    ? 'Assign the store now — the storekeeper will be notified immediately after this truck is authorized.'
+                    : 'Assign a store for this Dispatch Authorization.'}
+                </Alert>
+              )}
+              {collectStorekeeperAssignment ? (
+                <SearchableSelect
+                  label="Storekeeper"
+                  placeholder={storekeepersLoading ? 'Loading…' : 'Select storekeeper'}
+                  data={storekeeperOptions}
+                  value={selectedStorekeeperId}
+                  onChange={setSelectedStorekeeperId}
+                  searchable
+                  required
+                  disabled={storekeepersLoading || storekeeperOptions.length === 0}
+                />
+              ) : null}
+            </>
+          ) : null}
 
           <Group justify="flex-end" mt="xl">
             <Button variant="light" onClick={() => navigate(basePath)}>

@@ -113,6 +113,8 @@ const ReceiptAuthorizationFormPage = lazyWithReload(() => import('./pages/hub-ma
 const ReceiptAuthorizationDetailPage = lazyWithReload(() => import('./pages/hub-manager/ReceiptAuthorizationDetailPage'));
 const StorekeeperRAListPage = lazyWithReload(() => import('./pages/storekeeper/StorekeeperRAListPage'));
 const StorekeeperRADetailPage = lazyWithReload(() => import('./pages/storekeeper/StorekeeperRADetailPage'));
+const StorekeeperDAListPage = lazyWithReload(() => import('./pages/storekeeper/StorekeeperDAListPage'));
+const StorekeeperDADetailPage = lazyWithReload(() => import('./pages/storekeeper/StorekeeperDADetailPage'));
 
 // Loading fallback
 const LoadingFallback = () => (
@@ -798,6 +800,22 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission resource="receipt_orders" action="read">
             <StorekeeperRADetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'storekeeper/dispatch-authorizations',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <StorekeeperDAListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'storekeeper/dispatch-authorizations/:id',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <StorekeeperDADetailPage />
           </RequirePermission>
         ),
       },

@@ -45,6 +45,11 @@ export interface DispatchOrderAuthorization {
   driver_confirmed_at?: string | null;
   driver_confirmed_by_name?: string | null;
   confirmed_at?: string | null;
+  assigned_storekeeper_name?: string | null;
+  assigned_storekeeper_at?: string | null;
+  awaiting_storekeeper_assignment?: boolean;
+  my_gin?: any | null; // We can use the Gin type if imported, or any
+
   confirmed_by_name?: string | null;
   cancelled_at?: string | null;
   created_by_name?: string | null;
@@ -117,5 +122,20 @@ export async function confirmDispatchOrderAuthorization(id: number): Promise<Dis
 
 export async function cancelDispatchOrderAuthorization(id: number): Promise<DispatchOrderAuthorization> {
   const response = await apiClient.post(`/dispatch_order_authorizations/${id}/cancel`);
+  return (response.data.data || response.data) as DispatchOrderAuthorization;
+}
+
+export async function getAssignableStorekeepers(warehouseId: number): Promise<any[]> {
+  const response = await apiClient.get('/dispatch_order_authorizations/assignable_storekeepers', {
+    params: { warehouse_id: warehouseId },
+  });
+  return response.data.data?.storekeepers || response.data.storekeepers || [];
+}
+
+export async function assignStorekeeperToDa(
+  id: number,
+  payload: { storekeeper_user_id: number; store_id?: number }
+): Promise<DispatchOrderAuthorization> {
+  const response = await apiClient.post(`/dispatch_order_authorizations/${id}/assign_storekeeper`, { payload });
   return (response.data.data || response.data) as DispatchOrderAuthorization;
 }
