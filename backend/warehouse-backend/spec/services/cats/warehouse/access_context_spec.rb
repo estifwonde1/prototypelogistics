@@ -14,11 +14,10 @@ RSpec.describe Cats::Warehouse::AccessContext, type: :service do
 
     context "with warehouse-level assignment" do
       before do
-        # Force creation of stores before assignment
         store1
         store2
         store3
-        
+
         Cats::Warehouse::UserAssignment.create!(
           user: storekeeper,
           role_name: "Storekeeper",
@@ -31,6 +30,34 @@ RSpec.describe Cats::Warehouse::AccessContext, type: :service do
         store_ids = access.assigned_store_ids
 
         expect(store_ids).to be_empty
+      end
+
+      it "does not infer stores for multi-store warehouses" do
+        access = described_class.new(user: storekeeper)
+        store_ids = access.storekeeper_accessible_store_ids
+
+        expect(store_ids).to be_empty
+      end
+    end
+
+    context "with warehouse-level assignment in a single-store warehouse" do
+      let(:single_store_warehouse) { create(:cats_warehouse_warehouse, hub: hub) }
+      let!(:warehouse_capacity) { create(:cats_warehouse_warehouse_capacity, warehouse: single_store_warehouse) }
+      let!(:sole_store) { create(:cats_warehouse_store, warehouse: single_store_warehouse, name: "Only Store") }
+
+      before do
+        Cats::Warehouse::UserAssignment.create!(
+          user: storekeeper,
+          role_name: "Storekeeper",
+          warehouse: single_store_warehouse
+        )
+      end
+
+      it "includes the sole store" do
+        access = described_class.new(user: storekeeper)
+        store_ids = access.storekeeper_accessible_store_ids
+
+        expect(store_ids).to contain_exactly(sole_store.id)
       end
     end
 

@@ -230,7 +230,12 @@ module Cats
       end
 
       def dashboard_data
-        all_store_ids = current_store_ids
+        access = AccessContext.new(user: current_user)
+        all_store_ids = access.storekeeper_accessible_store_ids
+        wh_ids = (
+          access.storekeeper_warehouse_ids +
+          Store.where(id: all_store_ids).pluck(:warehouse_id)
+        ).compact.uniq
 
         # If a specific store_id is provided (e.g. storekeeper selected one store at login),
         # filter down to only that store — as long as it belongs to the current user's assignments.
@@ -241,29 +246,34 @@ module Cats
           all_store_ids
         end
 
-        # CRITICAL: Storekeepers should only see store-level assignments
-        # The where(store_id: current_ids) already filters to only assignments
-        # where store_id is set and matches their store
-        receipt_assignments = ReceiptOrderAssignment
-          .where(store_id: current_ids)
+        receipt_assignments = apply_assignment_scope(
+          ReceiptOrderAssignment.all,
+          wh_ids,
+          current_ids,
+          table: ReceiptOrderAssignment.table_name
+        )
           .includes(
-            :receipt_order, 
-            :store, 
-            :warehouse, 
-            :hub, 
-            :assigned_to, 
+            :receipt_order,
+            :store,
+            :warehouse,
+            :hub,
+            :assigned_to,
             :assigned_by,
             receipt_order_line: [:commodity, :unit]
           )
           .order(created_at: :desc)
 
-        dispatch_assignments = DispatchOrderAssignment
-          .where(store_id: current_ids)
+        dispatch_assignments = apply_assignment_scope(
+          DispatchOrderAssignment.all,
+          wh_ids,
+          current_ids,
+          table: DispatchOrderAssignment.table_name
+        )
           .includes(:dispatch_order, :store, :warehouse, :hub, :assigned_to, :assigned_by)
           .order(created_at: :desc)
 
         # Get recent completed transactions (GRNs and GINs)
-        warehouse_ids = Cats::Warehouse::Store.where(id: current_ids).pluck(:warehouse_id).compact
+        warehouse_ids = wh_ids.presence || Cats::Warehouse::Store.where(id: current_ids).pluck(:warehouse_id).compact
 
         recent_grns = begin
           Grn
@@ -351,8 +361,7 @@ module Cats
       end
 
       def current_store_ids
-        access = AccessContext.new(user: current_user)
-        access.assigned_store_ids
+        AccessContext.new(user: current_user).storekeeper_accessible_store_ids
       end
 
       # Resolve accessible warehouse and store IDs based on user role.
@@ -380,8 +389,8 @@ module Cats
           s_ids = Store.where(warehouse_id: w_ids).pluck(:id)
           { warehouse_ids: w_ids, store_ids: s_ids, unrestricted: false }
         elsif access.storekeeper?
-          s_ids = access.assigned_store_ids
-          w_ids = Store.where(id: s_ids).pluck(:warehouse_id).compact.uniq
+          s_ids = access.storekeeper_accessible_store_ids
+          w_ids = (access.storekeeper_warehouse_ids + Store.where(id: s_ids).pluck(:warehouse_id)).compact.uniq
           { warehouse_ids: w_ids, store_ids: s_ids, unrestricted: false }
         else
           { warehouse_ids: [], store_ids: [], unrestricted: false }

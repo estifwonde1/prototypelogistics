@@ -21,6 +21,8 @@ import { normalizeRoleSlug } from '../../contracts/warehouse';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { useWarehouseManagerRaAccess } from '../../hooks/useWarehouseManagerRaAccess';
+import { DispatchListActionButtons } from '../../components/dispatch/DispatchListActionButtons';
+import { getDispatchAuthorizationListActions } from '../../utils/dispatchListActions';
 
 function statusColor(status: DispatchOrderAuthorization['status']) {
   switch (status) {
@@ -42,8 +44,9 @@ export default function DAListPage() {
   const userWarehouseId = activeAssignment?.warehouse?.id;
 
   const basePath = location.pathname.startsWith('/warehouse')
-    ? '/warehouse/dispatch-authorizations'
-    : '/hub/dispatch-authorizations';
+    ? '/warehouse'
+    : '/hub';
+  const listPath = `${basePath}/dispatch-authorizations`;
 
   const { isStandaloneWarehouse } = useWarehouseManagerRaAccess();
   const canCreate = isHubManager || isStandaloneWarehouse;
@@ -87,7 +90,9 @@ export default function DAListPage() {
             ? "Create and manage dispatch authorizations for your hub's warehouses."
             : canCreate
               ? 'Create and manage dispatch authorizations from your warehouse.'
-              : 'View and manage dispatch authorizations assigned to your warehouse.'}
+              : 'View dispatch authorizations assigned to your warehouse.'}
+          {' '}
+          Use the <strong>Next Step</strong> button on each row to see what to do next.
         </Text>
       </div>
 
@@ -122,7 +127,7 @@ export default function DAListPage() {
         {canCreate && (
           <Button
             leftSection={<IconPlus size={16} />}
-            onClick={() => navigate(`${basePath}/new`)}
+            onClick={() => navigate(`${listPath}/new`)}
           >
             Create Dispatch Authorization
           </Button>
@@ -146,14 +151,19 @@ export default function DAListPage() {
                 <Table.Th>Transporter</Table.Th>
                 <Table.Th>Status</Table.Th>
                 <Table.Th>Created</Table.Th>
+                <Table.Th style={{ textAlign: 'right' }}>Next Step</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {filtered.map((dao) => (
+              {filtered.map((dao) => {
+                const actions = getDispatchAuthorizationListActions(dao, basePath, {
+                  canManageAssignment: isWarehouseManager,
+                });
+                return (
                 <Table.Tr
                   key={dao.id}
                   style={{ cursor: 'pointer' }}
-                  onClick={() => navigate(`${basePath}/${dao.id}`)}
+                  onClick={() => navigate(`${listPath}/${dao.id}`)}
                 >
                   <Table.Td>
                     <Text size="sm" fw={500} style={{ fontFamily: 'monospace' }}>
@@ -188,8 +198,12 @@ export default function DAListPage() {
                   <Table.Td>
                     <Text size="sm">{new Date(dao.created_at).toLocaleDateString()}</Text>
                   </Table.Td>
+                  <Table.Td>
+                    <DispatchListActionButtons actions={actions} />
+                  </Table.Td>
                 </Table.Tr>
-              ))}
+                );
+              })}
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>
