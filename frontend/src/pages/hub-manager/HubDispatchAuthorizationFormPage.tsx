@@ -34,6 +34,11 @@ import { getStockBalances } from '../../api/stockBalances';
 import { useAuthStore } from '../../store/authStore';
 import { normalizeRoleSlug } from '../../contracts/warehouse';
 import { findDirectedMultiplier } from '../../utils/uomConversions';
+import {
+  checkDispatchQuantityLimit,
+  dispatchOrderRemainingQuantity,
+  findDispatchOrderLine,
+} from '../../utils/dispatchAuthorizationQuantity';
 import type { ApiError } from '../../types/common';
 import { useForm } from '@mantine/form';
 
@@ -335,43 +340,28 @@ export default function HubDispatchAuthorizationFormPage() {
     !!driverIdNum.trim() &&
     !!truckPlate.trim();
 
+  const getLineRemainingError = (line: WarehouseLineItem): string | null => {
+    if (!selectedOrder || !line.quantity || line.quantity <= 0) return null;
+
+    const doLine = findDispatchOrderLine(selectedOrder, line.commodity_id);
+    const canonUnit = units.find((u: any) => String(u.id) === String(doLine?.unit_id));
+    const unitLabel = hubCanonicalUnitLabel || canonUnit?.abbreviation || canonUnit?.name || '';
+
+    return checkDispatchQuantityLimit(line, selectedOrder, uomConversions, {
+      remainingOverride: isHubManager ? hubRemainingCanonicalQty : undefined,
+      unitLabel,
+    });
+  };
+
+  const hasRemainingExceeded = lines.some((l) => getLineRemainingError(l) != null);
+
   const canSubmit =
     !!dispatchOrderId &&
     lines.length > 0 &&
     lines.every((l) => !!l.warehouse_id && !!l.commodity_id && l.quantity > 0 && !!l.unit_id) &&
     transportValid &&
-    lines.every((l) => {
-      const doLine = selectedOrder?.lines?.find(
-        (x: any) => String(x.commodity_id) === String(l.commodity_id)
-      );
-
-      // Validate against *remaining* (not total ordered).
-      // remaining_quantity is the dispatch-order-canonical unit quantity still eligible for authorization.
-      const remainingQty = selectedOrder?.remaining_quantity != null
-        ? Number(selectedOrder.remaining_quantity)
-        : null;
-      if (remainingQty == null || !Number.isFinite(remainingQty)) return true;
-
-      // Convert entered quantity to dispatch order unit before comparing.
-      const fromUnitId = l.unit_id != null ? Number(l.unit_id) : null;
-      const toUnitId = doLine?.unit_id != null ? Number(doLine.unit_id) : null;
-      const commodityId = l.commodity_id != null ? Number(l.commodity_id) : null;
-
-      let typedQtyCanonical = Number(l.quantity);
-      if (
-        fromUnitId != null &&
-        toUnitId != null &&
-        commodityId != null &&
-        fromUnitId !== toUnitId
-      ) {
-        const multiplier = findDirectedMultiplier(fromUnitId, toUnitId, commodityId, uomConversions);
-        if (multiplier) {
-          typedQtyCanonical = Number((l.quantity * multiplier).toFixed(4));
-        }
-      }
-
-      return typedQtyCanonical <= (selectedOrder?.remaining_quantity != null ? Number(selectedOrder.remaining_quantity) : Infinity);
-    });
+    !hasRemainingExceeded &&
+    lines.every((l) => getLineRemainingError(l) == null);
 
   const queryParams = new URLSearchParams(searchParams);
 
@@ -540,29 +530,8 @@ export default function HubDispatchAuthorizationFormPage() {
                   lines.map((line, idx) => {
                     const eligible = warehouseOptionsForCommodity(line.commodity_id);
                     const avail = getAvailableForWarehouse(line.warehouse_id, line.commodity_id);
-                    const doLine = selectedOrder?.lines?.find(
-                      (l: any) => String(l.commodity_id) === String(line.commodity_id)
-                    );
-                    const doLineUnitId = doLine?.unit_id != null ? Number(doLine.unit_id) : null;
-                    const orderQty = doLine?.quantity != null ? Number(doLine.quantity) : 0;
-
-                    // Convert entered qty to the dispatch order's canonical/unit basis before comparing.
-                    // If we can't convert, fall back to numeric compare (previous behavior).
-                    let typedQtyCanonical = Number(line.quantity);
-                    const fromUnitId = line.unit_id != null ? Number(line.unit_id) : null;
-                    const commodityId = line.commodity_id != null ? Number(line.commodity_id) : null;
-                    if (fromUnitId != null && doLineUnitId != null && commodityId != null && fromUnitId !== doLineUnitId) {
-                      const multiplier = findDirectedMultiplier(fromUnitId, doLineUnitId, commodityId, uomConversions);
-                      if (multiplier) {
-                        typedQtyCanonical = Number((line.quantity * multiplier).toFixed(4));
-                      }
-                    }
-
-                    // Use strict numeric comparison after canonical conversion.
-                    // Treat non-finite values as non-error to avoid blocking submission.
-                    const aboveOrder =
-                      Number.isFinite(orderQty) &&
-                      typedQtyCanonical > orderQty;
+                    const doLine = findDispatchOrderLine(selectedOrder, line.commodity_id);
+                    const remainingError = getLineRemainingError(line);
 
                     return (
                       <Table.Tr key={idx}>
@@ -598,11 +567,9 @@ export default function HubDispatchAuthorizationFormPage() {
                             }}
                             min={0}
                             type="number"
+                            error={remainingError}
                             styles={{ input: { textAlign: 'left' } }}
                           />
-                          {aboveOrder && (
-                            <Text size="xs" c="red" mt={4}>Exceeds dispatch order quantity.</Text>
-                          )}
                         </Table.Td>
                         <Table.Td style={{ minWidth: 160 }}>
                           <SearchableSelect
@@ -617,7 +584,8 @@ export default function HubDispatchAuthorizationFormPage() {
                           <Text size="sm" c={avail != null && avail > 0 ? 'green' : 'dimmed'}>
                             {avail != null ? Number(avail).toFixed(2) : '—'}
                             <Text component="span" size="xs" c="dimmed" ml={8}>
-                              (Order: {orderQty.toFixed(2)})
+                              (Remaining: {hubRemainingCanonicalQty.toLocaleString()}
+                              {hubCanonicalUnitLabel ? ` ${hubCanonicalUnitLabel}` : ''})
                             </Text>
                           </Text>
                         </Table.Td>
@@ -700,6 +668,24 @@ export default function HubDispatchAuthorizationFormPage() {
           <Text fw={600} size="sm">Review & Save</Text>
 
           <Divider label="Warehouse Lines" labelPosition="left" />
+
+          {hasRemainingExceeded && selectedOrder && (
+            <Alert color="red" icon={<IconAlertCircle size={16} />} title="Above the dispatch limit">
+              <Text size="sm">
+                {formatDispatchRemainingExceededMessage(
+                  isHubManager
+                    ? hubRemainingCanonicalQty
+                    : dispatchOrderRemainingQuantity(selectedOrder) ?? 0,
+                  hubCanonicalUnitLabel ||
+                    units.find((u: any) => String(u.id) === String(selectedOrder.lines?.[0]?.unit_id))
+                      ?.abbreviation ||
+                    units.find((u: any) => String(u.id) === String(selectedOrder.lines?.[0]?.unit_id))?.name ||
+                    ''
+                )}
+              </Text>
+            </Alert>
+          )}
+
           {lines.map((line, idx) => (
             <Group key={idx} justify="space-between" align="center">
               <Text size="sm" fw={600}>

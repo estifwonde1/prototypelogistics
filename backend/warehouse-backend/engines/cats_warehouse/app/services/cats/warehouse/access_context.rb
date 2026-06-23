@@ -86,6 +86,21 @@ module Cats
         UserAssignment.where(user_id: user&.id, role_name: "Storekeeper").pluck(:store_id).compact
       end
 
+      # Storekeepers with only a warehouse-level assignment can operate on the sole
+      # store in single-store warehouses (independent warehouses with one bay).
+      def storekeeper_accessible_store_ids
+        ids = assigned_store_ids.dup
+
+        storekeeper_warehouse_ids.each do |wh_id|
+          next unless SingleStoreWarehouse.single_store?(wh_id)
+
+          sole_id = SingleStoreWarehouse.sole_store_id(wh_id)
+          ids << sole_id if sole_id.present?
+        end
+
+        ids.compact.uniq
+      end
+
       def assigned_officer_warehouse_ids
         UserAssignment.where(user_id: user&.id, role_name: "Officer").pluck(:warehouse_id).compact
       end
@@ -123,7 +138,7 @@ module Cats
 
         if storekeeper?
           wids += storekeeper_warehouse_ids
-          wids += Store.where(id: assigned_store_ids).pluck(:warehouse_id)
+          wids += Store.where(id: storekeeper_accessible_store_ids).pluck(:warehouse_id)
         end
 
         Warehouse.where(id: wids.uniq.compact).pluck(:id)
@@ -135,8 +150,8 @@ module Cats
         # A user who holds both WM and Storekeeper roles must see all stores in
         # their managed warehouses, not just their Storekeeper assignments.
         return Store.where(warehouse_id: accessible_warehouse_ids).select(:id) if hub_manager? || warehouse_manager?
-        # Storekeeper-only: restrict to assigned stores
-        return assigned_store_ids if storekeeper?
+        # Storekeeper-only: explicit store assignments plus sole store for single-store warehouses
+        return storekeeper_accessible_store_ids if storekeeper?
         return Store.where(warehouse_id: accessible_warehouse_ids).select(:id) if officer?
 
         []

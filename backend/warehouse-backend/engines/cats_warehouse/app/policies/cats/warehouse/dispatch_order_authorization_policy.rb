@@ -36,11 +36,45 @@ module Cats
           scope.all
         end
 
-        def storekeeper_scope(access)
-          # Storekeepers see DAs for their warehouse (via their store)
-          store_ids  = access.assigned_store_ids
-          wh_ids     = Store.where(id: store_ids).pluck(:warehouse_id).compact.uniq
-          scope.where(warehouse_id: wh_ids)
+        def storekeeper_scope(_access)
+          tbl = DispatchOrderAuthorization.table_name
+          sk_wh_ids = storekeeper_warehouse_ids_for_user
+          return scope.none if sk_wh_ids.empty?
+
+          eligible_wh_ids =
+            sk_wh_ids.select do |wid|
+              SingleStoreWarehouse.storekeeper_eligible?(user_id: user.id, warehouse_id: wid)
+            end
+          return scope.none if eligible_wh_ids.empty?
+
+          assigned_ids =
+            scope
+              .where(assigned_storekeeper_id: user.id, status: DispatchOrderAuthorization::CONFIRMED)
+              .select(:id)
+          open_ids =
+            scope
+              .where(
+                "#{tbl}.assigned_storekeeper_id IS NULL AND #{tbl}.warehouse_id IN (?)",
+                eligible_wh_ids
+              )
+              .where(status: DispatchOrderAuthorization::CONFIRMED)
+              .select(:id)
+
+          scope.where(id: assigned_ids).or(scope.where(id: open_ids))
+        end
+
+        def storekeeper_warehouse_ids_for_user
+          direct_wh =
+            UserAssignment.where(user_id: user.id, role_name: "Storekeeper").pluck(:warehouse_id).compact.map(&:to_i)
+          direct_store_ids =
+            UserAssignment.where(user_id: user.id, role_name: "Storekeeper").pluck(:store_id).compact.map(&:to_i)
+          store_wh =
+            if direct_store_ids.present?
+              Store.where(id: direct_store_ids).distinct.pluck(:warehouse_id).map(&:to_i)
+            else
+              []
+            end
+          (direct_wh + store_wh).uniq
         end
       end
 

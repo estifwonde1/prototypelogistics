@@ -150,7 +150,7 @@ module Cats
         end
 
         if storekeeper?
-          return assigned_store_ids
+          return access_context.storekeeper_accessible_store_ids
         end
 
         []
