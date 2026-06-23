@@ -221,7 +221,7 @@ function DispatchOrderDetailPage() {
 
   const sourceFacilityNames = new Set<string>();
   (hubAssignedLines ?? []).forEach((line) => {
-    const sourceName = line.hub_name || line.warehouse_name;
+    const sourceName = line.source_name || line.hub_name || line.warehouse_name;
     if (sourceName) sourceFacilityNames.add(sourceName);
   });
   if (sourceFacilityNames.size === 0 && order.source_warehouse_name) {
@@ -229,10 +229,7 @@ function DispatchOrderDetailPage() {
   }
   const sourceFacilityLabel = Array.from(sourceFacilityNames).join(', ') || '—';
 
-  // Source warehouse info is only shown to hub managers (isHubAuthorizationRoute).
-  // For independent warehouses (hub_id === null), hide source facility from non-hub-manager views.
-  const isIndependentOrder = order.hub_id == null;
-  const showSourceFacility = isHubAuthorizationRoute || !isIndependentOrder;
+  const showSourceFacility = true;
   const dispatchPlanLabel = order.response_plan_ref || order.reference_no || `DP-${order.id}`;
 
   return (
@@ -369,7 +366,7 @@ function DispatchOrderDetailPage() {
                       <Table.Tr key={line.id ?? index}>
                         <Table.Td>{line.commodity_name || line.commodity_id}</Table.Td>
                         <Table.Td>
-                          {line.hub_name || line.warehouse_name || line.warehouse_id || '—'}
+                          {line.source_name || line.hub_name || line.warehouse_name || line.warehouse_id || '—'}
                         </Table.Td>
                         <Table.Td>{line.quantity}</Table.Td>
                         <Table.Td>{line.unit_name || line.unit_id}</Table.Td>

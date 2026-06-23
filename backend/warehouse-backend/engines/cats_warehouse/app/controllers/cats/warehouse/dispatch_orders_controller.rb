@@ -148,6 +148,19 @@ module Cats
         render_order_payload(order)
       end
 
+      def destroy
+        order = policy_scope(DispatchOrder).find(params[:id])
+        authorize order
+
+        raise ArgumentError, "Only draft dispatch orders can be deleted" unless order.status_draft?
+
+        DispatchOrder.transaction do
+          order.destroy!
+        end
+
+        render_success({ deleted_id: order.id }, status: :ok)
+      end
+
       def confirm
         order = policy_scope(DispatchOrder).find(params[:id])
         authorize order, :confirm?

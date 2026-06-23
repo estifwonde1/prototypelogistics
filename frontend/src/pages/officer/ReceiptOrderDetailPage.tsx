@@ -366,6 +366,7 @@ function ReceiptOrderDetailPage() {
   const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
   const isOfficerRole = roleSlug ? OFFICER_ROLE_SLUGS.includes(roleSlug) : false;
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('details');
 
   // Receipt recording state
@@ -2199,7 +2200,9 @@ function ReceiptOrderDetailPage() {
                     <Button
                       color="red"
                       variant="light"
-                      onClick={() => deleteMutation.mutate()}
+                      onClick={() => {
+                        setDeleteDialogOpen(true);
+                      }}
                       loading={isLoading_}
                     >
                       Delete
@@ -2914,6 +2917,33 @@ function ReceiptOrderDetailPage() {
           </Button>
         </Group>
       </Dialog>
+
+      <Dialog
+        opened={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        title="Delete Receipt Order?"
+        size="sm"
+      >
+        <Text size="sm" mb="md">
+          This will permanently delete the draft receipt order.
+        </Text>
+        <Group justify="flex-end">
+          <Button variant="light" onClick={() => setDeleteDialogOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            color="red"
+            onClick={() => {
+              deleteMutation.mutate();
+              setDeleteDialogOpen(false);
+            }}
+            loading={isLoading_}
+          >
+            Delete
+          </Button>
+        </Group>
+      </Dialog>
+
 
       <ReceiptWarehouseAssignmentModal
         opened={showWarehouseAssignmentModal}
