@@ -66,11 +66,21 @@ const DispatchPlanListPage = lazyWithReload(() => import('./pages/officer/Dispat
 const DispatchPlanFormPage = lazyWithReload(() => import('./pages/officer/DispatchPlanFormPage'));
 const FdpSetupPage = lazyWithReload(() => import('./pages/admin/setup/FdpSetupPage'));
 const DispatchAuthorizationListPage = lazyWithReload(() => import('./pages/hub-manager/DispatchAuthorizationListPage'));
-const DispatchAuthorizationFormPage = lazyWithReload(() => import('./pages/hub-manager/DispatchAuthorizationFormPage'));
+// Split DA forms
+// (Hub manager uses HubDispatchAuthorizationFormPage; independent/warehouse manager uses WarehouseDispatchAuthorizationFormPage)
+
 const HubDispatchOrdersPage = lazyWithReload(() => import('./pages/hub-manager/HubDispatchOrdersPage'));
 const HubDispatchOrderDetailPage = lazyWithReload(() => import('./pages/hub-manager/HubDispatchOrderDetailPage'));
 const DAListPage = lazyWithReload(() => import('./pages/hub-manager/DAListPage'));
-const DAFormPage = lazyWithReload(() => import('./pages/hub-manager/DAFormPage'));
+// NOTE: warehouse/dispatch-authorizations/new uses WarehouseDispatchAuthorizationFormPage.
+// DAFormPage import kept only if referenced elsewhere.
+// const DAFormPage = lazyWithReload(() => import('./pages/hub-manager/DAFormPage'));
+const HubDispatchAuthorizationFormPage = lazyWithReload(
+  () => import('./pages/hub-manager/HubDispatchAuthorizationFormPage')
+);
+const WarehouseDispatchAuthorizationFormPage = lazyWithReload(
+  () => import('./pages/hub-manager/WarehouseDispatchAuthorizationFormPage')
+);
 const DADetailPage = lazyWithReload(() => import('./pages/hub-manager/DADetailPage'));
 const HubListPage = lazyWithReload(() => import('./pages/hubs/HubListPage'));
 const HubDetailPage = lazyWithReload(() => import('./pages/hubs/HubDetailPage'));
@@ -299,7 +309,7 @@ export const router = createBrowserRouter([
         path: 'hub/dispatch-authorizations/new',
         element: (
           <RequirePermission resource="dispatch_order_authorizations" action="create">
-            <DAFormPage />
+            <HubDispatchAuthorizationFormPage />
           </RequirePermission>
         ),
       },
@@ -387,7 +397,7 @@ export const router = createBrowserRouter([
         path: 'warehouse/dispatch-authorizations/new',
         element: (
           <RequirePermission resource="dispatch_order_authorizations" action="create">
-            <DAFormPage />
+            <WarehouseDispatchAuthorizationFormPage />
           </RequirePermission>
         ),
       },

@@ -268,12 +268,39 @@ module Cats
         raw = payload[:authorized_quantity].to_f
         raise ArgumentError, "Authorized quantity must be positive" unless raw > 0
 
-        # Reject quantities greater than the dispatch order can satisfy.
-        # We compare against the first line's unit quantity as the canonical reference.
-        max_raw = dispatch_order.dispatch_order_lines.first&.quantity.to_f
-        if max_raw.present? && max_raw > 0 && raw > max_raw
-          raise ArgumentError, "Authorized quantity cannot exceed dispatch order quantity"
+        # Reject quantities greater than the dispatch order's *remaining* can satisfy.
+        # remaining_quantity (per dispatch order authorization flow) represents the eligible qty still open.
+        # We compare in canonical unit using the dispatch order first line as reference.
+        # NOTE: DispatchOrder may not expose `remaining_quantity`.
+        # Some flows expect canonical remaining to be available per dispatch order line.
+        first_line = dispatch_order.dispatch_order_lines.first
+
+        # Try line-level remaining first (canonical).
+        max_raw = nil
+        if first_line
+          if first_line.respond_to?(:remaining_quantity)
+            max_raw = first_line.remaining_quantity
+          elsif first_line.respond_to?(:remaining_qty)
+            max_raw = first_line.remaining_qty
+          end
+
+          max_raw = max_raw.to_f if max_raw.present?
         end
+
+        if max_raw.present? && max_raw > 0 && raw > max_raw
+          raise ArgumentError, "Authorized quantity cannot exceed dispatch order remaining quantity"
+        end
+
+        # Fallback: compare against ordered qty (canonical-ish). This prevents false 500s
+        # while still providing a reasonable server-side guard.
+        if max_raw.nil? || max_raw <= 0
+          ordered_raw = first_line&.quantity&.to_f
+          if ordered_raw.present? && ordered_raw > 0 && raw > ordered_raw
+            raise ArgumentError, "Authorized quantity cannot exceed dispatch order quantity"
+          end
+        end
+
+
 
         return raw unless input_unit.present?
 
