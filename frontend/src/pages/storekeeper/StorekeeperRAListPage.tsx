@@ -47,8 +47,9 @@ function lineToInputMultiplier(ra: ReceiptAuthorization): number {
 function getMyStatus(ra: ReceiptAuthorization): 'not_recorded' | 'recorded' | 'driver_confirmed' | 'stacking' | 'done' {
   if (!ra.my_inspection) return 'not_recorded';
   if (!ra.my_grn) return 'recorded';
-  if (ra.my_grn.status === 'draft') return 'driver_confirmed';
-  if (ra.my_grn.status === 'confirmed') return 'done';
+  const grnStatus = ra.my_grn.status?.toLowerCase();
+  if (grnStatus === 'draft') return 'driver_confirmed';
+  if (grnStatus === 'confirmed') return 'done';
   return 'driver_confirmed';
 }
 

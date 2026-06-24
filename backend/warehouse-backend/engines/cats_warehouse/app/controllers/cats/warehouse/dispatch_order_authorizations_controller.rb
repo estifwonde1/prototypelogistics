@@ -8,6 +8,7 @@ module Cats
                  .includes(
                    :dispatch_order, :warehouse, :commodity, :transporter,
                    :created_by, :confirmed_by, :driver_confirmed_by,
+                   :gins,
                    authorization_stores: [:store, :commodity]
                  )
                  .order(created_at: :desc)
@@ -202,6 +203,7 @@ module Cats
           .includes(
             :dispatch_order, :warehouse, :commodity, :transporter,
             :created_by, :confirmed_by, :driver_confirmed_by,
+            :gins,
             authorization_stores: [:store, :commodity]
           )
           .find(params[:id])
@@ -211,6 +213,7 @@ module Cats
         DispatchOrderAuthorization.includes(
           :dispatch_order, :warehouse, :commodity, :transporter,
           :created_by, :confirmed_by, :driver_confirmed_by,
+          :gins,
           authorization_stores: [:store, :commodity]
         ).find(id)
       end

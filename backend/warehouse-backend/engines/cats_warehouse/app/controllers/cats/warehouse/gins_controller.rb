@@ -29,7 +29,8 @@ module Cats
           transporter_id: payload[:transporter_id],
           truck_plate_number: payload[:truck_plate_number],
           driver_name: payload[:driver_name],
-          driver_id_number: payload[:driver_id_number]
+          driver_id_number: payload[:driver_id_number],
+          dispatch_order_authorization_id: payload[:dispatch_order_authorization_id]
         ).call
 
         render_resource(gin, status: :created, serializer: GinSerializer)

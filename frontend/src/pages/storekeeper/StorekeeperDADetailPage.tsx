@@ -47,6 +47,8 @@ export default function StorekeeperDADetailPage() {
     queryKey: ['dispatch_order_authorizations', id],
     queryFn: () => getDispatchOrderAuthorization(Number(id)),
     enabled: !!id,
+    staleTime: 0,
+    gcTime: 0,
   });
 
   const { data: stacks = [] } = useQuery({
@@ -92,6 +94,7 @@ export default function StorekeeperDADetailPage() {
       } as any);
     },
     onSuccess: () => {
+      queryClient.removeQueries({ queryKey: ['dispatch_order_authorizations', id] });
       queryClient.invalidateQueries({ queryKey: ['dispatch_order_authorizations'] });
       notifications.show({
         title: 'Loading recorded',
@@ -99,7 +102,6 @@ export default function StorekeeperDADetailPage() {
         color: 'green',
       });
       setShowRecordingForm(false);
-      refetch();
     },
     onError: (err: unknown) => {
       const msg =
@@ -141,12 +143,28 @@ export default function StorekeeperDADetailPage() {
   if (error || !da) return <ErrorState message="Failed to load Dispatch Authorization." onRetry={refetch} />;
 
   const myGin = da.my_gin;
-  const isDraftGin = myGin?.status === 'draft';
-  const isConfirmedGin = myGin?.status === 'confirmed';
+  const isDraftGin = myGin?.status?.toLowerCase() === 'draft';
+  const isConfirmedGin = myGin?.status?.toLowerCase() === 'confirmed';
 
-  const stackOptions = stacks.map((s) => ({
+  // Debug logging
+  console.log('[DEBUG] DA Detail Page State:', {
+    daId: da.id,
+    hasMyGin: !!myGin,
+    myGinStatus: myGin?.status,
+    myGinStatusLower: myGin?.status?.toLowerCase(),
+    isDraftGin,
+    isConfirmedGin,
+    myGinId: myGin?.id,
+    myGinIssuedById: myGin?.issued_by_id,
+    currentUserId: userId,
+    myGinDispatchAuthId: (myGin as any)?.dispatch_order_authorization_id
+  });
+
+  const stackOptions = stacks
+  .filter((s)=> s.commodity_id === da.commodity_id)
+  .map((s) => ({
     value: String(s.id),
-    label: `${s.stack_no} (Bal: ${s.current_balance ?? '0'})`
+    label: `${s.code} (Bal: ${s.quantity ?? '0'} ${s.unit_abbreviation ?? ''})`
   }));
 
   return (

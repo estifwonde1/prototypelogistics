@@ -20,8 +20,9 @@ import { useAuthStore } from '../../store/authStore';
 
 function getMyStatus(da: DispatchOrderAuthorization): 'not_recorded' | 'recorded' | 'done' {
   if (!da.my_gin) return 'not_recorded';
-  if (da.my_gin.status === 'draft') return 'recorded'; // GIN is draft, needs driver confirm
-  if (da.my_gin.status === 'confirmed') return 'done';
+  const ginStatus = da.my_gin.status?.toLowerCase();
+  if (ginStatus === 'draft') return 'recorded'; // GIN is draft, needs driver confirm
+  if (ginStatus === 'confirmed') return 'done';
   return 'recorded';
 }
 
