@@ -265,61 +265,44 @@ module Cats
         uid.present? ? Cats::Core::UnitOfMeasure.find_by(id: uid) : nil
       end
 
-      # Convert entered quantity to the dispatch order line unit when a different input unit is given.
-      # If no conversion is needed (same unit or no unit provided), returns the raw value.
+      # Convert entered quantity to the dispatch order line unit, then ensure it does not
+      # exceed the remaining quantity still open on the dispatch order.
       def resolve_authorized_quantity(payload:, input_unit:, dispatch_order:)
         raw = payload[:authorized_quantity].to_f
         raise ArgumentError, "Authorized quantity must be positive" unless raw > 0
 
-        # Reject quantities greater than the dispatch order's *remaining* can satisfy.
-        # remaining_quantity (per dispatch order authorization flow) represents the eligible qty still open.
-        # We compare in canonical unit using the dispatch order first line as reference.
-        # NOTE: DispatchOrder may not expose `remaining_quantity`.
-        # Some flows expect canonical remaining to be available per dispatch order line.
         first_line = dispatch_order.dispatch_order_lines.first
+        canonical_qty = canonical_authorized_quantity(raw, input_unit: input_unit, line: first_line)
+        remaining = dispatch_order_remaining_quantity(dispatch_order)
 
-        # Try line-level remaining first (canonical).
-        max_raw = nil
-        if first_line
-          if first_line.respond_to?(:remaining_quantity)
-            max_raw = first_line.remaining_quantity
-          elsif first_line.respond_to?(:remaining_qty)
-            max_raw = first_line.remaining_qty
-          end
-
-          max_raw = max_raw.to_f if max_raw.present?
+        if remaining.positive? && canonical_qty > remaining + 1e-6
+          unit_label = first_line&.unit&.abbreviation.presence || first_line&.unit&.name.presence || ""
+          suffix = unit_label.present? ? " (#{remaining.round(4)} #{unit_label})" : " (#{remaining.round(4)})"
+          raise ArgumentError, "Authorized quantity exceeds the remaining amount to dispatch#{suffix}"
         end
 
-        if max_raw.present? && max_raw > 0 && raw > max_raw
-          raise ArgumentError, "Authorized quantity cannot exceed dispatch order remaining quantity"
-        end
+        canonical_qty
+      end
 
-        # Fallback: compare against ordered qty (canonical-ish). This prevents false 500s
-        # while still providing a reasonable server-side guard.
-        if max_raw.nil? || max_raw <= 0
-          ordered_raw = first_line&.quantity&.to_f
-          if ordered_raw.present? && ordered_raw > 0 && raw > ordered_raw
-            raise ArgumentError, "Authorized quantity cannot exceed dispatch order quantity"
-          end
-        end
+      def canonical_authorized_quantity(raw, input_unit:, line:)
+        return raw.round(6) unless input_unit.present? && line&.unit_id.present?
+        return raw.round(6) if input_unit.id.to_i == line.unit_id.to_i
 
-
-
-        return raw unless input_unit.present?
-
-
-        # Find a representative line's unit for canonical quantity
-        line = dispatch_order.dispatch_order_lines.first
-        return raw unless line&.unit_id.present?
-        return raw if input_unit.id.to_i == line.unit_id.to_i
-
-        converted = UomConversionResolver.convert(
+        UomConversionResolver.convert(
           raw,
           from_unit_id: input_unit.id,
           to_unit_id:   line.unit_id,
           commodity_id: line.commodity_id
-        )
-        converted.to_f.round(6)
+        ).to_f.round(6)
+      end
+
+      def dispatch_order_remaining_quantity(dispatch_order)
+        ordered = dispatch_order.dispatch_order_lines.sum { |l| l.quantity.to_f }
+        authorized = DispatchOrderAuthorization
+                       .where(dispatch_order_id: dispatch_order.id, status: DispatchOrderAuthorization::CONFIRMED)
+                       .sum(:authorized_quantity)
+                       .to_f
+        [ordered - authorized, 0].max
       end
 
       def build_authorization_stores!(dao, stores_params)

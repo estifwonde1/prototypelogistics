@@ -173,7 +173,7 @@ module Cats
       end
 
       def storekeeper_receipt_orders_scope
-        store_ids = Array(access.assigned_store_ids).map(&:to_i).uniq
+        store_ids = Array(access.storekeeper_accessible_store_ids).map(&:to_i).uniq
         wh_ids = (
           Array(access.storekeeper_warehouse_ids) +
           (store_ids.any? ? Store.where(id: store_ids).where.not(warehouse_id: nil).distinct.pluck(:warehouse_id) : [])

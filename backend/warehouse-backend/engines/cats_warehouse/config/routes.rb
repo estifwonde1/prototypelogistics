@@ -114,7 +114,7 @@ Cats::Warehouse::Engine.routes.draw do
         post :reject
       end
     end
-    resources :dispatch_orders, only: [ :index, :show, :create, :update ] do
+    resources :dispatch_orders, only: [ :index, :show, :create, :update, :destroy ] do
       post :confirm, on: :member
       post :assign, on: :member
       post :reserve_stock, on: :member

@@ -17,6 +17,7 @@ export interface DispatchOrderLine {
   warehouse_name?: string | null;
   hub_id?: number | null;
   hub_name?: string | null;
+  source_name?: string | null;
   fdp_id?: number | null;
   fdp_name?: string | null;
   expected_receive_at?: string | null;

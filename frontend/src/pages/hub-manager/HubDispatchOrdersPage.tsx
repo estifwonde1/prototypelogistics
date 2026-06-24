@@ -18,6 +18,9 @@ import { normalizeRoleSlug } from '../../contracts/warehouse';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
+import { DispatchListActionButtons } from '../../components/dispatch/DispatchListActionButtons';
+import { getDispatchOrderListActions } from '../../utils/dispatchListActions';
+import { useWarehouseManagerRaAccess } from '../../hooks/useWarehouseManagerRaAccess';
 
 export default function HubDispatchOrdersPage() {
   const navigate = useNavigate();
@@ -25,11 +28,16 @@ export default function HubDispatchOrdersPage() {
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
   const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || useAuthStore((s) => s.role));
   const isWarehouseManager = roleSlug === 'warehouse_manager';
+  const isHubManager = roleSlug === 'hub_manager';
   const userHubId       = activeAssignment?.hub?.id;
   const userWarehouseId = activeAssignment?.warehouse?.id;
 
   // Base path differs by role — used for row click navigation
-  const basePath = location.pathname.startsWith('/warehouse') ? '/warehouse/dispatches' : '/hub/dispatches';
+  const basePath = location.pathname.startsWith('/warehouse') ? '/warehouse' : '/hub';
+  const dispatchesPath = `${basePath}/dispatches`;
+
+  const { isStandaloneWarehouse } = useWarehouseManagerRaAccess();
+  const canCreateAuthorization = isHubManager || isStandaloneWarehouse;
 
   const { data: orders = [], isLoading, error, refetch } = useQuery({
     queryKey: ['dispatch_orders', 'dispatches_view', { hub_id: userHubId, warehouse_id: userWarehouseId }],
@@ -75,8 +83,8 @@ export default function HubDispatchOrdersPage() {
         <Title order={2}>Dispatches</Title>
         <Text c="dimmed" size="sm">
           {isWarehouseManager
-            ? 'Dispatch orders assigned to your warehouse — click a row to view details.'
-            : 'Dispatch orders assigned to your hub — click a row to view details.'}
+            ? 'Dispatch orders assigned to your warehouse — use the action button on each row for the next step.'
+            : 'Dispatch orders assigned to your hub — use the action button on each row for the next step.'}
         </Text>
       </div>
 
@@ -109,16 +117,20 @@ export default function HubDispatchOrdersPage() {
                 <Table.Th>Items</Table.Th>
                 <Table.Th>Status</Table.Th>
                 <Table.Th>Expected Date</Table.Th>
+                <Table.Th style={{ textAlign: 'right' }}>Next Step</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {relevantOrders.map((order) => {
                 const lines = visibleLinesForOrder(order);
+                const actions = getDispatchOrderListActions(order, basePath, {
+                  canCreateAuthorization,
+                });
                 return (
                   <Table.Tr
                     key={order.id}
                     style={{ cursor: 'pointer' }}
-                    onClick={() => navigate(`${basePath}/${order.id}`)}
+                    onClick={() => navigate(`${dispatchesPath}/${order.id}`)}
                   >
                     <Table.Td>
                       <Text size="sm" fw={500} style={{ fontFamily: 'monospace' }}>
@@ -144,6 +156,9 @@ export default function HubDispatchOrdersPage() {
                           ? new Date(order.expected_pickup_date).toLocaleDateString()
                           : '—'}
                       </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <DispatchListActionButtons actions={actions} />
                     </Table.Td>
                   </Table.Tr>
                 );

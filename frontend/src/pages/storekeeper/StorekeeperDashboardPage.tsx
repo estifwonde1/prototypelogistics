@@ -117,10 +117,13 @@ export default function StorekeeperDashboardPage() {
     (storeId ? a.store_id === storeId : true)
   );
 
-  const pendingDispatches = dispatchAssignments.filter((a: any) => 
-    ['pending', 'assigned'].includes(a.status.toLowerCase()) &&
-    (storeId ? a.store_id === storeId : true)
-  );
+  const pendingDispatches = dispatchAssignments.filter((a: any) => {
+    if (!['pending', 'assigned'].includes(a.status.toLowerCase())) return false;
+    if (!storeId) return true;
+    if (a.store_id === storeId) return true;
+    // Officer-confirmed dispatch plans at independent warehouses are often warehouse-level (no store yet).
+    return a.store_id == null && warehouseId != null && Number(a.warehouse_id) === Number(warehouseId);
+  });
 
   return (
     <Stack gap="xl">

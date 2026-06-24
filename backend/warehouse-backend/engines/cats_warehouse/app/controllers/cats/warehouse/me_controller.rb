@@ -8,9 +8,9 @@ module Cats
       def assignments
         scope = UserAssignment.includes(:hub, :warehouse, :location, store: :warehouse)
                               .where(user_id: current_user.id)
-                              .where.not(role_name: "Storekeeper", store_id: nil)
 
-        render_success(assignments: scope.map { |a| assignment_payload(a) })
+        visible = scope.select { |a| assignment_visible_for_workspace_picker?(a, scope) }
+        render_success(assignments: visible.map { |a| assignment_payload(a) })
       end
 
       # POST /v1/me/switch_role
@@ -98,14 +98,8 @@ module Cats
       # Returns only the stores explicitly assigned to the current user as a
       # Storekeeper. Warehouse Manager access never implies storekeeper access.
       def storekeeper_stores
-        stores = Store.includes(:warehouse)
-                      .where(
-                        id: UserAssignment
-                          .where(user_id: current_user.id, role_name: "Storekeeper")
-                          .where.not(store_id: nil)
-                          .select(:store_id)
-                      )
-                      .order(:name)
+        store_ids = AccessContext.new(user: current_user).storekeeper_accessible_store_ids
+        stores = Store.includes(:warehouse).where(id: store_ids).order(:name)
 
         render_success(stores: stores.map { |s|
           {
@@ -143,6 +137,7 @@ module Cats
         # For store-level storekeeper assignments, also include the parent warehouse
         # so the frontend can resolve the warehouse_id without an extra API call.
         effective_warehouse = a.warehouse || (a.store&.warehouse)
+        effective_store = resolve_effective_store(a, effective_warehouse)
 
         {
           id: a.id,
@@ -153,9 +148,36 @@ module Cats
             name: effective_warehouse.name,
             hub_id: effective_warehouse.hub_id
           },
-          store: a.store && { id: a.store.id, name: a.store.name },
+          store: effective_store && { id: effective_store.id, name: effective_store.name },
           location: a.location && { id: a.location.id, name: a.location.name, location_type: a.location.location_type }
         }
+      end
+
+      def assignment_visible_for_workspace_picker?(assignment, all_assignments)
+        return true unless assignment.role_name == "Storekeeper" && assignment.store_id.nil?
+
+        wh_id = assignment.warehouse_id
+        return false if wh_id.blank?
+
+        has_store_level = all_assignments.any? do |other|
+          other.role_name == "Storekeeper" &&
+            other.store_id.present? &&
+            other.store&.warehouse_id == wh_id
+        end
+        return false if has_store_level
+
+        SingleStoreWarehouse.single_store?(wh_id)
+      end
+
+      def resolve_effective_store(assignment, effective_warehouse)
+        return assignment.store if assignment.store.present?
+        return nil unless assignment.role_name == "Storekeeper"
+        return nil unless effective_warehouse
+
+        sole_id = SingleStoreWarehouse.sole_store_id(effective_warehouse.id)
+        return nil if sole_id.blank?
+
+        Store.find_by(id: sole_id)
       end
     end
   end

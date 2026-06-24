@@ -66,16 +66,14 @@ function DispatchPlanListPage() {
   };
 
   const sourceLabelForPlan = (plan: DispatchOrder) => {
-    // For independent warehouse orders (no hub), hide source info from officer view
-    if (plan.hub_id == null) return '—';
-
     const sourceNames = new Set<string>();
 
     (plan.lines ?? []).forEach((line) => {
-      const sourceName = line.hub_name || line.warehouse_name;
+      const sourceName = line.source_name || line.hub_name || line.warehouse_name;
       if (sourceName) sourceNames.add(sourceName);
     });
 
+    // Fallbacks for legacy/aggregated fields
     if (sourceNames.size === 0 && plan.source_warehouse_name) {
       sourceNames.add(plan.source_warehouse_name);
     }
@@ -96,8 +94,6 @@ function DispatchPlanListPage() {
   const statusOptions = [
     { value: 'Draft', label: 'Draft' },
     { value: 'Confirmed', label: 'Confirmed' },
-    { value: 'Assigned', label: 'Assigned' },
-    { value: 'Reserved', label: 'Reserved' },
     { value: 'In Progress', label: 'In Progress' },
     { value: 'Completed', label: 'Completed' },
   ];
@@ -173,7 +169,7 @@ function DispatchPlanListPage() {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Plan Ref</Table.Th>
-                <Table.Th>Response Plan Ref</Table.Th>
+                <Table.Th>Response Type</Table.Th>
                 <Table.Th>FDP</Table.Th>
                 <Table.Th>Lines</Table.Th>
                 <Table.Th>Source</Table.Th>
@@ -193,7 +189,7 @@ function DispatchPlanListPage() {
                     <Table.Td style={{ fontWeight: 600 }}>
                       {plan.response_plan_ref || plan.reference_no || `DP-${plan.id}`}
                     </Table.Td>
-                    <Table.Td>{plan.response_plan_ref || '—'}</Table.Td>
+                    <Table.Td>{plan.response_type || '—'}</Table.Td>
                     <Table.Td>{fdpLabelForPlan(plan)}</Table.Td>
                     <Table.Td>
                       <Badge variant="light" size="sm">

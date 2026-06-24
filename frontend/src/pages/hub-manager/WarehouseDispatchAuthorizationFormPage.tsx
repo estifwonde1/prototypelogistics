@@ -14,7 +14,6 @@ import {
   Group,
   TextInput,
   Select,
-  NumberInput,
   Alert,
   Badge,
   LoadingOverlay,
@@ -38,6 +37,15 @@ import { getStockBalances } from '../../api/stockBalances';
 import { useAuthStore } from '../../store/authStore';
 import { normalizeRoleSlug } from '../../contracts/warehouse';
 import { findDirectedMultiplier } from '../../utils/uomConversions';
+import {
+  checkDispatchQuantityLimit,
+  checkStockQuantityLimit,
+  dispatchOrderRemainingQuantity,
+  exceedsDispatchRemaining,
+  findDispatchOrderLine,
+  formatDispatchRemainingExceededMessage,
+  quantityInDispatchCanonicalUnit,
+} from '../../utils/dispatchAuthorizationQuantity';
 import type { ApiError } from '../../types/common';
 
 // ----------------------------------------------------------------------
@@ -172,6 +180,16 @@ export default function WarehouseDispatchAuthorizationFormPage() {
     return map;
   }, [allStockBalances]);
 
+  const storeStockUnitMap = useMemo(() => {
+    const map = new Map<string, number>();
+    (allStockBalances ?? []).forEach((b: any) => {
+      if (!b.store_id || b.unit_id == null) return;
+      const key = `${b.store_id}:${b.commodity_id}`;
+      if (!map.has(key)) map.set(key, Number(b.unit_id));
+    });
+    return map;
+  }, [allStockBalances]);
+
   const getAvailableForStore = (storeId: string | null, commodityId: string | null): number | null => {
     if (!storeId || !commodityId) return null;
     const available = storeStockMap.get(`${storeId}:${commodityId}`);
@@ -284,29 +302,41 @@ export default function WarehouseDispatchAuthorizationFormPage() {
   // Computed totals & remaining (in canonical units)
   // --------------------------------------------------------------------
   const canonicalQuantities = useMemo(() => {
-    if (!selectedOrder) return { total: 0, remaining: 0 };
-    // For each line, convert entered quantity to the order's canonical unit (the unit of the order line)
+    if (!selectedOrder) return { total: 0, remaining: 0, orderRemaining: null as number | null };
     let totalCanonical = 0;
     storeLines.forEach((line) => {
       if (!line.quantity || !line.unit_id || !line.commodity_id) return;
-      const doLine = selectedOrder.lines?.find((l: any) => String(l.commodity_id) === line.commodity_id);
-      const toUnitId = doLine?.unit_id != null ? Number(doLine.unit_id) : null;
-      if (!toUnitId) return;
-      const fromUnitId = Number(line.unit_id);
-      const commodityId = Number(line.commodity_id);
-      let multiplier = 1;
-      if (fromUnitId !== toUnitId) {
-        const m = findDirectedMultiplier(fromUnitId, toUnitId, commodityId, uomConversions);
-        if (m) multiplier = m;
-      }
-      totalCanonical += Number((line.quantity * multiplier).toFixed(4));
+      const doLine = findDispatchOrderLine(selectedOrder, line.commodity_id);
+      const canonical = quantityInDispatchCanonicalUnit(line, doLine, uomConversions);
+      if (canonical != null) totalCanonical += canonical;
     });
-    const orderRemaining = selectedOrder.remaining_quantity != null ? Number(selectedOrder.remaining_quantity) : 0;
+    const orderRemaining = dispatchOrderRemainingQuantity(selectedOrder);
     return {
       total: totalCanonical,
-      remaining: Math.max(0, orderRemaining - totalCanonical),
+      remaining: orderRemaining != null ? Math.max(0, orderRemaining - totalCanonical) : 0,
+      orderRemaining,
     };
   }, [storeLines, selectedOrder, uomConversions]);
+
+  const totalExceedsRemaining = useMemo(() => {
+    if (canonicalQuantities.orderRemaining == null) return false;
+    return exceedsDispatchRemaining(canonicalQuantities.total, canonicalQuantities.orderRemaining);
+  }, [canonicalQuantities]);
+
+  const dispatchUnitLabel = useMemo(() => {
+    const unitId = selectedOrder?.lines?.[0]?.unit_id;
+    if (unitId == null) return '';
+    const unit = units.find((u: any) => String(u.id) === String(unitId));
+    return unit?.abbreviation || unit?.name || '';
+  }, [selectedOrder, units]);
+
+  const totalRemainingExceededMessage = useMemo(() => {
+    if (!totalExceedsRemaining || canonicalQuantities.orderRemaining == null) return null;
+    return formatDispatchRemainingExceededMessage(
+      canonicalQuantities.orderRemaining,
+      dispatchUnitLabel
+    );
+  }, [totalExceedsRemaining, canonicalQuantities.orderRemaining, dispatchUnitLabel]);
 
   // --------------------------------------------------------------------
   // Validation helpers
@@ -316,22 +346,30 @@ export default function WarehouseDispatchAuthorizationFormPage() {
     if (!line.commodity_id) return 'Select a commodity';
     if (!line.unit_id) return 'Select a unit';
     if (line.quantity <= 0) return 'Quantity must be positive';
-    // Check available stock
+
+    const dispatchErr = checkDispatchQuantityLimit(line, selectedOrder, uomConversions, {
+      unitLabel: dispatchUnitLabel,
+    });
+    if (dispatchErr) return dispatchErr;
+
     const avail = getAvailableForStore(line.store_id, line.commodity_id);
-    if (avail != null && line.quantity > avail) {
-      return `Exceeds available stock (${avail})`;
-    }
-    // NOTE: Remaining-quantity validation is intentionally NOT enforced on the client.
-    // The backend validates remaining_quantity in canonical units.
-    // This page previously blocked valid inputs due to unit-conversion/rounding mismatches
-    // between the UI entered unit and the backend canonical unit.
-    // Server-side validation will still reject invalid submissions.
-    //
-    // (Kept here as a comment for reference.)
-    // const doLine = selectedOrder?.lines?.find((l: any) => String(l.commodity_id) === line.commodity_id);
-    // if (doLine) { ... }
+    const stockUnitId = storeStockUnitMap.get(`${line.store_id}:${line.commodity_id}`);
+    const stockErr = checkStockQuantityLimit(
+      line,
+      avail,
+      stockUnitId,
+      selectedOrder,
+      uomConversions
+    );
+    if (stockErr) return stockErr;
+
     return null;
   };
+
+  const isQuantityFieldError = (error: string | null): boolean =>
+    !!error &&
+    !error.startsWith('Select a ') &&
+    error !== 'Quantity must be positive';
 
   const allLinesValid = storeLines.every((line) => getLineError(line) === null);
   const transportValid =
@@ -340,7 +378,12 @@ export default function WarehouseDispatchAuthorizationFormPage() {
     driverIdNum.trim().length > 0 &&
     truckPlate.trim().length > 0;
 
-  const canSubmit = dispatchOrderId && allLinesValid && transportValid && !!selectedStorekeeperId;
+  const canSubmit =
+    dispatchOrderId &&
+    allLinesValid &&
+    transportValid &&
+    !!selectedStorekeeperId &&
+    !totalExceedsRemaining;
 
   // --------------------------------------------------------------------
   // Mutations
@@ -384,7 +427,10 @@ export default function WarehouseDispatchAuthorizationFormPage() {
       let assigned = false;
       if (selectedStorekeeperId) {
         try {
-          await assignStorekeeperToDa(dao.id, { storekeeper_user_id: Number(selectedStorekeeperId) });
+          await assignStorekeeperToDa(dao.id, {
+            storekeeper_user_id: Number(selectedStorekeeperId),
+            store_id: storeLines[0]?.store_id ? Number(storeLines[0].store_id) : undefined,
+          });
           assigned = true;
           queryClient.invalidateQueries({ queryKey: ['dispatch_order_authorizations', dao.id] });
           queryClient.invalidateQueries({ queryKey: ['dispatch_order_assignable_storekeepers'] });
@@ -599,13 +645,20 @@ export default function WarehouseDispatchAuthorizationFormPage() {
                           />
                         </td>
                         <td>
-                          <NumberInput
-                            placeholder="0"
-                            value={line.quantity}
-                            onChange={(v) => updateLine(idx, 'quantity', Number(v) || 0)}
+                          <TextInput
+                            value={line.quantity === 0 ? '' : line.quantity}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              if (raw === '') {
+                                updateLine(idx, 'quantity', 0);
+                                return;
+                              }
+                              const next = Number(raw);
+                              updateLine(idx, 'quantity', Number.isFinite(next) ? next : 0);
+                            }}
+                            type="number"
                             min={0}
-                            step={0.1}
-                            error={error?.includes('Exceeds') ? error : undefined}
+                            error={isQuantityFieldError(error) ? error : undefined}
                           />
                         </td>
                         <td>
@@ -627,7 +680,7 @@ export default function WarehouseDispatchAuthorizationFormPage() {
                                 <>
                                   {' '}
                                   <Badge size="xs" variant="outline">
-                                    Order: {selectedOrder?.lines?.find((l: any) => String(l.commodity_id) === line.commodity_id)?.remaining_quantity ?? 0}
+                                    Remaining: {Number(selectedOrder?.remaining_quantity ?? 0).toLocaleString()}
                                   </Badge>
                                 </>
                               )}
@@ -746,12 +799,18 @@ export default function WarehouseDispatchAuthorizationFormPage() {
             <Text size="sm">
               Total allocated (canonical): <strong>{canonicalQuantities.total.toFixed(2)}</strong>
             </Text>
-            <Text size="sm" c={canonicalQuantities.remaining <= 0 ? 'red' : 'green'}>
+            <Text size="sm" c={canonicalQuantities.remaining < 0 || totalExceedsRemaining ? 'red' : 'green'}>
               Remaining for this order: <strong>{canonicalQuantities.remaining.toFixed(2)}</strong>
             </Text>
           </SimpleGrid>
 
-          {!allLinesValid && (
+          {totalExceedsRemaining && totalRemainingExceededMessage && (
+            <Alert color="red" icon={<IconAlertCircle size={16} />} title="Above the dispatch limit">
+              {totalRemainingExceededMessage}
+            </Alert>
+          )}
+
+          {!allLinesValid && !totalExceedsRemaining && (
             <Alert color="red" icon={<IconAlertCircle size={16} />}>
               {storeLines.map((line, idx) => {
                 const err = getLineError(line);

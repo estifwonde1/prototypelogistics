@@ -45,16 +45,17 @@ function myStatusColor(status: ReturnType<typeof getMyStatus>): string {
 export default function StorekeeperDAListPage() {
   const navigate = useNavigate();
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const userId = useAuthStore((state) => state.user?.id);
   const storeId = activeAssignment?.store?.id;
   const warehouseId = activeAssignment?.warehouse?.id;
 
   const { data: allDAs = [], isLoading, error, refetch } = useQuery({
-    queryKey: ['dispatch_order_authorizations', 'storekeeper_assigned', { warehouse_id: warehouseId }],
+    queryKey: ['dispatch_order_authorizations', 'storekeeper_assigned', { warehouse_id: warehouseId, store_id: storeId, user_id: userId }],
     queryFn: () =>
       getDispatchOrderAuthorizations({
         ...(warehouseId ? { warehouse_id: warehouseId } : {}),
       }),
-    enabled: !!warehouseId,
+    enabled: !!(storeId || warehouseId),
   });
 
   if (isLoading) return <LoadingState message="Loading dispatch authorizations..." />;
