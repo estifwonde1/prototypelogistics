@@ -133,9 +133,10 @@ Cats::Warehouse::Engine.routes.draw do
     resources :grns, only: [ :index, :show, :create ] do
       post :confirm, on: :member
     end
-    resources :gins, only: [:index, :show, :create] do
+    resources :gins, only: [ :index, :show, :create ] do
       post :confirm, on: :member
       post :driver_confirm, on: :member
+      post :cancel, on: :member
     end
     resources :inspections, only: [ :index, :show, :create ] do
       post :confirm, on: :member

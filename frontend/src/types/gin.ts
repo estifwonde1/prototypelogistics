@@ -11,6 +11,7 @@ export interface Gin {
   gin_items?: GinItem[];
   // Phase 3: Order linkage
   dispatch_order_id?: number;
+  dispatch_order_authorization_id?: number;
   dispatch_order?: {
     id: number;
     destination_type: string;

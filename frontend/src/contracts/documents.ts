@@ -27,6 +27,7 @@ export interface CreateGinRequest {
   truck_plate_number?: string;
   driver_name?: string;
   driver_id_number?: string;
+  dispatch_order_authorization_id?: number;
   items: GinItem[];
 }
 
@@ -82,6 +83,7 @@ export function toCreateGinRequest(data: Partial<Gin> & { items?: GinItem[] }): 
     truck_plate_number: data.truck_plate_number,
     driver_name: data.driver_name,
     driver_id_number: data.driver_id_number,
+    dispatch_order_authorization_id: data.dispatch_order_authorization_id,
     items: data.items ?? data.gin_items ?? [],
   };
 }

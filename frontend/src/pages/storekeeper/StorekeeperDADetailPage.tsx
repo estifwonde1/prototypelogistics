@@ -102,6 +102,7 @@ export default function StorekeeperDADetailPage() {
         color: 'green',
       });
       setShowRecordingForm(false);
+      refetch();
     },
     onError: (err: unknown) => {
       const msg =

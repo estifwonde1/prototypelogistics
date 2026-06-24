@@ -27,6 +27,10 @@ module Cats
         admin? || warehouse_manager? || storekeeper?
       end
 
+      def cancel?
+        admin? || warehouse_manager? || storekeeper?
+      end
+
       private
 
       def officer?

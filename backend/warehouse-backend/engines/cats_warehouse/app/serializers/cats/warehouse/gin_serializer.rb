@@ -13,7 +13,10 @@ module Cats
       end
 
       def driver_confirmed_by_name
-        object.driver_confirmed_by&.name
+        user = object.driver_confirmed_by
+        return nil unless user
+
+        [ user.first_name, user.last_name ].compact.join(" ").presence || user.email
       end
     end
   end

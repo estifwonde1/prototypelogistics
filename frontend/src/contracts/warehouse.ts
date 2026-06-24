@@ -64,11 +64,12 @@ export type Resource =
   | 'receipt_authorizations'
   | 'reports';
 
-export type Action = 'read' | 'create' | 'update' | 'delete' | 'confirm';
+export type Action = 'read' | 'create' | 'update' | 'delete' | 'confirm' | 'cancel';
 
 export const DocumentStatus = {
   DRAFT: 'Draft',
   CONFIRMED: 'Confirmed',
+  CANCELLED: 'Cancelled',
 } as const;
 
 export const QualityStatus = {

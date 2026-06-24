@@ -40,8 +40,18 @@ module Cats
         gin = policy_scope(Gin).find(params[:id])
         authorize gin, :driver_confirm?
         actor = Cats::Core::User.find(params[:driver_confirmed_by_id]) if params[:driver_confirmed_by_id].present?
-        
+
         GinDriverConfirmService.new(gin: gin, actor: actor).call
+        render_resource(gin, serializer: GinSerializer)
+      end
+
+      def cancel
+        gin = policy_scope(Gin).find(params[:id])
+        authorize gin, :cancel?
+
+        raise ArgumentError, "Only draft GINs can be discarded" unless gin.status_draft?
+
+        gin.update!(status: :cancelled)
         render_resource(gin, serializer: GinSerializer)
       end
 
@@ -87,7 +97,6 @@ module Cats
           ]
         )
       end
-
     end
   end
 end

@@ -29,7 +29,7 @@ module Cats
           )
 
           # Auto-confirm if this GIN is tied to a Dispatch Authorization and is currently draft
-          if @gin.dispatch_order_authorization_id.present? && @gin.draft?
+          if @gin.dispatch_order_authorization_id.present? && @gin.status_draft?
             GinConfirmer.new(gin: @gin, approved_by: @actor).call
           end
 
