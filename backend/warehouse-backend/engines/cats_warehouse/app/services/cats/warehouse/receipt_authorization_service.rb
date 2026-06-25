@@ -475,6 +475,7 @@ module Cats
 
       def validate_explicit_override_warehouse!(warehouse)
         return if @receipt_order.warehouse_id == warehouse.id
+        return if warehouse_linked_on_receipt_order?(warehouse)
 
         hub_id = order_effective_hub_id
         if hub_id.present?
@@ -496,6 +497,21 @@ module Cats
         return if warehouse.id == @receipt_order.warehouse_id
 
         raise ArgumentError, "Destination warehouse is not allocated for this Receipt Order"
+      end
+
+      def warehouse_linked_on_receipt_order?(warehouse)
+        if self.class.assignment_not_rejected_scope(
+          @receipt_order.receipt_order_assignments.where(warehouse_id: warehouse.id)
+        ).exists?
+          return true
+        end
+
+        line = @receipt_order_line
+        if line.blank? && @receipt_order.receipt_order_lines.one?
+          line = @receipt_order.receipt_order_lines.first
+        end
+
+        line&.destination_warehouse_id.to_i == warehouse.id.to_i
       end
 
       def validate_quantities!(warehouse, line)

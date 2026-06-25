@@ -412,32 +412,18 @@ export default function ReceiptAuthorizationFormPage() {
     scopedWarehouseId,
     assignmentsAll,
   ]);
+  const standaloneWarehouseRaMode = isWarehouseManager && isStandaloneAssignment;
   const hasPlannedWarehouseRows = warehouseAssignments.length > 0;
-  const routingByOverride = !usePlannedAllocation || !hasPlannedWarehouseRows;
+  const routingByOverride =
+    standaloneWarehouseRaMode || !usePlannedAllocation || !hasPlannedWarehouseRows;
   const hubIdForRo = selectedOrder?.hub_id ?? scopedHubId ?? undefined;
-  const standaloneNeedsStorePlan =
-    isWarehouseManager &&
-    isStandaloneAssignment &&
-    !!receiptOrderId &&
-    !!selectedOrder &&
-    warehouseAssignments.length === 0;
 
   useEffect(() => {
-    if (!isWarehouseManager || !isStandaloneAssignment || !scopedWarehouseId || !selectedOrder) return;
-    if (warehouseAssignments.length > 0) {
-      setUsePlannedAllocation(true);
-      setExplicitWarehouseId(null);
-    } else {
-      setUsePlannedAllocation(false);
-      setExplicitWarehouseId(String(scopedWarehouseId));
-    }
-  }, [
-    isWarehouseManager,
-    isStandaloneAssignment,
-    scopedWarehouseId,
-    selectedOrder,
-    warehouseAssignments.length,
-  ]);
+    if (!standaloneWarehouseRaMode || !scopedWarehouseId) return;
+    setUsePlannedAllocation(false);
+    setExplicitWarehouseId(String(scopedWarehouseId));
+    setAssignmentId(null);
+  }, [standaloneWarehouseRaMode, scopedWarehouseId, receiptOrderId]);
 
   const { data: hubWarehouses = [] } = useQuery({
     queryKey: ['warehouses', { hub_id: hubIdForRo }],
@@ -528,12 +514,14 @@ export default function ReceiptAuthorizationFormPage() {
     setExplicitWarehouseId(null);
     setAuthorizedUnitId(null);
     setNotifyPlannedFacilities(false);
-    if (hasPlannedWarehouseRows) {
+    if (standaloneWarehouseRaMode) {
+      setUsePlannedAllocation(false);
+    } else if (hasPlannedWarehouseRows) {
       setUsePlannedAllocation(true);
     } else {
       setUsePlannedAllocation(false);
     }
-  }, [receiptOrderId, hasPlannedWarehouseRows]);
+  }, [receiptOrderId, hasPlannedWarehouseRows, standaloneWarehouseRaMode]);
 
   useEffect(() => {
     const lines = selectedOrder?.receipt_order_lines ?? selectedOrder?.lines ?? [];
@@ -1011,7 +999,6 @@ export default function ReceiptAuthorizationFormPage() {
         !authorizedUnitId ||
         (orderLines.length > 1 && !overrideReceiptLineId) ||
         exceedsLineTotal)) ||
-    standaloneNeedsStorePlan ||
     (collectStorekeeperAssignment && !selectedStorekeeperId);
 
   return (
@@ -1026,9 +1013,11 @@ export default function ReceiptAuthorizationFormPage() {
       <Card shadow="sm" padding="lg" radius="md" withBorder>
         <Stack gap="md">
           <Text size="sm" c="dimmed">
-            {isWarehouseManager
-              ? 'Create one Receipt Authorization per truck for this independent warehouse. Each truck authorizes inbound quantity against a store assignment from the Receipt Order plan; storekeepers use this to run inspection and GRN.'
-              : 'Create one Receipt Authorization per truck. You can follow hub→warehouse rows from the Receipt Order allocation, or route directly to a warehouse under your hub when the plan is only guidance; quantity is always capped by the receipt order line total. Store assignment stays on the Receipt Order.'}
+            {standaloneWarehouseRaMode
+              ? 'Create one Receipt Authorization per truck for your independent warehouse. Quantity is capped by the receipt order line total; store and storekeeper can be assigned on this form or later on the RA detail page.'
+              : isWarehouseManager
+                ? 'Create one Receipt Authorization per truck for this warehouse. Each truck authorizes inbound quantity against a warehouse allocation from the Receipt Order plan; storekeepers use this to run inspection and GRN.'
+                : 'Create one Receipt Authorization per truck. You can follow hub→warehouse rows from the Receipt Order allocation, or route directly to a warehouse under your hub when the plan is only guidance; quantity is always capped by the receipt order line total. Store assignment stays on the Receipt Order.'}
           </Text>
 
           <Divider label="Receipt Order" labelPosition="left" />
@@ -1044,19 +1033,12 @@ export default function ReceiptAuthorizationFormPage() {
             description="Includes completed for rare legacy rows; prefer orders still in hub flow. New RAs stay blocked if the order is truly complete at the API."
           />
 
-          {receiptOrderId && hasPlannedWarehouseRows && !(isWarehouseManager && isStandaloneAssignment) ? (
+          {receiptOrderId && hasPlannedWarehouseRows && !standaloneWarehouseRaMode ? (
             <Checkbox
               label="Use planned warehouse allocation (Receipt Order assignment rows)"
               checked={usePlannedAllocation}
               onChange={(e) => setUsePlannedAllocation(e.currentTarget.checked)}
             />
-          ) : null}
-
-          {standaloneNeedsStorePlan ? (
-            <Alert color="yellow" variant="light" title="Store assignment required">
-              This receipt order has no store assignment rows yet. Use <strong>Assign Store</strong> on the Receipt
-              Order assignment plan before authorizing trucks.
-            </Alert>
           ) : null}
 
           {!routingByOverride && assignmentOptions.length > 0 ? (
@@ -1091,10 +1073,12 @@ export default function ReceiptAuthorizationFormPage() {
 
           {routingByOverride && receiptOrderId ? (
             <>
-              {!hubIdForRo && isWarehouseManager && scopedWarehouseId ? (
+              {standaloneWarehouseRaMode && scopedWarehouseId ? (
                 <Alert color="blue" variant="light" title="Independent warehouse">
                   Trucks are authorized for{' '}
                   <strong>{scopedWarehouseName ?? `warehouse #${scopedWarehouseId}`}</strong> on this receipt order.
+                  Store assignment from the receipt order plan is optional — assign a store or storekeeper below if
+                  you already know the destination.
                 </Alert>
               ) : !hubIdForRo ? (
                 <Alert icon={<IconAlertCircle size={16} />} title="Hub required" color="yellow">
