@@ -381,12 +381,7 @@ export default function StorekeeperRADetailPage() {
                     : '—'}{u ? ` ${u}` : ''}
                 </Text>
               </Stack>
-              <Stack gap={0}>
-                <Text size="xs" c="dimmed">Remaining (store)</Text>
-                <Text fw={700} c={storeRemainingDisplay > 0 ? 'orange' : 'green'}>
-                  {storeRemainingDisplay.toLocaleString()}{u ? ` ${u}` : ''}
-                </Text>
-              </Stack>
+
             </Group>
           </Stack>
         </Card>
