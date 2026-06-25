@@ -1,7 +1,7 @@
 module Cats
   module Warehouse
     class ReceiptOrderAssignmentService
-      ALLOWED_ASSIGNMENT_STATUSES = %w[pending assigned accepted in_progress completed rejected].freeze
+      ALLOWED_ASSIGNMENT_STATUSES = ReceiptOrderAssignmentStatus::ALLOWED
 
       def initialize(order:, actor:, assignments:)
         @order = order
@@ -25,22 +25,10 @@ module Cats
                                 @order.warehouse&.hub_id || 
                                 @order.hub_id
 
-            # CRITICAL: Determine the correct status based on assignment level
-            # Warehouse/store assignments: "assigned" (actual assignment)
-            # Hub-level assignments: "pending" (routing/notification only)
-            assignment_status = if payload[:warehouse_id].present? || payload[:store_id].present?
-                                  ContractConstants::DOCUMENT_STATUSES[:assigned]
-                                else
-                                  'pending'
-                                end
-
-            Rails.logger.info "=== Creating Assignment ==="
-            Rails.logger.info "Line ID: #{payload[:receipt_order_line_id]}"
-            Rails.logger.info "Hub ID: #{assignment_hub_id}"
-            Rails.logger.info "Warehouse ID: #{payload[:warehouse_id]}"
-            Rails.logger.info "Store ID: #{payload[:store_id]}"
-            Rails.logger.info "Quantity: #{payload[:quantity]}"
-            Rails.logger.info "Status: #{assignment_status}"
+            store = payload[:store_id].present? ? Store.find_by(id: payload[:store_id]) : nil
+            resolved_warehouse_id = payload[:warehouse_id].presence ||
+                                    store&.warehouse_id ||
+                                    @order.warehouse_id
 
             if payload[:warehouse_id].present?
               wh = Warehouse.find(payload[:warehouse_id])
@@ -57,10 +45,10 @@ module Cats
               )
             end
 
-            store = payload[:store_id].present? ? Store.find_by(id: payload[:store_id]) : nil
-            resolved_warehouse_id = payload[:warehouse_id].presence || 
-                                    store&.warehouse_id || 
-                                    @order.warehouse_id
+            assignment_status = ReceiptOrderAssignmentStatus.resolve(
+              warehouse_id: resolved_warehouse_id,
+              store_id: payload[:store_id]
+            )
 
             created_assignments << ReceiptOrderAssignment.create!(
               receipt_order: @order,
@@ -141,22 +129,13 @@ module Cats
       end
 
       def all_lines_assigned_to_warehouses?
-        # Reload assignments to get the latest state
         all_assignments = ReceiptOrderAssignment.where(receipt_order: @order)
-        
-        # Get all lines
         lines = @order.receipt_order_lines
         return false if lines.empty?
-        
-        # For each line, check if it has a warehouse-level assignment
+
         lines.all? do |line|
-          # Find assignments for this specific line
-          line_assignments = all_assignments.select do |assignment|
-            assignment.receipt_order_line_id == line.id
-          end
-          
-          # Check if any of these assignments have a warehouse_id
-          line_assignments.any? { |a| a.warehouse_id.present? }
+          line_assignments = all_assignments.select { |assignment| assignment.receipt_order_line_id == line.id }
+          ReceiptOrderAssignmentStatus.line_operationally_assigned?(line_assignments)
         end
       end
 
@@ -165,12 +144,7 @@ module Cats
       end
 
       def normalize_assignment_status(raw)
-        return ContractConstants::DOCUMENT_STATUSES[:assigned] if raw.blank?
-
-        key = raw.to_s.strip.downcase.tr(" ", "_")
-        return key if ALLOWED_ASSIGNMENT_STATUSES.include?(key)
-
-        ContractConstants::DOCUMENT_STATUSES[:assigned]
+        ReceiptOrderAssignmentStatus.normalize(raw)
       end
 
       def find_line(id)

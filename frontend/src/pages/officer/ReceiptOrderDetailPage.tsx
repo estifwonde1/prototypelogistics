@@ -1371,7 +1371,7 @@ function ReceiptOrderDetailPage() {
         commodityName: 'Order destination',
         quantity: undefined,
         unitAbbrev: fallbackUnit,
-        status: order.status,
+        status: 'warehouse_assigned',
       }];
     }
 
@@ -1384,7 +1384,7 @@ function ReceiptOrderDetailPage() {
         commodityName: 'Order destination',
         quantity: undefined,
         unitAbbrev: fallbackUnit,
-        status: order.status,
+        status: 'pending',
       }];
     }
 
