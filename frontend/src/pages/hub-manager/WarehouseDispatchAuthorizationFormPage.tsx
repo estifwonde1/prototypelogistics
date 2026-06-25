@@ -659,6 +659,7 @@ export default function WarehouseDispatchAuthorizationFormPage() {
                             type="number"
                             min={0}
                             error={isQuantityFieldError(error) ? error : undefined}
+                            onWheel={(e) => (e.target as HTMLInputElement).blur()}
                           />
                         </td>
                         <td>

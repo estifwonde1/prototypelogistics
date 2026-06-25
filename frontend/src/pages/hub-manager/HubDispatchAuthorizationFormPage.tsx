@@ -38,6 +38,7 @@ import {
   checkDispatchQuantityLimit,
   dispatchOrderRemainingQuantity,
   findDispatchOrderLine,
+  formatDispatchRemainingExceededMessage,
 } from '../../utils/dispatchAuthorizationQuantity';
 import type { ApiError } from '../../types/common';
 import { useForm } from '@mantine/form';
@@ -569,6 +570,7 @@ export default function HubDispatchAuthorizationFormPage() {
                             type="number"
                             error={remainingError}
                             styles={{ input: { textAlign: 'left' } }}
+                            onWheel={(e) => (e.target as HTMLInputElement).blur()}
                           />
                         </Table.Td>
                         <Table.Td style={{ minWidth: 160 }}>
