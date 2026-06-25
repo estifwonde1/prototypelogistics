@@ -36,6 +36,7 @@ module Cats
         ras = ras.where(status: params[:status])                     if params[:status].present?
         if ActiveModel::Type::Boolean.new.cast(params[:awaiting_storekeeper])
           ras = ras.where(assigned_storekeeper_id: nil)
+                   .where(status: [ReceiptAuthorization::PENDING, ReceiptAuthorization::ACTIVE])
         end
 
         render_resource(ras, each_serializer: ReceiptAuthorizationSerializer)

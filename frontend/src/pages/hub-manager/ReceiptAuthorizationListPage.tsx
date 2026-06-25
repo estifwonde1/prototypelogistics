@@ -29,6 +29,22 @@ function raDisplayUnit(ra: ReceiptAuthorization): string {
   return inputName || inputAbbr || (ra.unit_name ?? ra.unit_abbreviation ?? '').trim();
 }
 
+function storekeeperAssignmentDisplay(ra: ReceiptAuthorization): {
+  kind: 'direct' | 'assigned' | 'awaiting' | 'none';
+  label?: string;
+} {
+  if (ra.direct_to_storekeepers) {
+    return { kind: 'direct' };
+  }
+  if (ra.assigned_storekeeper_id != null || ra.assigned_storekeeper_name) {
+    return { kind: 'assigned', label: ra.assigned_storekeeper_name ?? undefined };
+  }
+  if (ra.awaiting_storekeeper_assignment) {
+    return { kind: 'awaiting' };
+  }
+  return { kind: 'none' };
+}
+
 function raDisplayQty(ra: ReceiptAuthorization): number {
   const v = ra.authorized_quantity_input;
   if (v != null && Number.isFinite(Number(v)) && Number(v) > 0) return Number(v);
@@ -206,17 +222,40 @@ export default function ReceiptAuthorizationListPage() {
                   </Table.Td>
                   {isWarehouseManager && (
                     <Table.Td>
-                      {ra.direct_to_storekeepers ? (
-                        <Badge color="teal" variant="light" size="sm">
-                          Direct to storekeepers
-                        </Badge>
-                      ) : ra.awaiting_storekeeper_assignment ? (
-                        <Badge color="orange" variant="light" size="sm">
-                          Awaiting storekeeper
-                        </Badge>
-                      ) : (
-                        <Text size="sm">{ra.assigned_storekeeper_name || '—'}</Text>
-                      )}
+                      {(() => {
+                        const sk = storekeeperAssignmentDisplay(ra);
+                        if (sk.kind === 'direct') {
+                          return (
+                            <Badge color="teal" variant="light" size="sm">
+                              Direct to storekeepers
+                            </Badge>
+                          );
+                        }
+                        if (sk.kind === 'assigned') {
+                          return (
+                            <Stack gap={2}>
+                              <Badge color="violet" variant="light" size="sm">
+                                Assigned
+                              </Badge>
+                              {sk.label ? (
+                                <Text size="sm">{sk.label}</Text>
+                              ) : null}
+                            </Stack>
+                          );
+                        }
+                        if (sk.kind === 'awaiting') {
+                          return (
+                            <Badge color="orange" variant="light" size="sm">
+                              Awaiting storekeeper
+                            </Badge>
+                          );
+                        }
+                        return (
+                          <Text size="sm" c="dimmed">
+                            —
+                          </Text>
+                        );
+                      })()}
                     </Table.Td>
                   )}
                   <Table.Td>

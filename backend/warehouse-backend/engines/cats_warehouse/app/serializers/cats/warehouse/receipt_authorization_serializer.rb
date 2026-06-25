@@ -249,12 +249,24 @@ module Cats
 
       def awaiting_storekeeper_assignment
         return false if direct_to_storekeepers
+        return false unless object.pending? || object.active?
+        return false if object.assigned_storekeeper_id.present?
 
-        object.assigned_storekeeper_id.blank?
+        true
       end
 
       def direct_to_storekeepers
-        SingleStoreWarehouse.single_store?(object.warehouse_id)
+        wh_id = object.warehouse_id
+        return false unless SingleStoreWarehouse.single_store?(wh_id)
+
+        # Hub-backed single-store warehouses broadcast to all storekeepers.
+        # Standalone independent warehouses still require explicit WM assignment.
+        warehouse = object.warehouse
+        if warehouse
+          return warehouse.hub_id.present?
+        end
+
+        Warehouse.where(id: wh_id).where.not(hub_id: nil).exists?
       end
 
       private
