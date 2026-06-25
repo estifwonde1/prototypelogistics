@@ -121,11 +121,36 @@ module Cats
 
       def accessible_hub_ids
         return Hub.select(:id) if admin?
-        return assigned_hub_ids if hub_manager?
         return Hub.select(:id) if officer_full_access?
-        return Hub.where(location_id: officer_location_scope_ids).select(:id) if officer?
 
-        []
+        ids = []
+        ids.concat(assigned_hub_ids) if hub_manager?
+        ids.concat(assigned_receipt_authorizer_hub_ids) if receipt_authorizer?
+        ids.concat(warehouse_manager_accessible_hub_ids) if warehouse_manager?
+
+        if officer?
+          ids.concat(Hub.where(location_id: officer_location_scope_ids).pluck(:id))
+        end
+
+        ids.compact.uniq
+      end
+
+      def warehouse_manager_accessible_hub_ids
+        Warehouse.where(id: assigned_warehouse_ids).where.not(hub_id: nil).distinct.pluck(:hub_id)
+      end
+
+      def can_access_hub?(hub_id)
+        return true if admin?
+
+        hid = hub_id.to_i
+        return false if hid <= 0
+
+        ids = accessible_hub_ids
+        if ids.is_a?(ActiveRecord::Relation)
+          ids.where(id: hid).exists?
+        else
+          Array(ids).map(&:to_i).include?(hid)
+        end
       end
 
       def accessible_warehouse_ids

@@ -138,11 +138,12 @@ module Cats
         # so the frontend can resolve the warehouse_id without an extra API call.
         effective_warehouse = a.warehouse || (a.store&.warehouse)
         effective_store = resolve_effective_store(a, effective_warehouse)
+        effective_hub = a.hub || effective_warehouse&.hub
 
         {
           id: a.id,
           role_name: a.role_name,
-          hub: a.hub && { id: a.hub.id, name: a.hub.name },
+          hub: effective_hub && { id: effective_hub.id, name: effective_hub.name },
           warehouse: effective_warehouse && {
             id: effective_warehouse.id,
             name: effective_warehouse.name,

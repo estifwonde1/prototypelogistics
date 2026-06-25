@@ -19,7 +19,13 @@ module Cats
 
         # Scope to hub manager's accessible warehouses when hub_id provided
         if params[:hub_id].present?
-          wh_ids = Warehouse.where(hub_id: params[:hub_id].to_i).pluck(:id)
+          hub_id = params[:hub_id].to_i
+          access = AccessContext.new(user: current_user)
+          unless access.can_access_hub?(hub_id)
+            return render_error("Access denied to hub #{hub_id}", status: :forbidden)
+          end
+
+          wh_ids = Warehouse.where(hub_id: hub_id).pluck(:id)
           daos = daos.where(warehouse_id: wh_ids)
         end
 

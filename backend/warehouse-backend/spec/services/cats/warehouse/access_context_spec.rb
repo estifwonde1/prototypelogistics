@@ -246,4 +246,57 @@ RSpec.describe Cats::Warehouse::AccessContext, type: :service do
       expect(access.can_access_warehouse?(other_warehouse.id)).to be(false)
     end
   end
+
+  describe "#accessible_hub_ids and #can_access_hub?" do
+    let(:wm) { create(:cats_core_user, role_name: "Warehouse Manager") }
+    let(:hub_warehouse) { create(:cats_warehouse_warehouse, hub: hub) }
+    let(:standalone_warehouse) do
+      create(:cats_warehouse_warehouse, hub: nil, location: create(:cats_core_location), managed_under: "federal")
+    end
+
+    it "includes the parent hub for hub-affiliated warehouse managers" do
+      Cats::Warehouse::UserAssignment.create!(
+        user: wm,
+        role_name: "Warehouse Manager",
+        warehouse: hub_warehouse
+      )
+
+      access = described_class.new(user: wm)
+
+      expect(access.accessible_hub_ids).to contain_exactly(hub.id)
+      expect(access.can_access_hub?(hub.id)).to be(true)
+      expect(access.can_access_hub?(hub.id + 999)).to be(false)
+    end
+
+    it "returns no hubs for standalone-only warehouse managers" do
+      Cats::Warehouse::UserAssignment.create!(
+        user: wm,
+        role_name: "Warehouse Manager",
+        warehouse: standalone_warehouse
+      )
+
+      access = described_class.new(user: wm)
+
+      expect(access.accessible_hub_ids).to be_empty
+      expect(access.can_access_hub?(hub.id)).to be(false)
+    end
+
+    it "includes hubs from both hub-affiliated and standalone warehouse assignments" do
+      Cats::Warehouse::UserAssignment.create!(
+        user: wm,
+        role_name: "Warehouse Manager",
+        warehouse: hub_warehouse
+      )
+      Cats::Warehouse::UserAssignment.create!(
+        user: wm,
+        role_name: "Warehouse Manager",
+        warehouse: standalone_warehouse
+      )
+
+      access = described_class.new(user: wm)
+
+      expect(access.accessible_hub_ids).to contain_exactly(hub.id)
+      expect(access.can_access_hub?(hub.id)).to be(true)
+    end
+  end
 end

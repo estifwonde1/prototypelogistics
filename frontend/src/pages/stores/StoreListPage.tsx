@@ -287,7 +287,9 @@ function StoreListPage() {
         <div>
           <Title order={2}>Stores</Title>
           <Text c="dimmed" size="sm">
-            Manage storage spaces within warehouses
+            {isHubManager
+              ? 'View storage spaces within warehouses (managed by warehouse managers)'
+              : 'Manage storage spaces within warehouses'}
           </Text>
         </div>
         <Group>

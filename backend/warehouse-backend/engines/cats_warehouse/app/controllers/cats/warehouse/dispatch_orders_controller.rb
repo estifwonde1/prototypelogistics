@@ -34,14 +34,7 @@ module Cats
         if params[:hub_id].present?
           hub_id = params[:hub_id].to_i
           access = AccessContext.new(user: current_user)
-          hub_ids = access.accessible_hub_ids
-          allowed =
-            if hub_ids.is_a?(ActiveRecord::Relation)
-              hub_ids.where(id: hub_id).exists?
-            else
-              Array(hub_ids).map(&:to_i).include?(hub_id)
-            end
-          unless allowed
+          unless access.can_access_hub?(hub_id)
             return render_error("Access denied to hub #{hub_id}", status: :forbidden)
           end
 
