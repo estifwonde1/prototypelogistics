@@ -42,24 +42,63 @@ function lineForAssignment(
   return lines[0];
 }
 
+function assignmentBelongsToHub(
+  a: ReceiptOrderAssignment,
+  hubId: number,
+  hubWarehouseIds: Set<number>
+): boolean {
+  if (a.hub_id != null && Number(a.hub_id) === hubId) return true;
+  if (a.warehouse_id != null && hubWarehouseIds.has(Number(a.warehouse_id))) return true;
+  return false;
+}
+
 /** Planned assignment rows eligible for RA truck authorization (role-aware). */
 function plannedRaAssignments(
   assignments: ReceiptOrderAssignment[],
-  opts: { isStandaloneWM: boolean; scopedWarehouseId?: number; standaloneStores?: { id: number }[] }
+  opts: {
+    isStandaloneWM: boolean;
+    isWarehouseManager?: boolean;
+    isHubManager?: boolean;
+    scopedHubId?: number;
+    hubWarehouseIds?: Set<number>;
+    scopedWarehouseId?: number;
+    standaloneStores?: { id: number }[];
+  }
 ): ReceiptOrderAssignment[] {
-  const active = assignments.filter(
-    (a) => !isAssignmentRejected(a.status)
-  );
-  if (opts.isStandaloneWM && opts.scopedWarehouseId != null) {
-    const storeIds = new Set((opts.standaloneStores ?? []).map((s) => Number(s.id)));
+  const active = assignments.filter((a) => !isAssignmentRejected(a.status));
+
+  if (opts.isHubManager && opts.scopedHubId != null) {
+    const hubId = Number(opts.scopedHubId);
+    const whIds = opts.hubWarehouseIds ?? new Set<number>();
     return active.filter(
       (a) =>
-        a.store_id != null &&
-        (a.warehouse_id != null
-          ? Number(a.warehouse_id) === Number(opts.scopedWarehouseId)
-          : storeIds.has(Number(a.store_id)))
+        a.warehouse_id != null &&
+        a.store_id == null &&
+        assignmentBelongsToHub(a, hubId, whIds)
     );
   }
+
+  if (opts.isWarehouseManager && opts.scopedWarehouseId != null) {
+    const whId = Number(opts.scopedWarehouseId);
+    if (opts.isStandaloneWM) {
+      const storeIds = new Set((opts.standaloneStores ?? []).map((s) => Number(s.id)));
+      return active.filter(
+        (a) =>
+          a.store_id != null &&
+          (a.warehouse_id != null
+            ? Number(a.warehouse_id) === whId
+            : storeIds.has(Number(a.store_id)))
+      );
+    }
+    // Hub-affiliated warehouse manager: only this warehouse's hub→warehouse plan rows.
+    return active.filter(
+      (a) =>
+        a.warehouse_id != null &&
+        Number(a.warehouse_id) === whId &&
+        a.store_id == null
+    );
+  }
+
   return active.filter((a) => a.warehouse_id != null && a.store_id == null);
 }
 
@@ -172,6 +211,7 @@ export default function ReceiptAuthorizationFormPage() {
   const raBasePath = receiptAuthorizationBasePath(roleSlug);
   const { isWarehouseManager, isStandaloneWarehouse: isStandaloneAssignment } =
     useWarehouseManagerRaAccess();
+  const isHubManager = roleSlug === 'hub_manager';
   const scopedHubId = activeAssignment?.hub?.id;
   const scopedWarehouseId = activeAssignment?.warehouse?.id;
   const scopedWarehouseName = activeAssignment?.warehouse?.name;
@@ -237,6 +277,16 @@ export default function ReceiptAuthorizationFormPage() {
 
   const selectedOrder = receiptOrders.find((o) => String(o.id) === receiptOrderId);
 
+  const { data: hubWarehousesForScope = [] } = useQuery({
+    queryKey: ['warehouses', { hub_id: scopedHubId, context: 'ra-hub-scope' }],
+    queryFn: () => getWarehouses({ hub_id: scopedHubId! }),
+    enabled: isHubManager && !!scopedHubId,
+  });
+  const hubWarehouseIdSet = useMemo(
+    () => new Set(hubWarehousesForScope.map((w) => Number(w.id))),
+    [hubWarehousesForScope]
+  );
+
   const { data: units = [] } = useQuery({
     queryKey: ['reference-data', 'units'],
     queryFn: getUnitReferences,
@@ -251,9 +301,9 @@ export default function ReceiptAuthorizationFormPage() {
     enabled: isWarehouseManager && isStandaloneAssignment && !!scopedWarehouseId,
   });
   const { data: standaloneStores = [], isLoading: storesLoading } = useQuery({
-    queryKey: ['stores', { warehouse_id: scopedWarehouseId, context: 'standalone-ra-form' }],
+    queryKey: ['stores', { warehouse_id: scopedWarehouseId, context: 'ra-form' }],
     queryFn: () => getStores({ warehouse_id: scopedWarehouseId! }),
-    enabled: isWarehouseManager && isStandaloneAssignment && !!scopedWarehouseId,
+    enabled: isWarehouseManager && !!scopedWarehouseId,
   });
   const { data: commodityRefs = [] } = useQuery({
     queryKey: ['reference-data', 'commodities'],
@@ -261,23 +311,107 @@ export default function ReceiptAuthorizationFormPage() {
     enabled: !!selectedOrder,
   });
 
-  const assignmentsAll = useMemo(
-    () => selectedOrder?.receipt_order_assignments ?? selectedOrder?.assignments ?? [],
-    [selectedOrder?.receipt_order_assignments, selectedOrder?.assignments]
-  );
+  const assignmentsAll = useMemo(() => {
+    const raw = selectedOrder?.receipt_order_assignments ?? selectedOrder?.assignments ?? [];
+    if (isHubManager && scopedHubId != null) {
+      const hubId = Number(scopedHubId);
+      return raw.filter((a) => assignmentBelongsToHub(a, hubId, hubWarehouseIdSet));
+    }
+    if (!isWarehouseManager || scopedWarehouseId == null) return raw;
+
+    const whId = Number(scopedWarehouseId);
+    const storeIds = new Set(standaloneStores.map((s) => Number(s.id)));
+    return raw.filter((a) => {
+      if (a.warehouse_id != null && Number(a.warehouse_id) === whId) return true;
+      if (a.store_id != null && storeIds.has(Number(a.store_id))) return true;
+      return false;
+    });
+  }, [
+    selectedOrder?.receipt_order_assignments,
+    selectedOrder?.assignments,
+    isHubManager,
+    isWarehouseManager,
+    scopedHubId,
+    hubWarehouseIdSet,
+    scopedWarehouseId,
+    standaloneStores,
+  ]);
   const warehouseAssignments = useMemo(
     () =>
       plannedRaAssignments(assignmentsAll, {
         isStandaloneWM: isWarehouseManager && isStandaloneAssignment,
+        isWarehouseManager,
+        isHubManager,
+        scopedHubId,
+        hubWarehouseIds: hubWarehouseIdSet,
         scopedWarehouseId,
         standaloneStores,
       }),
-    [assignmentsAll, isWarehouseManager, isStandaloneAssignment, scopedWarehouseId, standaloneStores]
+    [
+      assignmentsAll,
+      isWarehouseManager,
+      isHubManager,
+      isStandaloneAssignment,
+      scopedHubId,
+      hubWarehouseIdSet,
+      scopedWarehouseId,
+      standaloneStores,
+    ]
   );
-  const orderLines = useMemo(
-    () => selectedOrder?.receipt_order_lines ?? selectedOrder?.lines ?? [],
-    [selectedOrder?.receipt_order_lines, selectedOrder?.lines]
-  );
+  const orderLines = useMemo(() => {
+    const lines = selectedOrder?.receipt_order_lines ?? selectedOrder?.lines ?? [];
+    if (isHubManager && scopedHubId != null) {
+      const hubId = Number(scopedHubId);
+      const assignmentLineIds = new Set(
+        assignmentsAll
+          .filter((a) => a.receipt_order_line_id != null)
+          .map((a) => Number(a.receipt_order_line_id))
+      );
+
+      const filtered = lines.filter((ln) => {
+        if (ln.id != null && assignmentLineIds.has(Number(ln.id))) return true;
+        if (ln.destination_hub_id != null && Number(ln.destination_hub_id) === hubId) return true;
+        if (
+          ln.destination_warehouse_id != null &&
+          hubWarehouseIdSet.has(Number(ln.destination_warehouse_id))
+        ) {
+          return true;
+        }
+        return false;
+      });
+
+      if (filtered.length > 0) return filtered;
+      if (lines.length === 1 && assignmentsAll.length > 0) return lines;
+      return filtered;
+    }
+    if (!isWarehouseManager || scopedWarehouseId == null) return lines;
+
+    const whId = Number(scopedWarehouseId);
+    const assignmentLineIds = new Set(
+      assignmentsAll
+        .filter((a) => a.receipt_order_line_id != null)
+        .map((a) => Number(a.receipt_order_line_id))
+    );
+
+    const filtered = lines.filter((ln) => {
+      if (ln.id != null && assignmentLineIds.has(Number(ln.id))) return true;
+      if (ln.destination_warehouse_id != null && Number(ln.destination_warehouse_id) === whId) return true;
+      return false;
+    });
+
+    if (filtered.length > 0) return filtered;
+    if (lines.length === 1 && assignmentsAll.some((a) => Number(a.warehouse_id) === whId)) return lines;
+    return filtered;
+  }, [
+    selectedOrder?.receipt_order_lines,
+    selectedOrder?.lines,
+    isHubManager,
+    isWarehouseManager,
+    scopedHubId,
+    hubWarehouseIdSet,
+    scopedWarehouseId,
+    assignmentsAll,
+  ]);
   const hasPlannedWarehouseRows = warehouseAssignments.length > 0;
   const routingByOverride = !usePlannedAllocation || !hasPlannedWarehouseRows;
   const hubIdForRo = selectedOrder?.hub_id ?? scopedHubId ?? undefined;
@@ -317,6 +451,7 @@ export default function ReceiptAuthorizationFormPage() {
       {
         receipt_order_id: selectedOrder?.id,
         warehouse_id: scopedWarehouseId,
+        hub_id: scopedHubId,
         list: 'form',
       },
     ],
@@ -326,6 +461,13 @@ export default function ReceiptAuthorizationFormPage() {
         ...(scopedWarehouseId ? { warehouse_id: scopedWarehouseId } : {}),
       }),
     enabled: !!selectedOrder?.id,
+    select: (ras) => {
+      if (!isHubManager || scopedHubId == null) return ras;
+      return ras.filter(
+        (ra) =>
+          ra.warehouse_id != null && hubWarehouseIdSet.has(Number(ra.warehouse_id))
+      );
+    },
   });
 
   /** Authorized qty per assignment row: linked RAs + orphan same-warehouse/line trucks (pro-rata). */

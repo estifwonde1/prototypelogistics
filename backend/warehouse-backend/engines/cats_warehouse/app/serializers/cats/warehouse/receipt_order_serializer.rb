@@ -12,6 +12,28 @@ module Cats
       has_many :receipt_order_assignments, serializer: Cats::Warehouse::ReceiptOrderAssignmentSerializer
       has_many :space_reservations, serializer: Cats::Warehouse::SpaceReservationSerializer
 
+      def receipt_order_assignments
+        if viewer_hub_id.present?
+          return ReceiptOrderViewerScope.assignments_for_hub(object, hub_id: viewer_hub_id)
+        end
+        if viewer_warehouse_id.present?
+          return ReceiptOrderViewerScope.assignments_for(object, warehouse_id: viewer_warehouse_id)
+        end
+
+        object.receipt_order_assignments
+      end
+
+      def receipt_order_lines
+        if viewer_hub_id.present?
+          return ReceiptOrderViewerScope.lines_for_hub(object, hub_id: viewer_hub_id)
+        end
+        if viewer_warehouse_id.present?
+          return ReceiptOrderViewerScope.lines_for(object, warehouse_id: viewer_warehouse_id)
+        end
+
+        object.receipt_order_lines
+      end
+
       def status
         object.status.to_s.titleize
       end
@@ -72,6 +94,18 @@ module Cats
 
       def location_name
         object.location&.name
+      end
+
+      private
+
+      def viewer_warehouse_id
+        id = instance_options[:viewer_warehouse_id]
+        id.present? && id.to_i.positive? ? id.to_i : nil
+      end
+
+      def viewer_hub_id
+        id = instance_options[:viewer_hub_id]
+        id.present? && id.to_i.positive? ? id.to_i : nil
       end
     end
   end
