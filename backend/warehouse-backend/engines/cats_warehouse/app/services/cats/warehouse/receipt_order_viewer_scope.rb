@@ -15,8 +15,8 @@ module Cats
 
         wh_ids = Warehouse.where(hub_id: hid).pluck(:id)
         roa_t = ReceiptOrderAssignment.table_name
-        scoped = rel.where(hub_id: hid)
-        scoped = scoped.or(rel.where(warehouse_id: wh_ids)) if wh_ids.any?
+        scoped = rel.where("#{roa_t}.hub_id = ?", hid)
+        scoped = scoped.or(rel.where("#{roa_t}.warehouse_id IN (?)", wh_ids)) if wh_ids.any?
         scoped.where.not("LOWER(TRIM(#{roa_t}.status)) = ?", "rejected")
       end
 
@@ -55,7 +55,7 @@ module Cats
         store_ids = Store.where(warehouse_id: wh_id).pluck(:id)
         roa_t = ReceiptOrderAssignment.table_name
         rel
-          .where("warehouse_id = ? OR store_id IN (?)", wh_id, store_ids.presence || [0])
+          .where("#{roa_t}.warehouse_id = ? OR #{roa_t}.store_id IN (?)", wh_id, store_ids.presence || [0])
           .where.not("LOWER(TRIM(#{roa_t}.status)) = ?", "rejected")
       end
 
@@ -67,9 +67,10 @@ module Cats
         return lines.none if wh_id <= 0
 
         scoped_assignments = assignments || assignments_for(order, warehouse_id: wh_id)
+        roa_t = ReceiptOrderAssignment.table_name
         assignment_line_ids =
           scoped_assignments
-            .where.not(receipt_order_line_id: nil)
+            .where("#{roa_t}.receipt_order_line_id IS NOT NULL")
             .distinct
             .pluck(:receipt_order_line_id)
 

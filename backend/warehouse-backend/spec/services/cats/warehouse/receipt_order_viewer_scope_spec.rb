@@ -98,5 +98,19 @@ RSpec.describe Cats::Warehouse::ReceiptOrderViewerScope, type: :service do
 
       expect(scoped.pluck(:id)).to contain_exactly(line_dependent.id)
     end
+
+    it "works when assignments are preloaded with store and warehouse joins" do
+      assignments = described_class
+        .assignments_for(order, warehouse_id: standalone_wh.id)
+        .includes(:assigned_to, :assigned_by, :store, :warehouse, :hub, { receipt_order_line: :unit })
+
+      scoped = described_class.lines_for(
+        order,
+        warehouse_id: standalone_wh.id,
+        assignments: assignments
+      )
+
+      expect(scoped.pluck(:id)).to contain_exactly(line_standalone.id)
+    end
   end
 end
