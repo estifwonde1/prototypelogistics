@@ -47,8 +47,16 @@ function assignmentBelongsToHub(
   hubId: number,
   hubWarehouseIds: Set<number>
 ): boolean {
-  if (a.hub_id != null && Number(a.hub_id) === hubId) return true;
-  if (a.warehouse_id != null && hubWarehouseIds.has(Number(a.warehouse_id))) return true;
+  // If the assignment points to a specific warehouse, trust the warehouse's
+  // actual hub membership — not the hub_id stamp on the assignment row
+  // (which is inherited from the order and may be wrong for cross-hub assignments).
+  if (a.warehouse_id != null) {
+    return hubWarehouseIds.has(Number(a.warehouse_id));
+  }
+  // Hub-level assignment (no warehouse yet) — check hub_id directly.
+  if (a.hub_id != null) {
+    return Number(a.hub_id) === hubId;
+  }
   return false;
 }
 
@@ -416,7 +424,7 @@ export default function ReceiptAuthorizationFormPage() {
   const hasPlannedWarehouseRows = warehouseAssignments.length > 0;
   const routingByOverride =
     standaloneWarehouseRaMode || !usePlannedAllocation || !hasPlannedWarehouseRows;
-  const hubIdForRo = selectedOrder?.hub_id ?? scopedHubId ?? undefined;
+  const hubIdForRo = isHubManager ? (selectedOrder?.hub_id ?? scopedHubId ?? undefined) : (scopedHubId ?? undefined);
 
   useEffect(() => {
     if (!standaloneWarehouseRaMode || !scopedWarehouseId) return;

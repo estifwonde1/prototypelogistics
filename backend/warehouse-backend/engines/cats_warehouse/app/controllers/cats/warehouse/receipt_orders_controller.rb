@@ -521,15 +521,17 @@ module Cats
 
           # Resolve commodity and UOM from inspection items (most reliable source).
           # entered_unit_id is the unit the storekeeper actually typed (e.g. Kuntal).
-          # unit_id is the canonical receipt-order line unit (e.g. MT).
-          # Fall back to receipt order line if inspection items don't have it.
-          inspection_item        = inspection&.inspection_items&.first
+          # line_unit_id is the canonical receipt-order line unit (e.g. MT) — placement
+          # quantities from the frontend are always in this unit.
+          inspection_item         = inspection&.inspection_items&.first
           inspection_commodity_id = inspection_item&.commodity_id
-          # Canonical unit for the GRN item (used for ledger math)
-          inspection_unit_id     = inspection_item&.entered_unit_id.presence ||
-                                   inspection_item&.unit_id.presence
-          # The unit the user typed — preserved on the StackTransaction for bin/stock card display
+          # Canonical (line) unit — placement[:quantity] is expressed in this unit
+          line_unit_id            = first_line&.unit_id
+          # The unit the user typed — for display on bin card / stock card
           inspection_entered_unit_id = inspection_item&.entered_unit_id
+          # Unit to store on GRN item: prefer entered unit so GRN shows e.g. Kuntal
+          inspection_unit_id      = inspection_entered_unit_id.presence ||
+                                    line_unit_id
 
           ReceiptOrder.transaction do
             # Add stack placement items to the existing Draft GRN
@@ -546,6 +548,23 @@ module Cats
                              stack.unit_id.presence ||
                              first_line&.unit_id
 
+              # placement[:quantity] is in the canonical line unit (MT).
+              # If the GRN item unit is the entered unit (e.g. Kuntal), convert.
+              raw_qty = placement[:quantity].to_f
+              if inspection_entered_unit_id.present? &&
+                 line_unit_id.present? &&
+                 inspection_entered_unit_id.to_i != line_unit_id.to_i
+                converted = UomConversionResolver.convert(
+                  raw_qty,
+                  from_unit_id: line_unit_id,
+                  to_unit_id:   inspection_entered_unit_id.to_i,
+                  commodity_id: commodity_id
+                )
+                grn_qty = converted.to_f.positive? ? converted.to_f : raw_qty
+              else
+                grn_qty = raw_qty
+              end
+
               # Assign commodity to the stack if it doesn't have one yet
               if stack.commodity_id.blank? && commodity_id.present?
                 stack.update_columns(commodity_id: commodity_id, unit_id: unit_id)
@@ -556,7 +575,7 @@ module Cats
 
               grn.grn_items.create!(
                 commodity_id:      commodity_id,
-                quantity:          placement[:quantity].to_f,
+                quantity:          grn_qty,
                 unit_id:           unit_id,
                 entered_unit_id:   inspection_entered_unit_id.presence || unit_id,
                 stack_id:          stack.id,

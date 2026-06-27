@@ -77,6 +77,7 @@ function ReceiptOrdersListPage() {
   const userHubId = activeAssignment?.hub?.id;
   const isWarehouseManager = roleSlug === 'warehouse_manager';
   const isHubManager = roleSlug === 'hub_manager';
+  const isOfficer = !isWarehouseManager && !isHubManager;
 
   const { data: orders = [], isLoading, error, refetch } = useQuery({
     queryKey: ['receipt_orders', { 
@@ -234,7 +235,7 @@ function ReceiptOrdersListPage() {
               <Table.Tr>
                 <Table.Th>Order ID</Table.Th>
                 <Table.Th>Source</Table.Th>
-                <Table.Th>Destination</Table.Th>
+                {isOfficer && <Table.Th>Destination</Table.Th>}
                 <Table.Th>Commodity</Table.Th>
                 <Table.Th>Status</Table.Th>
                 <Table.Th>Created</Table.Th>
@@ -255,6 +256,7 @@ function ReceiptOrdersListPage() {
                         order.name ||
                         (order.source_reference != null ? String(order.source_reference) : '—')}
                     </Table.Td>
+                    {isOfficer && (
                     <Table.Td>
                       {(() => {
                         const lines = order.receipt_order_lines ?? order.lines ?? [];
@@ -282,6 +284,7 @@ function ReceiptOrdersListPage() {
                         return order.warehouse_name || order.destination_warehouse_name || order.hub_name || '—';
                       })()}
                     </Table.Td>
+                    )}
                     <Table.Td>
                       {(() => {
                         const lines = order.receipt_order_lines ?? order.lines ?? [];
