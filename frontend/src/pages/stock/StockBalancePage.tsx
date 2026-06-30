@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useMemo, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Badge, Button, Card, Collapse, Divider, Group, SegmentedControl, SimpleGrid, Stack, Table, Text, TextInput, Title } from '@mantine/core';
 import { SearchableSelect } from '../../components/common/SearchableSelect';
@@ -12,6 +12,7 @@ import {
 } from '@tabler/icons-react';
 import { getStockBalances } from '../../api/stockBalances';
 import { getWarehouses } from '../../api/warehouses';
+import { getStores } from '../../api/stores';
 import { getStockCardReport } from '../../api/reports';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
@@ -90,6 +91,7 @@ function txDisplayQty(row: BinCardEntry) {
 function StockBalancePage() {
   const [search, setSearch] = useState('');
   const [warehouseFilter, setWarehouseFilter] = useState<string | null>(null);
+  const [storeFilter, setStoreFilter] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
   const [showExpiringSoon, setShowExpiringSoon] = useState(false);
   const [expandedCommodities, setExpandedCommodities] = useState<Set<number>>(new Set());
@@ -100,11 +102,19 @@ function StockBalancePage() {
   const persistedRole = useAuthStore((state) => state.role);
   const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || persistedRole);
   const userHubId = activeAssignment?.hub?.id;
+  const userWarehouseId = activeAssignment?.warehouse?.id;
+  const userStoreId = activeAssignment?.store?.id;
   const isHubManager = roleSlug === 'hub_manager';
+  const isStorekeeper = roleSlug === 'storekeeper';
+  const isWarehouseManager = roleSlug === 'warehouse_manager';
+  const warehouseIdForStoreList = isWarehouseManager || (isStorekeeper && userWarehouseId) ? userWarehouseId : warehouseFilter;
 
   const { data: stockBalances = [], isLoading, error, refetch } = useQuery({
-    queryKey: ['stockBalances', { warehouse_id: warehouseFilter ?? undefined }],
-    queryFn: () => getStockBalances({ warehouse_id: warehouseFilter ? Number(warehouseFilter) : undefined }),
+    queryKey: ['stockBalances', { warehouse_id: warehouseFilter ?? undefined, store_id: storeFilter ?? undefined }],
+    queryFn: () => getStockBalances({ 
+      warehouse_id: warehouseFilter ? Number(warehouseFilter) : undefined,
+      store_id: storeFilter ? Number(storeFilter) : undefined 
+    }),
     refetchOnMount: 'always',
   });
 
@@ -112,6 +122,19 @@ function StockBalancePage() {
     queryKey: ['warehouses', { hub_id: isHubManager ? userHubId : undefined }],
     queryFn: () => (isHubManager && userHubId ? getWarehouses({ hub_id: userHubId }) : getWarehouses()),
   });
+
+  const { data: stores = [] } = useQuery({
+    queryKey: ['stores', { warehouse_id: warehouseIdForStoreList }],
+    queryFn: () => getStores(warehouseIdForStoreList ? { warehouse_id: Number(warehouseIdForStoreList) } : undefined),
+  });
+
+  useEffect(() => {
+    if (storeFilter) return;
+    if (isStorekeeper && userStoreId) {
+      setStoreFilter(String(userStoreId));
+      return;
+    }
+  }, [isStorekeeper, userStoreId, storeFilter]);
 
   const filteredBalances = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -233,6 +256,11 @@ function StockBalancePage() {
   const warehouseOptions = warehouses.map((warehouse) => ({
     value: String(warehouse.id),
     label: `${warehouse.name}${warehouse.code ? ` (${warehouse.code})` : ''}`,
+  }));
+
+  const storeOptions = stores.map((store) => ({
+    value: String(store.id),
+    label: `${store.name}${store.code ? ` (${store.code})` : ''}`,
   }));
 
   const stats = useMemo(() => {
@@ -419,12 +447,26 @@ function StockBalancePage() {
           value={warehouseFilter}
           onChange={(value) => {
             setWarehouseFilter(value);
+            setStoreFilter(null);
             setSelectedCommodityId(null);
             setSelectedBatchKey(null);
           }}
           clearable
           searchable
           w={280}
+        />
+        <SearchableSelect
+          placeholder="Filter by store"
+          data={storeOptions}
+          value={storeFilter}
+          onChange={(value) => {
+            setStoreFilter(value);
+            setSelectedCommodityId(null);
+            setSelectedBatchKey(null);
+          }}
+          clearable
+          searchable
+          w={220}
         />
         <SegmentedControl
           value={showExpiringSoon ? 'expiring' : 'all'}

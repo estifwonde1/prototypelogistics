@@ -695,7 +695,7 @@ function ReceiptOrderDetailPage() {
     enabled:
       !!order &&
       showAssignmentForm &&
-      ['confirmed', 'assigned', 'reserved', 'in_progress'].includes(String(order.status).toLowerCase()),
+      ['confirmed', 'assigned', 'reserved', 'in_progress'].includes(String(order.status).toLowerCase().replace(/\s+/g, '_')),
   });
   const assignableManagersPayload = assignableManagersQuery.data as any;
   const assignableManagersLoading = assignableManagersQuery.isLoading;
@@ -2241,7 +2241,7 @@ function ReceiptOrderDetailPage() {
                   + Assign Warehouse
                 </Button>
               ) : null}
-              {roleSlug === 'warehouse_manager' && ['confirmed', 'assigned', 'reserved', 'in_progress'].includes(String(order.status).toLowerCase()) && (() => {
+              {roleSlug === 'warehouse_manager' && ['confirmed', 'assigned', 'reserved', 'in_progress'].includes(String(order.status).toLowerCase().replace(/\s+/g, '_')) && (() => {
                 const totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
                 const totalStoreAssigned = assignments.filter(a => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
                 if (totalOrdered > 0 && totalStoreAssigned >= totalOrdered) return null;
