@@ -27,11 +27,11 @@ module Cats
             destination: @destination,
             reference_no: @reference_no,
             status: @status,
+            dispatch_order_authorization_id: @dispatch_order_authorization_id,
             transporter_id: @transporter_id,
             truck_plate_number: @truck_plate_number,
             driver_name: @driver_name,
-            driver_id_number: @driver_id_number,
-            dispatch_order_authorization_id: @dispatch_order_authorization_id
+            driver_id_number: @driver_id_number
           )
 
           @items.each do |item|

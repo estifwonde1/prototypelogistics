@@ -45,7 +45,18 @@ module Cats
         tx_entered_unit_id = (item.respond_to?(:entered_unit_id) && item.entered_unit_id.present?) ? item.entered_unit_id : item.unit_id
 
         balance = locked_balance
-        balance.quantity = balance.quantity.to_f + quantity_delta
+        
+        effective_qty_delta = quantity_delta
+        if balance.unit_id.present? && item.unit_id != balance.unit_id
+          effective_qty_delta = UomConversionResolver.convert(
+            quantity_delta,
+            from_unit_id: item.unit_id,
+            to_unit_id: balance.unit_id,
+            commodity_id: item.commodity_id
+          )
+        end
+
+        balance.quantity = balance.quantity.to_f + effective_qty_delta
         balance.base_quantity = balance.base_quantity.to_f + base_quantity_delta
         balance.base_unit_id ||= @base_unit_id
 
@@ -68,7 +79,7 @@ module Cats
         check_incoming_volume!(stack, base_quantity_delta) if quantity_delta.positive?
         # ────────────────────────────────────────────────────────────────────
 
-        stack.quantity = stack.quantity.to_f + quantity_delta
+        stack.quantity = stack.quantity.to_f + effective_qty_delta
         stack.base_quantity = stack.base_quantity.to_f + base_quantity_delta
         stack.base_unit_id ||= @base_unit_id
         stack.stack_status = stack.quantity.to_f.positive? ? "active" : "empty"
@@ -163,11 +174,10 @@ module Cats
           store_id: item.store_id,
           stack_id: item.stack_id,
           commodity_id: item.commodity_id,
-          unit_id: item.unit_id,
           inventory_lot_id: item.respond_to?(:inventory_lot_id) ? item.inventory_lot_id : nil
         }
 
-        StockBalance.lock.find_by(attrs) || StockBalance.create!(attrs.merge(quantity: 0, base_quantity: 0, base_unit_id: @base_unit_id, reserved_quantity: 0, available_quantity: 0))
+        StockBalance.lock.find_by(attrs) || StockBalance.create!(attrs.merge(unit_id: item.unit_id, quantity: 0, base_quantity: 0, base_unit_id: @base_unit_id, reserved_quantity: 0, available_quantity: 0))
       rescue ActiveRecord::RecordNotUnique
         retry
       end

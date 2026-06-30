@@ -123,8 +123,10 @@ export default function HubDispatchAuthorizationFormPage() {
   });
 
   const { data: allStockBalances = [] } = useQuery({
-    queryKey: ['stock_balances'],
-    queryFn: () => getStockBalances({}),
+    queryKey: ['stock_balances', 'hub-da-form', userHubId],
+    queryFn: () => getStockBalances({ hub_id: isHubManager && userHubId ? userHubId : undefined }),
+    enabled: isHubManager,
+    staleTime: 0,
   });
 
   // For hub managers: show/compute remaining amounts using only stock belonging to the active hub.
@@ -226,7 +228,11 @@ export default function HubDispatchAuthorizationFormPage() {
     const map = new Map<string, number>();
     (allStockBalances ?? []).forEach((b: any) => {
       const key = `${b.warehouse_id}:${b.commodity_id}`;
-      map.set(key, (map.get(key) ?? 0) + (b.quantity || 0));
+      // Prefer available_quantity (unreserved stock) over raw quantity.
+      // Fall back to quantity if available_quantity is not present (older API).
+      const eligible =
+        b.available_quantity != null ? Number(b.available_quantity) : Number(b.quantity || 0);
+      map.set(key, (map.get(key) ?? 0) + (Number.isFinite(eligible) ? eligible : 0));
     });
     return map;
   }, [allStockBalances]);
@@ -322,6 +328,28 @@ export default function HubDispatchAuthorizationFormPage() {
     setLines(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatchOrderId, selectedOrder, isHubManager]);
+
+  // Backfill warehouse_id on lines that were set before stock balances or warehouses loaded.
+  useEffect(() => {
+    if (!isHubManager || !selectedOrder || allStockBalances.length === 0 || warehouses.length === 0) return;
+    setLines((prev) => {
+      const hasNull = prev.some((l) => l.warehouse_id === null && l.commodity_id);
+      if (!hasNull) return prev;
+      // Compute eligible warehouses per commodity OUTSIDE setLines so we use current closure values
+      const eligibleByComm = new Map<string, string | null>();
+      prev.forEach((l) => {
+        if (l.commodity_id && !eligibleByComm.has(l.commodity_id)) {
+          const opts = warehouseOptionsForCommodity(l.commodity_id);
+          eligibleByComm.set(l.commodity_id, opts.length ? String(opts[0].value) : null);
+        }
+      });
+      return prev.map((l) => {
+        if (l.warehouse_id !== null || !l.commodity_id) return l;
+        return { ...l, warehouse_id: eligibleByComm.get(l.commodity_id) ?? null };
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allStockBalances, warehouses, isHubManager, selectedOrder]);
 
   const handleLineChange = <K extends keyof WarehouseLineItem>(
     index: number,

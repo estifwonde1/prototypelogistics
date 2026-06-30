@@ -151,6 +151,23 @@ module Cats
         render_resource(dao, serializer: DispatchOrderAuthorizationSerializer)
       end
 
+      # POST /dispatch_order_authorizations/:id/driver_confirm
+      def driver_confirm
+        dao = find_dao
+        authorize dao, :driver_confirm?
+
+        payload = params.require(:payload)
+        picked_items = payload[:items]
+
+        dao = DispatchDriverConfirmService.new(
+          dispatch_order_authorization: dao,
+          actor: current_user,
+          picked_items: picked_items
+        ).call
+
+        render_resource(dao, serializer: DispatchOrderAuthorizationSerializer)
+      end
+
       def assign_storekeeper
         dao = find_dao
         authorize dao, :assign_storekeeper?

@@ -211,7 +211,7 @@ function GinDetailPage() {
   <table class="meta-table">
     <tr>
       <td width="50%">
-        <strong>Issued By</strong> &nbsp;<span class="meta-value">${gin.issued_by_id || '___________'}</span>
+        <strong>Issued By</strong> &nbsp;<span class="meta-value">${gin.issued_by_name || gin.issued_by_id || '___________'}</span>
       </td>
       <td width="50%">
         <strong>Warehouse</strong> &nbsp;<span class="meta-value">${warehouseName}</span>
@@ -219,7 +219,7 @@ function GinDetailPage() {
     </tr>
     <tr>
       <td>
-        <strong>Transporter</strong> &nbsp;<span class="meta-value">${gin.transporter_id || '___________'}</span>
+        <strong>Transporter</strong> &nbsp;<span class="meta-value">${gin.transporter_name || gin.transporter_id || '___________'}</span>
       </td>
       <td>
         <strong>Driver Name</strong> &nbsp;<span class="meta-value">${gin.driver_name || '___________'}</span>
@@ -235,7 +235,14 @@ function GinDetailPage() {
     </tr>
     <tr>
       <td>
-        <strong>Destination</strong> &nbsp;<span class="meta-value">${gin.destination_type || ''} ${gin.destination_id ? `(${gin.destination_id})` : ''}</span>
+        <strong>Driver Phone</strong> &nbsp;<span class="meta-value">${gin.driver_phone || '___________'}</span>
+      </td>
+      <td>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <strong>Destination</strong> &nbsp;<span class="meta-value">${gin.destination_name || gin.destination_type || ''} ${!gin.destination_name && gin.destination_id ? `(${gin.destination_id})` : ''}</span>
       </td>
       <td>
         <strong>Status</strong> &nbsp;<span class="meta-value">${gin.status}</span>
@@ -424,26 +431,20 @@ function GinDetailPage() {
               <Text size="sm" c="dimmed">
                 Issued By
               </Text>
-              <Text fw={600}>{gin.issued_by_id || '-'}</Text>
+              <Text fw={600}>{gin.issued_by_name || gin.issued_by_id || '-'}</Text>
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 6 }}>
               <Text size="sm" c="dimmed">
-                Destination Type
+                Destination
               </Text>
-              <Text fw={600}>{gin.destination_type || '-'}</Text>
-            </Grid.Col>
-            <Grid.Col span={{ base: 12, sm: 6 }}>
-              <Text size="sm" c="dimmed">
-                Destination ID
-              </Text>
-              <Text fw={600}>{gin.destination_id || '-'}</Text>
+              <Text fw={600}>{gin.destination_name || gin.destination_type || '-'}</Text>
             </Grid.Col>
             {gin.approved_by_id && (
               <Grid.Col span={{ base: 12, sm: 6 }}>
                 <Text size="sm" c="dimmed">
                   Approved By
                 </Text>
-                <Text fw={600}>{gin.approved_by_id}</Text>
+                <Text fw={600}>{gin.approved_by_name || gin.approved_by_id}</Text>
               </Grid.Col>
             )}
           </Grid>
@@ -456,9 +457,9 @@ function GinDetailPage() {
           <Grid>
             <Grid.Col span={{ base: 12, sm: 6 }}>
               <Text size="sm" c="dimmed">
-                Transporter ID
+                Transporter
               </Text>
-              <Text fw={600}>{gin.transporter_id || '-'}</Text>
+              <Text fw={600}>{gin.transporter_name || gin.transporter_id || '-'}</Text>
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 6 }}>
               <Text size="sm" c="dimmed">
@@ -477,6 +478,12 @@ function GinDetailPage() {
                 Driver ID Number
               </Text>
               <Text fw={600}>{gin.driver_id_number || '-'}</Text>
+            </Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 6 }}>
+              <Text size="sm" c="dimmed">
+                Driver Phone
+              </Text>
+              <Text fw={600}>{gin.driver_phone || '-'}</Text>
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 6 }}>
               <Text size="sm" c="dimmed">

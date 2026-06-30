@@ -158,8 +158,8 @@ function StockBalancePage() {
         const totals = new Map<string, number>();
 
         for (const row of rows) {
-          const unit = unitLabel(row);
-          addTotal(totals, unit, Number(row.entered_quantity ?? (row.quantity || 0)));
+          const unit = row.base_unit_name || unitLabel(row);
+          addTotal(totals, unit, Number(row.base_quantity ?? (row.quantity || 0)));
           const key = balanceBatchKey(row);
           if (!byBatch.has(key)) byBatch.set(key, []);
           byBatch.get(key)!.push(row);
@@ -169,7 +169,7 @@ function StockBalancePage() {
           .map(([key, batchRows]) => {
             const row0 = batchRows[0];
             const batchTotals = new Map<string, number>();
-            for (const row of batchRows) addTotal(batchTotals, unitLabel(row), Number(row.entered_quantity ?? (row.quantity || 0)));
+            for (const row of batchRows) addTotal(batchTotals, row.base_unit_name || unitLabel(row), Number(row.base_quantity ?? (row.quantity || 0)));
 
             return {
               key,

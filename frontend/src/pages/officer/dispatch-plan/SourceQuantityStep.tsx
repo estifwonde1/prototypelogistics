@@ -55,14 +55,21 @@ export function buildSourceOptions(
   if (!sourceType) return [];
 
   const warehouseById = new Map(warehouses.map((w) => [w.id, w]));
-  const byWarehouse = new Map<number, { quantity: number; unitLabel?: string; unitId?: number }>();
+
+  // Always sum base_quantity (canonical MT) so mixed-unit balances add up correctly.
+  // base_quantity is set by InventoryLedger on every receipt regardless of entered unit.
+  const byWarehouse = new Map<number, { quantity: number; unitLabel: string; unitId: number | undefined }>();
 
   stockBalances.forEach((balance) => {
     const existing = byWarehouse.get(balance.warehouse_id);
-    const nextQty = (existing?.quantity ?? 0) + toQuantity(balance.quantity);
-    const unitLabel = existing?.unitLabel || balance.unit_abbreviation || balance.unit_name || undefined;
-    const unitId = existing?.unitId ?? balance.unit_id ?? undefined;
-    byWarehouse.set(balance.warehouse_id, { quantity: nextQty, unitLabel, unitId });
+    // Use base_quantity (MT) — falls back to quantity only if base_quantity is missing (legacy rows)
+    const addQty = toQuantity(balance.base_quantity ?? balance.quantity);
+    const nextQty = (existing?.quantity ?? 0) + addQty;
+    byWarehouse.set(balance.warehouse_id, {
+      quantity: nextQty,
+      unitLabel: 'mt',       // always MT since we're summing base_quantity
+      unitId: existing?.unitId, // resolved below from units list
+    });
   });
 
   if (sourceType === 'independent') {
@@ -164,7 +171,11 @@ export function SourceQuantityStep({ value, stockBalances, warehouses, units, uo
     [stockBalances, warehouses, value.sourceType]
   );
 
-  const sourceUnitId = baseSourceOptions[0]?.unitId ?? null;
+  const sourceUnitId = useMemo(() => {
+    // Stock balances are now summed in MT (base_quantity). Find the MT unit id.
+    const mtUnit = units.find((u) => (u.abbreviation || u.name || '').toLowerCase() === 'mt');
+    return mtUnit?.id ?? baseSourceOptions[0]?.unitId ?? null;
+  }, [units, baseSourceOptions]);
 
   const conversionFactor = useMemo(() => {
     if (!sourceUnitId || !value.unitId || sourceUnitId === value.unitId) return null;

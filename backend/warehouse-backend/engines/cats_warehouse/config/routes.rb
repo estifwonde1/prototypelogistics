@@ -126,6 +126,7 @@ Cats::Warehouse::Engine.routes.draw do
         get :assignable_storekeepers
       end
       post :confirm, on: :member
+      post :driver_confirm, on: :member
       post :cancel, on: :member
       post :assign_storekeeper, on: :member
     end

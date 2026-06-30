@@ -338,9 +338,12 @@ export default function BinCardReportPage() {
               <Group gap="xs">
                 {!isEmpty && (
                   <Badge size="lg" variant="light" color="blue">
-                    {[...currentCycle.balances.entries()]
-                      .map(([unit, qty]) => `${Math.max(0, qty).toLocaleString()} ${unit}`)
-                      .join(' / ')}
+                    {(() => {
+                      const lastRow = currentCycle.rows[currentCycle.rows.length - 1];
+                      const totalMt = lastRow ? Number(lastRow.runningBase) : 0;
+                      const baseUnit = lastRow?.base_unit_name || 'MT';
+                      return `${totalMt.toLocaleString()} ${baseUnit}`;
+                    })()}
                   </Badge>
                 )}
                 {archivedCycles.length > 0 && (

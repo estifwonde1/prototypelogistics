@@ -16,6 +16,7 @@ export interface Stack {
   commodity_status: string;
   stack_status: string;
   quantity: number;
+  base_quantity?: number | null;
   unit_id: number;
   unit_name?: string;
   unit_abbreviation?: string;

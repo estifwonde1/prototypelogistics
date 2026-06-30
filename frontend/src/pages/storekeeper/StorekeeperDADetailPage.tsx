@@ -77,10 +77,8 @@ export default function StorekeeperDADetailPage() {
         dispatch_order_authorization_id: da.id,
         reference_no: `GIN-DA${da.id}-${Date.now()}`,
         status: 'draft',
-        destination_type: 'Dispatch',
-        destination_id: da.dispatch_order_id,
-        transporter_id: da.transporter_id,
         truck_plate_number: da.truck_plate_number,
+        transporter_id: da.transporter_id,
         driver_name: da.driver_name,
         driver_id_number: da.driver_id_number,
         items: [{
@@ -165,7 +163,7 @@ export default function StorekeeperDADetailPage() {
   .filter((s)=> s.commodity_id === da.commodity_id)
   .map((s) => ({
     value: String(s.id),
-    label: `${s.code} (Bal: ${s.quantity ?? '0'} ${s.unit_abbreviation ?? ''})`
+    label: `${s.code} (Bal: ${s.base_quantity != null ? Number(s.base_quantity).toLocaleString() : (s.quantity ?? '0')} mt)`
   }));
 
   return (
@@ -191,7 +189,11 @@ export default function StorekeeperDADetailPage() {
           <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
             <DetailField label="Reference" value={<Text size="sm" style={{ fontFamily: 'monospace' }}>{da.reference_no}</Text>} />
             <DetailField label="Date" value={formatDate(da.created_at)} />
-            <DetailField label="Authorized quantity" value={`${da.authorized_quantity}`} />
+            <DetailField label="Authorized quantity" value={
+              da.authorized_quantity_input != null && da.authorized_quantity_input > 0
+                ? `${da.authorized_quantity_input} ${da.authorized_quantity_input_unit_abbreviation || da.authorized_quantity_input_unit_name || ''}`
+                : `${da.authorized_quantity} ${da.authorized_quantity_input_unit_abbreviation || da.authorized_quantity_input_unit_name || 'mt'}`
+            } />
             <DetailField label="Commodity" value={da.commodity_name || '—'} />
           </SimpleGrid>
 
@@ -243,13 +245,20 @@ export default function StorekeeperDADetailPage() {
                 
                 <Stack gap={4}>
                   <NumberInput
-                    label="Quantity Loaded"
+                    label={`Quantity Loaded${da.authorized_quantity_input_unit_abbreviation ? ` (${da.authorized_quantity_input_unit_abbreviation})` : ''}`}
                     placeholder="Enter quantity"
+                    description={`Max: ${da.authorized_quantity_input != null && da.authorized_quantity_input > 0 ? da.authorized_quantity_input : da.authorized_quantity} ${da.authorized_quantity_input_unit_abbreviation || ''}`}
                     value={qtyLoaded}
                     onChange={setQtyLoaded}
                     min={0.001}
+                    max={da.authorized_quantity_input != null && da.authorized_quantity_input > 0 ? da.authorized_quantity_input : da.authorized_quantity}
                     decimalScale={3}
                     required
+                    error={
+                      Number(qtyLoaded) > (da.authorized_quantity_input != null && da.authorized_quantity_input > 0 ? da.authorized_quantity_input : da.authorized_quantity)
+                        ? `Cannot exceed authorized quantity of ${da.authorized_quantity_input != null && da.authorized_quantity_input > 0 ? da.authorized_quantity_input : da.authorized_quantity} ${da.authorized_quantity_input_unit_abbreviation || ''}`
+                        : undefined
+                    }
                   />
                   {numberOfBags !== null && (
                     <Text size="xs" c="blue" fw={600}>
@@ -272,7 +281,7 @@ export default function StorekeeperDADetailPage() {
                 <Button
                   onClick={() => recordLoadingMutation.mutate()}
                   loading={recordLoadingMutation.isPending}
-                  disabled={!qtyLoaded || !selectedStackId}
+                  disabled={!qtyLoaded || !selectedStackId || Number(qtyLoaded) <= 0 || Number(qtyLoaded) > (da.authorized_quantity_input != null && da.authorized_quantity_input > 0 ? da.authorized_quantity_input : da.authorized_quantity)}
                 >
                   Save Loading
                 </Button>

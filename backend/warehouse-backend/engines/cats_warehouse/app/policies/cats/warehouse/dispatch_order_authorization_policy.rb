@@ -145,6 +145,20 @@ module Cats
         admin?
       end
 
+      def driver_confirm?
+        return false unless record.is_a?(DispatchOrderAuthorization)
+        return false unless record.confirmed?
+
+        return true if admin?
+
+        if storekeeper?
+          return record.assigned_storekeeper_id == user.id ||
+                 SingleStoreWarehouse.storekeeper_eligible?(user_id: user.id, warehouse_id: record.warehouse_id.to_i)
+        end
+
+        false
+      end
+
       def cancel?
         return false unless record.is_a?(DispatchOrderAuthorization)
         return false unless record.draft?
