@@ -131,6 +131,15 @@ function ReceiptWarehouseAssignmentModal({
 
   const assignedByLine = useMemo(() => {
     const result: Record<number, number> = {};
+    const lineBaseUnitMap: Record<number, number> = {};
+    const lineCommodityMap: Record<number, number> = {};
+    (filteredLines ?? orderLines(receiptOrder)).forEach((line) => {
+      if (line.id != null) {
+        lineBaseUnitMap[Number(line.id)] = Number(line.unit_id);
+        lineCommodityMap[Number(line.id)] = Number(line.commodity_id);
+      }
+    });
+
     (receiptOrder.assignments ?? []).forEach((assignment) => {
       const lineId = assignment.receipt_order_line_id;
       // Only count warehouse-level assignments, not hub-level assignments
@@ -140,10 +149,25 @@ function ReceiptWarehouseAssignmentModal({
       // This prevents a warehouse's already-assigned quantity from reducing the
       // remaining quantity shown to the hub manager for other warehouses
       if (hubId != null && assignment.hub_id != null && assignment.hub_id !== hubId) return;
-      result[lineId] = (result[lineId] || 0) + Number(assignment.quantity ?? 0);
+
+      const rawQty = Number(assignment.quantity ?? 0);
+      const assignedUnitId = assignment.quantity_unit_id;
+      const lineBaseUnitId = lineBaseUnitMap[lineId];
+      const commodityId = lineCommodityMap[lineId] ?? 0;
+
+      // Convert assignment quantity to the line's base unit so math is consistent
+      let qtyInLineUnit = rawQty;
+      if (assignedUnitId != null && lineBaseUnitId != null && assignedUnitId !== lineBaseUnitId) {
+        const multiplier = findDirectedMultiplier(assignedUnitId, lineBaseUnitId, commodityId, uomConversions);
+        if (multiplier != null) {
+          qtyInLineUnit = Number((rawQty * multiplier).toFixed(6));
+        }
+      }
+
+      result[lineId] = (result[lineId] || 0) + qtyInLineUnit;
     });
     return result;
-  }, [receiptOrder.assignments, hubId]);
+  }, [receiptOrder.assignments, receiptOrder, filteredLines, hubId, uomConversions]);
 
   const warehouseRemainingMtById = useMemo(() => {
     const result: Record<number, number> = {};
@@ -400,7 +424,7 @@ function ReceiptWarehouseAssignmentModal({
         const assignment: AssignmentPayloadRow = {
           receipt_order_line_id: Number(row.receipt_order_line_id),
           warehouse_id: Number(row.warehouse_id),
-          quantity: Number(validations[row.clientId]?.convertedQuantity ?? 0),
+          quantity: Number(row.quantity || 0),
         };
         
         // Include quantity_unit_id when the selected unit differs from the line unit

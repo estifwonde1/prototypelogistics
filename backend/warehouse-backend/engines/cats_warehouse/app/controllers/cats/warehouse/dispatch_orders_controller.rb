@@ -56,7 +56,15 @@ module Cats
         end
         
         orders = orders.order(created_at: :desc)
-        render_resource(orders, each_serializer: DispatchOrderSerializer)
+        payload = ActiveModelSerializers::SerializableResource.new(
+          orders,
+          each_serializer: DispatchOrderSerializer,
+          scope: current_user,
+          scope_name: :current_user,
+          viewer_warehouse_id: params[:warehouse_id].presence&.to_i,
+          viewer_hub_id: params[:hub_id].presence&.to_i
+        ).as_json
+        render_success(payload)
       end
 
       def show
@@ -214,7 +222,9 @@ module Cats
       def render_order_payload(order, status: :ok)
         payload = ActiveModelSerializers::SerializableResource.new(
           order,
-          serializer: DispatchOrderSerializer
+          serializer: DispatchOrderSerializer,
+          viewer_warehouse_id: params[:warehouse_id],
+          viewer_hub_id: params[:hub_id]
         ).as_json
         payload = payload.merge(can_confirm: DispatchOrderPolicy.new(current_user, order).confirm?)
         render_success(payload, status: status)

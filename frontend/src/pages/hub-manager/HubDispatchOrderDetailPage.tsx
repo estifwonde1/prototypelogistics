@@ -34,7 +34,15 @@ export default function HubDispatchOrderDetailPage() {
 
   const { data: order, isLoading, error, refetch } = useQuery({
     queryKey: ['dispatch_orders', id],
-    queryFn: () => getDispatchOrder(Number(id)),
+    queryFn: () => {
+      if (isWarehouseManager && userWarehouseId) {
+        return getDispatchOrder(Number(id), { warehouse_id: userWarehouseId });
+      }
+      if (!isWarehouseManager && userHubId) {
+        return getDispatchOrder(Number(id), { hub_id: userHubId });
+      }
+      return getDispatchOrder(Number(id));
+    },
   });
 
   if (isLoading) return <LoadingState message="Loading dispatch order…" />;

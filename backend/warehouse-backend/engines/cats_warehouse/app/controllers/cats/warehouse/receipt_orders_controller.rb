@@ -829,6 +829,7 @@ module Cats
           :store_id,
           :assigned_to_id,
           :quantity,
+          :quantity_unit_id,
           :status
         ])
       end

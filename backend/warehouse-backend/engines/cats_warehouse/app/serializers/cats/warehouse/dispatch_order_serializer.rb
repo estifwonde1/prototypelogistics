@@ -13,8 +13,19 @@ module Cats
       has_many :dispatch_order_lines, serializer: Cats::Warehouse::DispatchOrderLineSerializer
       has_many :lines, serializer: Cats::Warehouse::DispatchOrderLineSerializer
 
-      def lines
+      def dispatch_order_lines
+        if viewer_hub_id.present?
+          return DispatchOrderViewerScope.lines_for_hub(object, hub_id: viewer_hub_id)
+        end
+        if viewer_warehouse_id.present?
+          return DispatchOrderViewerScope.lines_for(object, warehouse_id: viewer_warehouse_id)
+        end
+
         object.dispatch_order_lines
+      end
+
+      def lines
+        dispatch_order_lines
       end
 
       def source_warehouse_id
@@ -69,18 +80,21 @@ module Cats
         object.location&.name
       end
 
-      # Total quantity ordered across all lines (sum of line quantities in their own units —
-      # used as a simple reference total for display; canonical comparison uses line-level units).
+      # Total quantity ordered across scoped lines
       def total_ordered_quantity
-        object.dispatch_order_lines.sum { |l| l.quantity.to_f }
+        dispatch_order_lines.sum { |l| l.quantity.to_f }
       end
 
-      # Total quantity already covered by confirmed Dispatch Authorizations for this order.
+      # Total quantity already covered by confirmed Dispatch Authorizations for this order, scoped.
       def total_authorized_quantity
-        DispatchOrderAuthorization
-          .where(dispatch_order_id: object.id, status: DispatchOrderAuthorization::CONFIRMED)
-          .sum(:authorized_quantity)
-          .to_f
+        scope = if viewer_hub_id.present?
+                  DispatchOrderViewerScope.authorizations_for_hub(object, hub_id: viewer_hub_id)
+                elsif viewer_warehouse_id.present?
+                  DispatchOrderViewerScope.authorizations_for(object, warehouse_id: viewer_warehouse_id)
+                else
+                  DispatchOrderAuthorization.where(dispatch_order_id: object.id, status: DispatchOrderAuthorization::CONFIRMED)
+                end
+        scope.sum(:authorized_quantity).to_f
       end
 
       # Remaining quantity available for new Dispatch Authorizations.
@@ -89,6 +103,18 @@ module Cats
         ordered = total_ordered_quantity
         authorized = total_authorized_quantity
         [ordered - authorized, 0].max.round(4)
+      end
+
+      private
+
+      def viewer_warehouse_id
+        id = instance_options[:viewer_warehouse_id]
+        id.present? && id.to_i.positive? ? id.to_i : nil
+      end
+
+      def viewer_hub_id
+        id = instance_options[:viewer_hub_id]
+        id.present? && id.to_i.positive? ? id.to_i : nil
       end
     end
   end

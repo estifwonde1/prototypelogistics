@@ -84,8 +84,8 @@ export async function getDispatchOrders(params?: {
   return Array.isArray(response.data) ? response.data : response.data.data || [];
 }
 
-export async function getDispatchOrder(id: number): Promise<DispatchOrder> {
-  const response = await apiClient.get(`/dispatch_orders/${id}`);
+export async function getDispatchOrder(id: number, params?: { warehouse_id?: number; hub_id?: number }): Promise<DispatchOrder> {
+  const response = await apiClient.get(`/dispatch_orders/${id}`, { params });
   return response.data.data || response.data;
 }
 
