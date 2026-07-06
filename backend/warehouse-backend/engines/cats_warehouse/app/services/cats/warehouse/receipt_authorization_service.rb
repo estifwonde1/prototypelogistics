@@ -309,7 +309,7 @@ module Cats
                          @receipt_order.hub_id
         wm_id          = self.class.facility_wm_ids(warehouse.id).first
         wm_id ||= assignee_fallback_id
-        assigned       = ContractConstants::DOCUMENT_STATUSES[:assigned]
+        row_status     = ReceiptOrderAssignmentStatus.resolve(warehouse_id: warehouse.id, store_id: nil)
 
         existing = self.class.assignment_not_rejected_scope(
           @receipt_order.receipt_order_assignments.where(receipt_order_line_id: line.id, warehouse_id: warehouse.id)
@@ -333,7 +333,7 @@ module Cats
                   assigned_by:          @actor,
                   assigned_to_id:       wm_id,
                   quantity:             @authorized_quantity,
-                  status:               assigned
+                  status:               row_status
                 )
               end
 
@@ -367,9 +367,11 @@ module Cats
         end
       end
 
-      def assignment_status_promote(_raw)
-        # Explicit routing always targets a warehouse; row should behave as an active WM assignment.
-        ContractConstants::DOCUMENT_STATUSES[:assigned]
+      def assignment_status_promote(raw)
+        existing = raw.to_s.strip.downcase.tr(" ", "_")
+        return ContractConstants::DOCUMENT_STATUSES[:assigned] if existing == ContractConstants::DOCUMENT_STATUSES[:assigned]
+
+        ReceiptOrderAssignmentStatus::WAREHOUSE_ASSIGNED
       end
 
       def enqueue_routing_override_assignment_notification!(assignment)
@@ -475,6 +477,7 @@ module Cats
 
       def validate_explicit_override_warehouse!(warehouse)
         return if @receipt_order.warehouse_id == warehouse.id
+        return if warehouse_linked_on_receipt_order?(warehouse)
 
         hub_id = order_effective_hub_id
         if hub_id.present?
@@ -496,6 +499,21 @@ module Cats
         return if warehouse.id == @receipt_order.warehouse_id
 
         raise ArgumentError, "Destination warehouse is not allocated for this Receipt Order"
+      end
+
+      def warehouse_linked_on_receipt_order?(warehouse)
+        if self.class.assignment_not_rejected_scope(
+          @receipt_order.receipt_order_assignments.where(warehouse_id: warehouse.id)
+        ).exists?
+          return true
+        end
+
+        line = @receipt_order_line
+        if line.blank? && @receipt_order.receipt_order_lines.one?
+          line = @receipt_order.receipt_order_lines.first
+        end
+
+        line&.destination_warehouse_id.to_i == warehouse.id.to_i
       end
 
       def validate_quantities!(warehouse, line)

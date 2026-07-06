@@ -337,14 +337,24 @@ module Cats
         # --- Phase 2: dispatch / inventory docs --------------------------------------
 
         def rows_dispatch_order_confirmed
-          order = DispatchOrder.find_by(id: payload_value(:dispatch_order_id))
+          order = DispatchOrder.includes(dispatch_order_lines: :warehouse).find_by(id: payload_value(:dispatch_order_id))
           return [] unless order
 
           users = {}
-          facility_users(role_name: "Hub Manager", hub_id: order.hub_id).each { |u| users[u.id] = u } if order.hub_id.present?
-          facility_users(role_name: "Warehouse Manager", warehouse_id: order.warehouse_id).each { |u| users[u.id] = u } if order.warehouse_id.present?
+          base = { "dispatch_order_id" => order.id }
 
-          base = { "dispatch_order_id" => order.id, "hub_id" => order.hub_id, "warehouse_id" => order.warehouse_id }.compact
+          order.dispatch_order_lines.each do |line|
+            warehouse = line.warehouse
+            next if warehouse.blank?
+
+            hub = line.hub || warehouse.hub
+            if hub.present? && warehouse.hub_id.present?
+              facility_users(role_name: "Hub Manager", hub_id: hub.id).each { |u| users[u.id] = u }
+            else
+              facility_users(role_name: "Warehouse Manager", warehouse_id: warehouse.id).each { |u| users[u.id] = u }
+            end
+          end
+
           users.values.map { |u| { user: u, params: base.merge("path" => Paths.dispatch_order(u, order.id)) } }
         end
 

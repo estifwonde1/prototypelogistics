@@ -54,9 +54,6 @@ function DispatchOrderFormPage() {
   // ── Auth & location context ──
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
   const location = activeAssignment?.location;
-  const jurisdictionLabel = location
-    ? `${location.name} (${location.location_type})`
-    : "Federal / System-wide";
 
   // Check if sub-federal officer without location
   const SUB_FEDERAL_ROLES = ["Regional Officer", "Zonal Officer", "Woreda Officer", "Kebele Officer"];
@@ -387,12 +384,6 @@ function DispatchOrderFormPage() {
               Order Details
             </Text>
             <SimpleGrid cols={{ base: 1, sm: 2 }}>
-              <TextInput
-                label="Jurisdiction"
-                value={jurisdictionLabel}
-                disabled
-                description="Automatically assigned based on your role"
-              />
               <SearchableSelect
                 label="Source Warehouse"
                 placeholder="Select warehouse"

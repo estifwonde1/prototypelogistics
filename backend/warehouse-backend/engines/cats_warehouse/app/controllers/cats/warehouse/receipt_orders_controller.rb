@@ -28,8 +28,26 @@ module Cats
             .includes(*order_detail_includes)
             .order(created_at: :desc)
         end
-        
-        render_resource(orders, each_serializer: ReceiptOrderSerializer)
+
+        viewer_wh = params[:warehouse_id].presence&.to_i
+        viewer_hub = params[:hub_id].presence&.to_i
+
+        if viewer_hub.present? && viewer_hub.positive?
+          access = AccessContext.new(user: current_user)
+          unless access.can_access_hub?(viewer_hub)
+            return render_error("Access denied to hub #{viewer_hub}", status: :forbidden)
+          end
+        end
+
+        payload = ActiveModelSerializers::SerializableResource.new(
+          orders,
+          each_serializer: ReceiptOrderSerializer,
+          scope: current_user,
+          scope_name: :current_user,
+          viewer_warehouse_id: viewer_wh.to_i.positive? ? viewer_wh : nil,
+          viewer_hub_id: viewer_hub.to_i.positive? ? viewer_hub : nil
+        ).as_json
+        render_success(payload)
       end
 
       def show
@@ -59,26 +77,20 @@ module Cats
             assignments = assignments.where(hub_id: hub_ids.presence || [0])
             Rails.logger.info "DEBUG: After hub filtering: #{assignments.count} assignments"
           elsif warehouse_manager?
-          # CRITICAL: Filter by active warehouse context, not all warehouses user has access to
-          # If warehouse_id param is provided, use it (for multi-warehouse managers)
-          # Otherwise, get all warehouses user is assigned to
           if params[:warehouse_id].present?
             active_warehouse_id = params[:warehouse_id].to_i
-            wh_ids = [active_warehouse_id]
-            store_ids = Cats::Warehouse::Store.where(warehouse_id: active_warehouse_id).pluck(:id)
+            assignments = ReceiptOrderViewerScope
+              .assignments_for(order, warehouse_id: active_warehouse_id)
+              .includes(:assigned_to, :assigned_by, :store, :warehouse, :hub, { receipt_order_line: :unit })
           else
-              # Warehouse managers should only see assignments to their specific warehouse(s) or stores under those warehouses
             wh_ids = UserAssignment.where(user: current_user, role_name: "Warehouse Manager").pluck(:warehouse_id).compact
-              store_ids = Cats::Warehouse::Store.where(warehouse_id: wh_ids).pluck(:id)
-          end
-          
-            Rails.logger.info "DEBUG: Warehouse Manager - User's warehouse IDs: #{wh_ids}, store IDs: #{store_ids}"
+            store_ids = Cats::Warehouse::Store.where(warehouse_id: wh_ids).pluck(:id)
             assignments = assignments.where(
               "cats_warehouse_receipt_order_assignments.warehouse_id IN (?) OR cats_warehouse_receipt_order_assignments.store_id IN (?)",
               wh_ids.presence || [0],
               store_ids.presence || [0]
             )
-            Rails.logger.info "DEBUG: After warehouse filtering: #{assignments.count} assignments"
+          end
           elsif storekeeper?
             # Storekeepers should only see assignments to their specific store(s)
             store_ids = UserAssignment.where(user: current_user, role_name: "Storekeeper").pluck(:store_id).compact
@@ -95,7 +107,10 @@ module Cats
           Rails.logger.info "DEBUG: Final Assignment #{index + 1}: ID=#{assignment.id}, Hub=#{assignment.hub_id} (#{assignment.hub&.name}), Warehouse=#{assignment.warehouse_id} (#{assignment.warehouse&.name}), Quantity=#{assignment.quantity}"
         end
 
-        serialized = ReceiptOrderSerializer.new(order).as_json
+        serialized = ReceiptOrderSerializer.new(
+          order,
+          viewer_warehouse_id: params[:warehouse_id].presence&.to_i
+        ).as_json
         serialized[:receipt_order_assignments] = ActiveModelSerializers::SerializableResource.new(
           assignments,
           each_serializer: ReceiptOrderAssignmentSerializer
@@ -121,6 +136,16 @@ module Cats
             order.receipt_order_lines.to_a
           end
 
+          serialized[:receipt_order_lines] = ActiveModelSerializers::SerializableResource.new(
+            scoped_lines,
+            each_serializer: ReceiptOrderLineSerializer
+          ).as_json
+        elsif warehouse_manager? && params[:warehouse_id].present?
+          scoped_lines = ReceiptOrderViewerScope.lines_for(
+            order,
+            warehouse_id: params[:warehouse_id],
+            assignments: assignments
+          )
           serialized[:receipt_order_lines] = ActiveModelSerializers::SerializableResource.new(
             scoped_lines,
             each_serializer: ReceiptOrderLineSerializer
@@ -496,15 +521,17 @@ module Cats
 
           # Resolve commodity and UOM from inspection items (most reliable source).
           # entered_unit_id is the unit the storekeeper actually typed (e.g. Kuntal).
-          # unit_id is the canonical receipt-order line unit (e.g. MT).
-          # Fall back to receipt order line if inspection items don't have it.
-          inspection_item        = inspection&.inspection_items&.first
+          # line_unit_id is the canonical receipt-order line unit (e.g. MT) — placement
+          # quantities from the frontend are always in this unit.
+          inspection_item         = inspection&.inspection_items&.first
           inspection_commodity_id = inspection_item&.commodity_id
-          # Canonical unit for the GRN item (used for ledger math)
-          inspection_unit_id     = inspection_item&.entered_unit_id.presence ||
-                                   inspection_item&.unit_id.presence
-          # The unit the user typed — preserved on the StackTransaction for bin/stock card display
+          # Canonical (line) unit — placement[:quantity] is expressed in this unit
+          line_unit_id            = first_line&.unit_id
+          # The unit the user typed — for display on bin card / stock card
           inspection_entered_unit_id = inspection_item&.entered_unit_id
+          # Unit to store on GRN item: prefer entered unit so GRN shows e.g. Kuntal
+          inspection_unit_id      = inspection_entered_unit_id.presence ||
+                                    line_unit_id
 
           ReceiptOrder.transaction do
             # Add stack placement items to the existing Draft GRN
@@ -521,6 +548,23 @@ module Cats
                              stack.unit_id.presence ||
                              first_line&.unit_id
 
+              # placement[:quantity] is in the canonical line unit (MT).
+              # If the GRN item unit is the entered unit (e.g. Kuntal), convert.
+              raw_qty = placement[:quantity].to_f
+              if inspection_entered_unit_id.present? &&
+                 line_unit_id.present? &&
+                 inspection_entered_unit_id.to_i != line_unit_id.to_i
+                converted = UomConversionResolver.convert(
+                  raw_qty,
+                  from_unit_id: line_unit_id,
+                  to_unit_id:   inspection_entered_unit_id.to_i,
+                  commodity_id: commodity_id
+                )
+                grn_qty = converted.to_f.positive? ? converted.to_f : raw_qty
+              else
+                grn_qty = raw_qty
+              end
+
               # Assign commodity to the stack if it doesn't have one yet
               if stack.commodity_id.blank? && commodity_id.present?
                 stack.update_columns(commodity_id: commodity_id, unit_id: unit_id)
@@ -531,7 +575,7 @@ module Cats
 
               grn.grn_items.create!(
                 commodity_id:      commodity_id,
-                quantity:          placement[:quantity].to_f,
+                quantity:          grn_qty,
                 unit_id:           unit_id,
                 entered_unit_id:   inspection_entered_unit_id.presence || unit_id,
                 stack_id:          stack.id,
@@ -701,14 +745,20 @@ module Cats
             hub_ids = UserAssignment.where(user: current_user, role_name: "Hub Manager").pluck(:hub_id).compact
             assignments = assignments.where(hub_id: hub_ids.presence || [0])
           elsif warehouse_manager?
-            # Warehouse managers should only see assignments to their specific warehouse(s) or stores under those warehouses
-            wh_ids = UserAssignment.where(user: current_user, role_name: "Warehouse Manager").pluck(:warehouse_id).compact
-            store_ids = Cats::Warehouse::Store.where(warehouse_id: wh_ids).pluck(:id)
-            assignments = assignments.where(
-              "cats_warehouse_receipt_order_assignments.warehouse_id IN (?) OR cats_warehouse_receipt_order_assignments.store_id IN (?)",
-              wh_ids.presence || [0],
-              store_ids.presence || [0]
-            )
+            if params[:warehouse_id].present?
+              active_warehouse_id = params[:warehouse_id].to_i
+              assignments = ReceiptOrderViewerScope
+                .assignments_for(order, warehouse_id: active_warehouse_id)
+                .includes(:assigned_to, :assigned_by, :store, :warehouse, :hub, { receipt_order_line: :unit })
+            else
+              wh_ids = UserAssignment.where(user: current_user, role_name: "Warehouse Manager").pluck(:warehouse_id).compact
+              store_ids = Cats::Warehouse::Store.where(warehouse_id: wh_ids).pluck(:id)
+              assignments = assignments.where(
+                "cats_warehouse_receipt_order_assignments.warehouse_id IN (?) OR cats_warehouse_receipt_order_assignments.store_id IN (?)",
+                wh_ids.presence || [0],
+                store_ids.presence || [0]
+              )
+            end
           elsif storekeeper?
             # Storekeepers should only see assignments to their specific store(s)
             store_ids = UserAssignment.where(user: current_user, role_name: "Storekeeper").pluck(:store_id).compact
@@ -779,6 +829,7 @@ module Cats
           :store_id,
           :assigned_to_id,
           :quantity,
+          :quantity_unit_id,
           :status
         ])
       end

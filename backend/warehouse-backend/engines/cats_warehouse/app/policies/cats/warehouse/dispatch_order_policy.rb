@@ -28,6 +28,20 @@ module Cats
         create?
       end
 
+      # Draft-only delete (used by DELETE /dispatch_orders/:id)
+      def destroy?
+        return false unless record.is_a?(DispatchOrder)
+        return false unless record.status_draft?
+        
+        # Creator or admin can always delete their draft orders
+        return true if admin?
+        return true if user.id == record.created_by_id
+        
+        # Otherwise apply same rules as update
+        return false if level_excluded?
+        create?
+      end
+
       def assign?
         return true if admin?
 

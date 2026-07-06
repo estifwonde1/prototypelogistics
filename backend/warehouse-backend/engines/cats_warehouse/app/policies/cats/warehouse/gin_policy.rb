@@ -23,6 +23,14 @@ module Cats
         admin? || warehouse_manager?
       end
 
+      def driver_confirm?
+        admin? || warehouse_manager? || storekeeper?
+      end
+
+      def cancel?
+        admin? || warehouse_manager? || storekeeper?
+      end
+
       private
 
       def officer?

@@ -16,11 +16,11 @@ module Cats
       end
 
       def create?
-        admin? || warehouse_manager? || hub_manager?
+        admin? || warehouse_manager?
       end
 
       def update?
-        admin? || warehouse_manager? || hub_manager?
+        admin? || warehouse_manager?
       end
 
       def destroy?
@@ -29,7 +29,7 @@ module Cats
 
         return true if admin?
 
-        (warehouse_manager? || hub_manager?) && can_manage_store?
+        warehouse_manager? && can_manage_store?
       end
 
       def storekeepers?

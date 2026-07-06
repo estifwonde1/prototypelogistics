@@ -48,9 +48,9 @@ module Cats
       # Validate hub access for current user
       def validate_hub_access!(hub_id)
         access = AccessContext.new(user: current_user)
-        unless access.accessible_hub_ids.include?(hub_id)
-          raise Pundit::NotAuthorizedError, "Access denied to hub #{hub_id}"
-        end
+        return if access.can_access_hub?(hub_id)
+
+        raise Pundit::NotAuthorizedError, "Access denied to hub #{hub_id}"
       end
 
       # Validate status parameter against allowed values

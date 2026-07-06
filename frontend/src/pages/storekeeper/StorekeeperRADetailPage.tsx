@@ -155,11 +155,13 @@ export default function StorekeeperRADetailPage() {
       const unitId = ra.unit_id;
       if (!commodityId) throw new Error('Cannot determine commodity from receipt order');
 
-      // The storekeeper enters in the RA's display unit (e.g. Kuntal). Inspections
-      // and all downstream totals (raRemaining, store-assignment math, GRN stacking)
-      // are computed in the receipt-order line unit, so convert before sending.
+      // The storekeeper enters in the RA's display unit (e.g. Kuntal).
+      // Keep MT math for cap/lost calculations, and send quantity_received in MT
+      // (canonical) so total_received math stays correct. Send entered_unit_id
+      // so InventoryLedger preserves the original unit on the StackTransaction
+      // for bin card / stock card display.
       const receivedInput = Number(qtyReceived);
-      const receivedLine = convertInputToLine(receivedInput, ra);
+      const receivedLine = convertInputToLine(receivedInput, ra);  // MT — canonical
       const authorizedLine = Number(ra.authorized_quantity);
       const alreadyReceivedLine = ra.total_received ?? 0;
       const raRemLine = Math.max(0, authorizedLine - alreadyReceivedLine);
@@ -167,7 +169,10 @@ export default function StorekeeperRADetailPage() {
       const storeReceivedLine = Number(storeAssignment?.received_quantity ?? 0);
       const storeRemLine = Math.max(0, storeAssignedLine - storeReceivedLine);
       const capLine = Math.min(raRemLine, storeRemLine);
-      const lostLine = Math.max(0, capLine - receivedLine);
+      const lostLine = Math.max(0, capLine - receivedLine);  // lost in MT
+
+      // Entered unit id — the unit the storekeeper typed in (e.g. Kuntal)
+      const enteredUnitId = ra.authorized_quantity_input_unit_id ?? unitId;
 
       return createInspection({
         warehouse_id: warehouseId,
@@ -178,8 +183,12 @@ export default function StorekeeperRADetailPage() {
         status: 'confirmed',
         items: [{
           commodity_id: commodityId,
+          // unit_id stays as the canonical line unit (MT) — used for ledger math
           ...(unitId ? { unit_id: unitId } : {}),
-          quantity_received: Number(receivedLine.toFixed(3)),
+          // entered_unit_id preserves what the storekeeper typed (e.g. Kuntal)
+          // InventoryLedger reverse-converts: 10 MT → 100 Kuntal for StackTransaction
+          ...(enteredUnitId && enteredUnitId !== unitId ? { entered_unit_id: enteredUnitId } : {}),
+          quantity_received: Number(receivedLine.toFixed(3)),  // always in MT (canonical)
           quantity_lost: lostLine > 0 ? Number(lostLine.toFixed(3)) : undefined,
           quality_status: grade ?? 'Good',
           packaging_condition: 'Standard',
@@ -381,12 +390,7 @@ export default function StorekeeperRADetailPage() {
                     : '—'}{u ? ` ${u}` : ''}
                 </Text>
               </Stack>
-              <Stack gap={0}>
-                <Text size="xs" c="dimmed">Remaining (store)</Text>
-                <Text fw={700} c={storeRemainingDisplay > 0 ? 'orange' : 'green'}>
-                  {storeRemainingDisplay.toLocaleString()}{u ? ` ${u}` : ''}
-                </Text>
-              </Stack>
+
             </Group>
           </Stack>
         </Card>

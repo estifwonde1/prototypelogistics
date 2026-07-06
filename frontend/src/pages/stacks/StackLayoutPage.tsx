@@ -236,12 +236,11 @@ function isStackPositionedOnFloor(s: StackType): boolean {
   );
 }
 
-/** Footprint must fit inside the store floor (after wall clearance). */
+/** Footprint must fit inside the store floor (same bounds as draw + backend validation). */
 function isStackWithinStoreFloor(
   s: StackType,
   storeLength: number,
-  storeWidth: number,
-  wallClearance = 1
+  storeWidth: number
 ): boolean {
   if (!isStackPositionedOnFloor(s)) return false;
   const sx = Number(s.start_x);
@@ -249,10 +248,10 @@ function isStackWithinStoreFloor(
   const sl = Number(s.length);
   const sw = Number(s.width);
   return (
-    sx >= wallClearance - STACK_LAYOUT_EPS &&
-    sy >= wallClearance - STACK_LAYOUT_EPS &&
-    sx + sl <= storeLength - wallClearance + STACK_LAYOUT_EPS &&
-    sy + sw <= storeWidth - wallClearance + STACK_LAYOUT_EPS
+    sx >= -STACK_LAYOUT_EPS &&
+    sy >= -STACK_LAYOUT_EPS &&
+    sx + sl <= storeLength + STACK_LAYOUT_EPS &&
+    sy + sw <= storeWidth + STACK_LAYOUT_EPS
   );
 }
 
@@ -356,9 +355,19 @@ export default function StackLayoutPage() {
   const driverArrivalRAId = searchParams.get('receipt_authorization_id');
   const isDriverArrivalStacking = isStorekeeper && Boolean(driverArrivalRAId);
 
+  const { data: driverArrivalRAById } = useQuery({
+    queryKey: ['receipt_authorization', driverArrivalRAId],
+    queryFn: () => getReceiptAuthorization(Number(driverArrivalRAId)),
+    enabled: isDriverArrivalStacking && Boolean(driverArrivalRAId),
+  });
+
   /** Populated for storekeepers from /me/assignments (store-level includes parent warehouse). */
   const storekeeperWarehouseId =
-    isStorekeeper && activeAssignment?.warehouse?.id != null ? activeAssignment.warehouse.id : undefined;
+    isStorekeeper && activeAssignment?.warehouse?.id != null
+      ? activeAssignment.warehouse.id
+      : isStorekeeper && driverArrivalRAById?.warehouse_id != null
+        ? driverArrivalRAById.warehouse_id
+        : undefined;
 
   const { data: stores = [], isLoading: storesLoading } = useQuery({
     queryKey: [
@@ -381,12 +390,6 @@ export default function StackLayoutPage() {
       }
       return getStores();
     },
-  });
-
-  const { data: driverArrivalRAById } = useQuery({
-    queryKey: ['receipt_authorization', driverArrivalRAId],
-    queryFn: () => getReceiptAuthorization(Number(driverArrivalRAId)),
-    enabled: isDriverArrivalStacking && Boolean(driverArrivalRAId),
   });
 
   const effectivePickerStoreId = sanitizeStoreIdParam(storeId);
@@ -624,6 +627,12 @@ export default function StackLayoutPage() {
     return stacks?.filter((stack) => String(stack.store_id) === resolvedStoreId) || [];
   }, [resolvedStoreId, stacks]);
 
+  /** All stacks with floor coordinates — used for overlap detection (includes off-board tiles). */
+  const positionedStoreStacks = useMemo(
+    () => storeStacks.filter(isStackPositionedOnFloor),
+    [storeStacks]
+  );
+
   const boardStacks = useMemo(() => {
     if (!selectedStore) return [];
     const sl = Number(selectedStore.length);
@@ -830,10 +839,10 @@ export default function StackLayoutPage() {
       selectedStore.length,
       selectedStore.width,
       selectedStore.height,
-      boardStacks,
+      positionedStoreStacks,
       editingStackId
     );
-  }, [selectedStore, boardStacks, editingStackId]);
+  }, [selectedStore, positionedStoreStacks, editingStackId]);
 
   const stackFootprint = (form.values.length || 0) * (form.values.width || 0);
   const stackVolumeM3 = stackFootprint * (form.values.height || 0);
@@ -974,7 +983,7 @@ export default function StackLayoutPage() {
       return;
     }
 
-    const overlap = firstOverlappingStack(boardStacks, { start_x: startX, start_y: startY, length, width });
+    const overlap = firstOverlappingStack(positionedStoreStacks, { start_x: startX, start_y: startY, length, width });
     if (overlap) {
       notifications.show({
         title: 'Overlaps another stack',
@@ -1136,7 +1145,7 @@ export default function StackLayoutPage() {
     }
 
     const overlap = firstOverlappingStack(
-      boardStacks,
+      positionedStoreStacks,
       { start_x: sx, start_y: sy, length: len, width: wid },
       values.id
     );

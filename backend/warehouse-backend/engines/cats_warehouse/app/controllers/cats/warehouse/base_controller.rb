@@ -96,7 +96,7 @@ module Cats
       end
 
       def warehouse_manager?
-        current_user&.has_role?("Warehouse Manager")
+        current_user&.has_role?("Warehouse Manager") || current_user&.has_role?("Independent Warehouse Manager")
       end
 
       def storekeeper?
@@ -150,7 +150,7 @@ module Cats
         end
 
         if storekeeper?
-          return assigned_store_ids
+          return access_context.storekeeper_accessible_store_ids
         end
 
         []

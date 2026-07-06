@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { Stack, Title, Button, Group, TextInput, Card, Table, ActionIcon, Text, NumberInput, Alert } from '@mantine/core';
@@ -14,6 +14,7 @@ import { getStores } from '../../api/stores';
 import { getStacks } from '../../api/stacks';
 import { getStockBalances } from '../../api/stockBalances';
 import { getInventoryLots } from '../../api/referenceData';
+import { getDispatchOrderAuthorization } from '../../api/dispatchOrderAuthorizations';
 import { notifications } from '@mantine/notifications';
 import { ExpiryBadge } from '../../components/common/ExpiryBadge';
 import type { GinItem } from '../../types/gin';
@@ -28,9 +29,12 @@ function GinCreatePage() {
   ];
 
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const daoId = searchParams.get('dao_id');
   const queryClient = useQueryClient();
   const loggedInUserId = useAuthStore((s) => s.userId);
   const defaultedIssuedByRef = useRef(false);
+  const autoPopulatedRef = useRef(false);
 
   // Form state
   const [referenceNo, setReferenceNo] = useState('');
@@ -46,6 +50,13 @@ function GinCreatePage() {
   }, [loggedInUserId]);
   const [destinationType, setDestinationType] = useState('');
   const [destinationId, setDestinationId] = useState('');
+
+  // Transporter state
+  const [transporterId, setTransporterId] = useState<string | null>(null);
+  const [truckPlateNumber, setTruckPlateNumber] = useState('');
+  const [driverName, setDriverName] = useState('');
+  const [driverIdNumber, setDriverIdNumber] = useState('');
+
   const [items, setItems] = useState<GinItem[]>([
     {
       commodity_id: 0,
@@ -113,6 +124,37 @@ function GinCreatePage() {
     queryKey: ['reference-data', 'inventory_lots'],
     queryFn: getInventoryLots,
   });
+
+  const { data: dao } = useQuery({
+    queryKey: ['dispatchOrderAuthorization', daoId],
+    queryFn: () => getDispatchOrderAuthorization(Number(daoId)),
+    enabled: !!daoId,
+  });
+
+  useEffect(() => {
+    if (dao && !autoPopulatedRef.current) {
+      if (dao.warehouse_id) setWarehouseId(String(dao.warehouse_id));
+      setDestinationType('Dispatch');
+      if (dao.dispatch_order_id) setDestinationId(String(dao.dispatch_order_id));
+      
+      if (dao.transporter_id) setTransporterId(String(dao.transporter_id));
+      if (dao.truck_plate_number) setTruckPlateNumber(dao.truck_plate_number);
+      if (dao.driver_name) setDriverName(dao.driver_name);
+      if (dao.driver_id_number) setDriverIdNumber(dao.driver_id_number);
+
+      if (dao.authorization_stores && dao.authorization_stores.length > 0) {
+        setItems(
+          dao.authorization_stores.map((as) => ({
+            commodity_id: as.commodity_id,
+            quantity: as.authorized_quantity,
+            unit_id: as.base_quantity ? as.commodity_id : 1, // Will likely need actual unit_id if available, fallback to 1 or adjust later
+            store_id: as.store_id,
+          } as GinItem))
+        );
+      }
+      autoPopulatedRef.current = true;
+    }
+  }, [dao]);
 
   useEffect(() => {
     if (warehouseId !== null) return;
@@ -248,6 +290,10 @@ function GinCreatePage() {
       issued_by_id: parseInt(issuedById.trim(), 10),
       destination_type: destinationType || undefined,
       destination_id: destinationId ? parseInt(destinationId) : undefined,
+      transporter_id: transporterId ? parseInt(transporterId) : undefined,
+      truck_plate_number: truckPlateNumber,
+      driver_name: driverName,
+      driver_id_number: driverIdNumber,
       items,
     });
   };
@@ -459,6 +505,43 @@ function GinCreatePage() {
               searchable
               clearable
               disabled={!destinationType}
+            />
+          </Group>
+        </Stack>
+      </Card>
+
+      <Card shadow="sm" padding="lg" radius="md" withBorder>
+        <Stack gap="md">
+          <Title order={4}>Transporter & Driver Information</Title>
+          <Group grow>
+            <TextInput
+              label="Transporter (Optional)"
+              placeholder="Enter transporter ID"
+              value={transporterId || ''}
+              onChange={(e) => setTransporterId(e.target.value)}
+            />
+            <TextInput
+              label="Truck Plate Number"
+              placeholder="Enter truck plate"
+              value={truckPlateNumber}
+              onChange={(e) => setTruckPlateNumber(e.target.value)}
+              required
+            />
+          </Group>
+          <Group grow>
+            <TextInput
+              label="Driver Name"
+              placeholder="Enter driver name"
+              value={driverName}
+              onChange={(e) => setDriverName(e.target.value)}
+              required
+            />
+            <TextInput
+              label="Driver ID Number"
+              placeholder="Enter driver ID"
+              value={driverIdNumber}
+              onChange={(e) => setDriverIdNumber(e.target.value)}
+              required
             />
           </Group>
         </Stack>

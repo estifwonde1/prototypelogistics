@@ -12,6 +12,11 @@ module Cats
         balances = balances.where(warehouse_id: params[:warehouse_id]) if params[:warehouse_id].present?
         balances = balances.where(commodity_id: params[:commodity_id]) if params[:commodity_id].present?
 
+        if params[:hub_id].present?
+          hub_warehouse_ids = Warehouse.where(hub_id: params[:hub_id]).pluck(:id)
+          balances = balances.where(warehouse_id: hub_warehouse_ids)
+        end
+
         render_resource(balances, each_serializer: StockBalanceSerializer)
       end
 

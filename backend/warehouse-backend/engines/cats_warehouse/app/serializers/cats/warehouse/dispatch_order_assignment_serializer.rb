@@ -37,7 +37,10 @@ module Cats
       end
 
       def commodity_name
-        object.dispatch_order_line&.commodity&.name
+        commodity = object.dispatch_order_line&.commodity
+        return unless commodity
+
+        commodity.read_attribute(:name).presence || commodity.batch_no.presence
       end
 
       def commodity_quantity

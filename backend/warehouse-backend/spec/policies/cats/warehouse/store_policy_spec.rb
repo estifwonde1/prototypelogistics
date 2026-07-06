@@ -46,19 +46,25 @@ RSpec.describe Cats::Warehouse::StorePolicy, type: :policy do
   end
 
   describe "#create?" do
-    it "allows admin, warehouse manager, and hub manager" do
+    it "allows admin and warehouse manager" do
       store_class = Cats::Warehouse::Store
       expect(described_class.new(admin, store_class)).to be_create
       expect(described_class.new(warehouse_manager, store_class)).to be_create
-      expect(described_class.new(hub_manager, store_class)).to be_create
+    end
+
+    it "denies hub manager" do
+      expect(described_class.new(hub_manager, Cats::Warehouse::Store)).not_to be_create
     end
   end
 
   describe "#update?" do
-    it "allows admin, warehouse manager, and hub manager" do
+    it "allows admin and warehouse manager" do
       expect(described_class.new(admin, store)).to be_update
       expect(described_class.new(warehouse_manager, store)).to be_update
-      expect(described_class.new(hub_manager, store)).to be_update
+    end
+
+    it "denies hub manager" do
+      expect(described_class.new(hub_manager, store)).not_to be_update
     end
   end
 
@@ -72,8 +78,8 @@ RSpec.describe Cats::Warehouse::StorePolicy, type: :policy do
         expect(described_class.new(warehouse_manager, store)).to be_destroy
       end
 
-      it "allows hub manager for warehouse in their hub" do
-        expect(described_class.new(hub_manager, store)).to be_destroy
+      it "denies hub manager" do
+        expect(described_class.new(hub_manager, store)).not_to be_destroy
       end
 
       it "denies warehouse manager for out-of-scope warehouse" do

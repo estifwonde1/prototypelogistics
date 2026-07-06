@@ -173,7 +173,7 @@ module Cats
       end
 
       def storekeeper_receipt_orders_scope
-        store_ids = Array(access.assigned_store_ids).map(&:to_i).uniq
+        store_ids = Array(access.storekeeper_accessible_store_ids).map(&:to_i).uniq
         wh_ids = (
           Array(access.storekeeper_warehouse_ids) +
           (store_ids.any? ? Store.where(id: store_ids).where.not(warehouse_id: nil).distinct.pluck(:warehouse_id) : [])
@@ -217,15 +217,65 @@ module Cats
         RECEIPT_ORDER_OPERATIONAL_STATUSES
       end
 
-      # Dispatch orders use hierarchical scoping for sub-federal officers.
-      # Other roles (hub manager, warehouse manager, storekeeper) use warehouse-based scoping.
+      # Dispatch orders: hub managers see hub-sourced plans; warehouse managers only
+      # see plans for standalone (non-hub) warehouses they manage.
       def dispatch_orders_scope
-        # Sub-federal officers use hierarchical scoping based on location and level
         if access.officer? && !access.officer_full_access?
           return HierarchicalOrderScopeQuery.new(user: access.user, scope: scoped_relation).call
         end
 
-        scoped_relation.where(warehouse_id: access.accessible_warehouse_ids)
+        wh_ids = Array(access.accessible_warehouse_ids).map(&:to_i).uniq
+        hub_ids = receipt_order_visible_hub_ids
+        rel = scoped_relation.none
+
+        if access.hub_manager? && hub_ids.any?
+          wh_in_hubs = Warehouse.where(hub_id: hub_ids).pluck(:id)
+          line_hub_order_ids = DispatchOrderLine.where(hub_id: hub_ids).distinct.pluck(:dispatch_order_id)
+          line_wh_hub_order_ids =
+            if wh_in_hubs.any?
+              DispatchOrderLine.where(warehouse_id: wh_in_hubs).distinct.pluck(:dispatch_order_id)
+            else
+              []
+            end
+
+          doa_t = DispatchOrderAssignment.table_name
+          assignment_order_ids =
+            DispatchOrderAssignment
+              .where(hub_id: hub_ids)
+              .where.not("LOWER(TRIM(#{doa_t}.status)) = ?", "rejected")
+              .distinct
+              .pluck(:dispatch_order_id)
+
+          linked_ids = (line_hub_order_ids + line_wh_hub_order_ids + assignment_order_ids).uniq
+          rel = scoped_relation.where(hub_id: hub_ids)
+          rel = rel.or(scoped_relation.where(id: linked_ids)) if linked_ids.any?
+        end
+
+        if access.warehouse_manager? && wh_ids.any?
+          standalone_wh_ids = Warehouse.where(id: wh_ids, hub_id: nil).pluck(:id)
+          if standalone_wh_ids.any?
+            line_wh_order_ids =
+              DispatchOrderLine.where(warehouse_id: standalone_wh_ids).distinct.pluck(:dispatch_order_id)
+            assignment_order_ids =
+              DispatchOrderAssignment.where(warehouse_id: standalone_wh_ids).distinct.pluck(:dispatch_order_id)
+
+            wm_rel = scoped_relation.where(warehouse_id: standalone_wh_ids)
+            wm_rel = wm_rel.or(scoped_relation.where(id: line_wh_order_ids)) if line_wh_order_ids.any?
+            wm_rel = wm_rel.or(scoped_relation.where(id: assignment_order_ids)) if assignment_order_ids.any?
+            rel = rel.or(wm_rel)
+          end
+        elsif wh_ids.any?
+          line_wh_order_ids = DispatchOrderLine.where(warehouse_id: wh_ids).distinct.pluck(:dispatch_order_id)
+          other_rel = scoped_relation.where(warehouse_id: wh_ids)
+          other_rel = other_rel.or(scoped_relation.where(id: line_wh_order_ids)) if line_wh_order_ids.any?
+          rel = rel.or(other_rel)
+        end
+
+        if access.hub_manager? || access.warehouse_manager?
+          rel = rel.where.not(status: DOCUMENT_STATUSES[:draft])
+        end
+
+        rel
       end
 
       # Orders linked by assignment row: same facility warehouse(s) OR personally assigned (covers

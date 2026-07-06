@@ -61,9 +61,27 @@ const ReceiptOrderFormPage = lazyWithReload(() => import('./pages/officer/Receip
 const ReceiptOrderDetailPage = lazyWithReload(() => import('./pages/officer/ReceiptOrderDetailPage'));
 const CommodityFormPage = lazyWithReload(() => import('./pages/officer/CommodityFormPage'));
 const CommoditiesSetupPage = lazyWithReload(() => import('./pages/admin/setup/CommoditiesSetupPage'));
-const DispatchOrdersListPage = lazyWithReload(() => import('./pages/officer/DispatchOrdersListPage'));
-const DispatchOrderFormPage = lazyWithReload(() => import('./pages/officer/DispatchOrderFormPage'));
 const DispatchOrderDetailPage = lazyWithReload(() => import('./pages/officer/DispatchOrderDetailPage'));
+const DispatchPlanListPage = lazyWithReload(() => import('./pages/officer/DispatchPlanListPage'));
+const DispatchPlanFormPage = lazyWithReload(() => import('./pages/officer/DispatchPlanFormPage'));
+const FdpSetupPage = lazyWithReload(() => import('./pages/admin/setup/FdpSetupPage'));
+const DispatchAuthorizationListPage = lazyWithReload(() => import('./pages/hub-manager/DispatchAuthorizationListPage'));
+// Split DA forms
+// (Hub manager uses HubDispatchAuthorizationFormPage; independent/warehouse manager uses WarehouseDispatchAuthorizationFormPage)
+
+const HubDispatchOrdersPage = lazyWithReload(() => import('./pages/hub-manager/HubDispatchOrdersPage'));
+const HubDispatchOrderDetailPage = lazyWithReload(() => import('./pages/hub-manager/HubDispatchOrderDetailPage'));
+const DAListPage = lazyWithReload(() => import('./pages/hub-manager/DAListPage'));
+// NOTE: warehouse/dispatch-authorizations/new uses WarehouseDispatchAuthorizationFormPage.
+// DAFormPage import kept only if referenced elsewhere.
+// const DAFormPage = lazyWithReload(() => import('./pages/hub-manager/DAFormPage'));
+const HubDispatchAuthorizationFormPage = lazyWithReload(
+  () => import('./pages/hub-manager/HubDispatchAuthorizationFormPage')
+);
+const WarehouseDispatchAuthorizationFormPage = lazyWithReload(
+  () => import('./pages/hub-manager/WarehouseDispatchAuthorizationFormPage')
+);
+const DADetailPage = lazyWithReload(() => import('./pages/hub-manager/DADetailPage'));
 const HubListPage = lazyWithReload(() => import('./pages/hubs/HubListPage'));
 const HubDetailPage = lazyWithReload(() => import('./pages/hubs/HubDetailPage'));
 const HubFormPage = lazyWithReload(() => import('./pages/hubs/HubFormPage'));
@@ -105,6 +123,8 @@ const ReceiptAuthorizationFormPage = lazyWithReload(() => import('./pages/hub-ma
 const ReceiptAuthorizationDetailPage = lazyWithReload(() => import('./pages/hub-manager/ReceiptAuthorizationDetailPage'));
 const StorekeeperRAListPage = lazyWithReload(() => import('./pages/storekeeper/StorekeeperRAListPage'));
 const StorekeeperRADetailPage = lazyWithReload(() => import('./pages/storekeeper/StorekeeperRADetailPage'));
+const StorekeeperDAListPage = lazyWithReload(() => import('./pages/storekeeper/StorekeeperDAListPage'));
+const StorekeeperDADetailPage = lazyWithReload(() => import('./pages/storekeeper/StorekeeperDADetailPage'));
 
 // Loading fallback
 const LoadingFallback = () => (
@@ -155,6 +175,11 @@ const RequireAdmin = ({ children }: { children: ReactNode }) => {
 function HubEditRedirect() {
   const { id } = useParams();
   return <Navigate to={`/admin/setup/hubs?id=${id}`} replace />;
+}
+
+function RedirectOfficerDispatchOrderToPlan() {
+  const { id } = useParams();
+  return <Navigate to={`/officer/dispatch-plan/${id}`} replace />;
 }
 
 const EntryRoute = () => {
@@ -273,6 +298,46 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: 'hub/dispatch-authorizations',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <DAListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'hub/dispatch-authorizations/new',
+        element: (
+          <RequirePermission resource="dispatch_order_authorizations" action="create">
+            <HubDispatchAuthorizationFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'hub/dispatch-authorizations/:id',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <DADetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'hub/dispatches',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <HubDispatchOrdersPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'hub/dispatches/:id',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <HubDispatchOrderDetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
         path: 'warehouse/dashboard',
         element: (
           <RequirePermission resource="warehouses" action="read">
@@ -317,6 +382,46 @@ export const router = createBrowserRouter([
             <RequireStandaloneWarehouseRa requireCreate>
               <ReceiptAuthorizationFormPage />
             </RequireStandaloneWarehouseRa>
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/dispatch-authorizations',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <DAListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/dispatch-authorizations/new',
+        element: (
+          <RequirePermission resource="dispatch_order_authorizations" action="create">
+            <WarehouseDispatchAuthorizationFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/dispatch-authorizations/:id',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <DADetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/dispatches',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <HubDispatchOrdersPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/dispatches/:id',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <HubDispatchOrderDetailPage />
           </RequirePermission>
         ),
       },
@@ -398,27 +503,15 @@ export const router = createBrowserRouter([
       },
       {
         path: 'officer/dispatch-orders',
-        element: (
-          <RequirePermission resource="dispatch_orders" action="read">
-            <DispatchOrdersListPage />
-          </RequirePermission>
-        ),
+        element: <Navigate to="/officer/dispatch-plan" replace />,
       },
       {
         path: 'officer/dispatch-orders/new',
-        element: (
-          <RequirePermission resource="dispatch_orders" action="create">
-            <DispatchOrderFormPage />
-          </RequirePermission>
-        ),
+        element: <Navigate to="/officer/dispatch-plan/new" replace />,
       },
       {
         path: 'officer/dispatch-orders/:id',
-        element: (
-          <RequirePermission resource="dispatch_orders" action="read">
-            <DispatchOrderDetailPage />
-          </RequirePermission>
-        ),
+        element: <RedirectOfficerDispatchOrderToPlan />,
       },
       {
         path: 'dispatch-orders/:id',
@@ -430,9 +523,29 @@ export const router = createBrowserRouter([
       },
       {
         path: 'officer/dispatch-orders/:id/edit',
+        element: <RedirectOfficerDispatchOrderToPlan />,
+      },
+      {
+        path: 'officer/dispatch-plan',
         element: (
-          <RequirePermission resource="dispatch_orders" action="update">
-            <DispatchOrderFormPage />
+          <RequirePermission resource="dispatch_orders" action="read">
+            <DispatchPlanListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/dispatch-plan/new',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="create">
+            <DispatchPlanFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/dispatch-plan/:id',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <DispatchOrderDetailPage />
           </RequirePermission>
         ),
       },
@@ -701,6 +814,22 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: 'storekeeper/dispatch-authorizations',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <StorekeeperDAListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'storekeeper/dispatch-authorizations/:id',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <StorekeeperDADetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
         path: 'reports/bin-card',
         element: (
           <RequirePermission resource="reports" action="read">
@@ -781,6 +910,14 @@ export const router = createBrowserRouter([
         element: (
           <RequireAdmin>
             <CommoditiesSetupPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: 'admin/setup/fdps',
+        element: (
+          <RequireAdmin>
+            <FdpSetupPage />
           </RequireAdmin>
         ),
       },

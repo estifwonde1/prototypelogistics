@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_06_02_000000) do
+ActiveRecord::Schema[7.0].define(version: 2026_06_22_011310) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -141,7 +141,6 @@ ActiveRecord::Schema[7.0].define(version: 2026_06_02_000000) do
     t.string "source_name"
     t.bigint "package_unit_per_package_id"
     t.float "received_quantity", null: false
-    t.bigint "commodity_definition_id"
     t.decimal "weight_per_unit_kg", precision: 15, scale: 6, default: "1.0", null: false
     t.index ["commodity_category_id"], name: "index_cats_core_commodities_on_commodity_category_id"
     t.index ["package_unit_id"], name: "pu_on_commodity_indx"
@@ -1170,6 +1169,11 @@ ActiveRecord::Schema[7.0].define(version: 2026_06_02_000000) do
     t.datetime "updated_at", null: false
     t.string "driver_phone"
     t.bigint "commodity_id"
+    t.decimal "authorized_quantity_input", precision: 15, scale: 6
+    t.bigint "assigned_storekeeper_id"
+    t.bigint "assigned_storekeeper_by_id"
+    t.datetime "assigned_storekeeper_at"
+    t.bigint "store_id"
     t.index ["commodity_id"], name: "idx_cw_doa_commodity"
     t.index ["dispatch_order_id", "warehouse_id"], name: "idx_cw_doa_order_wh"
     t.index ["dispatch_order_id"], name: "idx_cw_doa_order"
@@ -1191,9 +1195,16 @@ ActiveRecord::Schema[7.0].define(version: 2026_06_02_000000) do
     t.decimal "packaging_size", precision: 18, scale: 6
     t.integer "package_count"
     t.text "remarks"
+    t.bigint "warehouse_id"
+    t.bigint "hub_id"
+    t.bigint "fdp_id"
+    t.datetime "expected_receive_at"
     t.index ["commodity_id"], name: "index_cats_warehouse_dispatch_order_lines_on_commodity_id"
     t.index ["dispatch_order_id"], name: "index_dispatch_order_lines_on_order_id"
+    t.index ["fdp_id"], name: "index_cats_warehouse_dispatch_order_lines_on_fdp_id"
+    t.index ["hub_id"], name: "index_cats_warehouse_dispatch_order_lines_on_hub_id"
     t.index ["unit_id"], name: "index_cats_warehouse_dispatch_order_lines_on_unit_id"
+    t.index ["warehouse_id"], name: "index_cats_warehouse_dispatch_order_lines_on_warehouse_id"
   end
 
   create_table "cats_warehouse_dispatch_orders", force: :cascade do |t|
@@ -1223,10 +1234,15 @@ ActiveRecord::Schema[7.0].define(version: 2026_06_02_000000) do
     t.bigint "dispatch_plan_id"
     t.bigint "dispatch_plan_item_id"
     t.string "reference_title"
+    t.string "response_plan_ref"
+    t.date "approval_date"
+    t.string "response_type"
+    t.bigint "fdp_id"
     t.index ["confirmed_by_id"], name: "index_cats_warehouse_dispatch_orders_on_confirmed_by_id"
     t.index ["created_by_id", "status"], name: "idx_cw_do_created_by_status"
     t.index ["created_by_id"], name: "index_cats_warehouse_dispatch_orders_on_created_by_id"
     t.index ["dispatch_reference"], name: "index_cats_warehouse_dispatch_orders_on_dispatch_reference"
+    t.index ["fdp_id"], name: "index_cats_warehouse_dispatch_orders_on_fdp_id"
     t.index ["hierarchical_level"], name: "index_cats_warehouse_dispatch_orders_on_hierarchical_level"
     t.index ["hub_id"], name: "index_cats_warehouse_dispatch_orders_on_hub_id"
     t.index ["location_id"], name: "index_cats_warehouse_dispatch_orders_on_location_id"
@@ -1248,6 +1264,18 @@ ActiveRecord::Schema[7.0].define(version: 2026_06_02_000000) do
     t.index ["dispatch_order_authorization_execution_id"], name: "idx_cw_dsa_execution"
     t.index ["gin_id"], name: "idx_cw_dsa_gin"
     t.index ["stack_id"], name: "idx_cw_dsa_stack"
+  end
+
+  create_table "cats_warehouse_fdps", force: :cascade do |t|
+    t.string "name", null: false
+    t.bigint "location_id"
+    t.string "location_name"
+    t.integer "number_of_families"
+    t.integer "number_of_beneficiaries"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["location_id"], name: "index_cats_warehouse_fdps_on_location_id"
+    t.index ["name"], name: "index_cats_warehouse_fdps_on_name"
   end
 
   create_table "cats_warehouse_geos", force: :cascade do |t|
@@ -2097,7 +2125,6 @@ ActiveRecord::Schema[7.0].define(version: 2026_06_02_000000) do
   add_foreign_key "cats_core_commodities", "cats_core_unit_of_measures", column: "package_unit_id"
   add_foreign_key "cats_core_commodities", "cats_core_unit_of_measures", column: "package_unit_per_package_id"
   add_foreign_key "cats_core_commodities", "cats_core_unit_of_measures", column: "unit_of_measure_id"
-  add_foreign_key "cats_core_commodities", "cats_warehouse_commodity_definitions", column: "commodity_definition_id"
   add_foreign_key "cats_core_commodity_donations", "cats_core_commodity_categories", column: "commodity_category_id"
   add_foreign_key "cats_core_commodity_donations", "cats_core_donors", column: "donor_id"
   add_foreign_key "cats_core_commodity_donations", "cats_core_plans", column: "plan_id"

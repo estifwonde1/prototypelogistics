@@ -8,10 +8,12 @@ import {
   IconStack2,
   IconChartBar,
   IconFileImport,
+  IconFileExport,
   IconUsers,
   IconUserCheck,
   IconInbox,
   IconTruck,
+  IconTruckDelivery,
   IconReportAnalytics,
   IconClipboardList,
   IconMapPin,
@@ -58,7 +60,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
     ? OFFICER_ROLE_SLUGS.includes(roleSlug)
     : false;
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
-  const { canAccessRaWorkspace: wmCanAccessRa } = useWarehouseManagerRaAccess();
+  const { canAccessRaWorkspace: wmCanAccessRa, isStandaloneWarehouse: wmIsStandalone } = useWarehouseManagerRaAccess();
 
   const isFullAccess = roleSlug === 'federal_officer' || roleSlug === 'officer';
 
@@ -102,6 +104,11 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
           label: "Commodities",
           icon: <IconBox size={20} />,
           path: "/admin/setup/commodities",
+        },
+        {
+          label: "FDPs",
+          icon: <IconMapPin size={20} />,
+          path: "/admin/setup/fdps",
         },
       ],
     },
@@ -221,6 +228,23 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
             },
           ],
         },
+        {
+          label: "Dispatches",
+          items: [
+            {
+              label: "Dispatches",
+              icon: <IconTruck size={20} />,
+              path: "/hub/dispatches",
+              resource: "dispatch_orders",
+            },
+            {
+              label: "Dispatch Authorization",
+              icon: <IconClipboardList size={20} />,
+              path: "/hub/dispatch-authorizations",
+              resource: "dispatch_orders",
+            },
+          ],
+        },
       ];
     }
 
@@ -269,6 +293,22 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
                 icon: <IconClipboardCheck size={20} />,
                 path: "/warehouse/receipt-authorizations",
                 resource: "receipt_authorizations" as Resource,
+              },
+              {
+                label: "Dispatch Authorizations",
+                icon: <IconClipboardList size={20} />,
+                path: "/warehouse/dispatch-authorizations",
+                resource: "dispatch_orders" as Resource,
+              },
+            ]
+          : []),
+        ...(wmIsStandalone
+          ? [
+              {
+                label: "Dispatches",
+                icon: <IconTruck size={20} />,
+                path: "/warehouse/dispatches",
+                resource: "dispatch_orders" as Resource,
               },
             ]
           : []),
@@ -351,6 +391,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               path: "/storekeeper/receipt-authorizations",
               resource: "receipt_orders",
             },
+            {
+              label: "Dispatch Authorizations",
+              icon: <IconTruckDelivery size={20} />,
+              path: "/storekeeper/dispatch-authorizations",
+              resource: "dispatch_orders",
+            },
           ],
         },
         {
@@ -361,6 +407,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               icon: <IconFileImport size={20} />,
               path: "/grns",
               resource: "grns",
+            },
+            {
+              label: "GIN",
+              icon: <IconFileExport size={20} />,
+              path: "/gins",
+              resource: "gins",
             },
           ],
         },
@@ -415,6 +467,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
                 path: "/officer/commodities?tab=create",
                 resource: "receipt_orders",
               },
+              {
+                label: "Dispatch Plan",
+                icon: <IconTruck size={20} />,
+                path: "/officer/dispatch-plan",
+                resource: "dispatch_orders",
+              },
             ],
           },
         ];
@@ -454,13 +512,19 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               path: "/officer/commodities?tab=create",
               resource: "receipt_orders",
             },
+            {
+              label: "Dispatch Plan",
+              icon: <IconTruck size={20} />,
+              path: "/officer/dispatch-plan",
+              resource: "dispatch_orders",
+            },
           ],
         },
       ];
     }
 
     return [];
-  }, [isAdmin, role, isOfficerRole, isFullAccess, activeAssignment, wmCanAccessRa]);
+  }, [isAdmin, role, isOfficerRole, isFullAccess, activeAssignment, wmCanAccessRa, wmIsStandalone]);
 
   const filterGroupItems = (group: NavGroup) => ({
     ...group,

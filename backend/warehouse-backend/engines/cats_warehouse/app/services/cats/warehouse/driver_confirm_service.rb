@@ -81,14 +81,36 @@ module Cats
       def create_draft_grn!(inspection)
         warehouse = @ra.warehouse
 
+        # The canonical line unit (e.g. MT) — quantity_received is always stored in this unit.
+        line_unit_id = @ra.receipt_order_line&.unit_id ||
+                       @ra.receipt_order&.receipt_order_lines&.first&.unit_id
+
         grn_item_attrs = inspection.inspection_items.map do |item|
-          recv_qty = item.quantity_received.to_f
-          entered_unit_id = item.entered_unit_id || item.unit_id
+          recv_qty       = item.quantity_received.to_f
+          entered_unit_id = item.entered_unit_id.presence
+
+          # If the storekeeper entered in a different unit (e.g. Kuntal) and we have a
+          # conversion path, convert the canonical MT quantity back to the entered unit
+          # so the GRN item quantity matches its unit label (e.g. 70 Kuntal not 7 Kuntal).
+          if entered_unit_id.present? && line_unit_id.present? && entered_unit_id.to_i != line_unit_id.to_i
+            converted = UomConversionResolver.convert(
+              recv_qty,
+              from_unit_id: line_unit_id,
+              to_unit_id:   entered_unit_id.to_i,
+              commodity_id: item.commodity_id
+            )
+            grn_qty  = converted.to_f.positive? ? converted.to_f : recv_qty
+            grn_unit = entered_unit_id.to_i
+          else
+            grn_qty  = recv_qty
+            grn_unit = line_unit_id || entered_unit_id&.to_i
+          end
+
           {
             commodity_id:      item.commodity_id,
-            quantity:          recv_qty,
-            unit_id:           entered_unit_id,
-            entered_unit_id:   entered_unit_id,
+            quantity:          grn_qty,
+            unit_id:           grn_unit,
+            entered_unit_id:   entered_unit_id&.to_i || grn_unit,
             quality_status:    item.quality_status,
             inventory_lot_id:  item.inventory_lot_id,
             line_reference_no: SourceDetailReference.generate_unique

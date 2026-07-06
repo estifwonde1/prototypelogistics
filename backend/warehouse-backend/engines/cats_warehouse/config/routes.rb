@@ -21,7 +21,10 @@ Cats::Warehouse::Engine.routes.draw do
       resources :roles, only: [ :index, :create, :destroy ]
       resources :user_assignments, only: [ :index, :create, :destroy ]
       patch "user_assignments/bulk", to: "user_assignments#bulk_update"
+      resources :fdps, only: [ :index, :show, :create, :update, :destroy ]
     end
+
+    resources :fdps, only: [ :index, :show, :create, :update, :destroy ]
 
     get "locations/regions", to: "locations#regions"
     get "locations/zones", to: "locations#zones"
@@ -111,11 +114,21 @@ Cats::Warehouse::Engine.routes.draw do
         post :reject
       end
     end
-    resources :dispatch_orders, only: [ :index, :show, :create, :update ] do
+    resources :dispatch_orders, only: [ :index, :show, :create, :update, :destroy ] do
       post :confirm, on: :member
       post :assign, on: :member
       post :reserve_stock, on: :member
       get :workflow, on: :member
+    end
+
+    resources :dispatch_order_authorizations, only: [ :index, :show, :create, :update ] do
+      collection do
+        get :assignable_storekeepers
+      end
+      post :confirm, on: :member
+      post :driver_confirm, on: :member
+      post :cancel, on: :member
+      post :assign_storekeeper, on: :member
     end
 
     resources :grns, only: [ :index, :show, :create ] do
@@ -123,6 +136,8 @@ Cats::Warehouse::Engine.routes.draw do
     end
     resources :gins, only: [ :index, :show, :create ] do
       post :confirm, on: :member
+      post :driver_confirm, on: :member
+      post :cancel, on: :member
     end
     resources :inspections, only: [ :index, :show, :create ] do
       post :confirm, on: :member

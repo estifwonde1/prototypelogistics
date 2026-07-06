@@ -24,3 +24,13 @@ export const confirmGin = async (id: number): Promise<Gin> => {
   const response = await apiClient.post<ApiResponse<Gin>>(`/gins/${id}/confirm`);
   return response.data.data;
 };
+
+export const cancelGin = async (id: number): Promise<Gin> => {
+  const response = await apiClient.post<ApiResponse<Gin>>(`/gins/${id}/cancel`);
+  return response.data.data;
+};
+
+export const driverConfirmGin = async (id: number, payload: { driver_confirmed_by_id: number }): Promise<Gin> => {
+  const response = await apiClient.post<ApiResponse<Gin>>(`/gins/${id}/driver_confirm`, payload);
+  return response.data.data;
+};

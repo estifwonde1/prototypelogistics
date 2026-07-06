@@ -45,6 +45,7 @@ module Cats
             quantity: accepted_quantity,
             unit_id: unit_id,
             inventory_lot_id: item.inventory_lot_id,
+            line_reference_no: item.line_reference_no,
             entered_unit_id: item.entered_unit_id.presence || unit_id,
             base_unit_id: item.base_unit_id,
             base_quantity: item.base_quantity,

@@ -309,6 +309,9 @@ function computeWarehouseManagerStoreRemaining(
     receiptAuthorizations?: ReceiptAuthorization[];
     restrictWarehouseRowsToLineIds?: Set<number> | null;
     unquantifiedWarehouseRowQuantity?: number;
+    baseUnitId?: number;
+    lines?: ReceiptOrderLine[];
+    conversions?: UomConversion[];
   }
 ): { pool: number; assigned: number; remaining: number } {
   let whRows = warehouseOnlyAssignmentsForManager(assignments, userWarehouseId);
@@ -321,10 +324,22 @@ function computeWarehouseManagerStoreRemaining(
   }
 
   const unquantifiedWarehouseRowQuantity = Number(opts?.unquantifiedWarehouseRowQuantity ?? 0);
-  const assignmentPool = whRows.reduce((s, a) => {
-    if (a.quantity != null) return s + Number(a.quantity);
-    return s + unquantifiedWarehouseRowQuantity;
-  }, 0);
+  
+  let assignmentPool = 0;
+  if (opts?.baseUnitId != null && opts?.lines != null && opts?.conversions != null) {
+    const sum = sumAssignmentsInUnit(whRows, () => true, opts.baseUnitId, opts.lines, opts.conversions);
+    assignmentPool = sum != null ? sum : whRows.reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+    // Add unquantified fallback for rows missing quantity
+    const missingQtyCount = whRows.filter(a => a.quantity == null).length;
+    if (missingQtyCount > 0 && unquantifiedWarehouseRowQuantity > 0) {
+      assignmentPool += unquantifiedWarehouseRowQuantity;
+    }
+  } else {
+    assignmentPool = whRows.reduce((s, a) => {
+      if (a.quantity != null) return s + Number(a.quantity);
+      return s + unquantifiedWarehouseRowQuantity;
+    }, 0);
+  }
 
   let pool = assignmentPool;
   if (assignmentPool <= 1e-6 && opts?.receiptAuthorizations?.length) {
@@ -341,19 +356,24 @@ function computeWarehouseManagerStoreRemaining(
     if (a.receipt_order_line_id == null) return restrict.size <= 1;
     return restrict.has(Number(a.receipt_order_line_id));
   };
-  const assigned = assignments
-    .filter((a) => {
-      if (a.store_id == null) return false;
-      if (!belongsToRestrictedLines(a)) return false;
-      if (a.warehouse_id != null && Number(a.warehouse_id) === Number(userWarehouseId)) return true;
-      const store = stores.find((s) => Number(s.id) === Number(a.store_id));
-      if (store) return Number(store.warehouse_id) === Number(userWarehouseId);
-      // Warehouse-manager receipt-order payloads are already scoped by the backend
-      // to this warehouse and its stores. Count visible store rows even when the
-      // assign-store lookup has not been opened/loaded yet.
-      return a.warehouse_id == null;
-    })
-    .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+  
+  const assignedPredicate = (a: ReceiptOrderAssignment) => {
+    if (a.store_id == null) return false;
+    if (!belongsToRestrictedLines(a)) return false;
+    if (a.warehouse_id != null && Number(a.warehouse_id) === Number(userWarehouseId)) return true;
+    const store = stores.find((s) => Number(s.id) === Number(a.store_id));
+    if (store) return Number(store.warehouse_id) === Number(userWarehouseId);
+    return a.warehouse_id == null;
+  };
+
+  let assigned = 0;
+  if (opts?.baseUnitId != null && opts?.lines != null && opts?.conversions != null) {
+    const sum = sumAssignmentsInUnit(assignments, assignedPredicate, opts.baseUnitId, opts.lines, opts.conversions);
+    assigned = sum != null ? sum : assignments.filter(assignedPredicate).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+  } else {
+    assigned = assignments.filter(assignedPredicate).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+  }
+  
   return { pool, assigned, remaining: pool - assigned };
 }
 
@@ -366,6 +386,7 @@ function ReceiptOrderDetailPage() {
   const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
   const isOfficerRole = roleSlug ? OFFICER_ROLE_SLUGS.includes(roleSlug) : false;
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('details');
 
   // Receipt recording state
@@ -694,7 +715,7 @@ function ReceiptOrderDetailPage() {
     enabled:
       !!order &&
       showAssignmentForm &&
-      ['confirmed', 'assigned', 'reserved', 'in_progress'].includes(String(order.status).toLowerCase()),
+      ['confirmed', 'assigned', 'reserved', 'in_progress'].includes(String(order.status).toLowerCase().replace(/\s+/g, '_')),
   });
   const assignableManagersPayload = assignableManagersQuery.data as any;
   const assignableManagersLoading = assignableManagersQuery.isLoading;
@@ -1021,6 +1042,9 @@ function ReceiptOrderDetailPage() {
           receiptAuthorizations,
           restrictWarehouseRowsToLineIds: restrictLines.size > 0 ? restrictLines : null,
           unquantifiedWarehouseRowQuantity: visibleLines.reduce((s, l) => s + Number(l.quantity ?? 0), 0),
+          baseUnitId,
+          lines,
+          conversions: uomConversions,
         }
       );
       const whOnly = warehouseOnlyAssignmentsForManager(assignments, userWarehouseId).filter((a) => {
@@ -1033,20 +1057,22 @@ function ReceiptOrderDetailPage() {
         alreadyAssigned = assigned;
       } else {
         totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
-        alreadyAssigned = assignments
-          .filter((a) => {
-            if (a.store_id == null) return false;
-            if (a.warehouse_id != null && Number(a.warehouse_id) === Number(userWarehouseId)) return true;
-            const store = (assignableManagersPayload?.stores as any[])?.find(
-              (s: any) => Number(s.id) === Number(a.store_id)
-            );
-            return store && Number(store.warehouse_id) === Number(userWarehouseId);
-          })
-          .reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+        const predicate = (a: ReceiptOrderAssignment) => {
+          if (a.store_id == null) return false;
+          if (a.warehouse_id != null && Number(a.warehouse_id) === Number(userWarehouseId)) return true;
+          const store = (assignableManagersPayload?.stores as any[])?.find(
+            (s: any) => Number(s.id) === Number(a.store_id)
+          );
+          return store && Number(store.warehouse_id) === Number(userWarehouseId);
+        };
+        const sum = baseUnitId != null ? sumAssignmentsInUnit(assignments, predicate, baseUnitId, lines, uomConversions) : null;
+        alreadyAssigned = sum != null ? sum : assignments.filter(predicate).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
       }
     } else {
       totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
-      alreadyAssigned = assignments.filter((a) => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
+      const predicate = (a: ReceiptOrderAssignment) => a.store_id != null;
+      const sum = baseUnitId != null ? sumAssignmentsInUnit(assignments, predicate, baseUnitId, lines, uomConversions) : null;
+      alreadyAssigned = sum != null ? sum : assignments.filter(predicate).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
     }
 
     const remaining = totalOrdered - alreadyAssigned;
@@ -1062,7 +1088,7 @@ function ReceiptOrderDetailPage() {
     const payload: any = {
       assignments: [{
         store_id: Number(selectedAssignmentStoreId),
-        quantity: qtyInOrderUnit > 0 ? qtyInOrderUnit : undefined,
+        quantity: assignmentQuantity > 0 ? assignmentQuantity : undefined,
         quantity_unit_id: entryUnit !== baseUnitId ? entryUnit : undefined,
         notes: assignmentNotes,
         // Include line ID so storekeeper sees only their line
@@ -1188,6 +1214,11 @@ function ReceiptOrderDetailPage() {
         .map((l) => (l.id != null ? Number(l.id) : NaN))
         .filter((id) => !Number.isNaN(id))
     );
+    const primaryLine = visibleLines[0] ?? lines[0];
+    const baseUnitId = primaryLine?.unit_id != null ? Number(primaryLine.unit_id) : undefined;
+    const commodityId = Number(primaryLine?.commodity_id ?? 0);
+    const baseAbbrev = primaryLine?.unit_name?.trim() || '';
+
     const { pool, assigned, remaining } = computeWarehouseManagerStoreRemaining(
       assignments,
       userWarehouseId,
@@ -1196,12 +1227,11 @@ function ReceiptOrderDetailPage() {
         receiptAuthorizations,
         restrictWarehouseRowsToLineIds: lineRestrict.size > 0 ? lineRestrict : null,
         unquantifiedWarehouseRowQuantity: visibleLines.reduce((s, l) => s + Number(l.quantity ?? 0), 0),
+        baseUnitId,
+        lines,
+        conversions: uomConversions,
       }
     );
-    const primaryLine = visibleLines[0] ?? lines[0];
-    const baseUnitId = primaryLine?.unit_id != null ? Number(primaryLine.unit_id) : undefined;
-    const commodityId = Number(primaryLine?.commodity_id ?? 0);
-    const baseAbbrev = primaryLine?.unit_name?.trim() || '';
 
     let poolKntl = '';
     let assignedKntl = '';
@@ -1325,20 +1355,8 @@ function ReceiptOrderDetailPage() {
       const storedUnitId = assignment.quantity_unit_id != null ? Number(assignment.quantity_unit_id) : undefined;
       const commodityId = Number(line?.commodity_id ?? lines[0]?.commodity_id ?? 0);
 
-      // Display quantity in the entered unit when it differs from the line unit
+      // Display quantity exactly as stored by the backend, which now correctly retains the entered unit.
       let displayQty = assignment.quantity;
-      const effectiveUnitId = storedUnitId ?? lineBaseUnitId;
-      if (
-        storedUnitId != null &&
-        lineBaseUnitId != null &&
-        storedUnitId !== lineBaseUnitId &&
-        assignment.quantity != null
-      ) {
-        const toEntered = findDirectedMultiplier(lineBaseUnitId, storedUnitId, commodityId, uomConversions);
-        if (toEntered != null) {
-          displayQty = Number(assignment.quantity) * toEntered;
-        }
-      }
 
       const unitAbbrev =
         assignment.quantity_unit_abbreviation?.trim() ||
@@ -1370,7 +1388,7 @@ function ReceiptOrderDetailPage() {
         commodityName: 'Order destination',
         quantity: undefined,
         unitAbbrev: fallbackUnit,
-        status: order.status,
+        status: 'warehouse_assigned',
       }];
     }
 
@@ -1383,7 +1401,7 @@ function ReceiptOrderDetailPage() {
         commodityName: 'Order destination',
         quantity: undefined,
         unitAbbrev: fallbackUnit,
-        status: order.status,
+        status: 'pending',
       }];
     }
 
@@ -2199,7 +2217,9 @@ function ReceiptOrderDetailPage() {
                     <Button
                       color="red"
                       variant="light"
-                      onClick={() => deleteMutation.mutate()}
+                      onClick={() => {
+                        setDeleteDialogOpen(true);
+                      }}
                       loading={isLoading_}
                     >
                       Delete
@@ -2238,7 +2258,7 @@ function ReceiptOrderDetailPage() {
                   + Assign Warehouse
                 </Button>
               ) : null}
-              {roleSlug === 'warehouse_manager' && ['confirmed', 'assigned', 'reserved', 'in_progress'].includes(String(order.status).toLowerCase()) && (() => {
+              {roleSlug === 'warehouse_manager' && ['confirmed', 'assigned', 'reserved', 'in_progress'].includes(String(order.status).toLowerCase().replace(/\s+/g, '_')) && (() => {
                 const totalOrdered = lines.reduce((s, l) => s + Number(l.quantity ?? 0), 0);
                 const totalStoreAssigned = assignments.filter(a => a.store_id != null).reduce((s, a) => s + Number(a.quantity ?? 0), 0);
                 if (totalOrdered > 0 && totalStoreAssigned >= totalOrdered) return null;
@@ -2914,6 +2934,33 @@ function ReceiptOrderDetailPage() {
           </Button>
         </Group>
       </Dialog>
+
+      <Dialog
+        opened={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        title="Delete Receipt Order?"
+        size="sm"
+      >
+        <Text size="sm" mb="md">
+          This will permanently delete the draft receipt order.
+        </Text>
+        <Group justify="flex-end">
+          <Button variant="light" onClick={() => setDeleteDialogOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            color="red"
+            onClick={() => {
+              deleteMutation.mutate();
+              setDeleteDialogOpen(false);
+            }}
+            loading={isLoading_}
+          >
+            Delete
+          </Button>
+        </Group>
+      </Dialog>
+
 
       <ReceiptWarehouseAssignmentModal
         opened={showWarehouseAssignmentModal}

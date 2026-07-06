@@ -33,6 +33,7 @@ export function AssignmentCard({
 
   const statusColors: Record<string, string> = {
     pending: 'yellow',
+    warehouse_assigned: 'blue',
     assigned: 'gray',
     accepted: 'blue',
     in_progress: 'cyan',

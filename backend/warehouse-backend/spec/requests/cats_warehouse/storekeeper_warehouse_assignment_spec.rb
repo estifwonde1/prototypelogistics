@@ -63,6 +63,60 @@ RSpec.describe "Storekeeper Warehouse-Level Assignment", type: :request do
     end
   end
 
+  describe "warehouse-level assignment in a single-store warehouse" do
+    let(:single_store_warehouse) { create(:cats_warehouse_warehouse, hub: hub) }
+    let!(:warehouse_capacity) { create(:cats_warehouse_warehouse_capacity, warehouse: single_store_warehouse) }
+    let!(:sole_store) { create(:cats_warehouse_store, warehouse: single_store_warehouse, name: "Only Store") }
+
+    before do
+      Cats::Warehouse::UserAssignment.create!(
+        user: storekeeper,
+        role_name: "Storekeeper",
+        warehouse: single_store_warehouse
+      )
+    end
+
+    it "allows storekeeper to see the sole store" do
+      headers = auth_headers_for(storekeeper)
+      get "/cats_warehouse/v1/stores", headers: headers
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+
+      store_ids = json["data"].map { |s| s["id"] }
+      expect(store_ids).to contain_exactly(sole_store.id)
+    end
+
+    it "allows access to the sole store" do
+      headers = auth_headers_for(storekeeper)
+
+      get "/cats_warehouse/v1/stores/#{sole_store.id}", headers: headers
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "exposes the warehouse assignment with the sole store for workspace selection" do
+      headers = auth_headers_for(storekeeper)
+      get "/cats_warehouse/v1/me/assignments", headers: headers
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      assignments = json["data"]["assignments"]
+      expect(assignments.length).to eq(1)
+      expect(assignments[0]["warehouse"]["id"]).to eq(single_store_warehouse.id)
+      expect(assignments[0]["store"]["id"]).to eq(sole_store.id)
+    end
+
+    it "lists the sole store via storekeeper_stores" do
+      headers = auth_headers_for(storekeeper)
+      get "/cats_warehouse/v1/me/storekeeper_stores", headers: headers
+
+      expect(response).to have_http_status(:ok)
+      json = JSON.parse(response.body)
+      store_ids = json["data"]["stores"].map { |s| s["id"] }
+      expect(store_ids).to contain_exactly(sole_store.id)
+    end
+  end
+
   describe "store-level assignment" do
     before do
       # Create store-level assignment (only store1)

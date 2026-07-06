@@ -48,13 +48,11 @@ function raLineToInputMultiplier(grn: Grn): number | null {
 }
 
 function itemDisplayQuantity(grn: Grn, item: GrnItem): number {
-  const multiplier = raLineToInputMultiplier(grn);
-  if (multiplier != null && raDisplayUnit(grn)) return Number(item.quantity) * multiplier;
   return Number(item.quantity);
 }
 
 function itemDisplayUnit(grn: Grn, item: GrnItem): string {
-  return raDisplayUnit(grn) || item.unit_abbreviation || item.unit_name || String(item.unit_id);
+  return item.unit_abbreviation || item.unit_name || String(item.unit_id);
 }
 
 function grnSourceType(grn: Grn): string {

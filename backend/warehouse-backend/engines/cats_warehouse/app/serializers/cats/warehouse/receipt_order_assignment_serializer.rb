@@ -38,6 +38,18 @@ module Cats
         object.created_at&.iso8601
       end
 
+      # Derive display status from assignment shape so legacy rows and new rules stay consistent.
+      def status
+        stored = object.read_attribute(:status).to_s.strip.downcase.tr(" ", "_")
+        progressed = %w[accepted in_progress completed rejected]
+        return stored if progressed.include?(stored)
+
+        ReceiptOrderAssignmentStatus.resolve(
+          warehouse_id: object.warehouse_id,
+          store_id: object.store_id
+        )
+      end
+
       # Unit for displayed quantity: use stored quantity_unit_id when present (user-selected unit),
       # otherwise fall back to the line's unit.
       def quantity_unit_id

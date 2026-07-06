@@ -12,16 +12,7 @@ module Cats
           
           # Verify user has access to this hub
           access = AccessContext.new(user: current_user)
-          accessible_hubs = access.accessible_hub_ids
-          
-          # Handle both array and ActiveRecord relation cases
-          has_access = if accessible_hubs.is_a?(Array)
-            accessible_hubs.include?(hub_id)
-          else
-            accessible_hubs.exists?(id: hub_id)
-          end
-          
-          unless has_access
+          unless access.can_access_hub?(hub_id)
             return render_error("Access denied to hub #{hub_id}", status: :forbidden)
           end
           

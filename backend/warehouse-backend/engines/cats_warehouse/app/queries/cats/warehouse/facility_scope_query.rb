@@ -64,8 +64,8 @@ module Cats
         # a user who is both WM and Storekeeper must see all stores in their
         # managed warehouses, not just the ones they are assigned to as Storekeeper.
         return scoped_relation.where(warehouse_id: access.accessible_warehouse_ids) if access.hub_manager? || access.warehouse_manager?
-        # Storekeeper-only: restrict to assigned stores
-        return scoped_relation.where(id: access.assigned_store_ids) if access.storekeeper?
+        # Storekeeper-only: explicit stores plus sole store for single-store warehouses
+        return scoped_relation.where(id: access.storekeeper_accessible_store_ids) if access.storekeeper?
         return scoped_relation.where(warehouse_id: access.accessible_warehouse_ids) if access.officer?
 
         scoped_relation.none

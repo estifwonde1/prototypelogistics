@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useMemo, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Badge, Button, Card, Collapse, Divider, Group, SegmentedControl, SimpleGrid, Stack, Table, Text, TextInput, Title } from '@mantine/core';
 import { SearchableSelect } from '../../components/common/SearchableSelect';
@@ -12,6 +12,7 @@ import {
 } from '@tabler/icons-react';
 import { getStockBalances } from '../../api/stockBalances';
 import { getWarehouses } from '../../api/warehouses';
+import { getStores } from '../../api/stores';
 import { getStockCardReport } from '../../api/reports';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
@@ -36,8 +37,7 @@ interface BatchStock {
 }
 
 interface CommodityStock {
-  commodityId: number;
-  commodityName: string;
+  commodityName: string; // used as the stable group key
   batches: BatchStock[];
   totals: Map<string, number>;
 }
@@ -90,21 +90,30 @@ function txDisplayQty(row: BinCardEntry) {
 function StockBalancePage() {
   const [search, setSearch] = useState('');
   const [warehouseFilter, setWarehouseFilter] = useState<string | null>(null);
+  const [storeFilter, setStoreFilter] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('cards');
   const [showExpiringSoon, setShowExpiringSoon] = useState(false);
-  const [expandedCommodities, setExpandedCommodities] = useState<Set<number>>(new Set());
-  const [selectedCommodityId, setSelectedCommodityId] = useState<number | null>(null);
+  const [expandedCommodities, setExpandedCommodities] = useState<Set<string>>(new Set());
+  const [selectedCommodityName, setSelectedCommodityName] = useState<string | null>(null);
   const [selectedBatchKey, setSelectedBatchKey] = useState<string | null>(null);
 
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
   const persistedRole = useAuthStore((state) => state.role);
   const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || persistedRole);
   const userHubId = activeAssignment?.hub?.id;
+  const userWarehouseId = activeAssignment?.warehouse?.id;
+  const userStoreId = activeAssignment?.store?.id;
   const isHubManager = roleSlug === 'hub_manager';
+  const isStorekeeper = roleSlug === 'storekeeper';
+  const isWarehouseManager = roleSlug === 'warehouse_manager';
+  const warehouseIdForStoreList = isWarehouseManager || (isStorekeeper && userWarehouseId) ? userWarehouseId : warehouseFilter;
 
   const { data: stockBalances = [], isLoading, error, refetch } = useQuery({
-    queryKey: ['stockBalances', { warehouse_id: warehouseFilter ?? undefined }],
-    queryFn: () => getStockBalances({ warehouse_id: warehouseFilter ? Number(warehouseFilter) : undefined }),
+    queryKey: ['stockBalances', { warehouse_id: warehouseFilter ?? undefined, store_id: storeFilter ?? undefined }],
+    queryFn: () => getStockBalances({ 
+      warehouse_id: warehouseFilter ? Number(warehouseFilter) : undefined,
+      store_id: storeFilter ? Number(storeFilter) : undefined 
+    }),
     refetchOnMount: 'always',
   });
 
@@ -112,6 +121,19 @@ function StockBalancePage() {
     queryKey: ['warehouses', { hub_id: isHubManager ? userHubId : undefined }],
     queryFn: () => (isHubManager && userHubId ? getWarehouses({ hub_id: userHubId }) : getWarehouses()),
   });
+
+  const { data: stores = [] } = useQuery({
+    queryKey: ['stores', { warehouse_id: warehouseIdForStoreList }],
+    queryFn: () => getStores(warehouseIdForStoreList ? { warehouse_id: Number(warehouseIdForStoreList) } : undefined),
+  });
+
+  useEffect(() => {
+    if (storeFilter) return;
+    if (isStorekeeper && userStoreId) {
+      setStoreFilter(String(userStoreId));
+      return;
+    }
+  }, [isStorekeeper, userStoreId, storeFilter]);
 
   const filteredBalances = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -146,20 +168,21 @@ function StockBalancePage() {
   }, [stockBalances, search, showExpiringSoon]);
 
   const commodityGroups = useMemo((): CommodityStock[] => {
-    const byCommodity = new Map<number, StockBalance[]>();
+    const byCommodityName = new Map<string, StockBalance[]>();
     for (const row of filteredBalances) {
-      if (!byCommodity.has(row.commodity_id)) byCommodity.set(row.commodity_id, []);
-      byCommodity.get(row.commodity_id)!.push(row);
+      const name = row.commodity_name || `Commodity #${row.commodity_id}`;
+      if (!byCommodityName.has(name)) byCommodityName.set(name, []);
+      byCommodityName.get(name)!.push(row);
     }
 
-    return [...byCommodity.entries()]
-      .map(([commodityId, rows]) => {
+    return [...byCommodityName.entries()]
+      .map(([commodityName, rows]) => {
         const byBatch = new Map<string, StockBalance[]>();
         const totals = new Map<string, number>();
 
         for (const row of rows) {
-          const unit = unitLabel(row);
-          addTotal(totals, unit, Number(row.entered_quantity ?? (row.quantity || 0)));
+          const unit = row.base_unit_name || unitLabel(row);
+          addTotal(totals, unit, Number(row.base_quantity ?? (row.quantity || 0)));
           const key = balanceBatchKey(row);
           if (!byBatch.has(key)) byBatch.set(key, []);
           byBatch.get(key)!.push(row);
@@ -169,12 +192,12 @@ function StockBalancePage() {
           .map(([key, batchRows]) => {
             const row0 = batchRows[0];
             const batchTotals = new Map<string, number>();
-            for (const row of batchRows) addTotal(batchTotals, unitLabel(row), Number(row.entered_quantity ?? (row.quantity || 0)));
+            for (const row of batchRows) addTotal(batchTotals, row.base_unit_name || unitLabel(row), Number(row.base_quantity ?? (row.quantity || 0)));
 
             return {
               key,
-              commodityId,
-              commodityName: row0.commodity_name || `Commodity #${commodityId}`,
+              commodityId: row0.commodity_id, // each batch keeps its own commodity_id for history query
+              commodityName,
               batchNo: batchLabel(row0),
               inventoryLotId: row0.inventory_lot_id,
               expiryDate: expiryValue(row0),
@@ -185,8 +208,7 @@ function StockBalancePage() {
           .sort((a, b) => a.batchNo.localeCompare(b.batchNo));
 
         return {
-          commodityId,
-          commodityName: rows[0]?.commodity_name || `Commodity #${commodityId}`,
+          commodityName, // name is the stable key
           batches,
           totals,
         };
@@ -194,15 +216,18 @@ function StockBalancePage() {
       .sort((a, b) => a.commodityName.localeCompare(b.commodityName));
   }, [filteredBalances]);
 
-  const selectedCommodity = commodityGroups.find((group) => group.commodityId === selectedCommodityId) ?? null;
+  const selectedCommodity = commodityGroups.find((group) => group.commodityName === selectedCommodityName) ?? null;
   const selectedBatch = selectedCommodity?.batches.find((batch) => batch.key === selectedBatchKey) ?? null;
+
+  // Use the batch's own commodityId for the history query (each batch may have a different commodity record)
+  const historyCommodityId = selectedBatch?.commodityId ?? null;
 
   const { data: historyRows = [], isLoading: historyLoading } = useQuery({
     queryKey: [
       'reports',
       'stock-card',
       {
-        commodity_id: selectedCommodityId,
+        commodity_id: historyCommodityId,
         warehouse_id: warehouseFilter,
         inventory_lot_id: selectedBatch?.inventoryLotId,
         batch_no: selectedBatch && !selectedBatch.inventoryLotId ? selectedBatch.batchNo : undefined,
@@ -210,12 +235,12 @@ function StockBalancePage() {
     ],
     queryFn: () =>
       getStockCardReport({
-        commodity_id: selectedCommodityId ?? undefined,
+        commodity_id: historyCommodityId ?? undefined,
         warehouse_id: warehouseFilter ? Number(warehouseFilter) : undefined,
         inventory_lot_id: selectedBatch?.inventoryLotId ?? undefined,
         batch_no: selectedBatch && !selectedBatch.inventoryLotId && selectedBatch.batchNo !== 'No batch recorded' ? selectedBatch.batchNo : undefined,
       }),
-    enabled: !!selectedCommodityId,
+    enabled: !!historyCommodityId,
   });
 
   const historyWithBalance = useMemo(() => {
@@ -233,6 +258,11 @@ function StockBalancePage() {
   const warehouseOptions = warehouses.map((warehouse) => ({
     value: String(warehouse.id),
     label: `${warehouse.name}${warehouse.code ? ` (${warehouse.code})` : ''}`,
+  }));
+
+  const storeOptions = stores.map((store) => ({
+    value: String(store.id),
+    label: `${store.name}${store.code ? ` (${store.code})` : ''}`,
   }));
 
   const stats = useMemo(() => {
@@ -292,7 +322,7 @@ function StockBalancePage() {
         <Group justify="space-between" mb="sm" align="flex-start">
           <div>
             <Title order={4}>
-              History - {selectedCommodity.commodityName}
+              History — {selectedCommodity.commodityName}
               {selectedBatch ? ` / ${selectedBatch.batchNo}` : ''}
             </Title>
             <Text size="sm" c="dimmed">
@@ -303,7 +333,7 @@ function StockBalancePage() {
             variant="default"
             size="xs"
             onClick={() => {
-              setSelectedCommodityId(null);
+              setSelectedCommodityName(null);
               setSelectedBatchKey(null);
             }}
           >
@@ -419,12 +449,26 @@ function StockBalancePage() {
           value={warehouseFilter}
           onChange={(value) => {
             setWarehouseFilter(value);
-            setSelectedCommodityId(null);
+            setStoreFilter(null);
+            setSelectedCommodityName(null);
             setSelectedBatchKey(null);
           }}
           clearable
           searchable
           w={280}
+        />
+        <SearchableSelect
+          placeholder="Filter by store"
+          data={storeOptions}
+          value={storeFilter}
+          onChange={(value) => {
+            setStoreFilter(value);
+            setSelectedCommodityName(null);
+            setSelectedBatchKey(null);
+          }}
+          clearable
+          searchable
+          w={220}
         />
         <SegmentedControl
           value={showExpiringSoon ? 'expiring' : 'all'}
@@ -443,17 +487,17 @@ function StockBalancePage() {
       ) : (
         <Stack gap="sm">
           {commodityGroups.map((commodity) => {
-            const isExpanded = expandedCommodities.has(commodity.commodityId);
+            const isExpanded = expandedCommodities.has(commodity.commodityName);
             return (
-              <Card key={commodity.commodityId} withBorder padding="md" radius="md">
+              <Card key={commodity.commodityName} withBorder padding="md" radius="md">
                 <Group
                   justify="space-between"
                   style={{ cursor: 'pointer' }}
                   onClick={() => {
                     setExpandedCommodities((prev) => {
                       const next = new Set(prev);
-                      if (next.has(commodity.commodityId)) next.delete(commodity.commodityId);
-                      else next.add(commodity.commodityId);
+                      if (next.has(commodity.commodityName)) next.delete(commodity.commodityName);
+                      else next.add(commodity.commodityName);
                       return next;
                     });
                   }}
@@ -476,7 +520,7 @@ function StockBalancePage() {
                   <Stack gap="xs">
                     {commodity.batches.map((batch) => {
                       const isSelectedHistory =
-                        selectedCommodityId === commodity.commodityId && selectedBatchKey === batch.key;
+                        selectedCommodityName === commodity.commodityName && selectedBatchKey === batch.key;
 
                       return (
                         <Fragment key={batch.key}>
@@ -505,7 +549,7 @@ function StockBalancePage() {
                                   leftSection={<IconHistory size={14} />}
                                   onClick={(event) => {
                                     event.stopPropagation();
-                                    setSelectedCommodityId(commodity.commodityId);
+                                    setSelectedCommodityName(commodity.commodityName);
                                     setSelectedBatchKey(batch.key);
                                   }}
                                 >

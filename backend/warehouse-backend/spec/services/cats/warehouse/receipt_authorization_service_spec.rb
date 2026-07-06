@@ -158,4 +158,47 @@ RSpec.describe Cats::Warehouse::ReceiptAuthorizationService, type: :model do
       ).call
     end.to raise_error(ArgumentError, /hub/)
   end
+
+  it "allows explicit routing to a standalone warehouse planned on a hub receipt order" do
+    standalone = create(
+      :cats_warehouse_warehouse,
+      hub: nil,
+      location: create(:cats_core_location, code: "LOC-STAND", name: "Standalone")
+    )
+    receipt_line.update!(destination_warehouse_id: standalone.id)
+
+    ra = build_service(
+      explicit_warehouse: standalone,
+      receipt_order_line: receipt_line,
+      authorized_quantity: 25
+    ).call
+
+    expect(ra.warehouse_id).to eq(standalone.id)
+    expect(ra.store_id).to be_nil
+  end
+
+  it "allows explicit routing to a standalone warehouse with a warehouse-level assignment only" do
+    standalone = create(
+      :cats_warehouse_warehouse,
+      hub: nil,
+      location: create(:cats_core_location, code: "LOC-STAND2", name: "Standalone 2")
+    )
+    Cats::Warehouse::ReceiptOrderAssignment.create!(
+      receipt_order: receipt_order,
+      receipt_order_line: receipt_line,
+      warehouse_id: standalone.id,
+      assigned_by: actor,
+      quantity: 400,
+      status: "assigned"
+    )
+
+    ra = build_service(
+      explicit_warehouse: standalone,
+      receipt_order_line: receipt_line,
+      authorized_quantity: 25
+    ).call
+
+    expect(ra.warehouse_id).to eq(standalone.id)
+    expect(ra.store_id).to be_nil
+  end
 end
