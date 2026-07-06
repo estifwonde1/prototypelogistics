@@ -5,7 +5,7 @@ module Cats
                  :quantity, :base_quantity, :available_quantity, :reserved_quantity,
                  :unit_id, :inventory_lot_id,
                  :warehouse_name, :store_name, :stack_code,
-                 :commodity_name, :commodity_batch_no, :unit_name, :unit_abbreviation,
+                 :commodity_name, :commodity_batch_no, :commodity_category_id, :unit_name, :unit_abbreviation,
                  :lot_batch_no, :lot_expiry_date,
                  :base_unit_id, :base_unit_name, :entered_unit_id, :entered_unit_name
 
@@ -29,6 +29,10 @@ module Cats
 
       def commodity_batch_no
         object.commodity&.batch_no
+      end
+
+      def commodity_category_id
+        object.commodity&.commodity_category_id
       end
 
       def unit_name

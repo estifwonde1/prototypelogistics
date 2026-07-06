@@ -159,6 +159,18 @@ function GinDetailPage() {
         <td>${item.batch_no || ''}</td>
       </tr>`).join('');
 
+    const emptyRowsCount = Math.max(0, 10 - items.length);
+    const emptyRows = Array(emptyRowsCount).fill(0).map(() => `
+      <tr>
+        <td style="height:20px"></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>`).join('');
+
     const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -179,12 +191,13 @@ function GinDetailPage() {
     .items-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
     .items-table th, .items-table td { border: 1px solid #000; padding: 3px 4px; font-size: 10px; text-align: left; }
     .items-table th { background: #f0f0f0; text-align: center; font-size: 9px; }
-    .sig-row { display: flex; justify-content: space-between; margin-top: 20px; }
+    .sig-row { display: flex; justify-content: space-between; margin-top: 12px; }
     .sig-block { flex: 1; margin: 0 8px; }
     .sig-block:first-child { margin-left: 0; }
     .sig-block:last-child { margin-right: 0; }
     .sig-line { border-bottom: 1px solid #000; margin-top: 18px; }
     .sig-sub { font-size: 9px; color: #555; margin-top: 2px; }
+    .copy-footer { margin-top: 14px; font-size: 9px; border-top: 1px solid #ccc; padding-top: 4px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; }
     @media print { body { padding: 8px 12px; } @page { margin: 10mm; } }
   </style>
 </head>
@@ -203,49 +216,40 @@ function GinDetailPage() {
   </div>
 
   <div class="title-band">
-    <div class="title-am">የውጭ ዕቃ ወጪ ደረሰኝ</div>
-    <div class="title-en">GOODS ISSUE NOTE</div>
+    <div class="title-am">የምግብና ምግብ ነክ ያልሆኑ ገቢ ደረሰኝ</div>
+    <div class="title-en">FOOD &amp; NON FOOD ITEMS ISSUE RECEIPT</div>
   </div>
   <div class="date-line">ቀን፡ &nbsp;<strong>${issuedDate}</strong> &nbsp;&nbsp; Date:</div>
 
   <table class="meta-table">
     <tr>
       <td width="50%">
-        <strong>Issued By</strong> &nbsp;<span class="meta-value">${gin.issued_by_name || gin.issued_by_id || '___________'}</span>
+        <span style="font-size:10px">የተቀባይ ስም / <strong>Destination</strong>:</span><br/>
+        &nbsp;<span class="meta-value">${gin.destination_name || gin.destination_type || ''}</span>
       </td>
       <td width="50%">
-        <strong>Warehouse</strong> &nbsp;<span class="meta-value">${warehouseName}</span>
+        <span style="font-size:10px">የተጫነበት መጋዘን / <strong>Warehouse</strong>:</span><br/>
+        &nbsp;<span class="meta-value">${warehouseName}</span>
       </td>
     </tr>
     <tr>
       <td>
-        <strong>Transporter</strong> &nbsp;<span class="meta-value">${gin.transporter_name || gin.transporter_id || '___________'}</span>
+        <span style="font-size:10px">የአሽከርካሪው ስም / <strong>Driver Name</strong>:</span><br/>
+        &nbsp;<span class="meta-value">${gin.driver_name || '___________'}</span>
       </td>
       <td>
-        <strong>Driver Name</strong> &nbsp;<span class="meta-value">${gin.driver_name || '___________'}</span>
-      </td>
-    </tr>
-    <tr>
-      <td>
-        <strong>Truck Plate No</strong> &nbsp;<span class="meta-value">${gin.truck_plate_number || '___________'}</span>
-      </td>
-      <td>
-        <strong>Driver ID No</strong> &nbsp;<span class="meta-value">${gin.driver_id_number || '___________'}</span>
+        <span style="font-size:10px">የአጓጓዥ ስም / <strong>Transporter</strong>:</span><br/>
+        &nbsp;<span class="meta-value">${gin.transporter_name || gin.transporter_id || '___________'}</span>
       </td>
     </tr>
     <tr>
       <td>
-        <strong>Driver Phone</strong> &nbsp;<span class="meta-value">${gin.driver_phone || '___________'}</span>
+        <span style="font-size:10px">የመኪና ሰሌዳ ቁጥር / <strong>Truck Plate No</strong>:</span><br/>
+        &nbsp;<span class="meta-value">${gin.truck_plate_number || '___________'}</span>
       </td>
       <td>
-      </td>
-    </tr>
-    <tr>
-      <td>
-        <strong>Destination</strong> &nbsp;<span class="meta-value">${gin.destination_name || gin.destination_type || ''} ${!gin.destination_name && gin.destination_id ? `(${gin.destination_id})` : ''}</span>
-      </td>
-      <td>
-        <strong>Status</strong> &nbsp;<span class="meta-value">${gin.status}</span>
+        <span style="font-size:10px">የአሽከርካሪ መታወቂያ / <strong>Driver ID No</strong>:</span><br/>
+        &nbsp;<span class="meta-value">${gin.driver_id_number || '___________'}</span>
       </td>
     </tr>
   </table>
@@ -253,35 +257,45 @@ function GinDetailPage() {
   <table class="items-table">
     <thead>
       <tr>
-        <th style="width:28px">#</th>
-        <th>Commodity</th>
-        <th style="width:70px">Quantity</th>
-        <th style="width:50px">Unit</th>
-        <th>Store</th>
-        <th>Stack</th>
-        <th>Batch</th>
+        <th style="width:28px">ተ.ቁ<br/>Item</th>
+        <th>የእቃ ዝርዝር<br/>Commodity Type</th>
+        <th style="width:50px">መስፈሪያ<br/>Unit</th>
+        <th style="width:70px">የተላከው መጠን<br/>Qty Issued</th>
+        <th>ጎተራ<br/>Store</th>
+        <th>ክምር<br/>Stack</th>
+        <th>ባች<br/>Batch</th>
       </tr>
     </thead>
     <tbody>
       ${filledRows}
+      ${emptyRows}
     </tbody>
   </table>
 
+  <div style="font-size:10px; margin-top:8px;">
+    ተጨማሪ መግለጫ / <strong>Additional Explanation</strong> <span style="border-bottom: 1px solid #000; padding: 0 40px;">${gin.status}</span>
+  </div>
+
   <div class="sig-row">
     <div class="sig-block">
-      <div style="font-size:10px">ያወጣው ስም / <strong>Issued by</strong></div>
+      <div style="font-size:10px">ያወጣው ስም / <strong>Issued by</strong><br/>${gin.issued_by_name || gin.issued_by_id || '___________'}</div>
       <div class="sig-line"></div>
       <div class="sig-sub">ፊርማ / Signature &nbsp;&nbsp;&nbsp; ቀን / Date</div>
     </div>
     <div style="width:40px"></div>
     <div class="sig-block">
-      <div style="font-size:10px">የተረከበው ስም / <strong>Received by</strong></div>
+      <div style="font-size:10px">የተረከበው ስም / <strong>Received by</strong><br/>${gin.driver_name || '___________'}</div>
       <div class="sig-line"></div>
       <div class="sig-sub">ፊርማ / Signature &nbsp;&nbsp;&nbsp; ቀን / Date</div>
     </div>
   </div>
 
-  <p style="margin-top:8px;font-size:9px;color:#aaa;text-align:right">
+  <div class="copy-footer">
+    <span>Original: Finance / ዋናው፡ ለሂሳብ ክፍል</span>
+    <span>2nd Copy: Driver / 2ኛው፡ ለአሽከርካሪ</span>
+    <span>3rd Copy: Store man / 3ኛው፡ ለንብረት ኃላፊ</span>
+  </div>
+  <p style="margin-top:4px;font-size:9px;color:#aaa;text-align:right">
     Printed on ${new Date().toLocaleString()} &nbsp;|&nbsp; GIN ID: ${gin.id}
   </p>
 </body>

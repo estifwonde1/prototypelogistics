@@ -27,6 +27,7 @@ export interface DispatchOrderAuthorization {
 
   commodity_id?: number | null;
   commodity_name?: string | null;
+  commodity_category_id?: number | null;
 
   transporter_id?: number | null;
   transporter_name?: string | null;

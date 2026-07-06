@@ -4,7 +4,7 @@ module Cats
       attributes :id, :reference_no, :status,
                  :dispatch_order_id, :dispatch_order_reference_no,
                  :warehouse_id, :warehouse_name,
-                 :commodity_id, :commodity_name,
+                 :commodity_id, :commodity_name, :commodity_category_id,
                  :transporter_id, :transporter_name,
                  :authorized_quantity,
                  :authorized_quantity_input,
@@ -46,6 +46,10 @@ module Cats
 
       def commodity_name
         safe_commodity_name(object.commodity)
+      end
+
+      def commodity_category_id
+        object.commodity&.commodity_category_id
       end
 
       def transporter_name

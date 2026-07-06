@@ -2,13 +2,13 @@ import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import { Stack, Title, Button, Group, Card, Text, Badge, SimpleGrid, Divider, Alert, NumberInput, Textarea } from '@mantine/core';
+import { Stack, Title, Button, Group, Card, Text, Badge, SimpleGrid, Divider, Alert, NumberInput, Textarea, ActionIcon } from '@mantine/core';
 import { SearchableSelect } from '../../components/common/SearchableSelect';
-import { IconArrowLeft, IconCheck, IconAlertCircle, IconTruckDelivery, IconExternalLink } from '@tabler/icons-react';
+import { IconArrowLeft, IconCheck, IconAlertCircle, IconTruckDelivery, IconExternalLink, IconPlus, IconTrash } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { getDispatchOrderAuthorization } from '../../api/dispatchOrderAuthorizations';
 import { createGin, driverConfirmGin } from '../../api/gins';
-import { getStacks } from '../../api/stacks';
+import { getStockBalances } from '../../api/stockBalances';
 import { getCommodityReferences } from '../../api/referenceData';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
@@ -39,8 +39,17 @@ export default function StorekeeperDADetailPage() {
   const storeId = activeAssignment?.store?.id;
 
   const [showRecordingForm, setShowRecordingForm] = useState(false);
-  const [qtyLoaded, setQtyLoaded] = useState<number | string>('');
-  const [selectedStackId, setSelectedStackId] = useState<string | null>(null);
+  
+  interface LoadingLine {
+    id: string;
+    stackId: string | null;
+    inventoryLotId: string | null;
+    quantity: number | string;
+  }
+  const [loadingLines, setLoadingLines] = useState<LoadingLine[]>([
+    { id: crypto.randomUUID(), stackId: null, inventoryLotId: null, quantity: '' }
+  ]);
+  
   const [remarks, setRemarks] = useState('');
 
   const { data: da, isLoading, error, refetch } = useQuery({
@@ -51,9 +60,9 @@ export default function StorekeeperDADetailPage() {
     gcTime: 0,
   });
 
-  const { data: stacks = [] } = useQuery({
-    queryKey: ['stacks', { store_id: storeId }],
-    queryFn: () => getStacks({ store_id: storeId }),
+  const { data: stockBalances = [] } = useQuery({
+    queryKey: ['stock_balances', { store_id: storeId }],
+    queryFn: () => getStockBalances({ store_id: storeId }),
     enabled: !!storeId,
   });
 
@@ -67,8 +76,33 @@ export default function StorekeeperDADetailPage() {
       if (!da) throw new Error('No DA loaded');
       const warehouseId = activeAssignment?.warehouse?.id ?? da.warehouse_id;
       if (!warehouseId) throw new Error('Cannot determine warehouse');
-      if (!selectedStackId) throw new Error('Please select a stack');
-      if (!qtyLoaded || Number(qtyLoaded) <= 0) throw new Error('Invalid quantity');
+      const totalLoaded = loadingLines.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
+      if (totalLoaded <= 0) throw new Error('Total quantity must be greater than zero');
+      const maxQty = da.authorized_quantity_input != null && da.authorized_quantity_input > 0 ? da.authorized_quantity_input : da.authorized_quantity;
+      if (totalLoaded > maxQty) throw new Error(`Cannot exceed authorized quantity of ${maxQty}`);
+
+      const items = loadingLines.map((line) => {
+        if (!line.inventoryLotId) throw new Error('Please select a batch for all lines');
+        if (!line.quantity || Number(line.quantity) <= 0) throw new Error('Invalid quantity on a line');
+        
+        // Find ANY stock balance row for this lot to get the commodity_id and stack
+        // lotValue is the lotKey which may be the inventory_lot_id or 'no-lot-{commodity_id}'
+        const isRealLot = !line.inventoryLotId?.startsWith('no-lot-');
+        const sb = isRealLot
+          ? stockBalances.find(s => String(s.inventory_lot_id) === line.inventoryLotId)
+          : stockBalances.find(s => !s.inventory_lot_id && String(s.commodity_id) === line.inventoryLotId?.replace('no-lot-', ''));
+        const batchCommodityId = sb ? sb.commodity_id : da.commodity_id;
+        
+        return {
+          commodity_id: batchCommodityId,
+          quantity: Number(line.quantity),
+          unit_id: da.authorized_quantity_input_unit_id || 1,
+          store_id: storeId,
+          stack_id: sb?.stack_id ? Number(sb.stack_id) : undefined,
+          inventory_lot_id: isRealLot && line.inventoryLotId ? Number(line.inventoryLotId) : undefined,
+          remarks: remarks || undefined,
+        };
+      });
 
       return createGin({
         warehouse_id: warehouseId,
@@ -81,14 +115,7 @@ export default function StorekeeperDADetailPage() {
         transporter_id: da.transporter_id,
         driver_name: da.driver_name,
         driver_id_number: da.driver_id_number,
-        items: [{
-          commodity_id: da.commodity_id,
-          quantity: Number(qtyLoaded),
-          unit_id: da.authorized_quantity_input_unit_id || 1,
-          store_id: storeId,
-          stack_id: Number(selectedStackId),
-          remarks: remarks || undefined,
-        }],
+        items,
       } as any);
     },
     onSuccess: () => {
@@ -133,10 +160,76 @@ export default function StorekeeperDADetailPage() {
     return commodities.find(c => c.id === da?.commodity_id);
   }, [commodities, da?.commodity_id]);
 
+  const totalQtyLoaded = useMemo(() => {
+    return loadingLines.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
+  }, [loadingLines]);
+
   const numberOfBags = useMemo(() => {
-    if (!qtyLoaded || !commodity?.package_size) return null;
-    return Math.ceil(Number(qtyLoaded) / commodity.package_size);
-  }, [qtyLoaded, commodity]);
+    if (totalQtyLoaded <= 0 || !commodity?.package_size) return null;
+    return Math.ceil(totalQtyLoaded / commodity.package_size);
+  }, [totalQtyLoaded, commodity]);
+
+  const batchOptions = useMemo(() => {
+    // Filter to only rows that belong to the same commodity category as the DA
+    // Falls back to matching by commodity_id if category_id not yet loaded
+    const relevant = stockBalances.filter((sb) => {
+      if (da?.commodity_category_id && sb.commodity_category_id) {
+        return sb.commodity_category_id === da.commodity_category_id;
+      }
+      // Fallback: match by the exact commodity_id on the DA
+      return sb.commodity_id === da?.commodity_id;
+    });
+
+    // Group by inventory_lot_id (each unique batch), and SUM the quantities
+    // across all stack rows that belong to the same lot
+    const lotMap: Record<string, {
+      lotId: string;
+      batchStr: string;
+      expiryRaw: string | null;
+      totalQty: number;
+      unit: string;
+      stackIds: Set<string>;
+    }> = {};
+
+    relevant.forEach((sb) => {
+      const lotKey = String(sb.inventory_lot_id || `no-lot-${sb.commodity_id}`);
+      const qty = sb.base_quantity != null ? Number(sb.base_quantity) : Number(sb.quantity || 0);
+
+      if (!lotMap[lotKey]) {
+        lotMap[lotKey] = {
+          lotId: lotKey, // use lotKey as value — always unique, never empty string
+          batchStr: sb.lot_batch_no || sb.batch_no || sb.commodity_batch_no || 'No batch #',
+          expiryRaw: sb.lot_expiry_date || sb.expiry_date || null,
+          totalQty: 0,
+          unit: sb.base_unit_name || sb.unit_abbreviation || 'mt',
+          stackIds: new Set(),
+        };
+      }
+      lotMap[lotKey].totalQty += qty;
+      if (sb.stack_id) lotMap[lotKey].stackIds.add(String(sb.stack_id));
+    });
+
+    // Only show lots with positive total quantity
+    return Object.values(lotMap)
+      .filter(lot => lot.totalQty > 0)
+      .sort((a, b) => {
+        // Sort expiring soonest first
+        if (a.expiryRaw && b.expiryRaw) return a.expiryRaw.localeCompare(b.expiryRaw);
+        if (a.expiryRaw) return -1;
+        if (b.expiryRaw) return 1;
+        return a.batchStr.localeCompare(b.batchStr);
+      })
+      .map((lot) => {
+        const expiryStr = lot.expiryRaw
+          ? ` — Exp: ${new Date(lot.expiryRaw).toLocaleDateString()}`
+          : '';
+        const balStr = `${lot.totalQty.toLocaleString()} ${lot.unit}`;
+        return {
+          value: lot.lotId,
+          label: `${lot.batchStr}${expiryStr} (Bal: ${balStr})`,
+        };
+      });
+  }, [stockBalances, da?.commodity_category_id, da?.commodity_id]);
 
   if (isLoading) return <LoadingState message="Loading Dispatch Authorization..." />;
   if (error || !da) return <ErrorState message="Failed to load Dispatch Authorization." onRetry={refetch} />;
@@ -159,12 +252,6 @@ export default function StorekeeperDADetailPage() {
     myGinDispatchAuthId: (myGin as any)?.dispatch_order_authorization_id
   });
 
-  const stackOptions = stacks
-  .filter((s)=> s.commodity_id === da.commodity_id)
-  .map((s) => ({
-    value: String(s.id),
-    label: `${s.code} (Bal: ${s.base_quantity != null ? Number(s.base_quantity).toLocaleString() : (s.quantity ?? '0')} mt)`
-  }));
 
   return (
     <Stack gap="md">
@@ -234,39 +321,78 @@ export default function StorekeeperDADetailPage() {
             <Stack gap="md" mt="xs">
               <Divider label="Select stack and enter loaded quantity" labelPosition="left" />
 
-              <SimpleGrid cols={{ base: 1, sm: 2 }}>
-                <SearchableSelect
-                  label="Pick from Stack"
-                  data={stackOptions}
-                  value={selectedStackId}
-                  onChange={setSelectedStackId}
-                  required
-                />
+              <Divider label="Select batches and enter loaded quantities" labelPosition="left" />
+
+              <Stack gap="sm">
+                {loadingLines.map((line, index) => (
+                  <Group key={line.id} align="flex-start" wrap="nowrap">
+                    <SearchableSelect
+                      placeholder="Select a batch..."
+                      data={batchOptions}
+                      value={line.inventoryLotId || null}
+                      onChange={(val) => {
+                        const newLines = [...loadingLines];
+                        newLines[index].inventoryLotId = val || null;
+                        newLines[index].stackId = val || null; // keep in sync so validation passes
+                        setLoadingLines(newLines);
+                      }}
+                      style={{ flex: 1 }}
+                      required
+                    />
+                    
+                    <NumberInput
+                      placeholder={`Qty (${da.authorized_quantity_input_unit_abbreviation || ''})`}
+                      value={line.quantity}
+                      onChange={(val) => {
+                        const newLines = [...loadingLines];
+                        newLines[index].quantity = val;
+                        setLoadingLines(newLines);
+                      }}
+                      min={0.001}
+                      decimalScale={3}
+                      style={{ width: 140 }}
+                      required
+                    />
+                    
+                    <ActionIcon 
+                      color="red" 
+                      variant="subtle" 
+                      onClick={() => {
+                        if (loadingLines.length > 1) {
+                          setLoadingLines(loadingLines.filter(l => l.id !== line.id));
+                        } else {
+                          setLoadingLines([{ id: crypto.randomUUID(), stackId: null, inventoryLotId: null, quantity: '' }]);
+                        }
+                      }}
+                      style={{ marginTop: 4 }}
+                    >
+                      <IconTrash size={18} />
+                    </ActionIcon>
+                  </Group>
+                ))}
                 
-                <Stack gap={4}>
-                  <NumberInput
-                    label={`Quantity Loaded${da.authorized_quantity_input_unit_abbreviation ? ` (${da.authorized_quantity_input_unit_abbreviation})` : ''}`}
-                    placeholder="Enter quantity"
-                    description={`Max: ${da.authorized_quantity_input != null && da.authorized_quantity_input > 0 ? da.authorized_quantity_input : da.authorized_quantity} ${da.authorized_quantity_input_unit_abbreviation || ''}`}
-                    value={qtyLoaded}
-                    onChange={setQtyLoaded}
-                    min={0.001}
-                    max={da.authorized_quantity_input != null && da.authorized_quantity_input > 0 ? da.authorized_quantity_input : da.authorized_quantity}
-                    decimalScale={3}
-                    required
-                    error={
-                      Number(qtyLoaded) > (da.authorized_quantity_input != null && da.authorized_quantity_input > 0 ? da.authorized_quantity_input : da.authorized_quantity)
-                        ? `Cannot exceed authorized quantity of ${da.authorized_quantity_input != null && da.authorized_quantity_input > 0 ? da.authorized_quantity_input : da.authorized_quantity} ${da.authorized_quantity_input_unit_abbreviation || ''}`
-                        : undefined
-                    }
-                  />
-                  {numberOfBags !== null && (
-                    <Text size="xs" c="blue" fw={600}>
-                      Calculated Bags/Packages: {numberOfBags}
-                    </Text>
-                  )}
-                </Stack>
-              </SimpleGrid>
+                <Group justify="space-between" align="flex-end" mt="xs">
+                  <Button 
+                    variant="subtle" 
+                    size="xs" 
+                    leftSection={<IconPlus size={14} />}
+                    onClick={() => setLoadingLines([...loadingLines, { id: crypto.randomUUID(), stackId: null, inventoryLotId: null, quantity: '' }])}
+                  >
+                    Add another batch
+                  </Button>
+                  <Stack gap={0} align="flex-end">
+                    <Text size="sm" fw={600}>Total: {totalQtyLoaded} / {da.authorized_quantity_input != null && da.authorized_quantity_input > 0 ? da.authorized_quantity_input : da.authorized_quantity} {da.authorized_quantity_input_unit_abbreviation || ''}</Text>
+                    {numberOfBags !== null && (
+                      <Text size="xs" c="blue" fw={600}>
+                        Calculated Bags/Packages: {numberOfBags}
+                      </Text>
+                    )}
+                  </Stack>
+                </Group>
+                {totalQtyLoaded > (da.authorized_quantity_input != null && da.authorized_quantity_input > 0 ? da.authorized_quantity_input : da.authorized_quantity) && (
+                  <Text size="sm" c="red" ta="right">Total exceeds authorized quantity!</Text>
+                )}
+              </Stack>
 
               <Textarea
                 label="Remarks (optional)"
@@ -281,7 +407,7 @@ export default function StorekeeperDADetailPage() {
                 <Button
                   onClick={() => recordLoadingMutation.mutate()}
                   loading={recordLoadingMutation.isPending}
-                  disabled={!qtyLoaded || !selectedStackId || Number(qtyLoaded) <= 0 || Number(qtyLoaded) > (da.authorized_quantity_input != null && da.authorized_quantity_input > 0 ? da.authorized_quantity_input : da.authorized_quantity)}
+                  disabled={totalQtyLoaded <= 0 || loadingLines.some(l => !l.stackId || !l.quantity) || totalQtyLoaded > (da.authorized_quantity_input != null && da.authorized_quantity_input > 0 ? da.authorized_quantity_input : da.authorized_quantity)}
                 >
                   Save Loading
                 </Button>

@@ -11,6 +11,7 @@ export interface StockBalance {
   commodity_id: number;
   commodity_name?: string | null;
   commodity_batch_no?: string | null;
+  commodity_category_id?: number | null;
   quantity: number;
   available_quantity?: number | null;
   reserved_quantity?: number | null;
