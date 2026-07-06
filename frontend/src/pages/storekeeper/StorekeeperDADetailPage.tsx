@@ -39,6 +39,7 @@ export default function StorekeeperDADetailPage() {
   const storeId = activeAssignment?.store?.id;
 
   const [showRecordingForm, setShowRecordingForm] = useState(false);
+  const [selectedStackFilter, setSelectedStackFilter] = useState<string | null>(null);
   
   interface LoadingLine {
     id: string;
@@ -127,7 +128,7 @@ export default function StorekeeperDADetailPage() {
         color: 'green',
       });
       setShowRecordingForm(false);
-      refetch();
+      setSelectedStackFilter(null);
     },
     onError: (err: unknown) => {
       const msg =
@@ -170,14 +171,20 @@ export default function StorekeeperDADetailPage() {
   }, [totalQtyLoaded, commodity]);
 
   const batchOptions = useMemo(() => {
-    // Filter to only rows that belong to the same commodity category as the DA
-    // Falls back to matching by commodity_id if category_id not yet loaded
+    // Get the commodity type name (e.g. "Rice") from the fetched commodities list
+    const commodityTypeName = commodity?.name?.trim().toLowerCase();
+
+    // Filter stock balances to only those whose commodity name matches the DA commodity type
+    // Also filter by selected stack if one is chosen
     const relevant = stockBalances.filter((sb) => {
-      if (da?.commodity_category_id && sb.commodity_category_id) {
-        return sb.commodity_category_id === da.commodity_category_id;
+      // Stack filter
+      if (selectedStackFilter && String(sb.stack_id) !== selectedStackFilter) return false;
+      // Commodity filter
+      if (!commodityTypeName) {
+        return sb.commodity_id === da?.commodity_id;
       }
-      // Fallback: match by the exact commodity_id on the DA
-      return sb.commodity_id === da?.commodity_id;
+      const sbName = (sb.commodity_name || '').trim().toLowerCase();
+      return sbName === commodityTypeName;
     });
 
     // Group by inventory_lot_id (each unique batch), and SUM the quantities
@@ -221,17 +228,30 @@ export default function StorekeeperDADetailPage() {
       })
       .map((lot) => {
         const expiryStr = lot.expiryRaw
-          ? ` — Exp: ${new Date(lot.expiryRaw).toLocaleDateString()}`
-          : '';
+          ? `Exp: ${new Date(lot.expiryRaw).toLocaleDateString()}`
+          : 'No expiry';
         const balStr = `${lot.totalQty.toLocaleString()} ${lot.unit}`;
+        const stackStr = lot.stackIds.size > 0 ? `  |  Stacks: ${[...lot.stackIds].join(', ')}` : '';
         return {
           value: lot.lotId,
-          label: `${lot.batchStr}${expiryStr} (Bal: ${balStr})`,
+          label: `${lot.batchStr}  |  ${expiryStr}  |  Bal: ${balStr}${stackStr}`,
         };
       });
-  }, [stockBalances, da?.commodity_category_id, da?.commodity_id]);
+  }, [stockBalances, commodity, da?.commodity_id, selectedStackFilter]);
 
-  if (isLoading) return <LoadingState message="Loading Dispatch Authorization..." />;
+  const stackFilterOptions = useMemo(() => {
+    const commodityTypeName = commodity?.name?.trim().toLowerCase();
+    const uniqueStacks = new Map<string, string>();
+    stockBalances.forEach((sb) => {
+      if (!sb.stack_id) return;
+      const sbName = (sb.commodity_name || '').trim().toLowerCase();
+      if (commodityTypeName && sbName !== commodityTypeName) return;
+      if (!sb.commodity_id && !commodityTypeName) return;
+      const code = sb.stack_code || `Stack #${sb.stack_id}`;
+      uniqueStacks.set(String(sb.stack_id), code);
+    });
+    return Array.from(uniqueStacks.entries()).map(([id, code]) => ({ value: id, label: code }));
+  }, [stockBalances, commodity]);
   if (error || !da) return <ErrorState message="Failed to load Dispatch Authorization." onRetry={refetch} />;
 
   const myGin = da.my_gin;
@@ -281,7 +301,7 @@ export default function StorekeeperDADetailPage() {
                 ? `${da.authorized_quantity_input} ${da.authorized_quantity_input_unit_abbreviation || da.authorized_quantity_input_unit_name || ''}`
                 : `${da.authorized_quantity} ${da.authorized_quantity_input_unit_abbreviation || da.authorized_quantity_input_unit_name || 'mt'}`
             } />
-            <DetailField label="Commodity" value={da.commodity_name || '—'} />
+            <DetailField label="Commodity" value={commodity?.name || da.commodity_name || '—'} />
           </SimpleGrid>
 
           <Divider label="Vehicle & Driver" labelPosition="left" />
@@ -319,7 +339,18 @@ export default function StorekeeperDADetailPage() {
             </Group>
           ) : showRecordingForm ? (
             <Stack gap="md" mt="xs">
-              <Divider label="Select stack and enter loaded quantity" labelPosition="left" />
+              <Divider label="Filter by stack (optional)" labelPosition="left" />
+              <SearchableSelect
+                label="Filter by Stack"
+                placeholder="All stacks (no filter)"
+                data={stackFilterOptions}
+                value={selectedStackFilter}
+                onChange={(val) => {
+                  setSelectedStackFilter(val);
+                }}
+                clearable
+                style={{ maxWidth: 300 }}
+              />
 
               <Divider label="Select batches and enter loaded quantities" labelPosition="left" />
 
@@ -403,7 +434,7 @@ export default function StorekeeperDADetailPage() {
               />
 
               <Group justify="flex-end">
-                <Button variant="light" onClick={() => setShowRecordingForm(false)}>Cancel</Button>
+                <Button variant="light" onClick={() => { setShowRecordingForm(false); setSelectedStackFilter(null); }}>Cancel</Button>
                 <Button
                   onClick={() => recordLoadingMutation.mutate()}
                   loading={recordLoadingMutation.isPending}
