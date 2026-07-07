@@ -18,7 +18,7 @@ export function AppShell() {
       }}
       padding="md"
     >
-      <MantineAppShell.Header>
+      <MantineAppShell.Header style={{ overflow: 'visible' }}>
         <Header 
           mobileOpened={mobileOpened} 
           desktopOpened={desktopOpened}

@@ -6,13 +6,13 @@ import {
   Text,
   Button,
   Group,
-  MultiSelect,
   Badge,
   Divider,
   Alert,
   Radio,
+  ActionIcon,
 } from "@mantine/core";
-import { IconInfoCircle, IconUser } from "@tabler/icons-react";
+import { IconInfoCircle, IconTrash, IconUser } from "@tabler/icons-react";
 import type { Storekeeper, Store } from "../../types/store";
 
 interface AssignStorekeeperModalProps {
@@ -20,7 +20,9 @@ interface AssignStorekeeperModalProps {
   onClose: () => void;
   storekeepers: Storekeeper[];
   stores: Store[];
+  store: Store;
   onAssign: (userId: number, storeIds: number[] | undefined) => Promise<void>;
+  onUnassign: (userId: number) => Promise<void>;
   isLoading: boolean;
 }
 
@@ -29,19 +31,16 @@ export function AssignStorekeeperModal({
   onClose,
   storekeepers,
   stores,
+  store,
   onAssign,
+  onUnassign,
   isLoading,
 }: AssignStorekeeperModalProps) {
   const [selectedStorekeeper, setSelectedStorekeeper] = useState<number | null>(
     null,
   );
-  const [assignmentType, setAssignmentType] = useState<"warehouse" | "store">(
-    "warehouse",
-  );
-  const [selectedStores, setSelectedStores] = useState<string[]>([]);
-
   // CRITICAL: Get current warehouse ID from stores to filter storekeepers
-  const currentWarehouseId = stores.length > 0 ? stores[0].warehouse_id : null;
+  const currentWarehouseId = store.warehouse_id;
   const currentWarehouseStoreIds = new Set(stores.map(s => s.id));
 
   // CRITICAL: Filter storekeepers to only show those assigned to current warehouse
@@ -64,44 +63,33 @@ export function AssignStorekeeperModal({
   const currentStorekeeper = filteredStorekeepers.find(
     (sk) => sk.id === selectedStorekeeper,
   );
+  const assignedStorekeeperIds = new Set(
+    (store.assigned_storekeepers ?? []).map((storekeeper) => storekeeper.id),
+  );
+  const assignableStorekeepers = filteredStorekeepers.filter(
+    (storekeeper) => !assignedStorekeeperIds.has(storekeeper.id),
+  );
 
   const handleSelectStorekeeper = (storekeeperId: number) => {
     setSelectedStorekeeper(storekeeperId);
 
     const selected = filteredStorekeepers.find((sk) => sk.id === storekeeperId);
-    if (!selected) {
-      setAssignmentType("warehouse");
-      setSelectedStores([]);
-      return;
-    }
-
-    setAssignmentType(selected.assignment_type);
-    setSelectedStores(selected.assigned_store_ids.map(String));
+    if (!selected) return;
   };
 
   // Reset form when modal opens/closes
   useEffect(() => {
     if (opened) {
       setSelectedStorekeeper(null);
-      setAssignmentType("warehouse");
-      setSelectedStores([]);
     }
   }, [opened]);
 
   const handleAssign = async () => {
     if (!selectedStorekeeper) return;
 
-    const storeIds =
-      assignmentType === "warehouse" ? undefined : selectedStores.map(Number);
-
-    await onAssign(selectedStorekeeper, storeIds);
+    await onAssign(selectedStorekeeper, [store.id]);
     onClose();
   };
-
-  const storeOptions = stores.map((store) => ({
-    value: store.id.toString(),
-    label: `${store.name} (${store.code})`,
-  }));
 
   return (
     <Modal
@@ -112,22 +100,69 @@ export function AssignStorekeeperModal({
     >
       <Stack gap="md">
         <Alert icon={<IconInfoCircle size={16} />} color="blue" variant="light">
-          Assign storekeepers to specific stores or give them access to all
-          stores in the warehouse.
+          Assign a warehouse storekeeper to <strong>{store.name}</strong>. A
+          warehouse-level assignment only makes the user available here; it does
+          not automatically assign them to every store.
         </Alert>
+
+        <div>
+          <Text size="sm" fw={500} mb="xs">
+            Assigned Storekeepers
+          </Text>
+          {store.assigned_storekeepers && store.assigned_storekeepers.length > 0 ? (
+            <Stack gap="xs">
+              {store.assigned_storekeepers.map((storekeeper) => (
+                <Group
+                  key={storekeeper.id}
+                  p="sm"
+                  justify="space-between"
+                  style={{
+                    border: "1px solid #e9ecef",
+                    borderRadius: "4px",
+                  }}
+                >
+                  <Group gap="xs">
+                    <IconUser size={16} />
+                    <Text size="sm" fw={500}>
+                      {storekeeper.name}
+                    </Text>
+                    <Badge size="sm" color="green">
+                      Assigned
+                    </Badge>
+                  </Group>
+                  <ActionIcon
+                    variant="subtle"
+                    color="red"
+                    aria-label={`Remove ${storekeeper.name}`}
+                    disabled={isLoading}
+                    onClick={() => onUnassign(storekeeper.id)}
+                  >
+                    <IconTrash size={16} />
+                  </ActionIcon>
+                </Group>
+              ))}
+            </Stack>
+          ) : (
+            <Alert color="gray" variant="light">
+              No storekeepers assigned to this store yet.
+            </Alert>
+          )}
+        </div>
+
+        <Divider />
 
         {/* Storekeeper Selection */}
         <div>
           <Text size="sm" fw={500} mb="xs">
-            Select Storekeeper
+            Assign Storekeeper
           </Text>
           <Stack gap="xs">
-            {filteredStorekeepers.length === 0 ? (
+            {assignableStorekeepers.length === 0 ? (
               <Alert color="yellow" variant="light">
-                No storekeepers are assigned to this warehouse yet.
+                No available storekeepers for this store.
               </Alert>
             ) : (
-              filteredStorekeepers.map((storekeeper) => (
+              assignableStorekeepers.map((storekeeper) => (
               <Group
                 key={storekeeper.id}
                 p="sm"
@@ -161,7 +196,7 @@ export function AssignStorekeeperModal({
                       }
                     >
                       {storekeeper.assignment_type === "warehouse"
-                        ? "All Stores"
+                        ? "Warehouse pool"
                         : `${storekeeper.assigned_stores.length} Store(s)`}
                     </Badge>
                   </Group>
@@ -188,54 +223,6 @@ export function AssignStorekeeperModal({
           <>
             <Divider />
 
-            {/* Assignment Type */}
-            <div>
-              <Text size="sm" fw={500} mb="xs">
-                Assignment Type
-              </Text>
-              <Radio.Group
-                value={assignmentType}
-                onChange={(value) =>
-                  setAssignmentType(value as "warehouse" | "store")
-                }
-              >
-                <Stack gap="xs">
-                  <Radio
-                    value="warehouse"
-                    label="All Stores in Warehouse"
-                    description="Storekeeper can access all stores in the warehouse"
-                  />
-                  <Radio
-                    value="store"
-                    label="Specific Stores"
-                    description="Storekeeper can only access selected stores"
-                  />
-                </Stack>
-              </Radio.Group>
-            </div>
-
-            {/* Store Selection (only if specific stores) */}
-            {assignmentType === "store" && (
-              <div>
-                <Text size="sm" fw={500} mb="xs">
-                  Select Stores
-                </Text>
-                <MultiSelect
-                  data={storeOptions}
-                  value={selectedStores}
-                  onChange={setSelectedStores}
-                  placeholder="Select stores..."
-                  searchable
-                  clearable
-                />
-                {selectedStores.length === 0 && (
-                  <Text size="xs" c="red" mt="xs">
-                    Please select at least one store
-                  </Text>
-                )}
-              </div>
-            )}
-
             {/* Summary */}
             <Alert color="gray" variant="light">
               <Text size="sm" fw={500} mb={4}>
@@ -243,13 +230,7 @@ export function AssignStorekeeperModal({
               </Text>
               <Text size="sm">
                 {currentStorekeeper?.name} will be assigned to{" "}
-                {assignmentType === "warehouse" ? (
-                  <strong>
-                    all stores in {currentStorekeeper?.warehouse_name}
-                  </strong>
-                ) : (
-                  <strong>{selectedStores.length} selected store(s)</strong>
-                )}
+                <strong>{store.name}</strong>.
               </Text>
             </Alert>
           </>
@@ -263,10 +244,7 @@ export function AssignStorekeeperModal({
           <Button
             onClick={handleAssign}
             loading={isLoading}
-            disabled={
-              !selectedStorekeeper ||
-              (assignmentType === "store" && selectedStores.length === 0)
-            }
+            disabled={!selectedStorekeeper}
           >
             Assign Storekeeper
           </Button>

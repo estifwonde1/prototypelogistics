@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import {
@@ -79,11 +79,13 @@ function formatPrintValue(value: string | number | null | undefined): string {
 function GrnDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const { can } = usePermission();
   const printRef = useRef<HTMLDivElement>(null);
   const currentUser = useAuthStore((s) => s.userId);
+  const returnTo = searchParams.get('returnTo');
 
   const { data: grn, isLoading, error, refetch } = useQuery({
     queryKey: ['grn', id],
@@ -433,9 +435,9 @@ function GrnDetailPage() {
           <Button
             variant="subtle"
             leftSection={<IconArrowLeft size={16} />}
-            onClick={() => navigate('/grns')}
+            onClick={() => navigate(returnTo || '/grns')}
           >
-            Back to GRNs
+            {returnTo ? 'Back' : 'Back to GRNs'}
           </Button>
           <div>
             <Title order={2}>GRN: {grn.reference_no}</Title>
@@ -476,13 +478,6 @@ function GrnDetailPage() {
                 Order RO-{grn.receipt_order.id} • {grn.receipt_order.source_type}: {grn.receipt_order.source_name}
               </Text>
             </div>
-            <Button
-              variant="light"
-              size="sm"
-              onClick={() => navigate(`/receipt-orders/${grn.receipt_order_id}`)}
-            >
-              View Order
-            </Button>
           </Group>
         </Card>
       )}

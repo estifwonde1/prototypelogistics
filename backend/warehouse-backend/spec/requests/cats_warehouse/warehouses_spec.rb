@@ -41,6 +41,127 @@ RSpec.describe "Cats Warehouse Warehouses", type: :request do
     )
   end
 
+  def create_warehouse(hub:, name: "Warehouse")
+    Cats::Warehouse::Warehouse.create!(
+      hub: hub,
+      location: hub.location,
+      name: "#{name} #{SecureRandom.hex(3)}",
+      managed_under: "Hub",
+      ownership_type: "self_owned"
+    )
+  end
+
+  it "returns live Warehouse Manager contact details from assignments" do
+    admin = create_user(role_name: "Admin")
+    warehouse_manager = create_user(
+      role_name: "Warehouse Manager",
+      first_name: "Tigist",
+      last_name: "Wondimu",
+      phone_number: "0911111117"
+    )
+    headers = auth_headers_for(admin)
+    hub = create_hub
+    warehouse = create_warehouse(hub: hub)
+
+    Cats::Warehouse::WarehouseContacts.create!(
+      warehouse: warehouse,
+      manager_name: "Samuel Alemu",
+      contact_phone: "0913000002",
+      contact_email: "stale@example.com"
+    )
+
+    post "/cats_warehouse/v1/admin/user_assignments",
+         params: {
+           payload: {
+             user_id: warehouse_manager.id,
+             role_name: "Warehouse Manager",
+             warehouse_ids: [warehouse.id]
+           }
+         },
+         as: :json,
+         headers: headers
+    expect(response).to have_http_status(:created)
+
+    get "/cats_warehouse/v1/warehouses/#{warehouse.id}", headers: headers
+    expect(response).to have_http_status(:ok)
+    contacts = parsed_response.dig("data", "warehouse_contacts")
+    expect(contacts["manager_name"]).to eq("Tigist Wondimu")
+    expect(contacts["contact_phone"]).to eq("0911111117")
+    expect(contacts["contact_email"]).to eq(warehouse_manager.email)
+
+    get "/cats_warehouse/v1/warehouses/#{warehouse.id}/contacts", headers: headers
+    expect(response).to have_http_status(:ok)
+    expect(parsed_response.dig("data", "warehouse_contacts", "manager_name")).to eq("Tigist Wondimu")
+    expect(parsed_response.dig("data", "warehouse_contacts", "contact_phone")).to eq("0911111117")
+    expect(parsed_response.dig("data", "warehouse_contacts", "contact_email")).to eq(warehouse_manager.email)
+  end
+
+  it "prefers the most recent Warehouse Manager when duplicate assignments exist" do
+    admin = create_user(role_name: "Admin")
+    stale_manager = create_user(
+      role_name: "Warehouse Manager",
+      first_name: "test",
+      last_name: "warehouse",
+      phone_number: "0910989875"
+    )
+    current_manager = create_user(
+      role_name: "Warehouse Manager",
+      first_name: "Tigist",
+      last_name: "Wondimu",
+      phone_number: "0911111117"
+    )
+    headers = auth_headers_for(admin)
+    warehouse = create_warehouse(hub: create_hub)
+
+    Cats::Warehouse::UserAssignment.create!(
+      user: stale_manager,
+      warehouse: warehouse,
+      role_name: "Warehouse Manager"
+    )
+    Cats::Warehouse::UserAssignment.create!(
+      user: current_manager,
+      warehouse: warehouse,
+      role_name: "Warehouse Manager"
+    )
+
+    get "/cats_warehouse/v1/warehouses/#{warehouse.id}", headers: headers
+    expect(response).to have_http_status(:ok)
+    contacts = parsed_response.dig("data", "warehouse_contacts")
+    expect(contacts["manager_name"]).to eq("Tigist Wondimu")
+    expect(contacts["contact_phone"]).to eq("0911111117")
+    expect(contacts["contact_email"]).to eq(current_manager.email)
+  end
+
+  it "removes other Warehouse Manager assignments when a new manager is assigned" do
+    admin = create_user(role_name: "Admin")
+    stale_manager = create_user(role_name: "Warehouse Manager", first_name: "Stale", last_name: "Manager")
+    current_manager = create_user(role_name: "Warehouse Manager", first_name: "Tigist", last_name: "Wondimu")
+    headers = auth_headers_for(admin)
+    warehouse = create_warehouse(hub: create_hub)
+
+    Cats::Warehouse::UserAssignment.create!(
+      user: stale_manager,
+      warehouse: warehouse,
+      role_name: "Warehouse Manager"
+    )
+
+    post "/cats_warehouse/v1/admin/user_assignments",
+         params: {
+           payload: {
+             user_id: current_manager.id,
+             role_name: "Warehouse Manager",
+             warehouse_ids: [warehouse.id]
+           }
+         },
+         as: :json,
+         headers: headers
+    expect(response).to have_http_status(:created)
+
+    expect(
+      Cats::Warehouse::UserAssignment.where(warehouse_id: warehouse.id, role_name: "Warehouse Manager").pluck(:user_id)
+    ).to eq([current_manager.id])
+  end
+
   it "derives warehouse location and managed_under from the hub" do
     admin = create_user(role_name: "Admin")
     headers = auth_headers_for(admin)

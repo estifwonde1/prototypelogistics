@@ -4,7 +4,7 @@ module Cats
       def show
         warehouse = policy_scope(Warehouse).find(params[:warehouse_id])
         authorize warehouse
-        render_resource(warehouse.warehouse_contacts, serializer: WarehouseContactsSerializer)
+        render_success(warehouse_contacts: warehouse.live_warehouse_contact_payload)
       end
 
       def create

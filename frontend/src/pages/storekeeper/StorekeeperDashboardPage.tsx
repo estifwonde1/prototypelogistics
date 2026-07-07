@@ -11,7 +11,6 @@ import {
   TextInput,
   Paper,
   Box,
-  LoadingOverlay,
   List,
   ThemeIcon,
   Alert,
@@ -125,9 +124,6 @@ export default function StorekeeperDashboardPage() {
 
   return (
     <Stack gap="xl">
-      <Box pos="relative">
-        <LoadingOverlay visible={isLoading || stockLoading} overlayProps={{ blur: 2 }} />
-        
         {/* Header */}
         <Group justify="space-between" align="flex-start">
           <div>
@@ -143,11 +139,11 @@ export default function StorekeeperDashboardPage() {
           </div>
         </Group>
 
-        {/* Quick Search for Driver Arrival */}
+        {/* Quick Search for Receipt */}
         <Paper withBorder p="lg" radius="md" mt="md" bg="blue.0">
           <Group align="flex-end" gap="md">
             <Stack gap={4} flex={1}>
-              <Text fw={700} size="sm" c="blue.9">Driver Arrival</Text>
+              <Text fw={700} size="sm" c="blue.9">Find Delivery</Text>
               <TextInput 
                 placeholder="Enter Waybill or Dispatch Reference Number (e.g. WB-12345)" 
                 leftSection={<IconSearch size={16} />}
@@ -342,7 +338,7 @@ export default function StorekeeperDashboardPage() {
                   <List.Item key={stock.id}>
                     <Group justify="space-between" style={{ width: '100%' }}>
                       <Text size="sm" fw={500}>{stock.commodity_name}</Text>
-                      <Text size="sm" fw={700}>{(stock.quantity || 0).toLocaleString()} {stock.unit_name}</Text>
+                      <Text size="sm" fw={700}>{(stock.entered_quantity ?? (stock.quantity || 0)).toLocaleString()} {stock.entered_unit_name || stock.unit_name}</Text>
                     </Group>
                   </List.Item>
                 ))}
@@ -515,7 +511,6 @@ export default function StorekeeperDashboardPage() {
             )}
           </Stack>
         </Paper>
-      </Box>
     </Stack>
   );
 }

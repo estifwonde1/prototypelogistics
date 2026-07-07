@@ -37,6 +37,10 @@ module Cats
         object.unit&.abbreviation
       end
 
+      def quantity
+        object.quantity
+      end
+
       def lot_batch_no
         object.inventory_lot&.batch_no
       end

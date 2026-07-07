@@ -1,3 +1,4 @@
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect */
 import { useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
@@ -9,7 +10,6 @@ import {
   Group,
   TextInput,
   NumberInput,
-  Select,
   Switch,
   Card,
   Text,
@@ -31,6 +31,9 @@ import type { Store } from "../../types/store";
 import {
   allocatedStoreMt,
   storeUsableVolumeM3,
+  warehouseGeometricVolumeM3,
+  storeFullyOccupiesWarehouse,
+  formatFullWarehouseCapacityLabel,
   storeDimensionHints,
   formatFootprintHint,
   dimensionAxisStatus,
@@ -48,6 +51,7 @@ function StoreFormPage() {
   const queryClient = useQueryClient();
   const isEdit = !!id;
   const preselectedWarehouseId = searchParams.get("warehouse_id");
+  const returnToWarehouse = searchParams.get("return_to") === "warehouse";
   const hydratedStoreIdRef = useRef<number | null>(null);
 
   const { data: store, isLoading } = useQuery({
@@ -102,6 +106,33 @@ function StoreFormPage() {
     },
   });
 
+  const resolveWarehouseReturnId = (warehouseId?: number | string | null) => {
+    const whId =
+      warehouseId ??
+      preselectedWarehouseId ??
+      (isEdit ? store?.warehouse_id : undefined) ??
+      form.values.warehouse_id;
+    return whId ? Number(whId) : null;
+  };
+
+  const navigateAfterSave = (warehouseId?: number | string | null) => {
+    const whId = resolveWarehouseReturnId(warehouseId);
+    if (returnToWarehouse && whId) {
+      navigate(`/warehouses/${whId}?tab=stores`);
+      return;
+    }
+    navigate("/stores");
+  };
+
+  const navigateBack = () => {
+    const whId = resolveWarehouseReturnId();
+    if (returnToWarehouse && whId) {
+      navigate(`/warehouses/${whId}?tab=stores`);
+      return;
+    }
+    navigate("/stores");
+  };
+
   useEffect(() => {
     if (store && hydratedStoreIdRef.current !== store.id) {
       form.setValues({
@@ -137,7 +168,7 @@ function StoreFormPage() {
         message: "Store created successfully",
         color: "green",
       });
-      navigate("/stores");
+      navigateAfterSave();
     },
     onError: (error: any) => {
       notifications.show({
@@ -151,7 +182,7 @@ function StoreFormPage() {
 
   const updateMutation = useMutation({
     mutationFn: (data: Partial<Store>) => updateStore(Number(id), data),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["stores"] });
       queryClient.invalidateQueries({ queryKey: ["stores", id] });
       notifications.show({
@@ -159,7 +190,7 @@ function StoreFormPage() {
         message: "Store updated successfully",
         color: "green",
       });
-      navigate("/stores");
+      navigateAfterSave(variables.warehouse_id);
     },
     onError: (error: any) => {
       notifications.show({
@@ -266,7 +297,15 @@ function StoreFormPage() {
     Number(selectedWarehouse?.capacity?.usable_storage_capacity_mt) ||
     warehouseCapacityPreview?.capacityMt ||
     0;
-  const proRataMt = allocatedStoreMt(storeVolumeM3, warehouseUsableVolume, warehouseUsableMt);
+  const warehouseGeometricVolume = useMemo(() => {
+    const cap = selectedWarehouse?.capacity;
+    if (!cap?.capacity_established) return 0;
+    return (
+      warehouseGeometricVolumeM3(cap.length_m ?? 0, cap.width_m ?? 0, cap.height_m ?? 0) ||
+      warehouseUsableVolume
+    );
+  }, [selectedWarehouse, warehouseUsableVolume]);
+  const proRataMt = allocatedStoreMt(storeVolumeM3, warehouseGeometricVolume, warehouseUsableMt);
   const warehouseRemainingMt =
     selectedWarehouse?.capacity?.remaining_capacity_mt != null
       ? Number(selectedWarehouse.capacity.remaining_capacity_mt)
@@ -344,9 +383,33 @@ function StoreFormPage() {
     !!form.values.warehouse_id &&
     capacityEstablished &&
     hasStoreDimensions &&
-    warehouseUsableVolume > 0 &&
+    warehouseGeometricVolume > 0 &&
     warehouseUsableMt > 0;
   const displayProRataMt = canEstimateMt ? proRataMt : null;
+  const warehouseFullyAllocated =
+    !isEdit &&
+    !!selectedWarehouse?.capacity &&
+    siblingStores.some((s) => storeFullyOccupiesWarehouse(s, selectedWarehouse.capacity));
+  const formFullyOccupiesWarehouse =
+    capacityEstablished &&
+    dimensionsAllValid &&
+    storeFullyOccupiesWarehouse(
+      {
+        length: form.values.length,
+        width: form.values.width,
+        height: form.values.height,
+        has_gangway: form.values.has_gangway,
+      },
+      selectedWarehouse?.capacity
+    );
+  const otherStoresCount = isEdit
+    ? siblingStores.filter((s) => s.id !== Number(id)).length
+    : siblingStores.length;
+  const isSingleStoreWarehouse = formFullyOccupiesWarehouse && otherStoresCount === 0;
+  const fullWarehouseCapacityLabel = formatFullWarehouseCapacityLabel(
+    warehouseUsableMt,
+    warehouseUsablePct
+  );
   const capacityExceedsWarehouse =
     dimensionsAllValid &&
     displayProRataMt != null &&
@@ -377,7 +440,7 @@ function StoreFormPage() {
         <Button
           variant="subtle"
           leftSection={<IconArrowLeft size={16} />}
-          onClick={() => navigate("/stores")}
+          onClick={navigateBack}
         >
           Back
         </Button>
@@ -405,7 +468,7 @@ function StoreFormPage() {
                 />
               </Group>
 
-              <Select
+              <SearchableSelect
                 label="Warehouse"
                 placeholder="Select warehouse"
                 required
@@ -430,10 +493,36 @@ function StoreFormPage() {
               Configure length, width, height, and usable floor % on the warehouse Capacity tab before adding stores.
             </Alert>
           )}
-          {warehouseRemainingMt != null && capacityEstablished && (
+          {warehouseRemainingMt != null && capacityEstablished && !formFullyOccupiesWarehouse && (
             <Alert color="blue" variant="light">
               Warehouse has {Number(warehouseRemainingMt).toLocaleString(undefined, { maximumFractionDigits: 2 })} MT remaining of{" "}
               {Number(warehouseUsableMt).toLocaleString()} MT total capacity.
+            </Alert>
+          )}
+          {formFullyOccupiesWarehouse && (
+            <Alert
+              color="teal"
+              variant="light"
+              title={isSingleStoreWarehouse ? "Single-store warehouse" : "Uses entire warehouse capacity"}
+            >
+              {isSingleStoreWarehouse ? (
+                <>
+                  Like &quot;Use entire warehouse as a single store&quot; on the Capacity tab: these dimensions use the
+                  full warehouse capacity ({fullWarehouseCapacityLabel}). No additional stores can be created until you
+                  reduce this store&apos;s size.
+                </>
+              ) : (
+                <>
+                  These dimensions use the full warehouse capacity ({fullWarehouseCapacityLabel}). No additional stores
+                  can be created until you reduce this store&apos;s size.
+                </>
+              )}
+            </Alert>
+          )}
+          {warehouseFullyAllocated && (
+            <Alert color="orange" title="Cannot add another store">
+              This warehouse is fully occupied by an existing store. Edit that store and reduce its dimensions before
+              adding another store.
             </Alert>
           )}
 
@@ -591,7 +680,7 @@ function StoreFormPage() {
                           displayProRataMt !== null
                             ? `Pro-rata share of warehouse usable capacity.\n` +
                               `Store volume (${Number(storeVolumeM3).toFixed(1)} m³) ÷ ` +
-                              `Warehouse volume (${warehouseUsableVolume.toFixed(1)} m³) × ` +
+                              `Warehouse building volume (${warehouseGeometricVolume.toFixed(1)} m³) × ` +
                               `${warehouseUsableMt.toFixed(1)} MT`
                             : dimensionsAllValid
                               ? "Establish warehouse dimensions and capacity to see this estimate."
@@ -624,9 +713,11 @@ function StoreFormPage() {
                   description={
                     capacityExceedsWarehouse
                       ? undefined
-                      : displayProRataMt !== null
-                        ? "Pro-rata share of warehouse MT capacity · Within limit"
-                        : !form.values.warehouse_id
+                      : formFullyOccupiesWarehouse
+                        ? "Uses entire warehouse MT capacity — no additional stores can be created"
+                        : displayProRataMt !== null
+                          ? "Pro-rata share of warehouse MT capacity · Within limit"
+                          : !form.values.warehouse_id
                           ? "Choose a warehouse to calculate MT share"
                           : !capacityEstablished
                             ? "Requires established warehouse capacity"
@@ -637,10 +728,16 @@ function StoreFormPage() {
                 />
               </SimpleGrid>
 
-              {capacityEstablished && (
+              {capacityEstablished && formFullyOccupiesWarehouse && (
+                <Alert color="teal" variant="light" title="No room for more stores">
+                  Saving with these dimensions reserves all warehouse space and MT capacity for this store only.
+                </Alert>
+              )}
+              {capacityEstablished && !formFullyOccupiesWarehouse && (
                 <Text size="xs" c="dimmed">
-                  Warehouse usable floor ({warehouseUsablePct}%) is configured on the warehouse Capacity tab only.
-                  Store and stack capacity use full dimensions.
+                  Warehouse usable floor ({warehouseUsablePct}%) is configured on the warehouse Capacity tab and
+                  applied via the MT budget. A store matching warehouse dimensions receives the full warehouse MT
+                  capacity.
                 </Text>
               )}
               <Text size="xs" c="dimmed">
@@ -693,7 +790,7 @@ function StoreFormPage() {
           </Card>
 
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => navigate("/stores")}>
+            <Button variant="default" onClick={navigateBack}>
               Cancel
             </Button>
             <Button
@@ -703,7 +800,8 @@ function StoreFormPage() {
               disabled={
                 (!!selectedWarehouse && !capacityEstablished) ||
                 (!!dimensionHints && !dimensionsAllValid) ||
-                capacityExceedsWarehouse
+                capacityExceedsWarehouse ||
+                warehouseFullyAllocated
               }
             >
               {isEdit ? "Update Store" : "Create Store"}

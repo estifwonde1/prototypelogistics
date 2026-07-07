@@ -1,10 +1,10 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { notifications } from '@mantine/notifications';
 import { useAuthStore, type OfficerAssignment } from '../store/authStore';
-import { normalizeRoleSlug, getDefaultRouteForRole, type RoleSlug } from '../contracts/warehouse';
-import { postRoleSwitch, type StorekeeperStore } from '../api/me';
+import { normalizeRoleSlug } from '../contracts/warehouse';
+import type { StorekeeperStore } from '../api/me';
+import { commitWorkspaceSwitch, prefetchDashboardForRole } from '../utils/workspaceSwitch';
 
 /**
  * Determines whether the current facility (hub/warehouse/store) is compatible
@@ -38,65 +38,23 @@ export type SwitchState =
 export function useRoleSwitcher() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { assignments, activeAssignment, role: currentRole, setActiveAssignment } = useAuthStore();
+  const { assignments, activeAssignment, role: currentRole } = useAuthStore();
   const [switchState, setSwitchState] = useState<SwitchState>({ type: 'idle' });
 
-  /**
-   * Commits the role switch: updates the store, invalidates all queries,
-   * fires the audit log, and navigates to the new role's default route.
-   */
   const commitSwitch = useCallback(
     async (assignment: OfficerAssignment) => {
-      const toRole = normalizeRoleSlug(assignment.role_name) as RoleSlug | null;
-      if (!toRole) return;
-
-      const facilityLabel =
-        assignment.hub?.name ??
-        assignment.warehouse?.name ??
-        assignment.store?.name ??
-        assignment.location?.name ??
-        'Federal';
-
-      // 1. Update local state immediately (optimistic)
-      setActiveAssignment(assignment);
-
-      // 2. Wipe all cached queries so the new role sees fresh scoped data
-      queryClient.clear();
-
-      // 3. Navigate to the new role's default route
-      navigate(getDefaultRouteForRole(toRole), { replace: true });
-
-      // 4. Fire audit log in the background (non-blocking)
-      postRoleSwitch({
-        assignment_id: assignment.id,
-        from_role: currentRole,
-        to_role: assignment.role_name,
-        facility_name: facilityLabel,
-      }).catch(() => {
-        // Audit failure is non-fatal — the switch already happened
+      await commitWorkspaceSwitch({
+        assignment,
+        queryClient,
+        navigate,
+        fromRole: currentRole,
+        showNotification: true,
       });
-
-      notifications.show({
-        title: 'Role switched',
-        message: `Now operating as ${assignment.role_name} at ${facilityLabel}`,
-        color: 'blue',
-        autoClose: 3000,
-      });
-
       setSwitchState({ type: 'idle' });
     },
-    [currentRole, navigate, queryClient, setActiveAssignment]
+    [currentRole, navigate, queryClient]
   );
 
-  /**
-   * Main entry point. Call this with the role_name string the user clicked.
-   *
-   * Decision tree:
-   * 1. Warehouse Manager → Storekeeper (dual-role): open store picker
-   * 2. One matching assignment that shares the current facility: switch directly
-   * 3. One matching assignment with a different facility: switch directly
-   * 4. Multiple matching assignments: open facility picker
-   */
   const switchToRole = useCallback(
     (targetRoleName: string) => {
       const candidates = assignments.filter(
@@ -105,9 +63,11 @@ export function useRoleSwitcher() {
 
       if (candidates.length === 0) return;
 
+      const targetSlug = normalizeRoleSlug(targetRoleName);
+      prefetchDashboardForRole(targetSlug);
+
       // Special case: WM switching to Storekeeper — they need to pick a store
       const currentRoleSlug = normalizeRoleSlug(currentRole ?? '');
-      const targetSlug = normalizeRoleSlug(targetRoleName);
       if (
         currentRoleSlug === 'warehouse_manager' &&
         targetSlug === 'storekeeper'
@@ -135,9 +95,6 @@ export function useRoleSwitcher() {
     [assignments, activeAssignment, currentRole, commitSwitch]
   );
 
-  /**
-   * Called when the user picks a facility from the FacilityPickerModal.
-   */
   const onFacilitySelected = useCallback(
     (assignment: OfficerAssignment) => {
       void commitSwitch(assignment);
@@ -145,14 +102,8 @@ export function useRoleSwitcher() {
     [commitSwitch]
   );
 
-  /**
-   * Called when the user picks a store from the StorekeeperStorePickerModal.
-   * We synthesise a virtual OfficerAssignment from the store data so the
-   * existing commitSwitch path works unchanged.
-   */
   const onStoreSelected = useCallback(
     (store: StorekeeperStore) => {
-      // Find the real Storekeeper assignment for this warehouse (if any)
       const realAssignment = assignments.find(
         (a) =>
           a.role_name === 'Storekeeper' &&
@@ -164,9 +115,6 @@ export function useRoleSwitcher() {
         return;
       }
 
-      // No pre-existing Storekeeper assignment for this store — build a synthetic one.
-      // The backend will validate via the assignment_id audit call, but the frontend
-      // can still operate using the WM's warehouse assignment as context.
       const wmAssignment = assignments.find(
         (a) =>
           a.role_name === 'Warehouse Manager' &&
@@ -176,7 +124,7 @@ export function useRoleSwitcher() {
       if (!wmAssignment) return;
 
       const synthetic: OfficerAssignment = {
-        id: wmAssignment.id, // reuse WM assignment id for audit
+        id: wmAssignment.id,
         role_name: 'Storekeeper',
         warehouse: wmAssignment.warehouse,
         store: { id: store.id, name: store.name },

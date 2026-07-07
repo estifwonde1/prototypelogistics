@@ -13,6 +13,8 @@ module Cats
 
       def show?
         return false if level_excluded?
+        return false if facility_receipt_role? && record.is_a?(ReceiptOrder) && record.status_draft?
+
         index?
       end
 
@@ -105,6 +107,10 @@ module Cats
 
       def officer?
         super
+      end
+
+      def facility_receipt_role?
+        hub_manager? || warehouse_manager? || storekeeper?
       end
 
       # Level exclusion check: if the record's hierarchical_level is strictly higher

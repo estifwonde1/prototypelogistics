@@ -26,11 +26,11 @@ RSpec.describe Cats::Warehouse::AccessContext, type: :service do
         )
       end
 
-      it "returns all stores in the assigned warehouse" do
+      it "returns no stores until a store is explicitly assigned" do
         access = described_class.new(user: storekeeper)
         store_ids = access.assigned_store_ids
 
-        expect(store_ids).to contain_exactly(store1.id, store2.id, store3.id)
+        expect(store_ids).to be_empty
       end
     end
 
@@ -110,6 +110,38 @@ RSpec.describe Cats::Warehouse::AccessContext, type: :service do
         expect(warehouse_ids).to contain_exactly(warehouse.id)
       end
     end
+
+    context "with multiple roles (Hub Manager and Warehouse Manager)" do
+      let(:user) { create(:cats_core_user) }
+      let(:hub_warehouse) { create(:cats_warehouse_warehouse, hub: hub) }
+      let(:standalone_warehouse) { create(:cats_warehouse_warehouse, hub: nil) }
+
+      before do
+        # User is Hub Manager for the hub
+        Cats::Warehouse::UserAssignment.create!(
+          user: user,
+          role_name: "Hub Manager",
+          hub: hub
+        )
+        # User is Warehouse Manager for the standalone warehouse
+        Cats::Warehouse::UserAssignment.create!(
+          user: user,
+          role_name: "Warehouse Manager",
+          warehouse: standalone_warehouse
+        )
+        # Explicitly assign roles
+        user.roles << Cats::Core::Role.find_or_create_by!(name: "Hub Manager")
+        user.roles << Cats::Core::Role.find_or_create_by!(name: "Warehouse Manager")
+      end
+
+      it "includes both hub warehouses and standalone warehouses" do
+        access = described_class.new(user: user)
+        warehouse_ids = access.accessible_warehouse_ids.pluck(:id)
+
+        expect(warehouse_ids).to include(hub_warehouse.id)
+        expect(warehouse_ids).to include(standalone_warehouse.id)
+      end
+    end
   end
 
   describe "#storekeeper_warehouse_ids" do
@@ -147,6 +179,31 @@ RSpec.describe Cats::Warehouse::AccessContext, type: :service do
 
         expect(warehouse_ids).to be_empty
       end
+    end
+  end
+
+  describe "#can_access_warehouse?" do
+    let(:admin) { create(:cats_core_user, role_name: "Admin") }
+    let(:other_warehouse) { create(:cats_warehouse_warehouse) }
+
+    it "allows admin to access any warehouse" do
+      access = described_class.new(user: admin)
+
+      expect(access.can_access_warehouse?(warehouse.id)).to be(true)
+      expect(access.can_access_warehouse?(other_warehouse.id)).to be(true)
+    end
+
+    it "denies warehouse manager access to unassigned warehouses" do
+      wm = create(:cats_core_user, role_name: "Warehouse Manager")
+      Cats::Warehouse::UserAssignment.create!(
+        user: wm,
+        role_name: "Warehouse Manager",
+        warehouse: warehouse
+      )
+      access = described_class.new(user: wm)
+
+      expect(access.can_access_warehouse?(warehouse.id)).to be(true)
+      expect(access.can_access_warehouse?(other_warehouse.id)).to be(false)
     end
   end
 end

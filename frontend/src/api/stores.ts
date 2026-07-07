@@ -41,3 +41,14 @@ export const assignStorekeeper = async (
   );
   return response.data.data;
 };
+
+export const unassignStorekeeper = async (
+  storeId: number,
+  userId: number
+): Promise<{ store_id: number; user_id: number; removed: boolean }> => {
+  const response = await apiClient.delete<ApiResponse<{ store_id: number; user_id: number; removed: boolean }>>(
+    `/stores/${storeId}/unassign_storekeeper`,
+    { data: { user_id: userId } }
+  );
+  return response.data.data;
+};

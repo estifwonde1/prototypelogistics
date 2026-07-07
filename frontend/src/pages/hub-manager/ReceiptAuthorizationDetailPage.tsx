@@ -2,18 +2,8 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  Card,
-  Text,
-  Badge,
-  SimpleGrid,
-  Alert,
-  Select,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, Card, Text, Badge, SimpleGrid, Alert } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { IconAlertCircle, IconCheck, IconTruck } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import {
@@ -268,7 +258,7 @@ export default function ReceiptAuthorizationDetailPage() {
             )}
             {showAssignBlock && (
               <Stack gap="xs">
-                <Select
+                <SearchableSelect
                   label="Storekeeper"
                   placeholder={storekeepersLoading ? 'Loading…' : 'Select storekeeper'}
                   data={storekeeperOptions}
@@ -278,7 +268,7 @@ export default function ReceiptAuthorizationDetailPage() {
                   disabled={storekeepersLoading || storekeeperOptions.length === 0}
                 />
                 {storeOptions.length > 0 && (
-                  <Select
+                  <SearchableSelect
                     label="Store (optional)"
                     placeholder="Use storekeeper default"
                     data={storeOptions}

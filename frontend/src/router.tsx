@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter, Navigate, useParams } from 'react-router-dom';
 import { lazy, Suspense, useEffect } from 'react';
 import type { ComponentType, ReactNode } from 'react';
 import { Center, Loader } from '@mantine/core';
@@ -48,62 +48,63 @@ function lazyWithReload<T extends ComponentType<unknown>>(
 }
 
 // Lazy load pages
-const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
-const RoleSelectionPage = lazy(() => import('./pages/auth/RoleSelectionPage'));
-const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage'));
-const OfficerDashboardPage = lazy(() => import('./pages/officer/OfficerDashboardPage'));
-const HubManagerDashboardPage = lazy(() => import('./pages/hubs/HubManagerDashboardPage'));
-const WarehouseManagerDashboardPage = lazy(() => import('./pages/warehouses/WarehouseManagerDashboardPage'));
-const StorekeeperDashboardPage = lazy(() => import('./pages/storekeeper/StorekeeperDashboardPage'));
-const FacilitiesOverviewPage = lazy(() => import('./pages/officer/FacilitiesOverviewPage'));
-const ReceiptOrdersListPage = lazy(() => import('./pages/officer/ReceiptOrdersListPage'));
-const ReceiptOrderFormPage = lazy(() => import('./pages/officer/ReceiptOrderFormPage'));
-const ReceiptOrderDetailPage = lazy(() => import('./pages/officer/ReceiptOrderDetailPage'));
-const CommodityFormPage = lazy(() => import('./pages/officer/CommodityFormPage'));
-const CommoditiesSetupPage = lazy(() => import('./pages/admin/setup/CommoditiesSetupPage'));
-const DispatchOrdersListPage = lazy(() => import('./pages/officer/DispatchOrdersListPage'));
-const DispatchOrderFormPage = lazy(() => import('./pages/officer/DispatchOrderFormPage'));
-const DispatchOrderDetailPage = lazy(() => import('./pages/officer/DispatchOrderDetailPage'));
-const HubListPage = lazy(() => import('./pages/hubs/HubListPage'));
-const HubDetailPage = lazy(() => import('./pages/hubs/HubDetailPage'));
-const HubFormPage = lazy(() => import('./pages/hubs/HubFormPage'));
-const WarehouseListPage = lazy(() => import('./pages/warehouses/WarehouseListPage'));
-const WarehouseDetailPage = lazy(() => import('./pages/warehouses/WarehouseDetailPage'));
-const WarehouseFormPage = lazy(() => import('./pages/warehouses/WarehouseFormPage'));
-const StoreListPage = lazy(() => import('./pages/stores/StoreListPage'));
-const StoreDetailPage = lazy(() => import('./pages/stores/StoreDetailPage'));
-const StoreFormPage = lazy(() => import('./pages/stores/StoreFormPage'));
-const StackListPage = lazy(() => import('./pages/stacks/StackListPage'));
-const StackFormPage = lazy(() => import('./pages/stacks/StackFormPage'));
-const StockBalancePage = lazy(() => import('./pages/stock/StockBalancePage'));
-const GrnListPage = lazy(() => import('./pages/grns/GrnListPage'));
-const GrnCreatePage = lazy(() => import('./pages/grns/GrnCreatePage'));
-const GrnDetailPage = lazy(() => import('./pages/grns/GrnDetailPage'));
-const GinListPage = lazy(() => import('./pages/gins/GinListPage'));
-const GinCreatePage = lazy(() => import('./pages/gins/GinCreatePage'));
-const GinDetailPage = lazy(() => import('./pages/gins/GinDetailPage'));
-const InspectionListPage = lazy(() => import('./pages/inspections/InspectionListPage'));
-const InspectionCreatePage = lazy(() => import('./pages/inspections/InspectionCreatePage'));
-const InspectionDetailPage = lazy(() => import('./pages/inspections/InspectionDetailPage'));
-const WaybillListPage = lazy(() => import('./pages/waybills/WaybillListPage'));
-const WaybillCreatePage = lazy(() => import('./pages/waybills/WaybillCreatePage'));
-const WaybillDetailPage = lazy(() => import('./pages/waybills/WaybillDetailPage'));
-const AdminUsersPage = lazy(() => import('./pages/admin/users/AdminUsersPage'));
-const UserAssignmentsPage = lazy(() => import('./pages/admin/assignments/UserAssignmentsPage'));
-const RolesManagementPage = lazy(() => import('./pages/admin/roles/RolesManagementPage'));
-const LocationsSetupPage = lazy(() => import('./pages/admin/setup/LocationsSetupPage'));
-const HubSetupPage = lazy(() => import('./pages/admin/setup/HubSetupPage'));
-const WarehouseSetupPage = lazy(() => import('./pages/admin/setup/WarehouseSetupPage'));
-const StorekeeperAssignmentsPage = lazy(() => import('./pages/storekeeper/StorekeeperAssignmentsPage'));
-const DispatchListPage = lazy(() => import('./pages/dispatches/DispatchListPage'));
-const BinCardReportPage = lazy(() => import('./pages/reports/BinCardReportPage'));
-const StackLayoutPage = lazy(() => import('./pages/stacks/StackLayoutPage'));
-const TransferRequestsPage = lazy(() => import('./pages/stock/TransferRequestsPage'));
-const ReceiptAuthorizationListPage = lazy(() => import('./pages/hub-manager/ReceiptAuthorizationListPage'));
-const ReceiptAuthorizationFormPage = lazy(() => import('./pages/hub-manager/ReceiptAuthorizationFormPage'));
-const ReceiptAuthorizationDetailPage = lazy(() => import('./pages/hub-manager/ReceiptAuthorizationDetailPage'));
-const StorekeeperRAListPage = lazy(() => import('./pages/storekeeper/StorekeeperRAListPage'));
-const StorekeeperRADetailPage = lazy(() => import('./pages/storekeeper/StorekeeperRADetailPage'));
+const LoginPage = lazyWithReload(() => import('./pages/auth/LoginPage'));
+const RoleSelectionPage = lazyWithReload(() => import('./pages/auth/RoleSelectionPage'));
+const DashboardPage = lazyWithReload(() => import('./pages/dashboard/DashboardPage'));
+const OfficerDashboardPage = lazyWithReload(() => import('./pages/officer/OfficerDashboardPage'));
+const HubManagerDashboardPage = lazyWithReload(() => import('./pages/hubs/HubManagerDashboardPage'));
+const WarehouseManagerDashboardPage = lazyWithReload(() => import('./pages/warehouses/WarehouseManagerDashboardPage'));
+const StorekeeperDashboardPage = lazyWithReload(() => import('./pages/storekeeper/StorekeeperDashboardPage'));
+const FacilitiesOverviewPage = lazyWithReload(() => import('./pages/officer/FacilitiesOverviewPage'));
+const ReceiptOrdersListPage = lazyWithReload(() => import('./pages/officer/ReceiptOrdersListPage'));
+const ReceiptOrderFormPage = lazyWithReload(() => import('./pages/officer/ReceiptOrderFormPage'));
+const ReceiptOrderDetailPage = lazyWithReload(() => import('./pages/officer/ReceiptOrderDetailPage'));
+const CommodityFormPage = lazyWithReload(() => import('./pages/officer/CommodityFormPage'));
+const CommoditiesSetupPage = lazyWithReload(() => import('./pages/admin/setup/CommoditiesSetupPage'));
+const DispatchOrdersListPage = lazyWithReload(() => import('./pages/officer/DispatchOrdersListPage'));
+const DispatchOrderFormPage = lazyWithReload(() => import('./pages/officer/DispatchOrderFormPage'));
+const DispatchOrderDetailPage = lazyWithReload(() => import('./pages/officer/DispatchOrderDetailPage'));
+const HubListPage = lazyWithReload(() => import('./pages/hubs/HubListPage'));
+const HubDetailPage = lazyWithReload(() => import('./pages/hubs/HubDetailPage'));
+const HubFormPage = lazyWithReload(() => import('./pages/hubs/HubFormPage'));
+const WarehouseListPage = lazyWithReload(() => import('./pages/warehouses/WarehouseListPage'));
+const WarehouseDetailPage = lazyWithReload(() => import('./pages/warehouses/WarehouseDetailPage'));
+const WarehouseFormPage = lazyWithReload(() => import('./pages/warehouses/WarehouseFormPage'));
+const StoreListPage = lazyWithReload(() => import('./pages/stores/StoreListPage'));
+const StoreDetailPage = lazyWithReload(() => import('./pages/stores/StoreDetailPage'));
+const StoreFormPage = lazyWithReload(() => import('./pages/stores/StoreFormPage'));
+const StackListPage = lazyWithReload(() => import('./pages/stacks/StackListPage'));
+const StackFormPage = lazyWithReload(() => import('./pages/stacks/StackFormPage'));
+const StockBalancePage = lazyWithReload(() => import('./pages/stock/StockBalancePage'));
+const GrnListPage = lazyWithReload(() => import('./pages/grns/GrnListPage'));
+const GrnCreatePage = lazyWithReload(() => import('./pages/grns/GrnCreatePage'));
+const GrnDetailPage = lazyWithReload(() => import('./pages/grns/GrnDetailPage'));
+const GinListPage = lazyWithReload(() => import('./pages/gins/GinListPage'));
+const GinCreatePage = lazyWithReload(() => import('./pages/gins/GinCreatePage'));
+const GinDetailPage = lazyWithReload(() => import('./pages/gins/GinDetailPage'));
+const InspectionListPage = lazyWithReload(() => import('./pages/inspections/InspectionListPage'));
+const InspectionCreatePage = lazyWithReload(() => import('./pages/inspections/InspectionCreatePage'));
+const InspectionDetailPage = lazyWithReload(() => import('./pages/inspections/InspectionDetailPage'));
+const WaybillListPage = lazyWithReload(() => import('./pages/waybills/WaybillListPage'));
+const WaybillCreatePage = lazyWithReload(() => import('./pages/waybills/WaybillCreatePage'));
+const WaybillDetailPage = lazyWithReload(() => import('./pages/waybills/WaybillDetailPage'));
+const AdminUsersPage = lazyWithReload(() => import('./pages/admin/users/AdminUsersPage'));
+const ProfilePage = lazyWithReload(() => import('./pages/profile/ProfilePage'));
+const UserAssignmentsPage = lazyWithReload(() => import('./pages/admin/assignments/UserAssignmentsPage'));
+const RolesManagementPage = lazyWithReload(() => import('./pages/admin/roles/RolesManagementPage'));
+const LocationsSetupPage = lazyWithReload(() => import('./pages/admin/setup/LocationsSetupPage'));
+const HubSetupPage = lazyWithReload(() => import('./pages/admin/setup/HubSetupPage'));
+const WarehouseSetupPage = lazyWithReload(() => import('./pages/admin/setup/WarehouseSetupPage'));
+const StorekeeperAssignmentsPage = lazyWithReload(() => import('./pages/storekeeper/StorekeeperAssignmentsPage'));
+const DispatchListPage = lazyWithReload(() => import('./pages/dispatches/DispatchListPage'));
+const BinCardReportPage = lazyWithReload(() => import('./pages/reports/BinCardReportPage'));
+const StackLayoutPage = lazyWithReload(() => import('./pages/stacks/StackLayoutPage'));
+const TransferRequestsPage = lazyWithReload(() => import('./pages/stock/TransferRequestsPage'));
+const ReceiptAuthorizationListPage = lazyWithReload(() => import('./pages/hub-manager/ReceiptAuthorizationListPage'));
+const ReceiptAuthorizationFormPage = lazyWithReload(() => import('./pages/hub-manager/ReceiptAuthorizationFormPage'));
+const ReceiptAuthorizationDetailPage = lazyWithReload(() => import('./pages/hub-manager/ReceiptAuthorizationDetailPage'));
+const StorekeeperRAListPage = lazyWithReload(() => import('./pages/storekeeper/StorekeeperRAListPage'));
+const StorekeeperRADetailPage = lazyWithReload(() => import('./pages/storekeeper/StorekeeperRADetailPage'));
 
 // Loading fallback
 const LoadingFallback = () => (
@@ -150,6 +151,11 @@ const RequireAdmin = ({ children }: { children: ReactNode }) => {
   }
   return <>{children}</>;
 };
+
+function HubEditRedirect() {
+  const { id } = useParams();
+  return <Navigate to={`/admin/setup/hubs?id=${id}`} replace />;
+}
 
 const EntryRoute = () => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated());
@@ -379,12 +385,16 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'officer/commodities/new',
+        path: 'officer/commodities',
         element: (
           <RequirePermission resource="receipt_orders" action="create">
             <CommodityFormPage />
           </RequirePermission>
         ),
+      },
+      {
+        path: 'officer/commodities/new',
+        element: <Navigate to="/officer/commodities?tab=create" replace />,
       },
       {
         path: 'officer/dispatch-orders',
@@ -454,7 +464,7 @@ export const router = createBrowserRouter([
         path: 'hubs/:id/edit',
         element: (
           <RequirePermission resource="hubs" action="update">
-            <HubFormPage />
+            <HubEditRedirect />
           </RequirePermission>
         ),
       },
@@ -713,6 +723,10 @@ export const router = createBrowserRouter([
             <TransferRequestsPage />
           </RequirePermission>
         ),
+      },
+      {
+        path: 'profile',
+        element: <ProfilePage />,
       },
       {
         path: 'admin/users',

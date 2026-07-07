@@ -2,21 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  TextInput,
-  Select,
-  Card,
-  Table,
-  ActionIcon,
-  Text,
-  NumberInput,
-  Alert,
-  Divider,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, TextInput, Card, Table, ActionIcon, Text, NumberInput, Alert, Divider } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { DateInput } from '@mantine/dates';
 import { IconTrash, IconPlus } from '@tabler/icons-react';
 import { createWaybill } from '../../api/waybills';
@@ -475,7 +462,7 @@ function WaybillCreatePage() {
       <Card shadow="sm" padding="lg" radius="md" withBorder>
         <Stack gap="md">
           <Title order={4}>Source Context</Title>
-          <Select
+          <SearchableSelect
             label="Waybill Source Context"
             description="Choose how to prepare this waybill: manual, from Receipt Order, or from Receipt Authorization."
             data={[
@@ -498,7 +485,7 @@ function WaybillCreatePage() {
             required
           />
           {(sourceContext === 'receipt_order' || sourceContext === 'receipt_authorization') && (
-            <Select
+            <SearchableSelect
               label="Receipt Order"
               placeholder="Select receipt order"
               data={receiptOrderOptions}
@@ -510,7 +497,7 @@ function WaybillCreatePage() {
             />
           )}
           {sourceContext === 'receipt_authorization' && (
-            <Select
+            <SearchableSelect
               label="Receipt Authorization"
               placeholder="Select pending/active RA"
               data={receiptAuthorizationOptions}
@@ -553,7 +540,7 @@ function WaybillCreatePage() {
           </Group>
 
           <Group grow>
-            <Select
+            <SearchableSelect
               label="Source Warehouse"
               placeholder={sourceContext === 'manual' ? 'Select source warehouse' : 'Optional for inbound RO/RA'}
               data={sourceWarehouseOptions}
@@ -562,7 +549,7 @@ function WaybillCreatePage() {
               searchable
               required={sourceContext === 'manual'}
             />
-            <Select
+            <SearchableSelect
               label="Destination Warehouse"
               placeholder="Select destination warehouse"
               data={destinationWarehouseOptions}
@@ -587,7 +574,7 @@ function WaybillCreatePage() {
           <Title order={4}>Transport Details</Title>
 
           <Group grow>
-            <Select
+            <SearchableSelect
               label="Transporter"
               placeholder="Select transporter"
               data={transporterOptions}
@@ -651,7 +638,7 @@ function WaybillCreatePage() {
                 {items.map((item, index) => (
                   <Table.Tr key={index}>
                     <Table.Td>
-                      <Select
+                      <SearchableSelect
                         placeholder="Select commodity"
                         data={commodityOptions}
                         value={item.commodity_id ? String(item.commodity_id) : null}
@@ -670,7 +657,7 @@ function WaybillCreatePage() {
                       />
                     </Table.Td>
                     <Table.Td>
-                      <Select
+                      <SearchableSelect
                         placeholder="Unit"
                         data={unitOptions}
                         value={item.unit_id ? String(item.unit_id) : null}

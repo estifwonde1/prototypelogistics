@@ -11,42 +11,12 @@ module Cats
           
           # Verify user has access to this warehouse
           access = AccessContext.new(user: current_user)
-          unless access.accessible_warehouse_ids.include?(warehouse_id)
+          unless access.can_access_warehouse?(warehouse_id)
             return render_error("Access denied to warehouse #{warehouse_id}", status: :forbidden)
           end
           
-          # Get store IDs for this warehouse
-          store_ids = Store.where(warehouse_id: warehouse_id).pluck(:id)
-          
-          roa_t = ReceiptOrderAssignment.table_name
-          # Assignments for this warehouse/stores (exclude rejected; match assignment service normalization)
-          assignment_order_ids =
-            ReceiptOrderAssignment
-              .where(warehouse_id: warehouse_id)
-              .or(ReceiptOrderAssignment.where(store_id: store_ids))
-              .where.not("LOWER(TRIM(#{roa_t}.status)) = ?", "rejected")
-              .distinct
-              .pluck(:receipt_order_id)
-
-          # Orders with an active Receipt Authorization routed to this warehouse (covers plan-change
-          # handoffs if assignment rows were missing or out of sync).
-          ra_t = ReceiptAuthorization.table_name
-          ra_order_ids =
-            ReceiptAuthorization
-              .where(warehouse_id: warehouse_id)
-              .where.not("LOWER(TRIM(#{ra_t}.status)) = ?", ReceiptAuthorization::CANCELLED)
-              .distinct
-              .pluck(:receipt_order_id)
-
-          assigned_order_ids = (assignment_order_ids + ra_order_ids).uniq
-
-          # Get orders where:
-          # 1. Main warehouse_id matches, OR
-          # 2. Order has an assignment to this warehouse/stores, OR
-          # 3. Order has a non-cancelled RA for this warehouse
-          orders = ReceiptOrder
-            .where(warehouse_id: warehouse_id)
-            .or(ReceiptOrder.where(id: assigned_order_ids))
+          orders = WarehouseReceiptOrderScope
+            .relation_for_warehouse(warehouse_id: warehouse_id)
             .includes(*order_detail_includes)
             .order(created_at: :desc)
           
@@ -65,6 +35,7 @@ module Cats
       def show
         order = policy_scope(ReceiptOrder).includes(:hub, :warehouse).find(params[:id])
         authorize order
+        ensure_order_in_requested_warehouse!(order)
 
         assignments = order.receipt_order_assignments
           .includes(:assigned_to, :assigned_by, :store, :warehouse, :hub, { receipt_order_line: :unit })
@@ -303,8 +274,15 @@ module Cats
           commodity = Cats::Core::Commodity.find_by(id: line.commodity_id)
           next unless commodity
 
-          if line.quantity.to_f > commodity.quantity.to_f
-            raise ArgumentError, "Insufficient batch quantity for #{commodity.name || commodity.batch_no}. Available: #{commodity.quantity}, Requested: #{line.quantity}"
+          converted_qty = Cats::Warehouse::UomConversionResolver.convert(
+            line.quantity.to_f,
+            from_unit_id: line.unit_id,
+            to_unit_id: commodity.unit_of_measure_id,
+            commodity_id: commodity.id
+          )
+
+          if converted_qty > commodity.quantity.to_f
+            raise ArgumentError, "Insufficient batch quantity for #{commodity.name || commodity.batch_no}. Available: #{commodity.quantity}, Requested: #{converted_qty} (converted)"
           end
         end
 
@@ -321,6 +299,7 @@ module Cats
       def assignable_managers
         order = policy_scope(ReceiptOrder).includes(:hub, warehouse: :hub).find(params[:id])
         authorize order, :assignable_managers?
+        ensure_order_in_requested_warehouse!(order)
 
         effective_hub_id = order.warehouse&.hub_id.presence || order.hub_id
         manager_only = params[:manager_only] == 'true'
@@ -393,6 +372,7 @@ module Cats
       def assign
         order = policy_scope(ReceiptOrder).includes(warehouse: :hub).find(params[:id])
         authorize order, :assign?
+        ensure_order_in_requested_warehouse!(order)
 
         ReceiptOrderAssignmentService.new(
           order: order,
@@ -514,10 +494,17 @@ module Cats
 
           first_line = order.receipt_order_lines.first
 
-          # Resolve commodity from inspection items (most reliable source)
-          # Fall back to receipt order line if inspection items don't have it
-          inspection_commodity_id = inspection&.inspection_items&.first&.commodity_id
-          inspection_unit_id = inspection&.inspection_items&.first&.entered_unit_id
+          # Resolve commodity and UOM from inspection items (most reliable source).
+          # entered_unit_id is the unit the storekeeper actually typed (e.g. Kuntal).
+          # unit_id is the canonical receipt-order line unit (e.g. MT).
+          # Fall back to receipt order line if inspection items don't have it.
+          inspection_item        = inspection&.inspection_items&.first
+          inspection_commodity_id = inspection_item&.commodity_id
+          # Canonical unit for the GRN item (used for ledger math)
+          inspection_unit_id     = inspection_item&.entered_unit_id.presence ||
+                                   inspection_item&.unit_id.presence
+          # The unit the user typed — preserved on the StackTransaction for bin/stock card display
+          inspection_entered_unit_id = inspection_item&.entered_unit_id
 
           ReceiptOrder.transaction do
             # Add stack placement items to the existing Draft GRN
@@ -546,6 +533,7 @@ module Cats
                 commodity_id:      commodity_id,
                 quantity:          placement[:quantity].to_f,
                 unit_id:           unit_id,
+                entered_unit_id:   inspection_entered_unit_id.presence || unit_id,
                 stack_id:          stack.id,
                 store_id:          stack.store_id,
                 quality_status:    inspection&.inspection_items&.first&.quality_status || 'Good',
@@ -699,6 +687,8 @@ module Cats
       end
 
       def render_order_payload(order, status: :ok)
+        ensure_order_in_requested_warehouse!(order)
+
         # Apply role-based filtering to assignments
         assignments = order.receipt_order_assignments
           .includes(:assigned_to, :assigned_by, :store, :warehouse, :hub, { receipt_order_line: :unit })
@@ -803,6 +793,51 @@ module Cats
           :reserved_volume,
           :status
         ])
+      end
+
+      def ensure_order_in_requested_warehouse!(order)
+        return unless params[:warehouse_id].present?
+
+        warehouse_id = params[:warehouse_id].to_i
+        access = AccessContext.new(user: current_user)
+        unless warehouse_id_values(access.accessible_warehouse_ids).include?(warehouse_id)
+          raise Pundit::NotAuthorizedError, "Access denied to warehouse #{warehouse_id}"
+        end
+
+        return if order_visible_in_warehouse_context?(order, warehouse_id)
+
+        raise ActiveRecord::RecordNotFound, "Receipt Order not found"
+      end
+
+      def order_visible_in_warehouse_context?(order, warehouse_id)
+        return true if order.warehouse_id.present? && order.warehouse_id.to_i == warehouse_id
+
+        store_ids = Store.where(warehouse_id: warehouse_id).pluck(:id)
+        roa_t = ReceiptOrderAssignment.table_name
+        assigned_here = ReceiptOrderAssignment
+          .where(receipt_order_id: order.id)
+          .where.not("LOWER(TRIM(#{roa_t}.status)) = ?", "rejected")
+          .where(
+            "warehouse_id = :warehouse_id OR store_id IN (:store_ids)",
+            warehouse_id: warehouse_id,
+            store_ids: store_ids.presence || [0]
+          )
+          .exists?
+        return true if assigned_here
+
+        ra_t = ReceiptAuthorization.table_name
+        ReceiptAuthorization
+          .where(receipt_order_id: order.id, warehouse_id: warehouse_id)
+          .where.not("LOWER(TRIM(#{ra_t}.status)) = ?", ReceiptAuthorization::CANCELLED)
+          .exists?
+      end
+
+      def warehouse_id_values(raw)
+        if raw.is_a?(Array)
+          raw.map { |v| v.is_a?(Integer) ? v : v.try(:id) }.compact.map(&:to_i)
+        else
+          raw.pluck(:id).map(&:to_i)
+        end
       end
 
       # Hub-scoped receipt orders: includes Hub Managers, Warehouse Managers, and Storekeepers for the hub.
@@ -985,7 +1020,14 @@ module Cats
           commodity = Cats::Core::Commodity.find_by(id: line.commodity_id)
           next unless commodity
 
-          new_qty = commodity.quantity.to_f - line.quantity.to_f
+          converted_qty = Cats::Warehouse::UomConversionResolver.convert(
+            line.quantity.to_f,
+            from_unit_id: line.unit_id,
+            to_unit_id: commodity.unit_of_measure_id,
+            commodity_id: commodity.id
+          )
+
+          new_qty = commodity.quantity.to_f - converted_qty
           commodity.update_column(:quantity, [new_qty, 0].max)
         end
       end
@@ -998,7 +1040,14 @@ module Cats
           commodity = Cats::Core::Commodity.find_by(id: line.commodity_id)
           next unless commodity
 
-          commodity.update_column(:quantity, commodity.quantity.to_f + line.quantity.to_f)
+          converted_qty = Cats::Warehouse::UomConversionResolver.convert(
+            line.quantity.to_f,
+            from_unit_id: line.unit_id,
+            to_unit_id: commodity.unit_of_measure_id,
+            commodity_id: commodity.id
+          )
+
+          commodity.update_column(:quantity, commodity.quantity.to_f + converted_qty)
         end
       end
 

@@ -23,6 +23,7 @@ export interface CreateCommodityPayload {
   source_type?: string;
   source_name?: string;
   volume_per_metric_ton?: number;
+  weight_per_unit_kg?: number;
 }
 
 export const getFacilityOptions = async (): Promise<FacilityOptions> => {
@@ -57,9 +58,23 @@ export interface CreateCategoryPayload {
   parent_id?: number | null;
 }
 
+export interface UpdateCategoryPayload {
+  name: string;
+  code?: string;
+  parent_id?: number | null;
+}
+
 export const createCategory = async (payload: CreateCategoryPayload): Promise<CommodityCategory> => {
   const response = await apiClient.post<ApiResponse<{ category: CommodityCategory }>>(
     '/reference_data/categories',
+    { category: payload }
+  );
+  return response.data.data.category;
+};
+
+export const updateCategory = async (id: number, payload: UpdateCategoryPayload): Promise<CommodityCategory> => {
+  const response = await apiClient.patch<ApiResponse<{ category: CommodityCategory }>>(
+    `/reference_data/categories/${id}`,
     { category: payload }
   );
   return response.data.data.category;

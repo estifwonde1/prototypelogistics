@@ -2,6 +2,7 @@ import { Modal, Stack, Text, Paper, Group, Badge, Button } from '@mantine/core';
 import { IconBuilding, IconBuildingWarehouse, IconMapPin, IconChevronRight } from '@tabler/icons-react';
 import type { OfficerAssignment } from '../../store/authStore';
 import { getRoleLabel, normalizeRoleSlug } from '../../contracts/warehouse';
+import { prefetchDashboardForAssignment } from '../../utils/workspaceSwitch';
 
 interface FacilityPickerModalProps {
   opened: boolean;
@@ -61,6 +62,7 @@ export function FacilityPickerModal({
             radius="md"
             component="button"
             onClick={() => onSelect(a)}
+            onMouseEnter={() => prefetchDashboardForAssignment(a)}
             style={{
               cursor: 'pointer',
               textAlign: 'left',

@@ -1,3 +1,4 @@
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -7,7 +8,6 @@ import {
   Title,
   Button,
   Group,
-  Select,
   Card,
   Text,
   Textarea,
@@ -16,7 +16,6 @@ import {
   ActionIcon,
   NumberInput,
   Badge,
-  TextInput,
   Alert,
   ThemeIcon,
 } from "@mantine/core";
@@ -32,8 +31,10 @@ import {
 import { getWarehouses } from "../../api/warehouses";
 import { getHubs } from "../../api/hubs";
 import { getCommodityReferences, getUnitReferences, getUomConversions } from "../../api/referenceData";
+import { getCommodityDefinitions } from "../../api/commodityDefinitions";
 import { useAuthStore } from "../../store/authStore";
 import { normalizeRoleSlug } from '../../contracts/warehouse';
+import { formatWarehouseCapacityLabel } from './FacilitiesOverviewPage_helpers';
 import { findDirectedMultiplier } from '../../utils/uomConversions';
 import { computePackagingPackagesHint } from '../../utils/packagingQuantityHint';
 import type { ReceiptOrderLine } from "../../api/receiptOrders";
@@ -77,9 +78,6 @@ function ReceiptOrderFormPage() {
   // ── Auth & location context ──
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
   const location = activeAssignment?.location;
-  const jurisdictionLabel = location
-    ? `${location.name} (${location.location_type})`
-    : "Federal / System-wide";
 
   // Check if sub-federal officer without location
   const SUB_FEDERAL_ROLES = ["Regional Officer", "Zonal Officer", "Woreda Officer", "Kebele Officer"];
@@ -114,6 +112,11 @@ function ReceiptOrderFormPage() {
   const hydratedRef = useRef<string | null>(null);
 
   // ── Data queries ──
+  const { data: commodityDefinitions = [] } = useQuery({
+    queryKey: ["reference-data", "commodity-definitions"],
+    queryFn: getCommodityDefinitions,
+  });
+
   const { data: commodities = [] } = useQuery({
     queryKey: ["reference-data", "commodities"],
     queryFn: () => getCommodityReferences(),
@@ -167,30 +170,29 @@ function ReceiptOrderFormPage() {
 
   // ── Derived: unique commodity names ──
   const commodityNameOptions = useMemo(() => {
-    const seen = new Set<string>();
-    return commodities
-      .filter((c) => {
-        const key = c.name || `Commodity #${c.id}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .map((c) => ({ value: String(c.id), label: c.name || `Commodity #${c.id}` }))
+    return commodityDefinitions
+      .map((d) => ({ value: String(d.id), label: d.name }))
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, [commodities]);
+  }, [commodityDefinitions]);
 
   // ── Derived: batches for selected commodity ──
   const batchOptions = useMemo(() => {
     if (!selectedCommodityId) return [];
-    const selectedName = commodities.find((c) => String(c.id) === selectedCommodityId)?.name;
+    const selectedName = commodityDefinitions.find((d) => String(d.id) === selectedCommodityId)?.name;
     if (!selectedName) return [];
     return commodities
-      .filter((c) => c.name === selectedName && c.batch_no)
+      .filter((c) => {
+        if (c.name !== selectedName || !c.batch_no) return false;
+        // Always include the currently selected batch (for editing existing drafts)
+        if (selectedBatchId && String(c.id) === selectedBatchId) return true;
+        // Hide batches that are fully allocated
+        return (c.remaining_quantity ?? 0) > 0;
+      })
       .map((c) => ({
         value: String(c.id),
         label: c.batch_no || `Batch #${c.id}`,
       }));
-  }, [commodities, selectedCommodityId]);
+  }, [commodities, commodityDefinitions, selectedCommodityId, selectedBatchId]);
 
   // ── Hub / warehouse options ──
   const hubOptions = useMemo(
@@ -202,7 +204,10 @@ function ReceiptOrderFormPage() {
     () =>
       (warehouses ?? [])
         .filter((w) => w.hub_id == null)
-        .map((w) => ({ value: String(w.id), label: w.name })),
+        .map((w) => {
+          const { label, disabled } = formatWarehouseCapacityLabel(w);
+          return { value: String(w.id), label, disabled };
+        }),
     [warehouses]
   );
 
@@ -234,7 +239,15 @@ function ReceiptOrderFormPage() {
 
   // Keep a plain alias used in validation
   const totalAssigned = totalAssignedInBatchUnit;
-  const remaining = batchQuantity - totalAssignedInBatchUnit;
+
+  // Selected batch data from API (includes computed allocated_quantity / remaining_quantity)
+  const selectedBatch = useMemo(() => {
+    if (!selectedBatchId) return null;
+    return commodities.find((c) => String(c.id) === selectedBatchId) ?? null;
+  }, [selectedBatchId, commodities]);
+
+  // Remaining after accounting for this form's allocation
+  const remaining = (selectedBatch?.remaining_quantity ?? 0) - totalAssignedInBatchUnit;
 
   // ── Handlers: commodity selection ──
   const handleCommoditySelect = useCallback(
@@ -311,6 +324,7 @@ function ReceiptOrderFormPage() {
   // ── Hydrate edit form ──
   useEffect(() => {
     if (!isEdit || !existingOrder) return;
+    if (commodities.length === 0 || commodityDefinitions.length === 0) return;
     const key = `${id}:${existingOrder.updated_at ?? existingOrder.id}`;
     if (hydratedRef.current === key) return;
     hydratedRef.current = key;
@@ -322,13 +336,15 @@ function ReceiptOrderFormPage() {
     const rawLines = existingOrder.lines ?? existingOrder.receipt_order_lines ?? [];
     if (rawLines.length > 0) {
       const first = rawLines[0];
-      setSelectedCommodityId(first.commodity_id ? String(first.commodity_id) : null);
+      const batch = commodities.find((c) => c.id === first.commodity_id);
+      const definition = commodityDefinitions.find((d) => d.name === batch?.name);
+
+      setSelectedCommodityId(definition ? String(definition.id) : null);
       setSelectedBatchId(first.commodity_id ? String(first.commodity_id) : null);
-      setUnitId(first.unit_id ? String(first.unit_id) : null);
+      setUnitId(batch?.unit_id ? String(batch.unit_id) : (first.unit_id ? String(first.unit_id) : null));
       setPackagingUnitId(first.packaging_unit_id ? String(first.packaging_unit_id) : null);
       setPackagingSize(first.packaging_size ?? null);
 
-      const batch = commodities.find((c) => c.id === first.commodity_id);
       setBatchQuantity(batch?.quantity ?? 0);
       setCommodityNumericId(batch?.id ?? null);
 
@@ -359,7 +375,7 @@ function ReceiptOrderFormPage() {
       });
       setDestinations(rows.length > 0 ? rows : [newDestinationRow()]);
     }
-  }, [isEdit, existingOrder, id, commodities]);
+  }, [isEdit, existingOrder, id, commodities, commodityDefinitions]);
 
   // ── Mutations ──
   const createMutation = useMutation({
@@ -453,10 +469,10 @@ function ReceiptOrderFormPage() {
       }
     }
 
-    if (totalAssigned > batchQuantity && batchQuantity > 0) {
+    if (remaining < 0) {
       notifications.show({
         title: "Validation Error",
-        message: `Total assigned (${totalAssigned}) exceeds batch quantity (${batchQuantity})`,
+        message: `Total assigned (${totalAssigned}) exceeds available quantity (${selectedBatch?.remaining_quantity ?? 0})`,
         color: "red",
       });
       return;
@@ -568,7 +584,7 @@ function ReceiptOrderFormPage() {
             <Text size="sm" fw={700} mb="sm">Commodity &amp; Batch</Text>
 
             <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-              <Select
+              <SearchableSelect
                 label="Commodity"
                 placeholder="Search and select a commodity"
                 data={commodityNameOptions}
@@ -579,7 +595,7 @@ function ReceiptOrderFormPage() {
                 required
                 disabled={!fieldsEditable}
               />
-              <Select
+              <SearchableSelect
                 label="Batch Number"
                 placeholder={selectedCommodityId ? "Select a batch" : "Select commodity first"}
                 data={batchOptions}
@@ -593,7 +609,7 @@ function ReceiptOrderFormPage() {
             </SimpleGrid>
 
             {/* Batch quantity / remaining info bar */}
-            {selectedBatchId && (
+            {selectedBatchId && selectedBatch && (
               <Card
                 withBorder
                 mt="sm"
@@ -609,7 +625,13 @@ function ReceiptOrderFormPage() {
                     </Text>
                   </div>
                   <div>
-                    <Text size="xs" c="dimmed" fw={600} tt="uppercase">Allocated Quantity</Text>
+                    <Text size="xs" c="dimmed" fw={600} tt="uppercase">Total Allocated</Text>
+                    <Text fw={700} size="sm" c="orange">
+                      {selectedBatch.allocated_quantity?.toLocaleString() ?? "—"} {unitLabel}
+                    </Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed" fw={600} tt="uppercase">This Allocation</Text>
                     <Text fw={700} size="sm" c="orange">
                       {totalAssignedInBatchUnit.toLocaleString(undefined, { maximumFractionDigits: 4 })} {unitLabel}
                     </Text>
@@ -634,22 +656,14 @@ function ReceiptOrderFormPage() {
           {/* ── Section 2: Order Details ── */}
           <div>
             <Text size="sm" fw={700} mb="sm">Order Details</Text>
-            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-              <TextInput
-                label="Jurisdiction"
-                value={jurisdictionLabel}
-                disabled
-                description="Automatically assigned based on your role"
-              />
-              <DateInput
-                label="Expected Delivery Date"
-                placeholder="Select date"
-                value={expectedDeliveryDate}
-                onChange={(val: any) => setExpectedDeliveryDate(val ? new Date(val) : null)}
-                required
-                disabled={!fieldsEditable}
-              />
-            </SimpleGrid>
+            <DateInput
+              label="Expected Delivery Date"
+              placeholder="Select date"
+              value={expectedDeliveryDate}
+              onChange={(val: any) => setExpectedDeliveryDate(val ? new Date(val) : null)}
+              required
+              disabled={!fieldsEditable}
+            />
             <Textarea
               label="Notes"
               placeholder="Add any general notes about this order..."
@@ -669,10 +683,11 @@ function ReceiptOrderFormPage() {
               <Text size="sm" fw={700}>Destinations</Text>
               {fieldsEditable && (
                 <Button
-                  size="xs"
-                  variant="light"
-                  leftSection={<IconPlus size={14} />}
+                  size="sm"
+                  variant="filled"
+                  leftSection={<IconPlus size={16} />}
                   onClick={addDestination}
+                  disabled={remaining <= 0}
                 >
                   Add Destination
                 </Button>
@@ -683,49 +698,66 @@ function ReceiptOrderFormPage() {
             <SimpleGrid cols={{ base: 1, sm: 5 }} spacing="sm" mb={4}>
               <Text size="xs" c="dimmed" fw={600} tt="uppercase">Destination Type</Text>
               <Text size="xs" c="dimmed" fw={600} tt="uppercase">Hub / Warehouse</Text>
-              <Text size="xs" c="dimmed" fw={600} tt="uppercase">Quantity</Text>
+              <Text size="xs" c="dimmed" fw={600} tt="uppercase" pl={60}>Quantity</Text>
               <Text size="xs" c="dimmed" fw={600} tt="uppercase">Unit</Text>
               <Text size="xs" c="dimmed" fw={600} tt="uppercase">Notes</Text>
             </SimpleGrid>
 
             <Stack gap="xs">
-              {destinations.map((dest, idx) => (
-                <DestinationRowItem
-                  key={dest.id}
-                  dest={dest}
-                  index={idx}
-                  fieldsEditable={fieldsEditable}
-                  hubOptions={hubOptions}
-                  warehouseOptions={standaloneWarehouseOptions}
-                  batchUnitNumericId={batchUnitNumericId}
-                  commodityNumericId={commodityNumericId}
-                  uomConversions={uomConversions}
-                  unitOptions={units.map((u) => ({
-                    value: String(u.id),
-                    label: u.abbreviation ? `${u.abbreviation}` : u.name,
-                  }))}
-                  allUnits={units}
-                  packagingSize={packagingSize}
-                  packagingUnitName={packagingUnitName}
-                  packageUnitPerPackageNumericId={packageUnitPerPackageNumericId}
-                  packageUnitPerPackageName={packageUnitPerPackageName}
-                  canRemove={destinations.length > 1}
-                  onUpdate={(patch) => updateDestination(dest.id, patch)}
-                  onRemove={() => removeDestination(dest.id)}
-                />
-              ))}
+              {destinations.map((dest, idx) => {
+                const destQty = Number(dest.quantity);
+                const destQtyInBatchUnit = (isNaN(destQty) || destQty <= 0 || !batchUnitNumericId || !commodityNumericId)
+                  ? 0
+                  : (() => {
+                      const destUnitId = dest.unitId ? parseInt(dest.unitId) : batchUnitNumericId;
+                      if (destUnitId === batchUnitNumericId) return destQty;
+                      let factor = findDirectedMultiplier(destUnitId, batchUnitNumericId, commodityNumericId, uomConversions);
+                      if (factor == null) {
+                        const reverse = findDirectedMultiplier(batchUnitNumericId, destUnitId, commodityNumericId, uomConversions);
+                        if (reverse != null && reverse !== 0) factor = 1 / reverse;
+                      }
+                      return factor != null ? destQty * factor : 0;
+                    })();
+                const availableForRow = (selectedBatch?.remaining_quantity ?? 0) - (totalAssignedInBatchUnit - destQtyInBatchUnit);
+                return (
+                  <DestinationRowItem
+                    key={dest.id}
+                    dest={dest}
+                    index={idx}
+                    fieldsEditable={fieldsEditable}
+                    hubOptions={hubOptions}
+                    warehouseOptions={standaloneWarehouseOptions}
+                    batchUnitNumericId={batchUnitNumericId}
+                    commodityNumericId={commodityNumericId}
+                    uomConversions={uomConversions}
+                    unitOptions={units.map((u) => ({
+                      value: String(u.id),
+                      label: u.abbreviation ? `${u.abbreviation}` : u.name,
+                    }))}
+                    allUnits={units}
+                    packagingSize={packagingSize}
+                    packagingUnitName={packagingUnitName}
+                    packageUnitPerPackageNumericId={packageUnitPerPackageNumericId}
+                    packageUnitPerPackageName={packageUnitPerPackageName}
+                    canRemove={destinations.length > 1}
+                    destQtyError={destQtyInBatchUnit > 0 && destQtyInBatchUnit > availableForRow ? `Exceeds available quantity (max ${Math.max(0, availableForRow).toLocaleString()} ${unitLabel})` : null}
+                    onUpdate={(patch) => updateDestination(dest.id, patch)}
+                    onRemove={() => removeDestination(dest.id)}
+                  />
+                );
+              })}
             </Stack>
 
             {/* Running total */}
-            {selectedBatchId && batchQuantity > 0 && (
+            {selectedBatchId && (selectedBatch?.remaining_quantity ?? 0) > 0 && (
               <Group justify="flex-end" mt="xs">
                 <Badge
-                  color={totalAssignedInBatchUnit > batchQuantity ? "red" : "blue"}
+                  color={remaining < 0 ? "red" : "blue"}
                   variant="light"
                   size="md"
                   tt="uppercase"
                 >
-                  {totalAssignedInBatchUnit.toLocaleString(undefined, { maximumFractionDigits: 4 })} / {batchQuantity.toLocaleString()} {unitLabel} assigned
+                  {totalAssignedInBatchUnit.toLocaleString(undefined, { maximumFractionDigits: 4 })} / {selectedBatch?.remaining_quantity?.toLocaleString() ?? 0} {unitLabel} assigned
                 </Badge>
               </Group>
             )}
@@ -733,7 +765,7 @@ function ReceiptOrderFormPage() {
 
           {/* ── Actions ── */}
           <Group justify="flex-end" mt="md">
-            <Button variant="light" onClick={() => navigate("/officer/receipt-orders")}>
+            <Button variant="light" onClick={() => navigate(isEdit ? `/officer/receipt-orders/${id}` : "/officer/receipt-orders")}>
               Cancel
             </Button>
             {isEdit && (
@@ -777,6 +809,7 @@ interface DestinationRowItemProps {
   packageUnitPerPackageNumericId: number | null;
   packageUnitPerPackageName: string | null;
   canRemove: boolean;
+  destQtyError: string | null;
   onUpdate: (patch: Partial<DestinationRow>) => void;
   onRemove: () => void;
 }
@@ -796,6 +829,7 @@ function DestinationRowItem({
   packageUnitPerPackageNumericId,
   packageUnitPerPackageName,
   canRemove,
+  destQtyError,
   onUpdate,
   onRemove,
 }: DestinationRowItemProps) {
@@ -861,7 +895,7 @@ function DestinationRowItem({
   return (
     <Group gap="sm" align="flex-start" wrap="nowrap">
       {/* Destination Type */}
-      <Select
+      <SearchableSelect
         placeholder="Select type"
         data={[
           { value: "hub", label: "Hub" },
@@ -874,7 +908,7 @@ function DestinationRowItem({
       />
 
       {/* Hub / Warehouse */}
-      <Select
+      <SearchableSelect
         placeholder={dest.kind ? `Select ${dest.kind === "hub" ? "hub" : "warehouse"}` : "Type first"}
         data={dest.kind ? facilityOptions : []}
         value={facilityValue ?? null}
@@ -894,10 +928,11 @@ function DestinationRowItem({
               onChange={(val) => onUpdate({ quantity: val ?? "" })}
               min={0}
               disabled={!fieldsEditable}
+              error={destQtyError}
             />
           </div>
           <div style={{ flex: "0 0 100px" }}>
-            <Select
+            <SearchableSelect
               placeholder="Unit"
               data={unitOptions}
               value={dest.unitId}

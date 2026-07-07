@@ -2,17 +2,8 @@
 import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  TextInput,
-  Textarea,
-  Select,
-  NumberInput,
-  Card,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, TextInput, Textarea, NumberInput, Card } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { useForm } from '@mantine/form';
 import { IconArrowLeft, IconDeviceFloppy } from '@tabler/icons-react';
 import { getHub, createHub, updateHub } from '../../api/hubs';
@@ -176,7 +167,7 @@ function HubFormPage() {
               </Group>
 
               <Group grow>
-                <Select
+                <SearchableSelect
                   label="Hierarchical Level"
                   placeholder="Select level"
                   required
@@ -189,7 +180,7 @@ function HubFormPage() {
                   ]}
                   {...form.getInputProps('hub_type')}
                 />
-                <Select
+                <SearchableSelect
                   label="Status"
                   placeholder="Select status"
                   required

@@ -9,9 +9,13 @@ export interface Warehouse {
   description?: string;
   location_id?: number;
   location_name?: string;
+  region_id?: number;
   region_name?: string;
+  zone_id?: number;
   subcity_name?: string;
+  woreda_id?: number;
   woreda_name?: string;
+  kebele_id?: number;
   kebele_name?: string;
   kebele?: number;
   hub_id?: number;

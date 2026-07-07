@@ -21,7 +21,8 @@ module Cats
           :package_unit_per_package_id,
           :source_type,
           :source_name,
-          :volume_per_metric_ton
+          :volume_per_metric_ton,
+          :weight_per_unit_kg
         )
 
         project = Cats::Core::Project.order(:id).first
@@ -44,6 +45,7 @@ module Cats
           status: Cats::Core::Commodity::DRAFT,
           arrival_status: Cats::Core::Commodity::AT_SOURCE,
           quantity: payload[:quantity].present? ? payload[:quantity].to_f : 1,
+          received_quantity: payload[:quantity].present? ? payload[:quantity].to_f : 1,
           best_use_before: payload[:best_use_before].presence || (Date.today + 365),
           project_id: project.id,
           unit_of_measure_id: unit_id,
@@ -56,7 +58,8 @@ module Cats
           volume_per_metric_ton: CommodityDensityResolver.resolve(
             name: payload[:name],
             explicit: payload[:volume_per_metric_ton]
-          )
+          ),
+          weight_per_unit_kg: payload[:weight_per_unit_kg].presence ? payload[:weight_per_unit_kg].to_f : 1.0
         }
 
         commodity = Cats::Core::Commodity.create!(attrs)
@@ -71,7 +74,8 @@ module Cats
         payload = params.require(:commodity).permit(
           :name,
           :commodity_category_id,
-          :volume_per_metric_ton
+          :volume_per_metric_ton,
+          :weight_per_unit_kg
         )
 
         attrs = {
@@ -83,6 +87,9 @@ module Cats
             name: payload[:name].presence || commodity.read_attribute(:name),
             explicit: payload[:volume_per_metric_ton]
           )
+        end
+        if payload.key?(:weight_per_unit_kg)
+          attrs[:weight_per_unit_kg] = payload[:weight_per_unit_kg].to_f
         end
 
         commodity.update!(attrs)
@@ -173,6 +180,69 @@ module Cats
         category_map = all_categories.index_by(&:id)
 
         render_success({ category: serialize_category(category, category_map) }, status: :created)
+      rescue ActiveRecord::RecordInvalid => e
+        render_error(e.record.errors.full_messages.to_sentence, status: :unprocessable_entity)
+      end
+
+      # PATCH /reference_data/categories/:id
+      def update_category
+        authorize :reference_data, :update_category?, policy_class: ReferenceDataPolicy
+
+        category = Cats::Core::CommodityCategory.find_by(id: params[:id])
+        unless category
+          return render_error("Category not found", status: :not_found)
+        end
+
+        # Groups (roots) cannot be renamed via this endpoint to keep the Food/Non-Food hierarchy stable.
+        if category.is_root?
+          return render_error("Top-level commodity groups cannot be renamed here.", status: :unprocessable_entity)
+        end
+
+        payload = params.require(:category).permit(:name, :code, :parent_id)
+
+        name = payload[:name]&.strip
+        if name.blank?
+          return render_error("Category name is required", status: :unprocessable_entity)
+        end
+
+        # Resolve new parent if provided (can be used to move between groups)
+        parent_id = payload.key?(:parent_id) ? payload[:parent_id].presence : category.parent_id
+        parent = nil
+        if parent_id.present?
+          parent = Cats::Core::CommodityCategory.find_by(id: parent_id)
+          unless parent
+            return render_error("Parent category not found", status: :not_found)
+          end
+          unless parent.is_root?
+            return render_error("Categories can only be nested one level deep", status: :unprocessable_entity)
+          end
+        end
+
+        # Check for duplicate name at the same level (excluding the current record)
+        scope = if parent.present?
+          parent.children.where("LOWER(name) = ? AND id != ?", name.downcase, category.id)
+        else
+          Cats::Core::CommodityCategory.roots.where("LOWER(name) = ? AND id != ?", name.downcase, category.id)
+        end
+        if scope.exists?
+          return render_error("A category with this name already exists at this level", status: :unprocessable_entity)
+        end
+
+        category.name = name
+        if payload[:code].present?
+          code = payload[:code].strip
+          if code != category.code && Cats::Core::CommodityCategory.exists?(code: code)
+            return render_error("A category with code '#{code}' already exists", status: :unprocessable_entity)
+          end
+          category.code = code
+        end
+        category.parent = parent if parent.present?
+        category.save!
+
+        all_categories = Cats::Core::CommodityCategory.order(:name, :id).to_a
+        category_map = all_categories.index_by(&:id)
+
+        render_success({ category: serialize_category(category, category_map) })
       rescue ActiveRecord::RecordInvalid => e
         render_error(e.record.errors.full_messages.to_sentence, status: :unprocessable_entity)
       end
@@ -312,16 +382,30 @@ module Cats
 
         allocated_quantity = Cats::Warehouse::ReceiptOrderLine
           .where(commodity_id: commodity.id)
-          .sum(:quantity)
-          .to_f
-        batch_quantity = commodity.quantity.to_f + allocated_quantity
+          .pluck(:quantity, :unit_id)
+          .sum do |qty, unit_id|
+            Cats::Warehouse::UomConversionResolver.convert(
+              qty.to_f,
+              from_unit_id: unit_id,
+              to_unit_id: commodity.unit_of_measure_id,
+              commodity_id: commodity.id
+            )
+          end.to_f
+
+        # Use received_quantity for original batch amount (preserved on create),
+        # fall back to reconstructed value for pre-migration records
+        original_quantity = commodity.received_quantity.to_f
+        if original_quantity <= 0
+          original_quantity = commodity.quantity.to_f + allocated_quantity
+        end
+
         remaining_quantity = commodity.quantity.to_f
 
         {
           id: commodity.id,
           name: commodity_name || "Commodity ##{commodity.id}",
           batch_no: commodity[:batch_no],
-          quantity: batch_quantity,
+          quantity: original_quantity,
           allocated_quantity: allocated_quantity,
           remaining_quantity: remaining_quantity,
           unit_id: commodity.unit_of_measure_id,
@@ -336,7 +420,8 @@ module Cats
           source_name: commodity.source_name,
           category_id: commodity.commodity_category_id,
           category_name: category&.name,
-          volume_per_metric_ton: volume_per_metric_ton
+          volume_per_metric_ton: volume_per_metric_ton,
+          weight_per_unit_kg: commodity.weight_per_unit_kg.to_f
         }
       end
 

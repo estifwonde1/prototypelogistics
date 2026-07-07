@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useMemo, useState } from 'react';
-import { Stack, Title, Group, Select, MultiSelect, Button, Table, Badge, Text } from '@mantine/core';
+import { Stack, Title, Group, Button, Table, Badge, Text } from '@mantine/core';
+import { SearchableSelect, SearchableMultiSelect } from '../../../components/common/SearchableSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { getAdminUsers } from '../../../api/adminUsers';
@@ -19,8 +20,6 @@ const ROLE_OPTIONS = [
   'Zonal Officer',
   'Woreda Officer',
   'Kebele Officer',
-  'Quality Assurance',
-  'Receipt Authorizer',
 ];
 
 export default function UserAssignmentsPage() {
@@ -43,8 +42,8 @@ export default function UserAssignmentsPage() {
   const isWoredaOfficer = roleName === 'Woreda Officer';
   const isKebeleOfficer = roleName === 'Kebele Officer';
   const isFederalOfficer = roleName === 'Federal Officer';
-  const isWarehouseRole = roleName === 'Warehouse Manager' || roleName === 'Storekeeper' || roleName === 'Quality Assurance' || roleName === 'Receipt Authorizer';
-  const canAssign = !!roleName && !!userId && !isFederalOfficer;
+  const isWarehouseRole = roleName === 'Warehouse Manager' || roleName === 'Storekeeper';
+  const canAssign = !!roleName && !!userId && !isFederalOfficer && selectedIds.length > 0;
 
   const { data: regions } = useQuery({
     queryKey: ['assignment-regions'],
@@ -76,9 +75,7 @@ export default function UserAssignmentsPage() {
     queryFn: () => {
       if (roleName === 'Hub Manager') return getHubsForAssignment();
       if (roleName === 'Warehouse Manager') return getWarehousesForAssignment();
-      if (roleName === 'Storekeeper') return getWarehousesForAssignment(); // Admin assigns storekeepers to warehouses
-      if (roleName === 'Quality Assurance') return getWarehousesForAssignment();
-      if (roleName === 'Receipt Authorizer') return getWarehousesForAssignment();
+      if (roleName === 'Storekeeper') return getWarehousesForAssignment();
       if (isRegionalOfficer) return getRegions();
       if (isZonalOfficer) return getZones(regionId ? Number(regionId) : undefined);
       if (isWoredaOfficer) return getWoredas(Number(zoneId));
@@ -99,6 +96,8 @@ export default function UserAssignmentsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-assignments', roleName] });
       notifications.show({ title: 'Success', message: 'Assignments updated', color: 'green' });
+      setUserId(null);
+      setSelectedIds([]);
     },
     onError: (err: any) => {
       notifications.show({
@@ -140,7 +139,7 @@ export default function UserAssignmentsPage() {
       .filter((assignment) => assignment.user?.id === selectedUserId)
       .map((assignment) => {
         if (roleName === 'Hub Manager') return assignment.hub?.id;
-        if (roleName === 'Warehouse Manager' || roleName === 'Storekeeper' || roleName === 'Quality Assurance' || roleName === 'Receipt Authorizer') return assignment.warehouse?.id;
+        if (roleName === 'Warehouse Manager' || roleName === 'Storekeeper') return assignment.warehouse?.id;
         if (isRegionalOfficer || isZonalOfficer || isWoredaOfficer || isKebeleOfficer) {
           return assignment.location?.id;
         }
@@ -157,9 +156,7 @@ export default function UserAssignmentsPage() {
     const payload: any = { user_id: Number(userId), role_name: roleName };
     if (roleName === 'Hub Manager') payload.hub_ids = selectedIds.map(Number);
     if (roleName === 'Warehouse Manager') payload.warehouse_ids = selectedIds.map(Number);
-    if (roleName === 'Storekeeper') payload.warehouse_ids = selectedIds.map(Number); // Admin assigns storekeepers to warehouses
-    if (roleName === 'Quality Assurance') payload.warehouse_ids = selectedIds.map(Number);
-    if (roleName === 'Receipt Authorizer') payload.warehouse_ids = selectedIds.map(Number);
+    if (roleName === 'Storekeeper') payload.warehouse_ids = selectedIds.map(Number);
     if (isRegionalOfficer || isZonalOfficer || isWoredaOfficer || isKebeleOfficer) {
       payload.location_ids = selectedIds.map(Number);
     }
@@ -175,7 +172,7 @@ export default function UserAssignmentsPage() {
       <Title order={2}>User Assignments</Title>
 
       <Group align="end">
-        <Select
+        <SearchableSelect
           label="Role"
           data={ROLE_OPTIONS.map((r) => ({ value: r, label: r }))}
           value={roleName}
@@ -189,7 +186,7 @@ export default function UserAssignmentsPage() {
           }}
           w={260}
         />
-        <Select
+        <SearchableSelect
           label="User"
           placeholder="Select user"
           data={dedupOptions(users?.map((u) => ({ value: String(u.id), label: `${u.first_name} ${u.last_name}` })) || [])}
@@ -198,7 +195,7 @@ export default function UserAssignmentsPage() {
           w={320}
         />
         {(isZonalOfficer || isWoredaOfficer || isKebeleOfficer) && (
-          <Select
+          <SearchableSelect
             label="Region"
             placeholder="Select region"
             data={dedupOptions(regions?.map((r) => ({ value: String(r.id), label: r.name })) || [])}
@@ -213,7 +210,7 @@ export default function UserAssignmentsPage() {
           />
         )}
         {(isWoredaOfficer || isKebeleOfficer) && (
-          <Select
+          <SearchableSelect
             label="Zone"
             placeholder="Select zone"
             data={dedupOptions(zones?.map((z) => ({ value: String(z.id), label: z.name })) || [])}
@@ -228,7 +225,7 @@ export default function UserAssignmentsPage() {
           />
         )}
         {isKebeleOfficer && (
-          <Select
+          <SearchableSelect
             label="Woreda"
             placeholder="Select woreda"
             data={dedupOptions(woredas?.map((w) => ({ value: String(w.id), label: w.name })) || [])}
@@ -241,7 +238,7 @@ export default function UserAssignmentsPage() {
             disabled={!zoneId}
           />
         )}
-        <MultiSelect
+        <SearchableMultiSelect
           label={isWarehouseRole ? 'Assign Warehouses' : 'Assign Locations'}
           placeholder="Select locations"
           data={locationOptions}

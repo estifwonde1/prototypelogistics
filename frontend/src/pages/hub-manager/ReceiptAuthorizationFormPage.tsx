@@ -2,28 +2,19 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  Card,
-  Select,
-  NumberInput,
-  TextInput,
-  Text,
-  Alert,
-  Divider,
-  Checkbox,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, Card, NumberInput, TextInput, Text, Alert, Divider, Checkbox } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { IconAlertCircle } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import {
+  assignStorekeeperToRa,
   createReceiptAuthorization,
+  getAssignableStorekeepers,
   getReceiptAuthorizations,
 } from '../../api/receiptAuthorizations';
 import { getReceiptOrders, type ReceiptOrderLine } from '../../api/receiptOrders';
 import { getCommodityReferences, getUnitReferences, getUomConversions } from '../../api/referenceData';
+import { getStores } from '../../api/stores';
 import { getWarehouses } from '../../api/warehouses';
 import type { ReceiptOrderAssignment } from '../../types/assignment';
 import { useAuthStore } from '../../store/authStore';
@@ -49,6 +40,27 @@ function lineForAssignment(
     return lines.find((ln) => ln.id != null && Number(ln.id) === Number(assignmentLineId));
   }
   return lines[0];
+}
+
+/** Planned assignment rows eligible for RA truck authorization (role-aware). */
+function plannedRaAssignments(
+  assignments: ReceiptOrderAssignment[],
+  opts: { isStandaloneWM: boolean; scopedWarehouseId?: number; standaloneStores?: { id: number }[] }
+): ReceiptOrderAssignment[] {
+  const active = assignments.filter(
+    (a) => !isAssignmentRejected(a.status)
+  );
+  if (opts.isStandaloneWM && opts.scopedWarehouseId != null) {
+    const storeIds = new Set((opts.standaloneStores ?? []).map((s) => Number(s.id)));
+    return active.filter(
+      (a) =>
+        a.store_id != null &&
+        (a.warehouse_id != null
+          ? Number(a.warehouse_id) === Number(opts.scopedWarehouseId)
+          : storeIds.has(Number(a.store_id)))
+    );
+  }
+  return active.filter((a) => a.warehouse_id != null && a.store_id == null);
 }
 
 function plannedWarehouseIdsOnLine(
@@ -153,8 +165,9 @@ export default function ReceiptAuthorizationFormPage() {
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const authRole = useAuthStore((state) => state.role);
   const roleSlug = normalizeRoleSlug(
-    activeAssignment?.role_name || useAuthStore((state) => state.role)
+    activeAssignment?.role_name || authRole
   );
   const raBasePath = receiptAuthorizationBasePath(roleSlug);
   const { isWarehouseManager, isStandaloneWarehouse: isStandaloneAssignment } =
@@ -176,6 +189,8 @@ export default function ReceiptAuthorizationFormPage() {
   const [driverIdNumber, setDriverIdNumber] = useState('');
   const [truckPlateNumber, setTruckPlateNumber] = useState('');
   const [waybillNumber, setWaybillNumber] = useState('');
+  const [selectedStorekeeperId, setSelectedStorekeeperId] = useState<string | null>(null);
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
 
   useEffect(() => {
     const roId = searchParams.get('receipt_order_id');
@@ -230,26 +245,55 @@ export default function ReceiptAuthorizationFormPage() {
     queryKey: ['reference-data', 'uom_conversions'],
     queryFn: getUomConversions,
   });
+  const { data: assignableStorekeepers = [], isLoading: storekeepersLoading } = useQuery({
+    queryKey: ['assignable_storekeepers', scopedWarehouseId],
+    queryFn: () => getAssignableStorekeepers(scopedWarehouseId!),
+    enabled: isWarehouseManager && isStandaloneAssignment && !!scopedWarehouseId,
+  });
+  const { data: standaloneStores = [], isLoading: storesLoading } = useQuery({
+    queryKey: ['stores', { warehouse_id: scopedWarehouseId, context: 'standalone-ra-form' }],
+    queryFn: () => getStores({ warehouse_id: scopedWarehouseId! }),
+    enabled: isWarehouseManager && isStandaloneAssignment && !!scopedWarehouseId,
+  });
   const { data: commodityRefs = [] } = useQuery({
     queryKey: ['reference-data', 'commodities'],
     queryFn: getCommodityReferences,
     enabled: !!selectedOrder,
   });
 
-  const assignmentsAll = selectedOrder?.receipt_order_assignments ?? selectedOrder?.assignments ?? [];
-  const warehouseAssignments = assignmentsAll.filter((a) => a.warehouse_id != null);
-  const orderLines = selectedOrder?.receipt_order_lines ?? selectedOrder?.lines ?? [];
+  const assignmentsAll = useMemo(
+    () => selectedOrder?.receipt_order_assignments ?? selectedOrder?.assignments ?? [],
+    [selectedOrder?.receipt_order_assignments, selectedOrder?.assignments]
+  );
+  const warehouseAssignments = useMemo(
+    () =>
+      plannedRaAssignments(assignmentsAll, {
+        isStandaloneWM: isWarehouseManager && isStandaloneAssignment,
+        scopedWarehouseId,
+        standaloneStores,
+      }),
+    [assignmentsAll, isWarehouseManager, isStandaloneAssignment, scopedWarehouseId, standaloneStores]
+  );
+  const orderLines = useMemo(
+    () => selectedOrder?.receipt_order_lines ?? selectedOrder?.lines ?? [],
+    [selectedOrder?.receipt_order_lines, selectedOrder?.lines]
+  );
   const hasPlannedWarehouseRows = warehouseAssignments.length > 0;
   const routingByOverride = !usePlannedAllocation || !hasPlannedWarehouseRows;
   const hubIdForRo = selectedOrder?.hub_id ?? scopedHubId ?? undefined;
-  const isStandaloneReceiptOrder =
-    selectedOrder != null &&
-    selectedOrder.hub_id == null &&
-    selectedOrder.warehouse_id != null;
+  const standaloneNeedsStorePlan =
+    isWarehouseManager &&
+    isStandaloneAssignment &&
+    !!receiptOrderId &&
+    !!selectedOrder &&
+    warehouseAssignments.length === 0;
 
   useEffect(() => {
-    if (!isWarehouseManager || !isStandaloneAssignment || !scopedWarehouseId) return;
-    if (selectedOrder && (isStandaloneReceiptOrder || !hasPlannedWarehouseRows)) {
+    if (!isWarehouseManager || !isStandaloneAssignment || !scopedWarehouseId || !selectedOrder) return;
+    if (warehouseAssignments.length > 0) {
+      setUsePlannedAllocation(true);
+      setExplicitWarehouseId(null);
+    } else {
       setUsePlannedAllocation(false);
       setExplicitWarehouseId(String(scopedWarehouseId));
     }
@@ -258,8 +302,7 @@ export default function ReceiptAuthorizationFormPage() {
     isStandaloneAssignment,
     scopedWarehouseId,
     selectedOrder,
-    isStandaloneReceiptOrder,
-    hasPlannedWarehouseRows,
+    warehouseAssignments.length,
   ]);
 
   const { data: hubWarehouses = [] } = useQuery({
@@ -307,6 +350,7 @@ export default function ReceiptAuthorizationFormPage() {
     () =>
       warehouseAssignments.map((a) => {
         const whName = a.warehouse_name || `Warehouse #${a.warehouse_id}`;
+        const storePart = a.store_name ? ` → ${a.store_name}` : '';
         const allocated = Number(a.quantity ?? 0);
         const u = (a.quantity_unit_abbreviation || '').trim();
         const uPart = u ? ` ${u}` : '';
@@ -323,12 +367,12 @@ export default function ReceiptAuthorizationFormPage() {
         let label: string;
         if (complete) {
           label =
-            `${whName} — plan complete (${allocated.toLocaleString()}${uPart} authorized)${lineHint}${allocTag}` +
+            `${whName}${storePart} — plan complete (${allocated.toLocaleString()}${uPart} authorized)${lineHint}${allocTag}` +
             (trucks > 0 ? ` · ${trucks} truck(s) still in hub flow (pending/active)` : '');
         } else {
           const truckPart = trucks > 0 ? ` · ${trucks} truck(s) in progress` : '';
           label =
-            `${whName} — ${remaining.toLocaleString()} / ${allocated.toLocaleString()}${uPart} remaining` +
+            `${whName}${storePart} — ${remaining.toLocaleString()} / ${allocated.toLocaleString()}${uPart} remaining` +
             ` (${used.toLocaleString()}${uPart} already on trucks)${truckPart}${lineHint}${allocTag}`;
         }
 
@@ -359,22 +403,18 @@ export default function ReceiptAuthorizationFormPage() {
   }, [receiptOrderId, selectedOrder?.receipt_order_lines, selectedOrder?.lines]);
 
   const receiptOrderOptions = receiptOrders.map((o) => {
-    // For federal / multi-hub orders, order.hub_name is null; pull destination from
-    // the first non-rejected assignment instead so the label is always meaningful.
-    const orderAssignments: ReceiptOrderAssignment[] =
-      (o.receipt_order_assignments ?? (o as unknown as { assignments?: ReceiptOrderAssignment[] }).assignments ?? []) as ReceiptOrderAssignment[];
-    const firstAssignmentDest =
-      orderAssignments
-        .filter((a) => !isAssignmentRejected(a.status))
-        .map((a) => a.hub_name || a.warehouse_name)
-        .find(Boolean);
-    const destination = o.warehouse_name || o.hub_name || firstAssignmentDest || 'Unknown destination';
     const sNorm = String(o.status || '').toLowerCase().replace(/\s+/g, '_');
     const statusSuffix = sNorm === 'completed' ? ' [Complete]' : sNorm === 'in_progress' ? ' [In Progress]' : '';
-    return { value: String(o.id), label: `RO-${o.id} — ${destination}${statusSuffix}` };
+    return { value: String(o.id), label: `RO-${o.id}${statusSuffix}` };
   });
 
   const selectedAssignment = warehouseAssignments.find((a) => String(a.id) === assignmentId);
+
+  useEffect(() => {
+    if (selectedAssignment?.store_id != null) {
+      setSelectedStoreId(String(selectedAssignment.store_id));
+    }
+  }, [assignmentId, selectedAssignment?.store_id]);
 
   const overrideLine =
     overrideReceiptLineId != null
@@ -568,6 +608,31 @@ export default function ReceiptAuthorizationFormPage() {
       label: `${ln.line_reference_no ?? `Line ${ln.id}`} — ${Number(ln.quantity ?? 0).toLocaleString()} ${ln.unit_name ?? ''}`,
     }));
 
+  const directToStorekeepers =
+    isWarehouseManager && isStandaloneAssignment && standaloneStores.length === 1;
+  const collectStorekeeperAssignment =
+    isWarehouseManager &&
+    isStandaloneAssignment &&
+    assignableStorekeepers.length > 0 &&
+    !directToStorekeepers;
+  const showIndependentStoreSelection =
+    isWarehouseManager && isStandaloneAssignment && standaloneStores.length > 0;
+  const showIndependentAssignmentSection = collectStorekeeperAssignment || showIndependentStoreSelection;
+  const storekeeperOptions = assignableStorekeepers.map((sk) => ({
+    value: String(sk.id),
+    label: sk.store_name ? `${sk.name} (${sk.store_name})` : sk.name,
+  }));
+  const storeOptions = Array.from(
+    new Map(
+      [
+        ...standaloneStores.map((store) => [String(store.id), store.name] as const),
+        ...assignableStorekeepers
+          .filter((sk) => sk.store_id != null)
+          .map((sk) => [String(sk.store_id), sk.store_name || `Store #${sk.store_id}`] as const),
+      ]
+    ).entries()
+  ).map(([value, label]) => ({ value, label }));
+
   const plannedIdsForChosenLine =
     effectiveLineNumericId != null
       ? plannedWarehouseIdsOnLine(assignmentsAll, effectiveLineNumericId, orderLines.length === 1)
@@ -635,7 +700,7 @@ export default function ReceiptAuthorizationFormPage() {
       }
       const normalizedQty = Number((enteredQtyLocal * unitMultiplier).toFixed(6));
 
-      let payloadReceiptLineId: number | null =
+      const payloadReceiptLineId: number | null =
         effectiveLine.id != null ? Number(effectiveLine.id) : null;
 
       if (!routingByOverride) {
@@ -652,10 +717,17 @@ export default function ReceiptAuthorizationFormPage() {
             `Cannot authorize ${normalizedQty.toLocaleString()} ${measurementUnitLabel}; only ${(lineRemainingPlanned ?? 0).toLocaleString()} ${measurementUnitLabel} remains on the receipt order line after trucks already on file`
           );
         }
+        const plannedStoreId =
+          selectedStoreId != null
+            ? Number(selectedStoreId)
+            : selectedAssignment?.store_id != null
+              ? Number(selectedAssignment.store_id)
+              : undefined;
         return createReceiptAuthorization({
           receipt_order_id: Number(receiptOrderId),
           receipt_order_assignment_id: assignmentId ? Number(assignmentId) : null,
           receipt_order_line_id: payloadReceiptLineId,
+          store_id: plannedStoreId,
           transporter_name: transporterName.trim(),
           authorized_quantity: normalizedQty,
           authorized_quantity_input: enteredQtyLocal,
@@ -685,6 +757,7 @@ export default function ReceiptAuthorizationFormPage() {
         receipt_order_assignment_id: null,
         receipt_order_line_id: payloadReceiptLineId,
         warehouse_id: Number(destinationWarehouseId),
+        store_id: selectedStoreId ? Number(selectedStoreId) : undefined,
         transporter_name: transporterName.trim(),
         authorized_quantity: normalizedQty,
         authorized_quantity_input: enteredQtyLocal,
@@ -696,11 +769,35 @@ export default function ReceiptAuthorizationFormPage() {
         notify_planned_facilities: notifyPlannedFacilities || undefined,
       });
     },
-    onSuccess: (ra) => {
+    onSuccess: async (ra) => {
       queryClient.invalidateQueries({ queryKey: ['receipt_authorizations'] });
+      let assignedStorekeeper = false;
+      if (selectedStorekeeperId && !directToStorekeepers) {
+        try {
+          await assignStorekeeperToRa(ra.id, {
+            storekeeper_user_id: Number(selectedStorekeeperId),
+            ...(selectedStoreId ? { store_id: Number(selectedStoreId) } : {}),
+          });
+          assignedStorekeeper = true;
+          queryClient.invalidateQueries({ queryKey: ['receipt_authorizations', ra.id] });
+          queryClient.invalidateQueries({ queryKey: ['assignable_storekeepers'] });
+        } catch (error: unknown) {
+          notifications.show({
+            title: 'Storekeeper assignment failed',
+            message:
+              (isAxiosError<ApiError>(error) ? error.response?.data?.error?.message : undefined) ||
+              'Receipt Authorization was created. Assign the storekeeper from the detail page.',
+            color: 'orange',
+          });
+        }
+      }
       notifications.show({
         title: 'Receipt Authorization Created',
-        message: `${ra.reference_no} created. Warehouse staff will be notified.`,
+        message: assignedStorekeeper
+          ? `${ra.reference_no} created. The selected storekeeper will be notified.`
+          : directToStorekeepers
+            ? `${ra.reference_no} created. Storekeepers at this warehouse will be notified automatically.`
+            : `${ra.reference_no} created. Warehouse staff will be notified.`,
         color: 'green',
       });
       navigate(`${raBasePath}/${ra.id}`);
@@ -771,7 +868,9 @@ export default function ReceiptAuthorizationFormPage() {
         !effectiveLine ||
         !authorizedUnitId ||
         (orderLines.length > 1 && !overrideReceiptLineId) ||
-        exceedsLineTotal));
+        exceedsLineTotal)) ||
+    standaloneNeedsStorePlan ||
+    (collectStorekeeperAssignment && !selectedStorekeeperId);
 
   return (
     <Stack gap="md">
@@ -786,13 +885,13 @@ export default function ReceiptAuthorizationFormPage() {
         <Stack gap="md">
           <Text size="sm" c="dimmed">
             {isWarehouseManager
-              ? 'Create one Receipt Authorization per truck for this independent warehouse. Each truck authorizes inbound quantity against the receipt order line total; storekeepers use this to run inspection and GRN.'
+              ? 'Create one Receipt Authorization per truck for this independent warehouse. Each truck authorizes inbound quantity against a store assignment from the Receipt Order plan; storekeepers use this to run inspection and GRN.'
               : 'Create one Receipt Authorization per truck. You can follow hub→warehouse rows from the Receipt Order allocation, or route directly to a warehouse under your hub when the plan is only guidance; quantity is always capped by the receipt order line total. Store assignment stays on the Receipt Order.'}
           </Text>
 
           <Divider label="Receipt Order" labelPosition="left" />
 
-          <Select
+          <SearchableSelect
             label="Receipt Order"
             placeholder="Select a confirmed receipt order"
             data={receiptOrderOptions}
@@ -803,7 +902,7 @@ export default function ReceiptAuthorizationFormPage() {
             description="Includes completed for rare legacy rows; prefer orders still in hub flow. New RAs stay blocked if the order is truly complete at the API."
           />
 
-          {receiptOrderId && hasPlannedWarehouseRows ? (
+          {receiptOrderId && hasPlannedWarehouseRows && !(isWarehouseManager && isStandaloneAssignment) ? (
             <Checkbox
               label="Use planned warehouse allocation (Receipt Order assignment rows)"
               checked={usePlannedAllocation}
@@ -811,17 +910,32 @@ export default function ReceiptAuthorizationFormPage() {
             />
           ) : null}
 
+          {standaloneNeedsStorePlan ? (
+            <Alert color="yellow" variant="light" title="Store assignment required">
+              This receipt order has no store assignment rows yet. Use <strong>Assign Store</strong> on the Receipt
+              Order assignment plan before authorizing trucks.
+            </Alert>
+          ) : null}
+
           {!routingByOverride && assignmentOptions.length > 0 ? (
             <>
-              <Select
-                label="Warehouse Assignment"
-                placeholder="Select warehouse allocation"
+              <SearchableSelect
+                label={isWarehouseManager && isStandaloneAssignment ? 'Store assignment (planned)' : 'Warehouse Assignment'}
+                placeholder={
+                  isWarehouseManager && isStandaloneAssignment
+                    ? 'Select store allocation from the plan'
+                    : 'Select warehouse allocation'
+                }
                 data={assignmentOptions}
                 value={assignmentId}
                 onChange={setAssignmentId}
                 searchable
                 required
-                description="Each row is a planned hub→warehouse bucket: remaining / plan shows how much you can still put on trucks. Rows marked plan complete are disabled."
+                description={
+                  isWarehouseManager && isStandaloneAssignment
+                    ? 'Each row is a planned store allocation: remaining / plan shows how much you can still put on trucks for that store.'
+                    : 'Each row is a planned hub→warehouse bucket: remaining / plan shows how much you can still put on trucks. Rows marked plan complete are disabled.'
+                }
               />
               {assignmentOptions.every((o) => o.disabled) ? (
                 <Alert color="yellow" variant="light" title="All planned buckets are full">
@@ -846,7 +960,7 @@ export default function ReceiptAuthorizationFormPage() {
                   order tied to your hub assignment.
                 </Alert>
               ) : (
-                <Select
+                <SearchableSelect
                   label="Destination warehouse"
                   placeholder="Select warehouse under hub"
                   data={warehouseOptionsRouting}
@@ -858,7 +972,7 @@ export default function ReceiptAuthorizationFormPage() {
                 />
               )}
               {orderLines.length > 1 ? (
-                <Select
+                <SearchableSelect
                   label="Receipt order line"
                   placeholder="Which commodity line on the RO?"
                   data={receiptLineOptions}
@@ -903,9 +1017,22 @@ export default function ReceiptAuthorizationFormPage() {
           ) : null}
 
           {selectedAssignment && !routingByOverride && (
-            <Alert color="blue" variant="light" title="Selected Warehouse Allocation">
+            <Alert
+              color="blue"
+              variant="light"
+              title={
+                isWarehouseManager && isStandaloneAssignment
+                  ? 'Selected store allocation'
+                  : 'Selected Warehouse Allocation'
+              }
+            >
               <Text size="sm">
-                <strong>Hub → warehouse plan (this row, alloc #{selectedAssignment.id})</strong>: up to{' '}
+                <strong>
+                  {isWarehouseManager && isStandaloneAssignment
+                    ? `Store plan (alloc #${selectedAssignment.id})`
+                    : `Hub → warehouse plan (this row, alloc #${selectedAssignment.id})`}
+                </strong>
+                : up to{' '}
                 {allocatedOnAssignment.toLocaleString()} {measurementUnitLabel} for this bucket. Trucks counted toward
                 this row: {usedOnAssignment.toLocaleString()} {measurementUnitLabel} (
                 {usedDirectLinkedOnAssignment.toLocaleString()} linked to this plan row
@@ -918,7 +1045,7 @@ export default function ReceiptAuthorizationFormPage() {
                 </strong>
                 .
               </Text>
-              {lineTotal != null ? (
+              {lineTotal != null && !(isWarehouseManager && isStandaloneAssignment) ? (
                 <Text size="sm" mt={8}>
                   <strong>Receipt order line ceiling</strong>: {lineTotal.toLocaleString()} {measurementUnitLabel}{' '}
                   ordered; {usedOnPlannedLineAllRas.toLocaleString()} already authorized on this line (all trucks).
@@ -994,7 +1121,7 @@ export default function ReceiptAuthorizationFormPage() {
                   : `Per truck; converted to ${measurementUnitLabel} and capped by allocation`
               }
             />
-            <Select
+            <SearchableSelect
               label="Quantity Unit"
               placeholder="Select unit"
               data={allowedUnitOptions}
@@ -1075,6 +1202,57 @@ export default function ReceiptAuthorizationFormPage() {
               style={{ fontFamily: 'monospace' }}
             />
           </Group>
+
+          {showIndependentAssignmentSection || directToStorekeepers ? (
+            <>
+              <Divider
+                label={
+                  collectStorekeeperAssignment
+                    ? 'Storekeeper & Store Assignment'
+                    : directToStorekeepers
+                      ? 'Storekeeper notification'
+                      : 'Store Assignment'
+                }
+                labelPosition="left"
+              />
+              {directToStorekeepers ? (
+                <Alert color="teal" variant="light">
+                  This warehouse has a single store. All eligible storekeepers will be notified automatically when this
+                  truck is authorized — no manual assignment is required.
+                </Alert>
+              ) : (
+              <Alert color="blue" variant="light">
+                {collectStorekeeperAssignment
+                  ? 'Assign the storekeeper now — they will be notified immediately after this truck is authorized.'
+                  : 'Select a destination store for this independent warehouse RA. You can leave it blank and assign later.'}
+              </Alert>
+              )}
+              {collectStorekeeperAssignment ? (
+                <SearchableSelect
+                  label="Storekeeper"
+                  placeholder={storekeepersLoading ? 'Loading…' : 'Select storekeeper'}
+                  data={storekeeperOptions}
+                  value={selectedStorekeeperId}
+                  onChange={setSelectedStorekeeperId}
+                  searchable
+                  required
+                  disabled={storekeepersLoading || storekeeperOptions.length === 0}
+                />
+              ) : null}
+              {storeOptions.length > 0 ? (
+                <SearchableSelect
+                  label="Store (optional)"
+                  placeholder={storesLoading ? 'Loading stores…' : 'Use storekeeper default or choose store'}
+                  data={storeOptions}
+                  value={selectedStoreId}
+                  onChange={setSelectedStoreId}
+                  clearable
+                  searchable
+                  disabled={storesLoading}
+                />
+              ) : null}
+            </>
+          ) : null}
 
           <Group justify="flex-end" mt="md">
             <Button variant="light" onClick={() => navigate(raBasePath)}>

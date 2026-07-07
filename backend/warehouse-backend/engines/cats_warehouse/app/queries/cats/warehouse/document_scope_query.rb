@@ -150,14 +150,7 @@ module Cats
           # Hub managers must keep seeing receipt orders through the physical receipt lifecycle:
           # after partial warehouse assignment / RAs / stacking, status moves past +assigned+ (e.g.
           # +reserved+, +in_progress+). Those rows must not disappear from the hub Receipt Orders list.
-          hub_receipt_queue_statuses = [
-            DOCUMENT_STATUSES[:confirmed],
-            DOCUMENT_STATUSES[:assigned],
-            DOCUMENT_STATUSES[:reserved],
-            DOCUMENT_STATUSES[:in_progress],
-            DOCUMENT_STATUSES[:completed]
-          ].uniq
-          return rel.where(status: hub_receipt_queue_statuses)
+          return rel.where(status: receipt_order_operational_statuses)
         end
         
         rel = hub_ids.blank? ? by_warehouse : by_warehouse.or(scoped_relation.where(hub_id: hub_ids))
@@ -168,7 +161,7 @@ module Cats
           assigned_order_ids = receipt_order_ids_for_warehouse_manager_assignments(wh_ids)
           ra_order_ids = receipt_order_ids_for_warehouse_manager_receipt_authorizations(wh_ids)
           combined_ids = (assigned_order_ids + ra_order_ids).uniq
-          return rel.or(scoped_relation.where(id: combined_ids))
+          return rel.or(scoped_relation.where(id: combined_ids)).where(status: receipt_order_operational_statuses)
         end
 
         # Storekeepers: store/warehouse assignments plus standalone hub-less orders and RAs at their warehouse.
@@ -217,7 +210,11 @@ module Cats
         order_ids = linked_ids.compact.uniq
         return scoped_relation.none if order_ids.empty?
 
-        scoped_relation.where(id: order_ids)
+        scoped_relation.where(id: order_ids).where(status: receipt_order_operational_statuses)
+      end
+
+      def receipt_order_operational_statuses
+        RECEIPT_ORDER_OPERATIONAL_STATUSES
       end
 
       # Dispatch orders use hierarchical scoping for sub-federal officers.

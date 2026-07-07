@@ -76,9 +76,14 @@ RSpec.describe "Warehouse Manager Storekeeper Assignment", type: :request do
       stores_json = JSON.parse(response.body)
       store_ids = stores_json["data"].map { |s| s["id"] }
       expect(store_ids).to contain_exactly(store1.id, store2.id)
+      expect(Cats::Warehouse::UserAssignment.exists?(
+        user: storekeeper,
+        role_name: "Storekeeper",
+        warehouse: warehouse
+      )).to be(true)
     end
 
-    it "allows warehouse manager to reset storekeeper to warehouse-level access" do
+    it "defaults to assigning the selected store when store_ids are omitted" do
       # Ensure stores exist
       store1
       store2
@@ -92,24 +97,23 @@ RSpec.describe "Warehouse Manager Storekeeper Assignment", type: :request do
       
       payload = {
         user_id: storekeeper.id
-        # Don't send store_ids at all to indicate warehouse-level
       }
 
-      # Warehouse manager can access all stores in their warehouse, so use store1
       post "/cats_warehouse/v1/stores/#{store1.id}/assign_storekeeper", params: payload, headers: headers
 
       expect(response).to have_http_status(:ok)
       json = JSON.parse(response.body)
       
-      expect(json["data"]["assignment_type"]).to eq("warehouse")
+      expect(json["data"]["assignment_type"]).to eq("store")
+      expect(json["data"]["store_ids"]).to contain_exactly(store1.id)
 
-      # Verify the storekeeper now sees all stores
+      # Verify the storekeeper sees only the explicitly assigned store
       storekeeper_headers = auth_headers_for(storekeeper)
       get "/cats_warehouse/v1/stores", headers: storekeeper_headers
       
       stores_json = JSON.parse(response.body)
       store_ids = stores_json["data"].map { |s| s["id"] }
-      expect(store_ids).to contain_exactly(store1.id, store2.id, store3.id)
+      expect(store_ids).to contain_exactly(store1.id)
     end
 
     it "rejects assignment if user is not a storekeeper" do
@@ -131,15 +135,14 @@ RSpec.describe "Warehouse Manager Storekeeper Assignment", type: :request do
   end
 
   describe "Store serializer with assigned_storekeepers" do
-    it "includes warehouse-level storekeepers on all stores" do
+    it "does not show warehouse-level storekeepers as assigned to stores" do
       headers = auth_headers_for(warehouse_manager)
       get "/cats_warehouse/v1/stores/#{store1.id}", headers: headers
 
       expect(response).to have_http_status(:ok)
       json = JSON.parse(response.body)
       
-      expect(json["data"]["assigned_storekeepers"].length).to eq(1)
-      expect(json["data"]["assigned_storekeepers"][0]["id"]).to eq(storekeeper.id)
+      expect(json["data"]["assigned_storekeepers"]).to be_empty
     end
 
     it "includes store-level storekeepers only on their assigned stores" do

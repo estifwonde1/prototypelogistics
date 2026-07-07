@@ -17,9 +17,12 @@ import {
   IconMapPin,
   IconFileArrowRight,
   IconClipboardCheck,
+  IconUser,
+  IconLogout,
 } from "@tabler/icons-react";
 import { useAuthStore } from "../../store/authStore";
 import { usePermission } from "../../hooks/usePermission";
+import { useLogout } from "../../hooks/useLogout";
 import {
   OFFICER_ROLE_SLUGS,
   type Resource,
@@ -47,6 +50,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
   const role = useAuthStore((state) => state.role);
   const { can } = usePermission();
   const location = useLocation();
+  const handleLogout = useLogout();
   const isAdmin = role === "admin" || role === "superadmin";
   const isSuperAdmin = role === "superadmin";
   const roleSlug = (role as RoleSlug | null) ?? null;
@@ -129,12 +133,6 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
           label: "Stacks",
           icon: <IconStack2 size={20} />,
           path: "/stacks",
-          resource: "stacks",
-        },
-        {
-          label: "Stacking",
-          icon: <IconBox size={20} />,
-          path: "/stacks/layout",
           resource: "stacks",
         },
       ],
@@ -267,7 +265,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
         ...(wmCanAccessRa
           ? [
               {
-                label: "Receipt Authorizations",
+              label: "Receipt Authorizations",
                 icon: <IconClipboardCheck size={20} />,
                 path: "/warehouse/receipt-authorizations",
                 resource: "receipt_authorizations" as Resource,
@@ -331,12 +329,6 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               resource: "stacks",
             },
             {
-              label: "Stacking",
-              icon: <IconBox size={20} />,
-              path: "/stacks/layout",
-              resource: "stacks",
-            },
-            {
               label: "Transfer Requests",
               icon: <IconFileArrowRight size={20} />,
               path: "/transfer-requests",
@@ -354,7 +346,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               resource: "receipt_orders",
             },
             {
-              label: "Driver Arrivals",
+              label: "Receive Receipt",
               icon: <IconTruck size={20} />,
               path: "/storekeeper/receipt-authorizations",
               resource: "receipt_orders",
@@ -420,7 +412,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               {
                 label: "Commodities",
                 icon: <IconBox size={20} />,
-                path: "/officer/commodities/new",
+                path: "/officer/commodities?tab=create",
                 resource: "receipt_orders",
               },
             ],
@@ -459,7 +451,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
             {
               label: "Commodities",
               icon: <IconBox size={20} />,
-              path: "/officer/commodities/new",
+              path: "/officer/commodities?tab=create",
               resource: "receipt_orders",
             },
           ],
@@ -477,6 +469,41 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
       return can(item.resource, "read");
     }),
   });
+
+  const accountSection = (
+    <div>
+      <MantineNavLink
+        label="Account"
+        childrenOffset={0}
+        defaultOpened
+        style={{
+          fontWeight: 600,
+          fontSize: "0.875rem",
+          color: "var(--mantine-color-dimmed)",
+        }}
+      >
+        <MantineNavLink
+          component={NavLink}
+          to="/profile"
+          label="Profile"
+          leftSection={<IconUser size={20} />}
+          active={location.pathname === "/profile"}
+          variant="subtle"
+          onClick={onLinkClick}
+        />
+        <MantineNavLink
+          label="Logout"
+          leftSection={<IconLogout size={20} />}
+          variant="subtle"
+          color="red"
+          onClick={() => {
+            onLinkClick?.();
+            handleLogout();
+          }}
+        />
+      </MantineNavLink>
+    </div>
+  );
 
   return (
     <Stack
@@ -603,6 +630,8 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               </MantineNavLink>
             </div>
           ))}
+
+      {accountSection}
     </Stack>
   );
 }

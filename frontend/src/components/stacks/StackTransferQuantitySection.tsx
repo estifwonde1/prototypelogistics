@@ -1,4 +1,5 @@
-import { Alert, Box, Select, Stack as MantineStack, Text, TextInput } from '@mantine/core';
+import { Alert, Box, Stack as MantineStack, Text, TextInput } from '@mantine/core';
+import { SearchableSelect } from '../common/SearchableSelect';
 import type { Stack } from '../../types/stack';
 import type { useStackTransferForm } from '../../hooks/useStackTransferForm';
 
@@ -86,7 +87,7 @@ export default function StackTransferQuantitySection({
         </Text>
       </Box>
 
-      <Select
+      <SearchableSelect
         label="Unit of measure"
         description="Enter the transfer quantity in the unit you are working with (e.g. kg, mt, quintal)"
         data={unitOptions}

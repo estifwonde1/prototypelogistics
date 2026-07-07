@@ -43,16 +43,57 @@ module Cats
         (floor * store.height.to_f).round(4)
       end
 
+      def self.warehouse_geometric_volume_m3(wh_cap)
+        return 0.0 if wh_cap.blank?
+
+        wh_cap.total_area_sqm.to_f * wh_cap.height_m.to_f
+      end
+
+      # Geometric share of warehouse building volume (L×W×H), scaled to usable MT budget.
+      def self.store_allocation_share(store, warehouse_capacity: nil)
+        wh_cap = warehouse_capacity || store.warehouse&.warehouse_capacity
+        wh_geo_vol = warehouse_geometric_volume_m3(wh_cap)
+        return 0.0 if wh_geo_vol <= 0
+
+        store_geo_vol = store_usable_volume_m3(store)
+        return 0.0 if store_geo_vol <= 0
+
+        store_geo_vol / wh_geo_vol
+      end
+
+      def self.effective_store_volume_m3(store, warehouse_capacity: nil)
+        wh_cap = warehouse_capacity || store.warehouse&.warehouse_capacity
+        return 0.0 unless wh_cap&.capacity_established?
+
+        wh_usable_vol = wh_cap.usable_volume_m3.to_f
+        return 0.0 if wh_usable_vol <= 0
+
+        (wh_usable_vol * store_allocation_share(store, warehouse_capacity: wh_cap)).round(4)
+      end
+
       def self.allocated_capacity_mt(store, warehouse_capacity: nil)
         wh_cap = warehouse_capacity || store.warehouse&.warehouse_capacity
         return 0.0 unless wh_cap&.capacity_established?
 
-        wh_vol = wh_cap.usable_volume_m3.to_f
-        return 0.0 if wh_vol <= 0
+        wh_usable_mt = wh_cap.usable_storage_capacity_mt.to_f
+        return 0.0 if wh_usable_mt <= 0
 
-        store_vol = store_usable_volume_m3(store)
-        share = store_vol / wh_vol
-        (wh_cap.usable_storage_capacity_mt.to_f * share).round(4)
+        share = store_allocation_share(store, warehouse_capacity: wh_cap)
+        (wh_usable_mt * share).round(4)
+      end
+
+      def self.store_fully_occupies_warehouse?(store, warehouse_capacity: nil)
+        wh_cap = warehouse_capacity || store.warehouse&.warehouse_capacity
+        return false unless wh_cap&.capacity_established?
+        return false if store.has_gangway?
+
+        eps = 1e-4
+        store.length.to_f.positive? &&
+          store.width.to_f.positive? &&
+          store.height.to_f.positive? &&
+          (store.length.to_f - wh_cap.length_m.to_f).abs <= eps &&
+          (store.width.to_f - wh_cap.width_m.to_f).abs <= eps &&
+          (store.height.to_f - wh_cap.height_m.to_f).abs <= eps
       end
 
       def initialize(length_m:, width_m:, height_m:, usable_space_percentage:)

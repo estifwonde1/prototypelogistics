@@ -11,21 +11,24 @@ import {
   Badge,
   Box,
   UnstyledButton,
+  ActionIcon,
+  Tooltip,
 } from '@mantine/core';
 import {
   IconBell,
   IconChevronDown,
   IconChevronRight,
   IconLogout,
-  IconUser,
   IconSwitchVertical,
   IconCheck,
 } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { getRoleLabel, OFFICER_ROLE_SLUGS, type RoleSlug } from '../../utils/constants';
+import { getMyAssignments, getMyProfile, MY_PROFILE_QUERY_KEY } from '../../api/me';
+import { useLogout } from '../../hooks/useLogout';
 import {
   fetchNotifications,
   fetchUnreadNotificationCount,
@@ -36,7 +39,9 @@ import {
 import { useRoleSwitcher } from '../../hooks/useRoleSwitcher';
 import { FacilityPickerModal } from '../role-switcher/FacilityPickerModal';
 import { StorekeeperStorePickerModal } from '../role-switcher/StorekeeperStorePickerModal';
+import { WorkspacePickerModal } from '../role-switcher/WorkspacePickerModal';
 import { normalizeRoleSlug } from '../../contracts/warehouse';
+import { prefetchDashboardForRole } from '../../utils/workspaceSwitch';
 
 interface HeaderProps {
   mobileOpened: boolean;
@@ -55,59 +60,90 @@ function resolveNotificationPath(params: unknown): string | null {
 export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDesktop }: HeaderProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { role, assignments, activeAssignment, clearAuth, token } = useAuthStore();
+  const {
+    role,
+    assignments,
+    activeAssignment,
+    token,
+    setAssignments,
+    setActiveAssignment,
+  } = useAuthStore();
+  const handleLogout = useLogout();
   const roleLabel = getRoleLabel(role);
   const [notifMenuOpened, setNotifMenuOpened] = useState(false);
+  const [accountHovered, setAccountHovered] = useState(false);
+  const [workspacePickerOpened, setWorkspacePickerOpened] = useState(false);
+  const activeWarehouseId = activeAssignment?.warehouse?.id;
 
   const { switchState, switchToRole, onFacilitySelected, onStoreSelected, dismissPicker } =
     useRoleSwitcher();
 
+  const { data: freshAssignments } = useQuery({
+    queryKey: ['me', 'assignments', 'header'],
+    queryFn: getMyAssignments,
+    enabled: Boolean(token),
+    staleTime: 10_000,
+    refetchOnWindowFocus: true,
+  });
+
+  const { data: profile } = useQuery({
+    queryKey: MY_PROFILE_QUERY_KEY,
+    queryFn: getMyProfile,
+    enabled: Boolean(token),
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    if (!freshAssignments) return;
+
+    setAssignments(freshAssignments);
+
+    const activeStillExists =
+      activeAssignment &&
+      freshAssignments.some((assignment) => assignment.id === activeAssignment.id);
+
+    if (!activeStillExists && freshAssignments.length === 1) {
+      setActiveAssignment(freshAssignments[0]);
+    }
+  }, [freshAssignments, activeAssignment, setAssignments, setActiveAssignment]);
+
   const { data: unreadCount = 0 } = useQuery({
-    queryKey: notificationsUnreadCountKey,
-    queryFn: fetchUnreadNotificationCount,
+    queryKey: [...notificationsUnreadCountKey, { warehouse_id: activeWarehouseId }],
+    queryFn: () => fetchUnreadNotificationCount({ warehouse_id: activeWarehouseId }),
     enabled: Boolean(token),
     staleTime: 0,
     refetchInterval: 20_000,
     refetchOnWindowFocus: true,
-    refetchOnMount: 'always',
   });
 
   const { data: recentNotifications = [] } = useQuery({
-    queryKey: [...notificationsQueryKey, 'recent'],
-    queryFn: () => fetchNotifications({ limit: 15 }),
+    queryKey: [...notificationsQueryKey, 'recent', { warehouse_id: activeWarehouseId }],
+    queryFn: () => fetchNotifications({ limit: 15, warehouse_id: activeWarehouseId }),
     enabled: Boolean(token),
     staleTime: 0,
     refetchInterval: 20_000,
     refetchOnWindowFocus: true,
-    refetchOnMount: 'always',
   });
 
   const isOfficer = role && OFFICER_ROLE_SLUGS.includes(role as RoleSlug);
-
-  const facilityName =
-    activeAssignment?.hub?.name ||
-    activeAssignment?.warehouse?.name ||
-    activeAssignment?.store?.name ||
-    activeAssignment?.location?.name ||
-    'Federal';
 
   // All unique role names this user holds
   const uniqueRoleNames = Array.from(new Set(assignments.map((a) => a.role_name)));
   const hasMultipleRoles = uniqueRoleNames.length > 1;
 
-  const handleLogout = () => {
-    clearAuth();
-    queryClient.clear();
-    navigate('/login');
-  };
+  const profileName = profile
+    ? `${profile.first_name} ${profile.last_name}`.trim()
+    : '';
+  const profileEmail = profile?.email ?? '';
+  const showAccountExtras = accountHovered;
 
   const handleSwitchWorkspace = () => {
-    navigate('/select-role', { state: { fromSwitchWorkspace: true } });
+    setWorkspacePickerOpened(true);
   };
 
   return (
     <>
-      <Group h="100%" px="md" justify="space-between">
+      <Group h="100%" px="md" justify="space-between" wrap="nowrap" style={{ overflow: 'visible' }}>
         {/* ── Left: burger + app title ── */}
         <Group>
           <Burger opened={mobileOpened} onClick={toggleMobile} hiddenFrom="sm" size="sm" />
@@ -284,6 +320,9 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
                       fw={isActive ? 600 : undefined}
                       c={isActive ? 'blue' : undefined}
                       disabled={isActive}
+                      onMouseEnter={() => {
+                        if (!isActive && slug) prefetchDashboardForRole(slug);
+                      }}
                       onClick={() => { if (!isActive) switchToRole(rName); }}
                     >
                       {getRoleLabel(slug)}
@@ -294,41 +333,86 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
             </Menu>
           )}
 
-          {/* ── Profile / account menu ── */}
-          <Menu shadow="md" width={200}>
-            <Menu.Target>
-              <Button variant="subtle" leftSection={<Avatar size="sm" radius="xl" />}>
-                <Stack gap={0} align="flex-start">
-                  <Text size="sm" fw={600}>{roleLabel}</Text>
-                  <Text size="xs" c="dimmed">{facilityName}</Text>
+          {/* ── Account: role + name; email + logout alongside on hover ── */}
+          <Box
+            onMouseEnter={() => setAccountHovered(true)}
+            onMouseLeave={() => setAccountHovered(false)}
+            style={{ flexShrink: 0 }}
+          >
+            <UnstyledButton
+              aria-label="Account"
+              aria-expanded={showAccountExtras}
+              styles={(theme) => ({
+                root: {
+                  padding: '6px 10px',
+                  borderRadius: theme.radius.sm,
+                  transition: 'background-color 150ms ease',
+                  '&:hover': {
+                    backgroundColor: theme.colors.gray[0],
+                  },
+                },
+              })}
+            >
+              <Group gap="sm" wrap="nowrap" align="center">
+                <Avatar size="sm" radius="xl" />
+                <Stack gap={0} align="flex-start" style={{ minWidth: 0 }}>
+                  <Text size="sm" fw={600} lineClamp={1}>
+                    {roleLabel}
+                  </Text>
+                  <Text size="xs" c="dimmed" lineClamp={1}>
+                    {profileName || '…'}
+                  </Text>
                 </Stack>
-              </Button>
-            </Menu.Target>
-            <Menu.Dropdown>
-              <Menu.Label>Account</Menu.Label>
-              <Menu.Item leftSection={<IconUser size={14} />}>
-                Profile
-              </Menu.Item>
-
-              {/* Switch Workspace — restored exactly as before */}
-              {assignments.length > 1 && !isOfficer && (
-                <>
-                  <Menu.Divider />
-                  <Menu.Item
-                    leftSection={<IconSwitchVertical size={14} />}
-                    onClick={handleSwitchWorkspace}
+                {showAccountExtras && (
+                  <Group
+                    gap="xs"
+                    wrap="nowrap"
+                    align="center"
+                    pl="xs"
+                    ml="xs"
+                    style={{
+                      borderLeft: '1px solid var(--mantine-color-gray-3)',
+                    }}
                   >
-                    Switch Workspace
-                  </Menu.Item>
-                </>
-              )}
-
-              <Menu.Divider />
-              <Menu.Item color="red" leftSection={<IconLogout size={14} />} onClick={handleLogout}>
-                Logout
-              </Menu.Item>
-            </Menu.Dropdown>
-          </Menu>
+                    {profileEmail ? (
+                      <Text size="xs" c="dimmed" lineClamp={1} maw={180}>
+                        {profileEmail}
+                      </Text>
+                    ) : null}
+                    {assignments.length > 1 && !isOfficer && (
+                      <Tooltip label="Switch workspace">
+                        <ActionIcon
+                          variant="subtle"
+                          size="sm"
+                          aria-label="Switch workspace"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSwitchWorkspace();
+                          }}
+                        >
+                          <IconSwitchVertical size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                    )}
+                    <Tooltip label="Logout">
+                      <ActionIcon
+                        variant="subtle"
+                        color="red"
+                        size="sm"
+                        aria-label="Logout"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleLogout();
+                        }}
+                      >
+                        <IconLogout size={18} />
+                      </ActionIcon>
+                    </Tooltip>
+                  </Group>
+                )}
+              </Group>
+            </UnstyledButton>
+          </Box>
 
         </Group>
       </Group>
@@ -352,6 +436,11 @@ export function Header({ mobileOpened, desktopOpened, toggleMobile, toggleDeskto
           onSelect={onStoreSelected}
         />
       )}
+
+      <WorkspacePickerModal
+        opened={workspacePickerOpened}
+        onClose={() => setWorkspacePickerOpened(false)}
+      />
     </>
   );
 }

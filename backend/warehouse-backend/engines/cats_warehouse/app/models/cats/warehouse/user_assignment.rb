@@ -27,6 +27,18 @@ module Cats
       validate :assignment_target_present
       validate :assignment_target_matches_role
 
+      def self.clear_other_warehouse_managers!(warehouse_id:, user_id:)
+        where(warehouse_id: warehouse_id, role_name: "Warehouse Manager")
+          .where.not(user_id: user_id)
+          .delete_all
+      end
+
+      def self.clear_other_hub_managers!(hub_id:, user_id:)
+        where(hub_id: hub_id, role_name: "Hub Manager")
+          .where.not(user_id: user_id)
+          .delete_all
+      end
+
       private
 
       def assignment_target_present

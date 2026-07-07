@@ -1,22 +1,7 @@
 import { Fragment, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import {
-  Alert,
-  Badge,
-  Button,
-  Card,
-  Collapse,
-  Divider,
-  Group,
-  SegmentedControl,
-  Select,
-  SimpleGrid,
-  Stack,
-  Table,
-  Text,
-  TextInput,
-  Title,
-} from '@mantine/core';
+import { Alert, Badge, Button, Card, Collapse, Divider, Group, SegmentedControl, SimpleGrid, Stack, Table, Text, TextInput, Title } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import {
   IconChevronDown,
   IconChevronRight,
@@ -58,7 +43,7 @@ interface CommodityStock {
 }
 
 function unitLabel(row?: Partial<StockBalance | BinCardEntry> | null) {
-  return row?.unit_abbreviation || row?.unit_name || row?.base_unit_name || 'unit';
+  return row?.entered_unit_abbreviation || row?.entered_unit_name || row?.unit_abbreviation || row?.unit_name || row?.base_unit_name || 'unit';
 }
 
 function balanceBatchKey(row: StockBalance) {
@@ -174,7 +159,7 @@ function StockBalancePage() {
 
         for (const row of rows) {
           const unit = unitLabel(row);
-          addTotal(totals, unit, Number(row.quantity || 0));
+          addTotal(totals, unit, Number(row.entered_quantity ?? (row.quantity || 0)));
           const key = balanceBatchKey(row);
           if (!byBatch.has(key)) byBatch.set(key, []);
           byBatch.get(key)!.push(row);
@@ -184,7 +169,7 @@ function StockBalancePage() {
           .map(([key, batchRows]) => {
             const row0 = batchRows[0];
             const batchTotals = new Map<string, number>();
-            for (const row of batchRows) addTotal(batchTotals, unitLabel(row), Number(row.quantity || 0));
+            for (const row of batchRows) addTotal(batchTotals, unitLabel(row), Number(row.entered_quantity ?? (row.quantity || 0)));
 
             return {
               key,
@@ -290,7 +275,7 @@ function StockBalancePage() {
               <Table.Td>{row.warehouse_name || row.warehouse_id}</Table.Td>
               <Table.Td>{row.store_name || row.store_id || '-'}</Table.Td>
               <Table.Td>{row.stack_code || row.stack_id || '-'}</Table.Td>
-              <Table.Td style={{ textAlign: 'right', fontWeight: 700 }}>{Number(row.quantity).toLocaleString()}</Table.Td>
+              <Table.Td style={{ textAlign: 'right', fontWeight: 700 }}>{Number(row.entered_quantity ?? row.quantity).toLocaleString()}</Table.Td>
               <Table.Td>{unitLabel(row)}</Table.Td>
             </Table.Tr>
           ))}
@@ -428,7 +413,7 @@ function StockBalancePage() {
           onChange={(event) => setSearch(event.currentTarget.value)}
           style={{ flex: 1, minWidth: 280 }}
         />
-        <Select
+        <SearchableSelect
           placeholder="Filter by warehouse"
           data={warehouseOptions}
           value={warehouseFilter}
