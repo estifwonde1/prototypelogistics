@@ -42,10 +42,27 @@ module Cats
       end
 
       def call
+        tx_entered_unit_id = (item.respond_to?(:entered_unit_id) && item.entered_unit_id.present?) ? item.entered_unit_id : item.unit_id
+
         balance = locked_balance
-        balance.quantity = balance.quantity.to_f + quantity_delta
+        
+        effective_qty_delta = quantity_delta
+        if balance.unit_id.present? && item.unit_id != balance.unit_id
+          effective_qty_delta = UomConversionResolver.convert(
+            quantity_delta,
+            from_unit_id: item.unit_id,
+            to_unit_id: balance.unit_id,
+            commodity_id: item.commodity_id
+          )
+        end
+
+        balance.quantity = balance.quantity.to_f + effective_qty_delta
         balance.base_quantity = balance.base_quantity.to_f + base_quantity_delta
         balance.base_unit_id ||= @base_unit_id
+
+        if quantity_delta.positive? && tx_entered_unit_id.present?
+          balance.entered_unit_id = tx_entered_unit_id
+        end
         balance.available_quantity = balance.quantity.to_f - balance.reserved_quantity.to_f if balance.respond_to?(:available_quantity)
 
         ensure_non_negative!(balance.base_quantity, "stock balance")
@@ -54,12 +71,68 @@ module Cats
         return balance unless item.stack_id.present?
 
         stack = Stack.lock.find(item.stack_id)
-        stack.quantity = stack.quantity.to_f + quantity_delta
+
+        # ── Space check (receipts only) ──────────────────────────────────────
+        # Only enforce when goods are being added (positive delta).  Issues and
+        # adjustments that reduce quantity can never overflow the store.
+        ensure_warehouse_capacity_established! if quantity_delta.positive?
+        check_incoming_volume!(stack, base_quantity_delta) if quantity_delta.positive?
+        # ────────────────────────────────────────────────────────────────────
+
+        stack.quantity = stack.quantity.to_f + effective_qty_delta
         stack.base_quantity = stack.base_quantity.to_f + base_quantity_delta
         stack.base_unit_id ||= @base_unit_id
+        stack.stack_status = stack.quantity.to_f.positive? ? "active" : "empty"
+        # Keep occupied_volume in sync: volume is claimed when the stack holds goods,
+        # released when it is emptied.
+        stack.occupied_volume = stack.quantity.to_f.positive? ? stack.volume : 0.0
+        if quantity_delta.positive? && stack.commodity_id.blank?
+          stack.commodity_id = item.commodity_id
+          stack.unit_id = item.unit_id
+        end
+
+        # When a stack is emptied (quantity reaches 0), clear its commodity affiliation
+        # so a different commodity can be placed in it next time.  Do this before save!
+        # so the full ActiveRecord lifecycle (callbacks, validations) runs once over the
+        # complete final state rather than issuing a second raw SQL UPDATE.
+        if stack.quantity.to_f <= 0.0001
+          stack.commodity_id   = nil
+          stack.unit_id        = nil
+          stack.base_unit_id   = nil
+          stack.stack_status   = "empty"
+          stack.occupied_volume = 0.0
+        end
 
         ensure_non_negative!(stack.base_quantity, "stack quantity")
         stack.save!
+
+        # Recalculate the store's available_space from live stack data so it
+        # never becomes stale after receipts, issues, or adjustments.
+        StoreOccupancyUpdater.call(store_id: stack.store_id)
+
+        # Use the unit the user actually entered (e.g. Kuntal) when available.
+        # Falls back to the canonical line unit (e.g. MT) for legacy records.
+        # (tx_entered_unit_id is now defined at the top of the method)
+        # Determine the entered quantity.  Three scenarios:
+        #
+        #  1. The item already stores entered_quantity (e.g. InspectionItem) → use it.
+        #  2. The item has entered_unit_id ≠ unit_id but no entered_quantity
+        #     column (e.g. GrnItem) → reverse-convert from line unit to entered
+        #     unit so the StackTransaction shows "10 Kuntal" instead of "1 MT".
+        #  3. Neither → fall back to the raw quantity delta.
+        tx_entered_quantity =
+          if item.respond_to?(:entered_quantity) && item.entered_quantity.present?
+            item.entered_quantity.to_f.abs
+          elsif tx_entered_unit_id != item.unit_id
+            UomConversionResolver.convert(
+              quantity_delta.abs,
+              from_unit_id: item.unit_id,
+              to_unit_id:   tx_entered_unit_id,
+              commodity_id: item.commodity_id
+            ).to_f.abs
+          else
+            quantity_delta.abs
+          end
 
         StackTransaction.create!(
           source_id: quantity_delta.negative? ? item.stack_id : nil,
@@ -68,7 +141,8 @@ module Cats
           quantity: quantity_delta.abs,
           unit_id: item.unit_id,
           inventory_lot_id: item.respond_to?(:inventory_lot_id) ? item.inventory_lot_id : nil,
-          entered_unit_id: item.unit_id,
+          entered_unit_id: tx_entered_unit_id,
+          entered_quantity: tx_entered_quantity,
           base_unit_id: @base_unit_id,
           base_quantity: base_quantity_delta.abs,
           status: "Confirmed",
@@ -100,11 +174,10 @@ module Cats
           store_id: item.store_id,
           stack_id: item.stack_id,
           commodity_id: item.commodity_id,
-          unit_id: item.unit_id,
           inventory_lot_id: item.respond_to?(:inventory_lot_id) ? item.inventory_lot_id : nil
         }
 
-        StockBalance.lock.find_by(attrs) || StockBalance.create!(attrs.merge(quantity: 0, base_quantity: 0, base_unit_id: @base_unit_id, reserved_quantity: 0, available_quantity: 0))
+        StockBalance.lock.find_by(attrs) || StockBalance.create!(attrs.merge(unit_id: item.unit_id, quantity: 0, base_quantity: 0, base_unit_id: @base_unit_id, reserved_quantity: 0, available_quantity: 0))
       rescue ActiveRecord::RecordNotUnique
         retry
       end
@@ -114,6 +187,141 @@ module Cats
 
         item.errors.add(:base, "#{label} cannot be negative")
         raise ActiveRecord::RecordInvalid, item
+      end
+
+      # Calculates the physical volume the incoming goods will occupy and
+      # verifies it fits in both the target stack and the target store.
+      #
+      # Two independent checks:
+      #
+      #   1. Stack capacity — the goods must fit within the stack's own volume
+      #      (l × w × h).  A stack is a fixed physical space; you cannot put
+      #      more into it than its dimensions allow.
+      #
+      #   2. Store available_space — the store's remaining free volume must be
+      #      >= the incoming volume.  This catches the case where the stack
+      #      itself has room but the store is already full of other stacks.
+      #
+      # Uses commodity volume_per_metric_ton when set; otherwise planning default
+      # (CapacityCalculator::REFERENCE_M3_PER_MT) via VolumeCalculator.
+      #
+      # @param stack [Stack]  the locked stack row (already fetched)
+      # @param incoming_base_qty [Numeric]  quantity in base unit (MT)
+      def ensure_warehouse_capacity_established!
+        return if warehouse.capacity_established?
+
+        raise Cats::Warehouse::InsufficientSpaceError,
+              "Warehouse capacity must be established before accepting commodities"
+      end
+
+      def check_incoming_volume!(stack, incoming_base_qty)
+        incoming_mt = base_qty_to_mt(incoming_base_qty)
+
+        incoming_m3 = VolumeCalculator.call(
+          commodity: item.commodity,
+          base_quantity: incoming_mt
+        )
+
+        # Compute actual remaining volume from goods already on the stack,
+        # rather than relying on occupied_volume (which is 0 or full volume).
+        current_goods_m3 = if stack.base_quantity.to_f > 0
+          VolumeCalculator.call(
+            commodity: stack.commodity || item.commodity,
+            base_quantity: base_qty_to_mt(stack.base_quantity.to_f)
+          ) || 0.0
+        else
+          0.0
+        end
+
+        stack_remaining = [stack.volume.to_f - current_goods_m3, 0.0].max
+        if incoming_m3 > stack_remaining + 1e-6
+          raise Cats::Warehouse::InsufficientSpaceError,
+                "Insufficient stack capacity: incoming #{incoming_m3.round(4)} m³ " \
+                "exceeds remaining stack space #{stack_remaining.round(4)} m³ " \
+                "(stack #{stack.code.presence || "##{stack.id}"})"
+        end
+
+        if stack.max_capacity_mt.present?
+          stack_used_mt = base_qty_to_mt(stack.base_quantity.to_f)
+          if stack_used_mt + incoming_mt > stack.max_capacity_mt.to_f + 1e-6
+            raise Cats::Warehouse::InsufficientSpaceError,
+                  "Insufficient stack capacity: incoming #{incoming_mt.round(4)} MT " \
+                  "exceeds remaining stack capacity " \
+                  "#{(stack.max_capacity_mt.to_f - stack_used_mt).round(4)} MT " \
+                  "(stack #{stack.code.presence || "##{stack.id}"})"
+          end
+        end
+
+        store = Store.lock.find_by(id: stack.store_id)
+        return unless store
+
+        store_remaining_vol = if store.has_attribute?(:available_volume_m3)
+                                store.available_volume_m3.to_f
+                              else
+                                store.available_space.to_f
+                              end
+
+        if incoming_m3 > store_remaining_vol + 1e-6
+          raise Cats::Warehouse::InsufficientSpaceError,
+                "Insufficient store capacity: incoming #{incoming_m3.round(4)} m³ " \
+                "exceeds store available volume #{store_remaining_vol.round(4)} m³ " \
+                "(store #{store.name})"
+        end
+
+        wh_cap = warehouse.warehouse_capacity
+        return unless wh_cap&.capacity_established?
+
+        wh_usage = CapacityUsage.for_warehouse(warehouse)
+        if wh_usage.used_mt + incoming_mt > wh_usage.capacity_mt + 1e-6
+          raise Cats::Warehouse::InsufficientSpaceError,
+                "Insufficient warehouse capacity: incoming #{incoming_mt.round(4)} MT " \
+                "exceeds remaining warehouse capacity #{wh_usage.remaining_mt.round(4)} MT"
+        end
+      end
+
+      # Convert a quantity in the commodity's base unit to MT.
+      def base_qty_to_mt(qty)
+        base_unit = Cats::Core::UnitOfMeasure.find_by(id: @base_unit_id)
+        return qty.to_f if base_unit.blank? || base_unit.abbreviation.to_s.downcase == "mt"
+
+        mt_unit_id = Cats::Core::UnitOfMeasure
+          .where("LOWER(abbreviation) = ?", "mt")
+          .order(:id)
+          .pick(:id)
+        return qty.to_f if mt_unit_id.blank?
+        return qty.to_f if @base_unit_id.to_i == mt_unit_id.to_i
+
+        case base_unit.unit_type
+        when Cats::Core::UnitOfMeasure::ITEM
+          commodity = item.commodity
+          wpu = commodity&.weight_per_unit_kg.to_f
+          wpu = 1.0 if wpu <= 0
+          qty_kg = qty.to_f * wpu
+          kg_unit = Cats::Core::UnitOfMeasure.find_by("LOWER(abbreviation) = ?", "kg")
+          return qty_kg * 0.001 unless kg_unit
+
+          UomConversionResolver.convert(
+            qty_kg,
+            from_unit_id: kg_unit.id,
+            to_unit_id: mt_unit_id,
+            commodity_id: nil
+          )
+        when Cats::Core::UnitOfMeasure::VOLUME
+          commodity = item.commodity
+          vpm = commodity&.volume_per_metric_ton.to_f
+          vpm = CommodityDensityResolver.default_density if vpm <= 0
+          qty_m3 = qty.to_f * 0.001
+          qty_m3 / vpm
+        when Cats::Core::UnitOfMeasure::WEIGHT
+          UomConversionResolver.convert(
+            qty.to_f,
+            from_unit_id: @base_unit_id,
+            to_unit_id: mt_unit_id,
+            commodity_id: item.commodity_id
+          )
+        else
+          qty.to_f
+        end
       end
     end
   end

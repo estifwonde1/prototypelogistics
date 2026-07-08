@@ -1,17 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  TextInput,
-  Table,
-  ActionIcon,
-  Text,
-  Select,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, TextInput, Table, ActionIcon, Text } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { IconPlus, IconSearch, IconEye } from '@tabler/icons-react';
 import { getDispatchOrders } from '../../api/dispatchOrders';
 import { getWarehouses } from '../../api/warehouses';
@@ -19,6 +10,8 @@ import { StatusBadge } from '../../components/common/StatusBadge';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
+import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 
 function DispatchOrdersListPage() {
   const navigate = useNavigate();
@@ -26,14 +19,37 @@ function DispatchOrdersListPage() {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [warehouseFilter, setWarehouseFilter] = useState<string | null>(null);
 
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
+  const userWarehouseId = activeAssignment?.warehouse?.id;
+  const userHubId = activeAssignment?.hub?.id;
+  const isWarehouseManager = roleSlug === 'warehouse_manager';
+  const isHubManager = roleSlug === 'hub_manager';
+
   const { data: orders, isLoading, error, refetch } = useQuery({
-    queryKey: ['dispatch_orders'],
-    queryFn: getDispatchOrders,
+    queryKey: ['dispatch_orders', { 
+      warehouse_id: isWarehouseManager ? userWarehouseId : undefined,
+      hub_id: isHubManager ? userHubId : undefined 
+    }],
+    queryFn: () => {
+      if (isWarehouseManager && userWarehouseId) {
+        return getDispatchOrders({ warehouse_id: userWarehouseId });
+      } else if (isHubManager && userHubId) {
+        // For hub managers, backend should filter dispatch orders from warehouses in their hub
+        return getDispatchOrders(); // Backend will handle hub-level filtering
+      }
+      return getDispatchOrders({});
+    },
   });
 
   const { data: warehouses } = useQuery({
-    queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryKey: ['warehouses', { hub_id: isHubManager ? userHubId : undefined }],
+    queryFn: () => {
+      if (isHubManager && userHubId) {
+        return getWarehouses({ hub_id: userHubId });
+      }
+      return getWarehouses({});
+    },
   });
 
   const filteredOrders = orders?.filter((order) => {
@@ -95,7 +111,7 @@ function DispatchOrdersListPage() {
           onChange={(e) => setSearch(e.target.value)}
           style={{ flex: 1, maxWidth: 400 }}
         />
-        <Select
+        <SearchableSelect
           placeholder="Filter by status"
           data={statusOptions}
           value={statusFilter}
@@ -103,7 +119,7 @@ function DispatchOrdersListPage() {
           clearable
           style={{ width: 200 }}
         />
-        <Select
+        <SearchableSelect
           placeholder="Filter by warehouse"
           data={warehouseOptions}
           value={warehouseFilter}
@@ -146,33 +162,35 @@ function DispatchOrdersListPage() {
             </Table.Thead>
             <Table.Tbody>
               {filteredOrders?.map((order) => (
-                <Table.Tr
-                  key={order.id}
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => navigate(`/officer/dispatch-orders/${order.id}`)}
-                >
-                  <Table.Td style={{ fontWeight: 600 }}>DO-{order.id}</Table.Td>
-                  <Table.Td>{order.source_warehouse_name || 'N/A'}</Table.Td>
-                  <Table.Td>{order.destination_name}</Table.Td>
-                  <Table.Td>
-                    <StatusBadge status={order.status} />
-                  </Table.Td>
-                  <Table.Td>{order.lines?.length || 0}</Table.Td>
-                  <Table.Td>
-                    {new Date(order.created_at).toLocaleDateString()}
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap="xs" justify="flex-end" onClick={(e) => e.stopPropagation()}>
-                      <ActionIcon
-                        variant="subtle"
-                        color="blue"
-                        onClick={() => navigate(`/officer/dispatch-orders/${order.id}`)}
-                      >
-                        <IconEye size={16} />
-                      </ActionIcon>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
+                  <Table.Tr
+                    key={order.id}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => navigate(`/officer/dispatch-orders/${order.id}`)}
+                  >
+                    <Table.Td style={{ fontWeight: 600 }}>DO-{order.id}</Table.Td>
+                    <Table.Td>
+                      {order.hub_id != null ? (order.source_warehouse_name || 'N/A') : '—'}
+                    </Table.Td>
+                    <Table.Td>{order.destination_name}</Table.Td>
+                    <Table.Td>
+                      <StatusBadge status={order.status} />
+                    </Table.Td>
+                    <Table.Td>{order.lines?.length || 0}</Table.Td>
+                    <Table.Td>
+                      {new Date(order.created_at).toLocaleDateString()}
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap="xs" justify="flex-end" onClick={(e) => e.stopPropagation()}>
+                        <ActionIcon
+                          variant="subtle"
+                          color="blue"
+                          onClick={() => navigate(`/officer/dispatch-orders/${order.id}`)}
+                        >
+                          <IconEye size={16} />
+                        </ActionIcon>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
               ))}
             </Table.Tbody>
           </Table>
@@ -183,3 +201,4 @@ function DispatchOrdersListPage() {
 }
 
 export default DispatchOrdersListPage;
+

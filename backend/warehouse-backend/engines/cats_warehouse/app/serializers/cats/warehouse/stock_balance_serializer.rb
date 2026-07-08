@@ -1,10 +1,68 @@
 module Cats
   module Warehouse
     class StockBalanceSerializer < ApplicationSerializer
-      attributes :id, :warehouse_id, :store_id, :stack_id, :commodity_id, :quantity, :unit_id, :warehouse_name
+      attributes :id, :warehouse_id, :store_id, :stack_id, :commodity_id,
+                 :quantity, :base_quantity, :available_quantity, :reserved_quantity,
+                 :unit_id, :inventory_lot_id,
+                 :warehouse_name, :store_name, :stack_code,
+                 :commodity_name, :commodity_batch_no, :commodity_category_id, :unit_name, :unit_abbreviation,
+                 :lot_batch_no, :lot_expiry_date,
+                 :base_unit_id, :base_unit_name, :entered_unit_id, :entered_unit_name
 
       def warehouse_name
         object.warehouse&.name
+      end
+
+      def store_name
+        object.store&.name
+      end
+
+      def stack_code
+        object.stack&.code
+      end
+
+      def commodity_name
+        commodity = object.commodity
+        return nil unless commodity
+        commodity.read_attribute(:name).presence || commodity.batch_no
+      end
+
+      def commodity_batch_no
+        object.commodity&.batch_no
+      end
+
+      def commodity_category_id
+        object.commodity&.commodity_category_id
+      end
+
+      def unit_name
+        object.unit&.name
+      end
+
+      def unit_abbreviation
+        object.unit&.abbreviation
+      end
+
+      def quantity
+        object.quantity
+      end
+
+      def entered_unit_name
+        object.entered_unit&.name
+      end
+
+      def base_unit_name
+        object.base_unit&.name
+      end
+
+      def lot_batch_no
+        object.inventory_lot&.batch_no
+      end
+
+      def lot_expiry_date
+        # Try inventory lot expiry first, then fall back to commodity best_use_before
+        object.inventory_lot&.expiry_date ||
+          object.commodity&.best_use_before
       end
     end
   end

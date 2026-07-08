@@ -21,12 +21,11 @@ import {
   IconMapPin,
   IconAlertCircle,
 } from '@tabler/icons-react';
-import { getReceiptOrders } from '../../api/receiptOrders';
-import { getDispatchOrders } from '../../api/dispatchOrders';
-import { getHubs } from '../../api/hubs';
-import { getWarehouses } from '../../api/warehouses';
+import { getOfficerDashboard, officerDashboardQueryKey } from '../../api/dashboard';
 import { getRoleLabel } from '../../contracts/warehouse';
 import { useOfficerScope } from '../../hooks/useOfficerScope';
+import { useAuthStore } from '../../store/authStore';
+import { workspaceScopeKey } from '../../utils/workspaceSwitch';
 
 interface StatCardProps {
   title: string;
@@ -67,41 +66,30 @@ function ScopeAlert({ scopeLabel, isFullAccess }: { scopeLabel: string; isFullAc
 
 function OfficerDashboardPage() {
   const navigate = useNavigate();
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
   const { roleSlug, scopeLabel, scopeDescription, isFullAccess } = useOfficerScope();
   const roleLabel = getRoleLabel(roleSlug ?? 'officer');
 
-  const { data: hubs, isLoading: hubsLoading } = useQuery({
-    queryKey: ['hubs'],
-    queryFn: getHubs,
+  // Single summary query replaces 4 full-list fetches
+  const { data: summary, isLoading } = useQuery({
+    queryKey: officerDashboardQueryKey(workspaceScopeKey(activeAssignment)),
+    queryFn: getOfficerDashboard,
   });
 
-  const { data: warehouses, isLoading: warehousesLoading } = useQuery({
-    queryKey: ['warehouses'],
-    queryFn: getWarehouses,
-  });
-
-  const { data: receiptOrders, isLoading: receiptOrdersLoading } = useQuery({
-    queryKey: ['receipt_orders'],
-    queryFn: getReceiptOrders,
-  });
-
-  const { data: dispatchOrders, isLoading: dispatchOrdersLoading } = useQuery({
-    queryKey: ['dispatch_orders'],
-    queryFn: getDispatchOrders,
-  });
-
+  const ro = summary?.receipt_orders ?? {};
   const receiptStats = {
-    draft: Array.isArray(receiptOrders) ? receiptOrders.filter((o) => o.status === 'Draft').length : 0,
-    confirmed: Array.isArray(receiptOrders) ? receiptOrders.filter((o) => o.status === 'Confirmed').length : 0,
-    inProgress: Array.isArray(receiptOrders) ? receiptOrders.filter((o) => o.status === 'In Progress').length : 0,
-    completed: Array.isArray(receiptOrders) ? receiptOrders.filter((o) => o.status === 'Completed').length : 0,
+    draft:      ro['Draft']       ?? ro['draft']       ?? 0,
+    confirmed:  ro['Confirmed']   ?? ro['confirmed']   ?? 0,
+    inProgress: ro['In Progress'] ?? ro['in_progress'] ?? ro['In progress'] ?? 0,
+    completed:  ro['Completed']   ?? ro['completed']   ?? 0,
   };
 
+  const doc = summary?.dispatch_orders ?? {};
   const dispatchStats = {
-    draft: Array.isArray(dispatchOrders) ? dispatchOrders.filter((o) => o.status === 'Draft').length : 0,
-    confirmed: Array.isArray(dispatchOrders) ? dispatchOrders.filter((o) => o.status === 'Confirmed').length : 0,
-    inProgress: Array.isArray(dispatchOrders) ? dispatchOrders.filter((o) => o.status === 'In Progress').length : 0,
-    completed: Array.isArray(dispatchOrders) ? dispatchOrders.filter((o) => o.status === 'Completed').length : 0,
+    draft:      doc['Draft']       ?? doc['draft']       ?? 0,
+    confirmed:  doc['Confirmed']   ?? doc['confirmed']   ?? 0,
+    inProgress: doc['In Progress'] ?? doc['in_progress'] ?? doc['In progress'] ?? 0,
+    completed:  doc['Completed']   ?? doc['completed']   ?? 0,
   };
 
   // Federal officers see all hubs; sub-federal officers see only their scoped hubs (backend-filtered)
@@ -139,17 +127,17 @@ function OfficerDashboardPage() {
         <SimpleGrid cols={{ base: 1, sm: 2, md: showWarehouseBreakdown ? 4 : 2 }}>
           <StatCard
             title="Hubs"
-            value={hubs?.length ?? 0}
+            value={summary?.hubs_count ?? 0}
             icon={<IconBuilding size={32} />}
-            loading={hubsLoading}
+            loading={isLoading}
             color="blue"
           />
           {showWarehouseBreakdown && (
             <StatCard
               title="Warehouses"
-              value={warehouses?.length ?? 0}
+              value={summary?.warehouses_count ?? 0}
               icon={<IconBuildingWarehouse size={32} />}
-              loading={warehousesLoading}
+              loading={isLoading}
               color="violet"
             />
           )}
@@ -168,28 +156,28 @@ function OfficerDashboardPage() {
             title="Draft"
             value={receiptStats.draft}
             icon={<IconFileImport size={28} />}
-            loading={receiptOrdersLoading}
+            loading={isLoading}
             color="gray"
           />
           <StatCard
             title="Confirmed"
             value={receiptStats.confirmed}
             icon={<IconFileImport size={28} />}
-            loading={receiptOrdersLoading}
+            loading={isLoading}
             color="blue"
           />
           <StatCard
             title="In Progress"
             value={receiptStats.inProgress}
             icon={<IconFileImport size={28} />}
-            loading={receiptOrdersLoading}
+            loading={isLoading}
             color="orange"
           />
           <StatCard
             title="Completed"
             value={receiptStats.completed}
             icon={<IconFileImport size={28} />}
-            loading={receiptOrdersLoading}
+            loading={isLoading}
             color="green"
           />
         </SimpleGrid>
@@ -205,28 +193,28 @@ function OfficerDashboardPage() {
             title="Draft"
             value={dispatchStats.draft}
             icon={<IconFileExport size={28} />}
-            loading={dispatchOrdersLoading}
+            loading={isLoading}
             color="gray"
           />
           <StatCard
             title="Confirmed"
             value={dispatchStats.confirmed}
             icon={<IconFileExport size={28} />}
-            loading={dispatchOrdersLoading}
+            loading={isLoading}
             color="blue"
           />
           <StatCard
             title="In Progress"
             value={dispatchStats.inProgress}
             icon={<IconFileExport size={28} />}
-            loading={dispatchOrdersLoading}
+            loading={isLoading}
             color="orange"
           />
           <StatCard
             title="Completed"
             value={dispatchStats.completed}
             icon={<IconFileExport size={28} />}
-            loading={dispatchOrdersLoading}
+            loading={isLoading}
             color="green"
           />
         </SimpleGrid>
@@ -249,8 +237,7 @@ function OfficerDashboardPage() {
             </Button>
             <Button
               leftSection={<IconPlus size={16} />}
-              variant="light"
-              onClick={() => navigate('/officer/dispatch-orders/new')}
+              onClick={() => navigate('/officer/dispatch-plan/new')}
             >
               Create Dispatch Order
             </Button>

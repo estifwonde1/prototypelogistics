@@ -24,13 +24,34 @@ module Cats
       end
 
       def destroy?
-        admin?
+        return false unless record.is_a?(Store)
+        return false if store_has_stock?
+
+        return true if admin?
+
+        warehouse_manager? && can_manage_store?
+      end
+
+      def storekeepers?
+        admin? || warehouse_manager?
+      end
+
+      def assign_storekeeper?
+        admin? || warehouse_manager?
       end
 
       private
 
       def officer?
         super
+      end
+
+      def can_manage_store?
+        AccessContext.new(user: user).can_access_warehouse?(record.warehouse_id)
+      end
+
+      def store_has_stock?
+        CapacityUsage.for_store(record).used_mt.positive?
       end
     end
   end

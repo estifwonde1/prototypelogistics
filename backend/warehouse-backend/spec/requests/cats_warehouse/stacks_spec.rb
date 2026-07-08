@@ -37,4 +37,71 @@ RSpec.describe "Cats Warehouse Stacks", type: :request do
     delete "/cats_warehouse/v1/stacks/#{stack_id}", headers: headers
     expect(response).to have_http_status(:ok)
   end
+
+  it "rejects a stack whose floor footprint overlaps an existing stack in the same store" do
+    headers = auth_headers(role: "Admin")
+    store = create(:cats_warehouse_store)
+    commodity = create(:cats_core_commodity)
+    unit = create(:cats_core_unit_of_measure)
+
+    post "/cats_warehouse/v1/stacks",
+         params: {
+           payload: {
+             store_id: store.id,
+             commodity_id: commodity.id,
+             unit_id: unit.id,
+             code: "STK-A",
+             length: 4,
+             width: 4,
+             height: 2,
+             start_x: 0,
+             start_y: 0,
+             quantity: 10
+           }
+         },
+         as: :json,
+         headers: headers
+    expect(response).to have_http_status(:created)
+    first_id = json_response.dig("data", "id")
+
+    post "/cats_warehouse/v1/stacks",
+         params: {
+           payload: {
+             store_id: store.id,
+             commodity_id: commodity.id,
+             unit_id: unit.id,
+             code: "STK-B",
+             length: 4,
+             width: 4,
+             height: 2,
+             start_x: 2,
+             start_y: 2,
+             quantity: 5
+           }
+         },
+         as: :json,
+         headers: headers
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(json_response.dig("error", "message").to_s).to match(/overlaps/i)
+
+    delete "/cats_warehouse/v1/stacks/#{first_id}", headers: headers
+    expect(response).to have_http_status(:ok)
+  end
+
+  it "allows warehouse manager to list stacks for a store in their warehouse" do
+    warehouse = create(:cats_warehouse_warehouse)
+    create(:cats_warehouse_warehouse_capacity, warehouse: warehouse, length_m: 100, width_m: 80, height_m: 10)
+    store = create(:cats_warehouse_store, warehouse: warehouse)
+    manager = create(:cats_core_user, role_name: "Warehouse Manager")
+    Cats::Warehouse::UserAssignment.create!(
+      user: manager,
+      role_name: "Warehouse Manager",
+      warehouse: warehouse
+    )
+
+    headers = { "Authorization" => "Bearer #{manager.signed_id(purpose: 'auth', expires_in: 1.hour)}" }
+    get "/cats_warehouse/v1/stacks", params: { store_id: store.id }, headers: headers
+
+    expect(response).to have_http_status(:ok)
+  end
 end

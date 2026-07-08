@@ -1,7 +1,7 @@
 module Cats
   module Warehouse
     class InspectionCreator
-      def initialize(warehouse:, inspected_on:, inspector:, items:, source: nil, reference_no: nil, status: "draft", receipt_order: nil, dispatch_order: nil)
+      def initialize(warehouse:, inspected_on:, inspector:, items:, source: nil, reference_no: nil, status: "draft", receipt_order: nil, dispatch_order: nil, receipt_authorization_id: nil)
         @warehouse = warehouse
         @inspected_on = inspected_on
         @inspector = inspector
@@ -11,10 +11,19 @@ module Cats
         @status = status
         @receipt_order = receipt_order
         @dispatch_order = dispatch_order
+        @receipt_authorization_id = receipt_authorization_id
       end
 
       def call
         raise ArgumentError, "items are required" if @items.nil? || @items.empty?
+
+        # ── RA validations (only when an RA is provided) ──────────────────
+        ra = nil
+        if @receipt_authorization_id.present?
+          ra = ReceiptAuthorization.find_by(id: @receipt_authorization_id)
+          raise ArgumentError, "Receipt Authorization not found" unless ra
+          raise ArgumentError, "Receipt Authorization must be Pending or Active to record a receipt" unless ra.pending? || ra.active?
+        end
 
         Inspection.transaction do
           inspection = Inspection.create!(
@@ -25,8 +34,32 @@ module Cats
             reference_no: @reference_no,
             status: @status,
             receipt_order: @receipt_order,
-            dispatch_order: @dispatch_order
+            dispatch_order: @dispatch_order,
+            receipt_authorization_id: @receipt_authorization_id
           )
+
+          # Single-store warehouses: first storekeeper to record claims the RA.
+          if ra && ra.assigned_storekeeper_id.blank? && SingleStoreWarehouse.single_store?(ra.warehouse_id)
+            ra.update!(
+              assigned_storekeeper_id:    @inspector.id,
+              assigned_storekeeper_by_id: @inspector.id,
+              assigned_storekeeper_at:    Time.current
+            )
+          end
+
+          # Transition RA from Pending → Active on the first inspection.
+          # Subsequent inspections (from other storekeepers) keep it Active.
+          if ra && ra.pending?
+            ra.update!(status: ReceiptAuthorization::ACTIVE)
+            WorkflowEventRecorder.record!(
+              entity:      ra.receipt_order,
+              event_type:  "receipt_authorization.active",
+              actor:       @inspector,
+              from_status: ra.receipt_order.status,
+              to_status:   ra.receipt_order.status,
+              payload:     { receipt_authorization_id: ra.id, inspection_id: inspection.id }
+            )
+          end
 
           @items.each do |item|
             raise ArgumentError, "quantity_received must be positive" unless item[:quantity_received].to_f.positive?

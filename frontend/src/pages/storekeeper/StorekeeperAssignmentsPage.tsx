@@ -12,12 +12,14 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconClipboardList, IconBoxMultiple } from '@tabler/icons-react';
-import { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import apiClient from '../../api/client';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
+import { statusArrayFilter, getPendingAssignmentStatuses, getCompletedAssignmentStatuses } from '../../utils/filterUtils';
 import type { ApiError } from '../../types/common';
+import { useAuthStore } from '../../store/authStore';
 
 interface StoreAssignment {
   id: number;
@@ -43,12 +45,15 @@ interface StoreAssignment {
   commodity_name?: string;
   commodity_quantity?: number;
   unit_name?: string;
+  batch_no?: string;
 }
 
-async function getStorekeeperAssignments(): Promise<StoreAssignment[]> {
-  const response = await apiClient.get('/storekeeper_assignments');
+async function getStorekeeperAssignments(storeId?: number): Promise<StoreAssignment[]> {
+  const params: Record<string, unknown> = {};
+  if (storeId) params.store_id = storeId;
+  const response = await apiClient.get('/storekeeper_assignments', { params });
   const data = response.data.data || response.data;
-  return Array.isArray(data.assignments) ? data.assignments : (Array.isArray(data) ? data : []);
+  return Array.isArray(data.receipt_assignments) ? data.receipt_assignments : (Array.isArray(data.assignments) ? data.assignments : (Array.isArray(data) ? data : []));
 }
 
 async function acceptAssignment(id: number) {
@@ -66,10 +71,17 @@ const statusColors: Record<string, string> = {
 export default function StorekeeperAssignmentsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const focusOrderId = Number(searchParams.get('receipt_order_id') || '') || null;
+  const focusCardRef = useRef<HTMLDivElement | null>(null);
+
+  // Use the active store from auth context so filtering respects the store selected at login
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const activeStoreId = activeAssignment?.store?.id;
 
   const { data: assignments = [], isLoading, error } = useQuery({
-    queryKey: ['storekeeper_assignments'],
-    queryFn: getStorekeeperAssignments,
+    queryKey: ['storekeeper_assignments', { store_id: activeStoreId }],
+    queryFn: () => getStorekeeperAssignments(activeStoreId),
   });
 
   const acceptMutation = useMutation({
@@ -99,14 +111,39 @@ export default function StorekeeperAssignmentsPage() {
   });
 
   const pendingAssignments = useMemo(
-    () => assignments.filter((a) => ['pending', 'assigned'].includes(a.status.toLowerCase())),
+    () => assignments.filter((a) => 
+      statusArrayFilter(a.status, getPendingAssignmentStatuses())
+    ),
     [assignments]
   );
 
   const completedAssignments = useMemo(
-    () => assignments.filter((a) => ['accepted', 'in_progress', 'completed'].includes(a.status.toLowerCase())),
+    () => assignments.filter((a) => 
+      statusArrayFilter(a.status, getCompletedAssignmentStatuses())
+    ),
     [assignments]
   );
+
+  const orderedPendingAssignments = useMemo(() => {
+    if (!focusOrderId) return pendingAssignments;
+    const matches = pendingAssignments.filter((a) => a.receipt_order_id === focusOrderId);
+    const rest = pendingAssignments.filter((a) => a.receipt_order_id !== focusOrderId);
+    return [...matches, ...rest];
+  }, [pendingAssignments, focusOrderId]);
+
+  const firstFocusedPendingId = useMemo(() => {
+    if (!focusOrderId) return null;
+    const hit = orderedPendingAssignments.find((a) => a.receipt_order_id === focusOrderId);
+    return hit?.id ?? null;
+  }, [focusOrderId, orderedPendingAssignments]);
+
+  useEffect(() => {
+    if (!firstFocusedPendingId) return;
+    const t = window.setTimeout(() => {
+      focusCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+    return () => window.clearTimeout(t);
+  }, [firstFocusedPendingId, orderedPendingAssignments]);
 
   if (isLoading) return <LoadingState message="Loading assignments..." />;
   if (error) return <ErrorState message="Failed to load assignments" />;
@@ -119,8 +156,27 @@ export default function StorekeeperAssignmentsPage() {
       </Group>
 
       <Text c="dimmed">
-        Receipt orders assigned to your store. Accept to prepare stacking space for the incoming commodities.
+        Receipt orders assigned to your store. These show what's coming — use Receipt Authorizations to record each truck delivery.
       </Text>
+
+      {focusOrderId ? (
+        <Alert color="blue" variant="light">
+          <Group justify="space-between" wrap="wrap" gap="sm">
+            <Text size="sm">
+              Opened from a notification: showing assignments for receipt order #{focusOrderId} first.
+            </Text>
+            <Button
+              size="xs"
+              variant="default"
+              onClick={() => {
+                setSearchParams({});
+              }}
+            >
+              Show all assignments
+            </Button>
+          </Group>
+        </Alert>
+      ) : null}
 
       {pendingAssignments.length === 0 && completedAssignments.length === 0 && (
         <Alert title="No assignments" color="blue">
@@ -131,8 +187,20 @@ export default function StorekeeperAssignmentsPage() {
       {pendingAssignments.length > 0 && (
         <>
           <Title order={4}>Pending Orders</Title>
-          {pendingAssignments.map((assignment) => (
-            <Card key={assignment.id} shadow="sm" padding="lg" radius="md" withBorder>
+          {orderedPendingAssignments.map((assignment) => (
+            <Card
+              key={assignment.id}
+              ref={assignment.id === firstFocusedPendingId ? focusCardRef : undefined}
+              shadow="sm"
+              padding="lg"
+              radius="md"
+              withBorder
+              style={
+                focusOrderId && assignment.receipt_order_id === focusOrderId
+                  ? { borderColor: 'var(--mantine-color-blue-5)', boxShadow: 'var(--mantine-shadow-md)' }
+                  : undefined
+              }
+            >
               <Stack gap="md">
                 <Group justify="space-between">
                   <div>
@@ -156,6 +224,22 @@ export default function StorekeeperAssignmentsPage() {
                   </Text>
                 )}
 
+                <Group gap="xs">
+                  <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Assigned Quantity</Text>
+                  <Text size="sm" fw={700} c={assignment.quantity ? undefined : 'orange'}>
+                    {assignment.quantity ? `${Number(assignment.quantity).toLocaleString()} ${assignment.unit_name ?? ''}` : 'No quantity specified'}
+                  </Text>
+                </Group>
+
+                {assignment.batch_no && (
+                  <Group gap="xs">
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Batch</Text>
+                    <Text size="sm" style={{ fontFamily: 'monospace' }}>
+                      {assignment.batch_no}
+                    </Text>
+                  </Group>
+                )}
+
                 <Text size="xs" c="dimmed">
                   Assigned by {assignment.assigned_by_name} on {new Date(assignment.assigned_at).toLocaleString()}
                 </Text>
@@ -163,15 +247,11 @@ export default function StorekeeperAssignmentsPage() {
                 <Group gap="sm">
                   <Button
                     size="sm"
-                    color="green"
+                    variant="light"
                     leftSection={<IconBoxMultiple size={16} />}
-                    onClick={() => acceptMutation.mutate({
-                      id: assignment.id,
-                      storeId: assignment.store_id || 0,
-                    })}
-                    loading={acceptMutation.isPending}
+                    onClick={() => navigate(`/storekeeper/receipt-authorizations`)}
                   >
-                    Accept &amp; Prepare Stack
+                    View Receipt Authorizations
                   </Button>
                 </Group>
               </Stack>
@@ -206,6 +286,15 @@ export default function StorekeeperAssignmentsPage() {
                   <Text size="sm">
                     {assignment.commodity_quantity?.toLocaleString()} {assignment.unit_name} of {assignment.commodity_name}
                   </Text>
+                )}
+
+                {assignment.batch_no && (
+                  <Group gap="xs">
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Batch</Text>
+                    <Text size="sm" style={{ fontFamily: 'monospace' }}>
+                      {assignment.batch_no}
+                    </Text>
+                  </Group>
                 )}
 
                 <Text size="xs" c="dimmed">

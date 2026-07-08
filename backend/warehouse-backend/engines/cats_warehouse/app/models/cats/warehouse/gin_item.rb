@@ -13,6 +13,8 @@ module Cats
       belongs_to :stack, class_name: "Cats::Warehouse::Stack", optional: true
 
       validates :quantity, presence: true
+      validates :quantity, numericality: { greater_than: 0 }
+      validates :base_quantity, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
       validate :store_and_stack_match_header
 
       private

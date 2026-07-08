@@ -28,7 +28,17 @@ module Cats
       end
 
       def zones
-        region = params[:region_id].present? ? Cats::Core::Location.find(params[:region_id]) : nil
+        region_id = params[:region_id]
+        region = nil
+        
+        if region_id.present?
+          region_id = region_id.to_i
+          return render_error("Invalid region ID", status: :bad_request) if region_id <= 0
+          
+          region = Cats::Core::Location.find_by(id: region_id)
+          return render_error("Region not found", status: :not_found) unless region
+        end
+        
         zones = Cats::Core::Location.where(
           location_type: Cats::Core::Location::ZONE
         )
@@ -74,13 +84,37 @@ module Cats
 
       def warehouses
         scope = Cats::Warehouse::Warehouse.order(:id)
-        scope = scope.where(hub_id: params[:hub_id]) if params[:hub_id].present?
+        
+        if params[:hub_id].present?
+          hub_id = params[:hub_id].to_i
+          return render_error("Invalid hub ID", status: :bad_request) if hub_id <= 0
+          
+          # Verify hub exists
+          unless Cats::Warehouse::Hub.exists?(id: hub_id)
+            return render_error("Hub not found", status: :not_found)
+          end
+          
+          scope = scope.where(hub_id: hub_id)
+        end
+        
         render_success(locations: scope.map { |w| location_payload(w.location).merge(id: w.id, name: w.name) })
       end
 
       def stores
         scope = Cats::Warehouse::Store.order(:id)
-        scope = scope.where(warehouse_id: params[:warehouse_id]) if params[:warehouse_id].present?
+        
+        if params[:warehouse_id].present?
+          warehouse_id = params[:warehouse_id].to_i
+          return render_error("Invalid warehouse ID", status: :bad_request) if warehouse_id <= 0
+          
+          # Verify warehouse exists
+          unless Cats::Warehouse::Warehouse.exists?(id: warehouse_id)
+            return render_error("Warehouse not found", status: :not_found)
+          end
+          
+          scope = scope.where(warehouse_id: warehouse_id)
+        end
+        
         render_success(locations: scope.map { |s| { id: s.id, name: s.name, warehouse_id: s.warehouse_id } })
       end
 

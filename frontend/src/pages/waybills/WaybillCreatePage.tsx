@@ -1,23 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  TextInput,
-  Select,
-  Card,
-  Table,
-  ActionIcon,
-  Text,
-  NumberInput,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, TextInput, Card, Table, ActionIcon, Text, NumberInput, Alert, Divider } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { DateInput } from '@mantine/dates';
 import { IconTrash, IconPlus } from '@tabler/icons-react';
 import { createWaybill } from '../../api/waybills';
+import { getReceiptOrders, type ReceiptOrder, type ReceiptOrderLine } from '../../api/receiptOrders';
+import { getReceiptAuthorizations } from '../../api/receiptAuthorizations';
 import {
   getCommodityReferences,
   getTransporterReferences,
@@ -25,9 +16,62 @@ import {
 } from '../../api/referenceData';
 import { getWarehouses } from '../../api/warehouses';
 import { notifications } from '@mantine/notifications';
+import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 import type { WaybillItem, WaybillTransport } from '../../types/waybill';
 import { DocumentStatus } from '../../utils/constants';
 import type { ApiError } from '../../types/common';
+
+type SourceContext = 'manual' | 'receipt_order' | 'receipt_authorization';
+
+function firstWarehouseIdFromOrder(order: ReceiptOrder | undefined): number | null {
+  if (!order) return null;
+  if (order.warehouse_id != null) return Number(order.warehouse_id);
+  const assignments = order.receipt_order_assignments ?? order.assignments ?? [];
+  const fromAssignment = assignments.find((a) => a.warehouse_id != null)?.warehouse_id;
+  return fromAssignment != null ? Number(fromAssignment) : null;
+}
+
+function orderLines(order: ReceiptOrder | undefined): ReceiptOrderLine[] {
+  if (!order) return [];
+  return order.receipt_order_lines ?? order.lines ?? [];
+}
+
+function pickAlternativeSourceWarehouseId(
+  destinationWarehouseId: string | null,
+  warehouseRows: Array<{ id: number; hub_id?: number | null; location_id?: number | null }>,
+  preferredHubId?: number
+): string | null {
+  if (!destinationWarehouseId) return null;
+  const destinationIdNum = Number(destinationWarehouseId);
+  const destination = warehouseRows.find((w) => Number(w.id) === destinationIdNum);
+  if (!destination) return null;
+
+  const sameHubAlternative = warehouseRows.find(
+    (w) =>
+      Number(w.id) !== destinationIdNum &&
+      w.location_id != null &&
+      destination.hub_id != null &&
+      Number(w.hub_id) === Number(destination.hub_id)
+  );
+  if (sameHubAlternative) return String(sameHubAlternative.id);
+
+  const preferredHubAlternative =
+    preferredHubId != null
+      ? warehouseRows.find(
+          (w) =>
+            Number(w.id) !== destinationIdNum &&
+            w.location_id != null &&
+            Number(w.hub_id) === Number(preferredHubId)
+        )
+      : undefined;
+  if (preferredHubAlternative) return String(preferredHubAlternative.id);
+
+  const anyAlternative = warehouseRows.find(
+    (w) => Number(w.id) !== destinationIdNum && w.location_id != null
+  );
+  return anyAlternative ? String(anyAlternative.id) : null;
+}
 
 function WaybillCreatePage() {
   const navigate = useNavigate();
@@ -39,6 +83,9 @@ function WaybillCreatePage() {
   const [sourceWarehouseId, setSourceWarehouseId] = useState<string | null>(null);
   const [destinationWarehouseId, setDestinationWarehouseId] = useState<string | null>(null);
   const [dispatchId, setDispatchId] = useState('');
+  const [sourceContext, setSourceContext] = useState<SourceContext>('manual');
+  const [receiptOrderId, setReceiptOrderId] = useState<string | null>(null);
+  const [receiptAuthorizationId, setReceiptAuthorizationId] = useState<string | null>(null);
 
   // Form state - Transport
   const [transporterId, setTransporterId] = useState<string | null>(null);
@@ -55,25 +102,54 @@ function WaybillCreatePage() {
     },
   ]);
 
+  // Get active assignment context for filtering
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || useAuthStore((state) => state.role));
+  const userHubId = activeAssignment?.hub?.id;
+  const isHubManager = roleSlug === 'hub_manager';
+
   const { data: warehouses = [] } = useQuery({
-    queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryKey: ['warehouses', { hub_id: isHubManager ? userHubId : undefined }],
+    queryFn: () => {
+      if (isHubManager && userHubId) {
+        return getWarehouses({ hub_id: userHubId });
+      }
+      return getWarehouses();
+    },
   });
 
   const { data: transporters = [] } = useQuery({
     queryKey: ['reference_data', 'transporters'],
-    queryFn: getTransporterReferences,
+    queryFn: () => getTransporterReferences(),
   });
 
   const { data: commodities = [] } = useQuery({
     queryKey: ['reference-data', 'commodities'],
-    queryFn: getCommodityReferences,
+    queryFn: () => getCommodityReferences(),
   });
 
   const { data: units = [] } = useQuery({
     queryKey: ['reference-data', 'units'],
-    queryFn: getUnitReferences,
+    queryFn: () => getUnitReferences(),
   });
+  const { data: receiptOrders = [] } = useQuery({
+    queryKey: ['receipt_orders_for_waybill', { hub_id: isHubManager ? userHubId : undefined }],
+    queryFn: () => getReceiptOrders(isHubManager && userHubId ? { hub_id: userHubId } : undefined),
+    select: (rows) =>
+      rows.filter((o) => {
+        const s = String(o.status || '').toLowerCase();
+        return ['confirmed', 'assigned', 'reserved', 'in progress', 'in_progress'].includes(s);
+      }),
+  });
+  const { data: receiptAuthorizations = [] } = useQuery({
+    queryKey: ['receipt_authorizations_for_waybill', { hub_id: isHubManager ? userHubId : undefined }],
+    queryFn: () => getReceiptAuthorizations(),
+    select: (rows) =>
+      rows.filter((ra) => ['pending', 'active'].includes(String(ra.status || '').toLowerCase())),
+  });
+
+  const selectedOrder = receiptOrders.find((o) => String(o.id) === receiptOrderId);
+  const selectedRA = receiptAuthorizations.find((ra) => String(ra.id) === receiptAuthorizationId);
 
   const transporterOptions = transporters.map((t) => ({
     value: String(t.id),
@@ -106,10 +182,100 @@ function WaybillCreatePage() {
     .filter((option) => option.value !== sourceWarehouseId)
     .map(({ value, label }) => ({ value, label }));
 
-  const sourceWarehouse = warehouses.find((warehouse) => String(warehouse.id) === sourceWarehouseId);
   const destinationWarehouse = warehouses.find(
     (warehouse) => String(warehouse.id) === destinationWarehouseId
   );
+  const receiptOrderOptions = receiptOrders.map((o) => ({
+    value: String(o.id),
+    label: `RO-${o.id} — ${o.warehouse_name || o.hub_name || 'Unresolved destination'}`,
+  }));
+  const receiptAuthorizationOptions = receiptAuthorizations.map((ra) => ({
+    value: String(ra.id),
+    label: `${ra.reference_no} — ${ra.driver_name} (${ra.truck_plate_number})`,
+  }));
+
+  useEffect(() => {
+    if (sourceContext !== 'receipt_order') return;
+    setReceiptAuthorizationId(null);
+
+    if (!selectedOrder) return;
+    const destWarehouseId = firstWarehouseIdFromOrder(selectedOrder);
+    const destinationValue = destWarehouseId != null ? String(destWarehouseId) : null;
+    setDestinationWarehouseId(destinationValue);
+    if (!sourceWarehouseId || sourceWarehouseId === destinationValue) {
+      setSourceWarehouseId(
+        pickAlternativeSourceWarehouseId(destinationValue, warehouses, userHubId) ?? null
+      );
+    }
+
+    const prefillLines = orderLines(selectedOrder);
+    if (prefillLines.length > 0) {
+      setItems(
+        prefillLines.map((ln) => ({
+          commodity_id: Number(ln.commodity_id || 0),
+          quantity: Number(ln.quantity || 0),
+          unit_id: Number(ln.unit_id || 0),
+        }))
+      );
+    }
+  }, [sourceContext, selectedOrder, sourceWarehouseId, warehouses, userHubId]);
+
+  useEffect(() => {
+    if (sourceContext !== 'receipt_authorization') return;
+    if (!selectedRA) return;
+
+    setReferenceNo(selectedRA.waybill_number || '');
+    setVehiclePlateNo(selectedRA.truck_plate_number || '');
+    setDriverName(selectedRA.driver_name || '');
+    setTransporterId(selectedRA.transporter_id ? String(selectedRA.transporter_id) : null);
+    const destinationValue = selectedRA.warehouse_id ? String(selectedRA.warehouse_id) : null;
+    setDestinationWarehouseId(destinationValue);
+    if (!sourceWarehouseId || sourceWarehouseId === destinationValue) {
+      setSourceWarehouseId(
+        pickAlternativeSourceWarehouseId(destinationValue, warehouses, userHubId) ?? null
+      );
+    }
+
+    const linkedOrder = receiptOrders.find((o) => Number(o.id) === Number(selectedRA.receipt_order_id));
+    if (!linkedOrder) return;
+
+    setReceiptOrderId(String(linkedOrder.id));
+    const lines = orderLines(linkedOrder);
+    if (lines.length === 0) return;
+
+    const assignments = linkedOrder.receipt_order_assignments ?? linkedOrder.assignments ?? [];
+    const linkedAssignment = assignments.find(
+      (a) => Number(a.id) === Number(selectedRA.receipt_order_assignment_id)
+    );
+    const assignmentLine =
+      linkedAssignment?.receipt_order_line_id != null
+        ? lines.find((ln) => Number(ln.id) === Number(linkedAssignment.receipt_order_line_id))
+        : lines[0];
+
+    if (assignmentLine) {
+      setItems([
+        {
+          commodity_id: Number(assignmentLine.commodity_id || 0),
+          quantity: Number(selectedRA.authorized_quantity || 0),
+          unit_id: Number(linkedAssignment?.quantity_unit_id || assignmentLine.unit_id || 0),
+        },
+      ]);
+      return;
+    }
+
+    setItems(
+      lines.map((ln) => ({
+        commodity_id: Number(ln.commodity_id || 0),
+        quantity: Number(ln.quantity || 0),
+        unit_id: Number(ln.unit_id || 0),
+      }))
+    );
+  }, [sourceContext, selectedRA, receiptOrders, sourceWarehouseId, warehouses, userHubId]);
+
+  const currentOrder = selectedOrder || (selectedRA ? receiptOrders.find((o) => Number(o.id) === Number(selectedRA.receipt_order_id)) : undefined);
+  const roTotalQty = orderLines(currentOrder).reduce((sum, ln) => sum + Number(ln.quantity || 0), 0);
+  const raQty = selectedRA ? Number(selectedRA.authorized_quantity || 0) : 0;
+  const draftQty = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
 
   const createMutation = useMutation({
     mutationFn: createWaybill,
@@ -171,10 +337,36 @@ function WaybillCreatePage() {
   };
 
   const handleSubmit = () => {
-    if (!referenceNo || !issuedOn || !sourceWarehouseId || !destinationWarehouseId) {
+    if (sourceContext === 'receipt_order' && !receiptOrderId) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Select a Receipt Order for this waybill context.',
+        color: 'red',
+      });
+      return;
+    }
+
+    if (sourceContext === 'receipt_authorization' && !receiptAuthorizationId) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Select a Receipt Authorization to auto-fill waybill details.',
+        color: 'red',
+      });
+      return;
+    }
+
+    if (!referenceNo || !issuedOn || !destinationWarehouseId) {
       notifications.show({
         title: 'Validation Error',
         message: 'Please fill in all required header fields',
+        color: 'red',
+      });
+      return;
+    }
+    if (sourceContext === 'manual' && !sourceWarehouseId) {
+      notifications.show({
+        title: 'Validation Error',
+        message: 'Please select source warehouse for manual waybill flow.',
         color: 'red',
       });
       return;
@@ -201,7 +393,7 @@ function WaybillCreatePage() {
       return;
     }
 
-    if (sourceWarehouseId === destinationWarehouseId) {
+    if (sourceContext === 'manual' && sourceWarehouseId === destinationWarehouseId) {
       notifications.show({
         title: 'Validation Error',
         message: 'Destination warehouse must differ from source warehouse.',
@@ -210,10 +402,27 @@ function WaybillCreatePage() {
       return;
     }
 
-    if (!sourceWarehouse?.location_id || !destinationWarehouse?.location_id) {
+    const inferredSourceWarehouseId =
+      sourceWarehouseId ||
+      pickAlternativeSourceWarehouseId(destinationWarehouseId, warehouses, userHubId);
+    const effectiveSourceWarehouseId = inferredSourceWarehouseId || destinationWarehouseId;
+    const effectiveSourceWarehouse = warehouses.find(
+      (warehouse) => String(warehouse.id) === effectiveSourceWarehouseId
+    );
+
+    if (!effectiveSourceWarehouse?.location_id || !destinationWarehouse?.location_id) {
       notifications.show({
         title: 'Validation Error',
         message: 'Selected warehouses must have valid locations before creating a waybill.',
+        color: 'red',
+      });
+      return;
+    }
+    if (effectiveSourceWarehouse.location_id === destinationWarehouse.location_id) {
+      notifications.show({
+        title: 'Validation Error',
+        message:
+          'Source and destination resolved to the same location. Pick a different source warehouse.',
         color: 'red',
       });
       return;
@@ -229,8 +438,9 @@ function WaybillCreatePage() {
     createMutation.mutate({
       reference_no: referenceNo,
       issued_on: issuedOn.toISOString().split('T')[0],
-      source_location_id: sourceWarehouse.location_id,
+      source_location_id: effectiveSourceWarehouse.location_id,
       destination_location_id: destinationWarehouse.location_id,
+      source_context: sourceContext,
       dispatch_id: dispatchId ? parseInt(dispatchId) : undefined,
       status: DocumentStatus.DRAFT,
       transport,
@@ -251,6 +461,65 @@ function WaybillCreatePage() {
 
       <Card shadow="sm" padding="lg" radius="md" withBorder>
         <Stack gap="md">
+          <Title order={4}>Source Context</Title>
+          <SearchableSelect
+            label="Waybill Source Context"
+            description="Choose how to prepare this waybill: manual, from Receipt Order, or from Receipt Authorization."
+            data={[
+              { value: 'manual', label: 'Manual' },
+              { value: 'receipt_order', label: 'From Receipt Order (RO)' },
+              { value: 'receipt_authorization', label: 'From Receipt Authorization (RA)' },
+            ]}
+            value={sourceContext}
+            onChange={(value) => {
+              const ctx = (value as SourceContext | null) || 'manual';
+              setSourceContext(ctx);
+              if (ctx === 'manual') {
+                setReceiptOrderId(null);
+                setReceiptAuthorizationId(null);
+              }
+              if (ctx === 'receipt_order') {
+                setReceiptAuthorizationId(null);
+              }
+            }}
+            required
+          />
+          {(sourceContext === 'receipt_order' || sourceContext === 'receipt_authorization') && (
+            <SearchableSelect
+              label="Receipt Order"
+              placeholder="Select receipt order"
+              data={receiptOrderOptions}
+              value={receiptOrderId}
+              onChange={setReceiptOrderId}
+              searchable
+              required={sourceContext === 'receipt_order'}
+              disabled={sourceContext === 'receipt_authorization' && !!selectedRA}
+            />
+          )}
+          {sourceContext === 'receipt_authorization' && (
+            <SearchableSelect
+              label="Receipt Authorization"
+              placeholder="Select pending/active RA"
+              data={receiptAuthorizationOptions}
+              value={receiptAuthorizationId}
+              onChange={setReceiptAuthorizationId}
+              searchable
+              required
+            />
+          )}
+          {(sourceContext === 'receipt_order' || sourceContext === 'receipt_authorization') && (
+            <>
+              <Divider />
+              <Alert color="blue" variant="light" title="Cross-document comparison">
+                {`RO quantity: ${roTotalQty.toLocaleString()} | RA quantity: ${raQty.toLocaleString()} | Current Waybill draft: ${draftQty.toLocaleString()}`}
+              </Alert>
+              <Alert color="yellow" variant="light" title="Inbound source logic">
+                For inbound RO/RA flow from supplier/officer, Source Warehouse can be left blank. The system will use the destination location as source context for document creation.
+              </Alert>
+            </>
+          )}
+
+          <Divider />
           <Title order={4}>Header Information</Title>
 
           <Group grow>
@@ -271,16 +540,16 @@ function WaybillCreatePage() {
           </Group>
 
           <Group grow>
-            <Select
+            <SearchableSelect
               label="Source Warehouse"
-              placeholder="Select source warehouse"
+              placeholder={sourceContext === 'manual' ? 'Select source warehouse' : 'Optional for inbound RO/RA'}
               data={sourceWarehouseOptions}
               value={sourceWarehouseId}
               onChange={setSourceWarehouseId}
               searchable
-              required
+              required={sourceContext === 'manual'}
             />
-            <Select
+            <SearchableSelect
               label="Destination Warehouse"
               placeholder="Select destination warehouse"
               data={destinationWarehouseOptions}
@@ -305,7 +574,7 @@ function WaybillCreatePage() {
           <Title order={4}>Transport Details</Title>
 
           <Group grow>
-            <Select
+            <SearchableSelect
               label="Transporter"
               placeholder="Select transporter"
               data={transporterOptions}
@@ -369,7 +638,7 @@ function WaybillCreatePage() {
                 {items.map((item, index) => (
                   <Table.Tr key={index}>
                     <Table.Td>
-                      <Select
+                      <SearchableSelect
                         placeholder="Select commodity"
                         data={commodityOptions}
                         value={item.commodity_id ? String(item.commodity_id) : null}
@@ -388,7 +657,7 @@ function WaybillCreatePage() {
                       />
                     </Table.Td>
                     <Table.Td>
-                      <Select
+                      <SearchableSelect
                         placeholder="Unit"
                         data={unitOptions}
                         value={item.unit_id ? String(item.unit_id) : null}

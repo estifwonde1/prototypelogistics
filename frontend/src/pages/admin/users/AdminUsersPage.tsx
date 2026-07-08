@@ -1,20 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMemo, useState } from 'react';
-import {
-  Stack,
-  Group,
-  Title,
-  Button,
-  Select,
-  Table,
-  ActionIcon,
-  Modal,
-  TextInput,
-  PasswordInput,
-  Text,
-  Badge,
-  Divider,
-} from '@mantine/core';
+import { Stack, Group, Title, Button, Table, ActionIcon, Modal, TextInput, PasswordInput, Text, Badge, Divider } from '@mantine/core';
+import { SearchableSelect, SearchableMultiSelect } from '../../../components/common/SearchableSelect';
 import { useForm } from '@mantine/form';
 import { IconPlus, IconEdit, IconTrash } from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -26,17 +13,9 @@ import { LoadingState } from '../../../components/common/LoadingState';
 import { ErrorState } from '../../../components/common/ErrorState';
 import { EmptyState } from '../../../components/common/EmptyState';
 import type { AdminUser } from '../../../types/admin';
+import { ALLOWED_ASSIGNABLE_ROLES, filterAllowedRoleNames } from '../../../constants/allowedRoles';
 
-const ROLE_OPTIONS = [
-  'Hub Manager',
-  'Warehouse Manager',
-  'Storekeeper',
-  'Federal Officer',
-  'Regional Officer',
-  'Zonal Officer',
-  'Woreda Officer',
-  'Kebele Officer',
-];
+const ROLE_OPTIONS = [...ALLOWED_ASSIGNABLE_ROLES];
 
 export default function AdminUsersPage() {
   const queryClient = useQueryClient();
@@ -44,10 +23,12 @@ export default function AdminUsersPage() {
   const [roleFilter, setRoleFilter] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<AdminUser | null>(null);
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses({}),
   });
 
   const { data: roles } = useQuery({
@@ -73,7 +54,7 @@ export default function AdminUsersPage() {
       phone_number: '',
       password: '',
       password_confirmation: '',
-      role_name: '',
+      role_names: [] as string[],
     },
     validate: {
       first_name: (v) => (!v ? 'First name is required' : null),
@@ -87,7 +68,14 @@ export default function AdminUsersPage() {
         }
         return null;
       },
-      role_name: (v) => (!v ? 'Role is required' : null),
+      role_names: (v) => {
+        if (v.length === 0) return 'At least one role is required';
+        const hasOfficer = v.some((r) => r.toLowerCase().includes('officer'));
+        if (hasOfficer && v.length > 1) {
+          return 'Officer roles cannot be combined with other roles.';
+        }
+        return null;
+      },
       password_confirmation: (v, values) =>
         values.password && v !== values.password ? 'Passwords do not match' : null,
     },
@@ -133,6 +121,8 @@ export default function AdminUsersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: usersQueryKey });
       notifications.show({ title: 'Success', message: 'User deleted', color: 'green' });
+      setDeleteConfirmOpen(false);
+      setUserToDelete(null);
     },
     onError: (err: any) => {
       notifications.show({
@@ -140,6 +130,8 @@ export default function AdminUsersPage() {
         message: err.response?.data?.error?.message || 'Failed to delete user',
         color: 'red',
       });
+      setDeleteConfirmOpen(false);
+      setUserToDelete(null);
     },
   });
 
@@ -158,9 +150,25 @@ export default function AdminUsersPage() {
       phone_number: user.phone_number || '',
       password: '',
       password_confirmation: '',
-      role_name: user.roles?.[0] || '',
+      role_names: user.roles || [],
     });
     setModalOpen(true);
+  };
+
+  const openDeleteConfirm = (user: AdminUser) => {
+    setUserToDelete(user);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (userToDelete) {
+      deleteMutation.mutate(userToDelete.id);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmOpen(false);
+    setUserToDelete(null);
   };
 
   const handleSubmit = (values: typeof form.values) => {
@@ -169,7 +177,7 @@ export default function AdminUsersPage() {
       last_name: values.last_name,
       email: values.email,
       phone_number: values.phone_number,
-      role_name: values.role_name,
+      role_names: values.role_names,
       ...(values.password ? { password: values.password, password_confirmation: values.password_confirmation } : {}),
     };
 
@@ -198,7 +206,7 @@ export default function AdminUsersPage() {
       </Group>
 
       <Group>
-        <Select
+        <SearchableSelect
           label="Filter by Warehouse"
           placeholder="All warehouses"
           data={warehouses?.map((w) => ({ value: String(w.id), label: w.name })) || []}
@@ -207,10 +215,10 @@ export default function AdminUsersPage() {
           clearable
           w={320}
         />
-        <Select
+        <SearchableSelect
           label="Filter by Role"
           placeholder="All roles"
-          data={(roles?.map((r) => r.name) || ROLE_OPTIONS).map((name) => ({ value: name, label: name }))}
+          data={filterAllowedRoleNames(roles?.map((r) => r.name) ?? ROLE_OPTIONS).map((name) => ({ value: name, label: name }))}
           value={roleFilter}
           onChange={setRoleFilter}
           clearable
@@ -255,7 +263,7 @@ export default function AdminUsersPage() {
                       <ActionIcon
                         variant="subtle"
                         color="red"
-                        onClick={() => deleteMutation.mutate(user.id)}
+                        onClick={() => openDeleteConfirm(user)}
                       >
                         <IconTrash size={16} />
                       </ActionIcon>
@@ -288,10 +296,11 @@ export default function AdminUsersPage() {
               error={form.errors.phone_number}
               required
             />
-            <Select
-              label="Role"
-              data={(roles?.map((r) => r.name) || ROLE_OPTIONS).map((name) => ({ value: name, label: name }))}
-              {...form.getInputProps('role_name')}
+            <SearchableMultiSelect
+              label="Roles"
+              placeholder="Select one or more roles"
+              data={filterAllowedRoleNames(roles?.map((r) => r.name) ?? ROLE_OPTIONS).map((name) => ({ value: name, label: name }))}
+              {...form.getInputProps('role_names')}
               required
             />
             <Divider my="sm" />
@@ -308,6 +317,39 @@ export default function AdminUsersPage() {
           </Stack>
         </form>
       </Modal>
+
+      <Modal 
+        opened={deleteConfirmOpen} 
+        onClose={handleDeleteCancel} 
+        title="Delete User"
+        size="sm"
+      >
+        <Stack gap="md">
+          <Text>
+            Are you sure you want to delete user{' '}
+            <Text component="span" fw={600}>
+              {userToDelete ? `${userToDelete.first_name} ${userToDelete.last_name}` : ''}
+            </Text>
+            ?
+          </Text>
+          <Text size="sm" c="dimmed">
+            This action cannot be undone. The user will be permanently removed from the system.
+          </Text>
+          <Group justify="flex-end" mt="md">
+            <Button variant="default" onClick={handleDeleteCancel}>
+              Cancel
+            </Button>
+            <Button 
+              color="red" 
+              onClick={handleDeleteConfirm}
+              loading={deleteMutation.isPending}
+            >
+              Delete User
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Stack>
   );
 }
+

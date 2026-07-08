@@ -4,6 +4,7 @@ import type {
   WarehouseUpsertPayload,
   WarehouseAccess,
   WarehouseCapacity,
+  WarehouseCapacityPayload,
   WarehouseContacts,
   WarehouseInfra,
 } from '../types/warehouse';
@@ -41,8 +42,8 @@ const toWarehouseRequestBody = (data: WarehouseUpsertPayload) => {
   return formData;
 };
 
-export const getWarehouses = async (): Promise<Warehouse[]> => {
-  const response = await apiClient.get<ApiResponse<Warehouse[]>>('/warehouses');
+export const getWarehouses = async (params?: { hub_id?: number }): Promise<Warehouse[]> => {
+  const response = await apiClient.get<ApiResponse<Warehouse[]>>('/warehouses', { params });
   return response.data.data.map((warehouse) => normalizeWarehouse(warehouse as WarehouseApiRecord));
 };
 
@@ -81,7 +82,7 @@ export const updateWarehouseGps = async (
 
 export const updateWarehouseCapacity = async (
   id: number,
-  data: Partial<WarehouseCapacity>
+  data: WarehouseCapacityPayload
 ): Promise<WarehouseCapacity> => {
   const response = await apiClient.put<ApiResponse<WarehouseCapacity>>(
     `/warehouses/${id}/capacity`,

@@ -1,19 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Stack, Title, Group, Button, Tabs, Card, Text, Grid, Badge, Modal, Anchor, Table, TextInput, NumberInput, Switch, Divider, ActionIcon, Checkbox, Alert, Tooltip } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
+import { IconEdit, IconArrowLeft, IconMapPin, IconPlus, IconTrash } from '@tabler/icons-react';
+import { useEffect, useMemo, useState } from 'react';
+import { previewWarehouseCapacity, storeFullyOccupiesWarehouse, formatFullWarehouseCapacityLabel } from '../../utils/capacityCalculator';
 import {
-  Stack, Title, Group, Button, Tabs, Card, Text, Grid, Badge,
-  Modal, Anchor, Table, TextInput, NumberInput, Switch, Select, Divider,
-} from '@mantine/core';
-import { IconEdit, IconTrash, IconArrowLeft, IconMapPin } from '@tabler/icons-react';
-import { useEffect, useState } from 'react';
-import {
-  getWarehouse, deleteWarehouse, updateWarehouseCapacity,
+  getWarehouse, updateWarehouse, updateWarehouseCapacity,
   updateWarehouseAccess, updateWarehouseInfra, updateWarehouseContacts,
   updateWarehouseGps,
 } from '../../api/warehouses';
 import { getHubs } from '../../api/hubs';
-import { getStores } from '../../api/stores';
+import { getStores, createStore, deleteStore } from '../../api/stores';
 import { getStockBalances } from '../../api/stockBalances';
 import { getGrns } from '../../api/grns';
 import { getGins } from '../../api/gins';
@@ -26,26 +25,40 @@ import { notifications } from '@mantine/notifications';
 import { formatDate } from '../../utils/formatters';
 import { useForm } from '@mantine/form';
 import { usePermission } from '../../hooks/usePermission';
-import { useAuthStore } from '../../store/authStore';
 import { getFacilityOptions } from '../../api/referenceData';
+
+function formatStoreCount(count: number): string {
+  return count > 0 ? String(count) : '-';
+}
 
 function WarehouseDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const warehouseIdNum = id ? Number(id) : undefined;
+  const activeTab = searchParams.get('tab') || 'overview';
   const { can } = usePermission();
   const canEdit = can('warehouses', 'update');
   const canReadHubs = can('hubs', 'read');
   const canCreateStores = can('stores', 'create');
-  const role = useAuthStore((state) => state.role);
-  const isAdmin = role === 'admin' || role === 'superadmin';
+  const canUpdateStores = can('stores', 'update');
+  const canDeleteStores = can('stores', 'delete');
 
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [capacityModalOpen, setCapacityModalOpen] = useState(false);
+  const [singleStoreModalOpen, setSingleStoreModalOpen] = useState(false);
+  const [createSingleStore, setCreateSingleStore] = useState(false);
+  const [pendingCapacityDimensions, setPendingCapacityDimensions] = useState<{
+    length_m: number;
+    width_m: number;
+    height_m: number;
+  } | null>(null);
   const [accessModalOpen, setAccessModalOpen] = useState(false);
   const [infraModalOpen, setInfraModalOpen] = useState(false);
   const [contactsModalOpen, setContactsModalOpen] = useState(false);
   const [gpsModalOpen, setGpsModalOpen] = useState(false);
+  const [deleteStoreModalOpen, setDeleteStoreModalOpen] = useState(false);
+  const [storeToDelete, setStoreToDelete] = useState<{ id: number; name: string } | null>(null);
 
   const { data: warehouse, isLoading, error } = useQuery({
     queryKey: ['warehouses', id],
@@ -53,27 +66,37 @@ function WarehouseDetailPage() {
     enabled: !!id,
   });
 
-  const { data: hubs } = useQuery({ queryKey: ['hubs'], queryFn: getHubs, enabled: canReadHubs });
-  const { data: stores } = useQuery({ queryKey: ['stores'], queryFn: getStores });
-  const { data: stockBalances } = useQuery({ queryKey: ['stockBalances'], queryFn: getStockBalances });
-  const { data: grns } = useQuery({ queryKey: ['grns'], queryFn: getGrns });
-  const { data: gins } = useQuery({ queryKey: ['gins'], queryFn: getGins });
-  const { data: inspections } = useQuery({ queryKey: ['inspections'], queryFn: getInspections });
+  const { data: hubs } = useQuery({ queryKey: ['hubs'], queryFn: () => getHubs(), enabled: canReadHubs });
+  
+  const { data: warehouseStores = [], isLoading: storesLoading } = useQuery({
+    queryKey: ['stores', { warehouse_id: warehouseIdNum }],
+    queryFn: () => getStores({ warehouse_id: warehouseIdNum! }),
+    enabled: !!warehouseIdNum,
+  });
+  const storeCount = warehouseStores.length;
+  const { data: stockBalances = [] } = useQuery({
+    queryKey: ['stockBalances', { warehouse_id: Number(id) }],
+    queryFn: () => getStockBalances({ warehouse_id: Number(id) }),
+    enabled: !!id && activeTab === 'stock',
+  });
+  const { data: grns } = useQuery({
+    queryKey: ['grns', { warehouse_id: Number(id) }],
+    queryFn: () => getGrns({ warehouse_id: Number(id) }),
+    enabled: !!id && activeTab === 'operations',
+  });
+  const { data: gins } = useQuery({
+    queryKey: ['gins', { warehouse_id: Number(id) }],
+    queryFn: () => getGins({ warehouse_id: Number(id) }),
+    enabled: !!id && activeTab === 'operations',
+  });
+  const { data: inspections } = useQuery({
+    queryKey: ['inspections', { warehouse_id: Number(id) }],
+    queryFn: () => getInspections({ warehouse_id: Number(id) }),
+    enabled: !!id && activeTab === 'operations',
+  });
   const { data: facilityOptions } = useQuery({
     queryKey: ['reference-data', 'facility-options'],
-    queryFn: getFacilityOptions,
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: deleteWarehouse,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['warehouses'] });
-      notifications.show({ title: 'Success', message: 'Warehouse deleted', color: 'green' });
-      navigate('/warehouses');
-    },
-    onError: (error: any) => {
-      notifications.show({ title: 'Error', message: error.response?.data?.error?.message || 'Failed to delete warehouse', color: 'red' });
-    },
+    queryFn: () => getFacilityOptions(),
   });
 
   const toNumber = (value: number | '' | null | undefined) =>
@@ -81,12 +104,32 @@ function WarehouseDetailPage() {
 
   const capacityForm = useForm({
     initialValues: {
-      total_area_sqm: '' as number | '',
-      total_storage_capacity_mt: '' as number | '',
+      length_m: '' as number | '',
+      width_m: '' as number | '',
+      height_m: '' as number | '',
       construction_year: '' as number | '',
       ownership_type: '',
+      usable_space_percentage: 75 as number,
     },
   });
+
+  const capacityPreview = useMemo(() => {
+    const l = capacityForm.values.length_m;
+    const w = capacityForm.values.width_m;
+    const h = capacityForm.values.height_m;
+    if (l === '' || w === '' || h === '') return null;
+    return previewWarehouseCapacity(
+      Number(l),
+      Number(w),
+      Number(h),
+      capacityForm.values.usable_space_percentage
+    );
+  }, [
+    capacityForm.values.length_m,
+    capacityForm.values.width_m,
+    capacityForm.values.height_m,
+    capacityForm.values.usable_space_percentage,
+  ]);
 
   const accessForm = useForm({
     initialValues: {
@@ -116,13 +159,23 @@ function WarehouseDetailPage() {
     },
   });
 
+  const singleStoreForm = useForm({
+    initialValues: { name: '', code: '' },
+    validate: {
+      name: (v) => (!v ? 'Store name is required' : null),
+      code: (v) => (!v ? 'Store code is required' : null),
+    },
+  });
+
   useEffect(() => {
     if (!warehouse) return;
     capacityForm.setValues({
-      total_area_sqm: warehouse.capacity?.total_area_sqm ?? '',
-      total_storage_capacity_mt: warehouse.capacity?.total_storage_capacity_mt ?? '',
+      length_m: warehouse.capacity?.length_m ?? '',
+      width_m: warehouse.capacity?.width_m ?? '',
+      height_m: warehouse.capacity?.height_m ?? '',
       construction_year: warehouse.capacity?.construction_year ?? '',
       ownership_type: warehouse.ownership_type || '',
+      usable_space_percentage: warehouse.capacity?.usable_space_percentage ?? 75,
     });
     accessForm.setValues({
       has_loading_dock: !!warehouse.access?.has_loading_dock,
@@ -147,19 +200,106 @@ function WarehouseDetailPage() {
   }, [warehouse]);
 
   const updateCapacityMutation = useMutation({
-    mutationFn: (payload: typeof capacityForm.values) =>
-      updateWarehouseCapacity(Number(id), {
-        total_area_sqm: toNumber(payload.total_area_sqm),
-        total_storage_capacity_mt: toNumber(payload.total_storage_capacity_mt),
+    mutationFn: async (payload: typeof capacityForm.values & { createSingleStore?: boolean }) => {
+      // WarehouseCapacity fields — sent to PUT /warehouses/:id/capacity
+      await updateWarehouseCapacity(Number(id), {
+        length_m: toNumber(payload.length_m),
+        width_m: toNumber(payload.width_m),
+        height_m: toNumber(payload.height_m),
         construction_year: toNumber(payload.construction_year),
-      }),
-    onSuccess: () => {
+        usable_space_percentage: payload.usable_space_percentage,
+      });
+
+      // ownership_type lives on the Warehouse record itself, not on WarehouseCapacity.
+      // Only send the PATCH when the value has actually changed to avoid a redundant write.
+      if (payload.ownership_type && payload.ownership_type !== warehouse?.ownership_type) {
+        await updateWarehouse(Number(id), { ownership_type: payload.ownership_type });
+      }
+
+      return {
+        createSingleStore: payload.createSingleStore,
+        length_m: toNumber(payload.length_m),
+        width_m: toNumber(payload.width_m),
+        height_m: toNumber(payload.height_m),
+      };
+    },
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['warehouses', id] });
       notifications.show({ title: 'Success', message: 'Capacity updated', color: 'green' });
       setCapacityModalOpen(false);
+      setCreateSingleStore(false);
+
+      if (
+        result?.createSingleStore &&
+        result.length_m &&
+        result.width_m &&
+        result.height_m &&
+        canCreateStores
+      ) {
+        setPendingCapacityDimensions({
+          length_m: result.length_m,
+          width_m: result.width_m,
+          height_m: result.height_m,
+        });
+        singleStoreForm.setValues({
+          name: '',
+          code: warehouse ? `${warehouse.code}-STORE-001` : 'STORE-001',
+        });
+        setSingleStoreModalOpen(true);
+      }
     },
     onError: (error: any) => {
       notifications.show({ title: 'Error', message: error.response?.data?.error?.message || 'Failed to update capacity', color: 'red' });
+    },
+  });
+
+  const createSingleStoreMutation = useMutation({
+    mutationFn: async (values: { name: string; code: string }) => {
+      if (!pendingCapacityDimensions || !warehouse) {
+        throw new Error('Missing warehouse capacity dimensions');
+      }
+      return createStore({
+        name: values.name,
+        code: values.code,
+        warehouse_id: warehouse.id,
+        length: pendingCapacityDimensions.length_m,
+        width: pendingCapacityDimensions.width_m,
+        height: pendingCapacityDimensions.height_m,
+        temporary: false,
+        has_gangway: false,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stores'] });
+      queryClient.invalidateQueries({ queryKey: ['warehouses', id] });
+      notifications.show({ title: 'Success', message: 'Single store created for this warehouse', color: 'green' });
+      setSingleStoreModalOpen(false);
+      setPendingCapacityDimensions(null);
+    },
+    onError: (error: any) => {
+      notifications.show({
+        title: 'Error',
+        message: error.response?.data?.error?.message || 'Failed to create store',
+        color: 'red',
+      });
+    },
+  });
+
+  const deleteStoreMutation = useMutation({
+    mutationFn: (storeId: number) => deleteStore(storeId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stores'] });
+      queryClient.invalidateQueries({ queryKey: ['warehouses', id] });
+      notifications.show({ title: 'Success', message: 'Store deleted successfully', color: 'green' });
+      setDeleteStoreModalOpen(false);
+      setStoreToDelete(null);
+    },
+    onError: (error: any) => {
+      notifications.show({
+        title: 'Error',
+        message: error.response?.data?.error?.message || 'Failed to delete store',
+        color: 'red',
+      });
     },
   });
 
@@ -234,11 +374,28 @@ function WarehouseDetailPage() {
   });
 
   const hub = hubs?.find((h) => h.id === warehouse?.hub_id);
-  const warehouseStores = stores?.filter((s) => s.warehouse_id === Number(id));
-  const warehouseStock = stockBalances?.filter((sb) => sb.warehouse_id === Number(id));
-  const warehouseGrns = grns?.filter((g) => g.warehouse_id === Number(id))?.slice(0, 5);
-  const warehouseGins = gins?.filter((g) => g.warehouse_id === Number(id))?.slice(0, 5);
-  const warehouseInspections = inspections?.filter((i) => i.warehouse_id === Number(id))?.slice(0, 5);
+  const storeContextQuery = `warehouse_id=${warehouse?.id}&return_to=warehouse`;
+  const warehouseFullyAllocated = useMemo(
+    () =>
+      !!warehouse?.capacity &&
+      (warehouseStores ?? []).some((s) => storeFullyOccupiesWarehouse(s, warehouse.capacity)),
+    [warehouse, warehouseStores]
+  );
+  const fullOccupancyStore = warehouseFullyAllocated
+    ? warehouseStores?.find((s) => storeFullyOccupiesWarehouse(s, warehouse?.capacity))
+    : undefined;
+  const isSingleStoreWarehouse =
+    warehouseFullyAllocated && (warehouseStores?.length ?? 0) === 1 && !!fullOccupancyStore;
+  const warehouseUsableMt = Number(warehouse?.capacity?.usable_storage_capacity_mt ?? 0);
+  const warehouseUsablePct = warehouse?.capacity?.usable_space_percentage ?? 75;
+  const fullWarehouseCapacityLabel = formatFullWarehouseCapacityLabel(
+    warehouseUsableMt,
+    warehouseUsablePct
+  );
+  const warehouseStock = stockBalances;
+  const warehouseGrns = grns?.slice(0, 5);
+  const warehouseGins = gins?.slice(0, 5);
+  const warehouseInspections = inspections?.slice(0, 5);
 
   const formatHierarchicalLevel = (value?: string) => {
     if (!value) return '-';
@@ -261,19 +418,16 @@ function WarehouseDetailPage() {
           </div>
           <StatusBadge status={warehouse.status} />
         </Group>
-        {isAdmin && (
-          <Group>
-            <Button variant="light" leftSection={<IconEdit size={16} />} onClick={() => navigate(`/warehouses/${id}/edit`)}>
-              Edit
-            </Button>
-            <Button color="red" variant="light" leftSection={<IconTrash size={16} />} onClick={() => setDeleteModalOpen(true)}>
-              Delete
-            </Button>
-          </Group>
-        )}
       </Group>
 
-      <Tabs defaultValue="overview">
+      <Tabs
+        value={activeTab}
+        onChange={(value) => {
+          if (value) {
+            setSearchParams(value === 'overview' ? {} : { tab: value }, { replace: true });
+          }
+        }}
+      >
         <Tabs.List>
           <Tabs.Tab value="overview">Overview</Tabs.Tab>
           <Tabs.Tab value="capacity">Capacity</Tabs.Tab>
@@ -321,7 +475,7 @@ function WarehouseDetailPage() {
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
                   <Text size="sm" c="dimmed">Region</Text>
-                  <Text fw={500}>Addis Ababa</Text>
+                  <Text fw={500}>{warehouse.region_name || '-'}</Text>
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
                   <Text size="sm" c="dimmed">Subcity</Text>
@@ -352,9 +506,9 @@ function WarehouseDetailPage() {
                 <Text fw={600}>GPS Location</Text>
                 {canEdit && (
                   <Button
-                    size="xs"
+                    size="sm"
                     variant="light"
-                    leftSection={<IconMapPin size={14} />}
+                    leftSection={<IconMapPin size={16} />}
                     onClick={() => setGpsModalOpen(true)}
                   >
                     {warehouse.geo ? 'Update GPS Location' : 'Add GPS Location'}
@@ -390,27 +544,57 @@ function WarehouseDetailPage() {
           <Group justify="space-between" mb="sm">
             <Title order={4}>Capacity</Title>
             {canEdit && (
-              <Button size="xs" variant="light" onClick={() => setCapacityModalOpen(true)}>Edit</Button>
+              <Button size="sm" variant="light" leftSection={<IconEdit size={16} />} onClick={() => setCapacityModalOpen(true)}>Edit</Button>
             )}
           </Group>
+          {warehouse.capacity?.capacity_established && !storesLoading && storeCount === 0 && (
+            <Alert color="blue" variant="light" mb="sm" title="No stores yet">
+              This warehouse has no stores yet. Edit capacity to set up a single-store warehouse using the full usable
+              capacity.
+            </Alert>
+          )}
           <Card withBorder>
             {warehouse.capacity ? (
               <Grid>
                 <Grid.Col span={{ base: 12, md: 6 }}>
-                  <Text size="sm" c="dimmed">Total Area (sqm)</Text>
-                  <Text fw={500}>{warehouse.capacity.total_area_sqm ?? '-'}</Text>
+                  <Text size="sm" c="dimmed">Dimensions (L × W × H m)</Text>
+                  <Text fw={500}>
+                    {warehouse.capacity.length_m != null
+                      ? `${warehouse.capacity.length_m} × ${warehouse.capacity.width_m} × ${warehouse.capacity.height_m}`
+                      : '—'}
+                  </Text>
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
-                  <Text size="sm" c="dimmed">Total Storage Capacity (MT)</Text>
-                  <Text fw={500}>{warehouse.capacity.total_storage_capacity_mt ?? '-'}</Text>
+                  <Text size="sm" c="dimmed">Floor footprint (m²)</Text>
+                  <Text fw={500}>{warehouse.capacity.total_area_sqm ?? '—'}</Text>
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
-                  <Text size="sm" c="dimmed">Usable Capacity (MT)</Text>
-                  <Text fw={500}>{warehouse.capacity.usable_storage_capacity_mt ?? '-'}</Text>
+                  <Text size="sm" c="dimmed">Usable volume (m³)</Text>
+                  <Text fw={500}>{warehouse.capacity.usable_volume_m3 ?? '—'}</Text>
+                </Grid.Col>
+                <Grid.Col span={{ base: 12, md: 6 }}>
+                  <Text size="sm" c="dimmed">Storage capacity (MT)</Text>
+                  <Text fw={500}>{warehouse.capacity.usable_storage_capacity_mt ?? '—'}</Text>
+                </Grid.Col>
+                <Grid.Col span={{ base: 12, md: 6 }}>
+                  <Text size="sm" c="dimmed">MT in use</Text>
+                  <Text fw={500} c="blue">{warehouse.capacity.used_capacity_mt ?? 0}</Text>
+                </Grid.Col>
+                <Grid.Col span={{ base: 12, md: 6 }}>
+                  <Text size="sm" c="dimmed">MT remaining</Text>
+                  <Text fw={500} c="green">{warehouse.capacity.remaining_capacity_mt ?? '—'}</Text>
+                </Grid.Col>
+                <Grid.Col span={{ base: 12, md: 6 }}>
+                  <Text size="sm" c="dimmed">Utilization</Text>
+                  <Text fw={500}>
+                    {warehouse.capacity.utilization_pct != null
+                      ? `${warehouse.capacity.utilization_pct}%`
+                      : '—'}
+                  </Text>
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
                   <Text size="sm" c="dimmed">Number of Stores</Text>
-                  <Text fw={500}>{warehouse.capacity.no_of_stores ?? '-'}</Text>
+                  <Text fw={500}>{formatStoreCount(storeCount)}</Text>
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 6 }}>
                   <Text size="sm" c="dimmed">Construction Year</Text>
@@ -424,7 +608,7 @@ function WarehouseDetailPage() {
             ) : (
               <Stack gap="xs" align="center" py="md">
                 <Text c="dimmed">No capacity information yet</Text>
-                {canEdit && <Button size="xs" variant="light" onClick={() => setCapacityModalOpen(true)}>Add Capacity Info</Button>}
+                {canEdit && <Button size="sm" variant="light" leftSection={<IconEdit size={16} />} onClick={() => setCapacityModalOpen(true)}>Add Capacity Info</Button>}
               </Stack>
             )}
           </Card>
@@ -435,7 +619,7 @@ function WarehouseDetailPage() {
           <Group justify="space-between" mb="sm">
             <Title order={4}>Access</Title>
             {canEdit && (
-              <Button size="xs" variant="light" onClick={() => setAccessModalOpen(true)}>Edit</Button>
+              <Button size="sm" variant="light" leftSection={<IconEdit size={16} />} onClick={() => setAccessModalOpen(true)}>Edit</Button>
             )}
           </Group>
           <Card withBorder>
@@ -473,7 +657,7 @@ function WarehouseDetailPage() {
             ) : (
               <Stack gap="xs" align="center" py="md">
                 <Text c="dimmed">No access information yet</Text>
-                {canEdit && <Button size="xs" variant="light" onClick={() => setAccessModalOpen(true)}>Add Access Info</Button>}
+                {canEdit && <Button size="sm" variant="light" leftSection={<IconEdit size={16} />} onClick={() => setAccessModalOpen(true)}>Add Access Info</Button>}
               </Stack>
             )}
           </Card>
@@ -484,7 +668,7 @@ function WarehouseDetailPage() {
           <Group justify="space-between" mb="sm">
             <Title order={4}>Infrastructure</Title>
             {canEdit && (
-              <Button size="xs" variant="light" onClick={() => setInfraModalOpen(true)}>Edit</Button>
+              <Button size="sm" variant="light" leftSection={<IconEdit size={16} />} onClick={() => setInfraModalOpen(true)}>Edit</Button>
             )}
           </Group>
           <Card withBorder>
@@ -514,7 +698,7 @@ function WarehouseDetailPage() {
             ) : (
               <Stack gap="xs" align="center" py="md">
                 <Text c="dimmed">No infrastructure information yet</Text>
-                {canEdit && <Button size="xs" variant="light" onClick={() => setInfraModalOpen(true)}>Add Infrastructure Info</Button>}
+                {canEdit && <Button size="sm" variant="light" leftSection={<IconEdit size={16} />} onClick={() => setInfraModalOpen(true)}>Add Infrastructure Info</Button>}
               </Stack>
             )}
           </Card>
@@ -525,7 +709,7 @@ function WarehouseDetailPage() {
           <Group justify="space-between" mb="sm">
             <Title order={4}>Contacts</Title>
             {canEdit && (
-              <Button size="xs" variant="light" onClick={() => setContactsModalOpen(true)}>Edit</Button>
+              <Button size="sm" variant="light" leftSection={<IconEdit size={16} />} onClick={() => setContactsModalOpen(true)}>Edit</Button>
             )}
           </Group>
           <Card withBorder>
@@ -547,7 +731,7 @@ function WarehouseDetailPage() {
             ) : (
               <Stack gap="xs" align="center" py="md">
                 <Text c="dimmed">No contact information yet</Text>
-                {canEdit && <Button size="xs" variant="light" onClick={() => setContactsModalOpen(true)}>Add Contact Info</Button>}
+                {canEdit && <Button size="sm" variant="light" leftSection={<IconEdit size={16} />} onClick={() => setContactsModalOpen(true)}>Add Contact Info</Button>}
               </Stack>
             )}
           </Card>
@@ -557,28 +741,123 @@ function WarehouseDetailPage() {
         <Tabs.Panel value="stores" pt="md">
           <Group justify="space-between" mb="sm">
             <Title order={4}>Stores</Title>
-            {canCreateStores && (
-              <Button size="xs" onClick={() => navigate(`/stores/new?warehouse_id=${warehouse.id}`)}>
+            {canCreateStores && !warehouseFullyAllocated && (
+              <Button size="sm" variant="light" leftSection={<IconPlus size={16} />} onClick={() => navigate(`/stores/new?${storeContextQuery}`)}>
                 Create Store
               </Button>
             )}
           </Group>
+          {warehouseFullyAllocated && fullOccupancyStore && (
+            <Alert
+              color="teal"
+              variant="light"
+              mb="sm"
+              title={isSingleStoreWarehouse ? "Single-store warehouse" : "Warehouse fully occupied"}
+            >
+              <Group justify="space-between" align="flex-start" wrap="nowrap">
+                <Text size="sm">
+                  {isSingleStoreWarehouse ? (
+                    <>
+                      {fullOccupancyStore.name} uses the entire warehouse capacity ({fullWarehouseCapacityLabel}).
+                      This warehouse operates as a single store — you cannot create more stores until you reduce this
+                      store&apos;s dimensions.
+                    </>
+                  ) : (
+                    <>
+                      This warehouse is fully occupied by {fullOccupancyStore.name}. Edit that store and reduce its
+                      dimensions to add more stores.
+                    </>
+                  )}
+                </Text>
+                {canUpdateStores && (
+                  <Button
+                    size="xs"
+                    variant="light"
+                    leftSection={<IconEdit size={14} />}
+                    onClick={() => navigate(`/stores/${fullOccupancyStore.id}/edit?${storeContextQuery}`)}
+                  >
+                    Edit store
+                  </Button>
+                )}
+              </Group>
+            </Alert>
+          )}
           <Card withBorder>
             {warehouseStores && warehouseStores.length > 0 ? (
               <Stack gap="sm">
-                {warehouseStores.map((store) => (
-                  <Card key={store.id} withBorder padding="sm" style={{ cursor: 'pointer' }} onClick={() => navigate(`/stores/${store.id}/edit`)}>
-                    <Group justify="space-between">
-                      <div>
-                        <Text fw={500}>{store.name}</Text>
-                        <Text size="sm" c="dimmed">{store.code} — {store.length}×{store.width}×{store.height}m</Text>
-                      </div>
-                      <Badge color={store.temporary ? 'yellow' : 'blue'}>
-                        {store.temporary ? 'Temporary' : 'Permanent'}
-                      </Badge>
-                    </Group>
-                  </Card>
-                ))}
+                {warehouseStores.map((store) => {
+                  const storeHasStock = (store.used_capacity_mt ?? 0) > 0;
+                  const storeUsesFullWarehouse = storeFullyOccupiesWarehouse(store, warehouse.capacity);
+
+                  return (
+                    <Card
+                      key={store.id}
+                      withBorder
+                      padding="sm"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => navigate(`/stores/${store.id}`)}
+                    >
+                      <Group justify="space-between" wrap="nowrap">
+                        <div>
+                          <Text fw={500}>{store.name}</Text>
+                          <Text size="sm" c="dimmed">
+                            {store.code} — {store.length}×{store.width}×{store.height}m
+                          </Text>
+                        </div>
+                        <Group gap="xs" wrap="nowrap" onClick={(e) => e.stopPropagation()}>
+                          {storeUsesFullWarehouse && (
+                            <Badge color="teal" variant="light">
+                              Full warehouse capacity
+                            </Badge>
+                          )}
+                          <Badge color={store.temporary ? 'yellow' : 'blue'}>
+                            {store.temporary ? 'Temporary' : 'Permanent'}
+                          </Badge>
+                          {canUpdateStores && (
+                            <ActionIcon
+                              variant="subtle"
+                              color="gray"
+                              aria-label={`Edit ${store.name}`}
+                              onClick={() => navigate(`/stores/${store.id}/edit?${storeContextQuery}`)}
+                            >
+                              <IconEdit size={16} />
+                            </ActionIcon>
+                          )}
+                          {canDeleteStores && (
+                            storeHasStock ? (
+                              <Tooltip label="Cannot delete a store that has stock. Move or remove stock first.">
+                                <span>
+                                  <ActionIcon
+                                    variant="subtle"
+                                    color="red"
+                                    aria-label={`Delete ${store.name}`}
+                                    disabled
+                                  >
+                                    <IconTrash size={16} />
+                                  </ActionIcon>
+                                </span>
+                              </Tooltip>
+                            ) : (
+                              <Tooltip label="Delete store">
+                                <ActionIcon
+                                  variant="subtle"
+                                  color="red"
+                                  aria-label={`Delete ${store.name}`}
+                                  onClick={() => {
+                                    setStoreToDelete({ id: store.id, name: store.name });
+                                    setDeleteStoreModalOpen(true);
+                                  }}
+                                >
+                                  <IconTrash size={16} />
+                                </ActionIcon>
+                              </Tooltip>
+                            )
+                          )}
+                        </Group>
+                      </Group>
+                    </Card>
+                  );
+                })}
               </Stack>
             ) : (
               <Text c="dimmed">No stores in this warehouse</Text>
@@ -606,8 +885,8 @@ function WarehouseDetailPage() {
                       <Table.Td>{stock.commodity_name || stock.commodity_batch_no || stock.commodity_id}</Table.Td>
                       <Table.Td>{stock.store_name || stock.store_code || stock.store_id || '-'}</Table.Td>
                       <Table.Td>{stock.stack_code || stock.stack_id || '-'}</Table.Td>
-                      <Table.Td>{stock.quantity}</Table.Td>
-                      <Table.Td>{stock.unit_abbreviation || stock.unit_name || stock.unit_id}</Table.Td>
+                      <Table.Td>{stock.entered_quantity ?? stock.quantity}</Table.Td>
+                      <Table.Td>{stock.entered_unit_abbreviation || stock.entered_unit_name || stock.unit_abbreviation || stock.unit_name || stock.unit_id}</Table.Td>
                     </Table.Tr>
                   ))}
                 </Table.Tbody>
@@ -685,17 +964,6 @@ function WarehouseDetailPage() {
         </Tabs.Panel>
       </Tabs>
 
-      {/* Delete Modal */}
-      <Modal opened={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} title="Delete Warehouse">
-        <Text mb="md">Are you sure you want to delete this warehouse? This action cannot be undone.</Text>
-        <Group justify="flex-end">
-          <Button variant="default" onClick={() => setDeleteModalOpen(false)}>Cancel</Button>
-          <Button color="red" onClick={() => id && deleteMutation.mutate(Number(id))} loading={deleteMutation.isPending}>
-            Delete
-          </Button>
-        </Group>
-      </Modal>
-
       {/* GPS Modal */}
       <GpsMapModal
         opened={gpsModalOpen}
@@ -708,23 +976,58 @@ function WarehouseDetailPage() {
       />
 
       {/* Capacity Modal */}
-      <Modal opened={capacityModalOpen} onClose={() => setCapacityModalOpen(false)} title="Edit Capacity" centered>
-        <form onSubmit={capacityForm.onSubmit((values) => updateCapacityMutation.mutate(values))}>
+      <Modal opened={capacityModalOpen} onClose={() => { setCapacityModalOpen(false); setCreateSingleStore(false); }} title="Edit Capacity" centered>
+        <form onSubmit={capacityForm.onSubmit((values) => updateCapacityMutation.mutate({ ...values, createSingleStore }))}>
           <Stack gap="md">
-            <NumberInput label="Total Area (sqm)" min={0} {...capacityForm.getInputProps('total_area_sqm')} />
-            <NumberInput label="Total Storage Capacity (MT)" min={0} {...capacityForm.getInputProps('total_storage_capacity_mt')} />
-            <TextInput
-              label="Usable Capacity (calculated)"
-              value={
-                warehouse.capacity?.usable_storage_capacity_mt !== undefined
-                  ? String(warehouse.capacity.usable_storage_capacity_mt)
-                  : ''
-              }
-              readOnly
-            />
+            <Group grow>
+              <NumberInput label="Length (m)" min={0} decimalScale={2} {...capacityForm.getInputProps('length_m')} />
+              <NumberInput label="Width (m)" min={0} decimalScale={2} {...capacityForm.getInputProps('width_m')} />
+              <NumberInput label="Height (m)" min={0} decimalScale={2} {...capacityForm.getInputProps('height_m')} />
+            </Group>
+            <div>
+              <Text size="sm" fw={500} mb={4}>Usable floor area %</Text>
+              <Group gap="xs" align="center">
+                <ActionIcon
+                  variant="default"
+                  size="lg"
+                  onClick={() => {
+                    const current = capacityForm.values.usable_space_percentage ?? 75;
+                    if (current > 70) capacityForm.setFieldValue('usable_space_percentage', current - 1);
+                  }}
+                  disabled={capacityForm.values.usable_space_percentage <= 70}
+                >
+                  −
+                </ActionIcon>
+                <Text fw={700} size="sm" w={40} ta="center">
+                  {capacityForm.values.usable_space_percentage}%
+                </Text>
+                <ActionIcon
+                  variant="default"
+                  size="lg"
+                  onClick={() => {
+                    const current = capacityForm.values.usable_space_percentage ?? 75;
+                    if (current < 80) capacityForm.setFieldValue('usable_space_percentage', current + 1);
+                  }}
+                  disabled={capacityForm.values.usable_space_percentage >= 80}
+                >
+                  +
+                </ActionIcon>
+              </Group>
+              <Text size="xs" c="dimmed" mt={4}>Range: 70% – 80% of floor footprint</Text>
+            </div>
+            {capacityPreview && (
+              <Card withBorder padding="sm" bg="gray.0">
+                <Text size="sm" fw={500} mb={4}>Calculated capacity (preview)</Text>
+                <Text size="sm">Footprint: {capacityPreview.footprintSqm.toLocaleString()} m²</Text>
+                <Text size="sm">Usable volume: {capacityPreview.usableVolumeM3.toLocaleString()} m³</Text>
+                <Text size="sm" fw={600} c="blue">
+                  Storage capacity: {capacityPreview.capacityMt.toLocaleString(undefined, { maximumFractionDigits: 2 })} MT
+                </Text>
+              </Card>
+            )}
             <TextInput
               label="Number of Stores"
-              value={warehouseStores?.length?.toString() || '0'}
+              value={formatStoreCount(storeCount)}
               readOnly
               styles={{
                 input: {
@@ -735,12 +1038,77 @@ function WarehouseDetailPage() {
               }}
             />
             <NumberInput label="Construction Year" min={1900} max={new Date().getFullYear()} {...capacityForm.getInputProps('construction_year')} />
+            {(!warehouseStores || warehouseStores.length === 0) && canCreateStores && (
+              <Checkbox
+                label="Use entire warehouse as a single store"
+                description="After saving capacity, create one store using the full warehouse dimensions and usable MT capacity. Only the store name is required."
+                checked={createSingleStore}
+                onChange={(event) => setCreateSingleStore(event.currentTarget.checked)}
+              />
+            )}
             <Group justify="flex-end">
               <Button variant="default" onClick={() => setCapacityModalOpen(false)}>Cancel</Button>
               <Button type="submit" loading={updateCapacityMutation.isPending}>Save</Button>
             </Group>
           </Stack>
         </form>
+      </Modal>
+
+      <Modal
+        opened={singleStoreModalOpen}
+        onClose={() => { setSingleStoreModalOpen(false); setPendingCapacityDimensions(null); }}
+        title="Create Single Store"
+        centered
+      >
+        <form onSubmit={singleStoreForm.onSubmit((values) => createSingleStoreMutation.mutate(values))}>
+          <Stack gap="md">
+            <Text size="sm" c="dimmed">
+              This store will use the full warehouse dimensions and usable capacity you just saved.
+            </Text>
+            <TextInput label="Store Name" placeholder="Main Storage Area" required {...singleStoreForm.getInputProps('name')} />
+            <TextInput label="Store Code" placeholder="STORE-001" required {...singleStoreForm.getInputProps('code')} />
+            <Group justify="flex-end">
+              <Button variant="default" onClick={() => { setSingleStoreModalOpen(false); setPendingCapacityDimensions(null); }}>
+                Cancel
+              </Button>
+              <Button type="submit" loading={createSingleStoreMutation.isPending}>
+                Create Store
+              </Button>
+            </Group>
+          </Stack>
+        </form>
+      </Modal>
+
+      <Modal
+        opened={deleteStoreModalOpen}
+        onClose={() => {
+          setDeleteStoreModalOpen(false);
+          setStoreToDelete(null);
+        }}
+        title="Delete Store"
+        centered
+      >
+        <Text mb="md">
+          Are you sure you want to delete {storeToDelete?.name ?? 'this store'}? This action cannot be undone.
+        </Text>
+        <Group justify="flex-end">
+          <Button
+            variant="default"
+            onClick={() => {
+              setDeleteStoreModalOpen(false);
+              setStoreToDelete(null);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            color="red"
+            loading={deleteStoreMutation.isPending}
+            onClick={() => storeToDelete && deleteStoreMutation.mutate(storeToDelete.id)}
+          >
+            Delete
+          </Button>
+        </Group>
       </Modal>
 
       {/* Access Modal */}
@@ -751,11 +1119,11 @@ function WarehouseDetailPage() {
             {accessForm.values.has_loading_dock && (
               <>
                 <NumberInput label="Number of Loading Docks" min={0} {...accessForm.getInputProps('number_of_loading_docks')} />
-                <Select label="Loading Dock Type" data={facilityOptions?.loading_dock_type || []} {...accessForm.getInputProps('loading_dock_type')} />
+                <SearchableSelect label="Loading Dock Type" data={facilityOptions?.loading_dock_type || []} {...accessForm.getInputProps('loading_dock_type')} />
               </>
             )}
             <Divider />
-            <Select label="Access Road Type" data={facilityOptions?.access_road_type || []} {...accessForm.getInputProps('access_road_type')} />
+            <SearchableSelect label="Access Road Type" data={facilityOptions?.access_road_type || []} {...accessForm.getInputProps('access_road_type')} />
             <TextInput label="Nearest Town" {...accessForm.getInputProps('nearest_town')} />
             <NumberInput label="Distance from Town (km)" min={0} {...accessForm.getInputProps('distance_from_town_km')} />
             <Group justify="flex-end">
@@ -770,8 +1138,8 @@ function WarehouseDetailPage() {
       <Modal opened={infraModalOpen} onClose={() => setInfraModalOpen(false)} title="Edit Infrastructure" centered>
         <form onSubmit={infraForm.onSubmit((values) => updateInfraMutation.mutate(values))}>
           <Stack gap="md">
-            <Select label="Floor Type" data={facilityOptions?.floor_type || []} {...infraForm.getInputProps('floor_type')} />
-            <Select label="Roof Type" data={facilityOptions?.roof_type || []} {...infraForm.getInputProps('roof_type')} />
+            <SearchableSelect label="Floor Type" data={facilityOptions?.floor_type || []} {...infraForm.getInputProps('floor_type')} />
+            <SearchableSelect label="Roof Type" data={facilityOptions?.roof_type || []} {...infraForm.getInputProps('roof_type')} />
             <Switch label="Has Fumigation Facility" {...infraForm.getInputProps('has_fumigation_facility', { type: 'checkbox' })} />
             <Switch label="Has Fire Extinguisher" {...infraForm.getInputProps('has_fire_extinguisher', { type: 'checkbox' })} />
             <Switch label="Has Security Guard" {...infraForm.getInputProps('has_security_guard', { type: 'checkbox' })} />

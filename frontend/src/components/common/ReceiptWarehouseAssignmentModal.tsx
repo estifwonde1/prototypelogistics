@@ -1,39 +1,42 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  Badge,
-  Button,
-  Group,
-  Modal,
-  NumberInput,
-  Select,
-  Stack,
-  Table,
-  Text,
-  ThemeIcon,
-} from '@mantine/core';
-import { IconAlertCircle, IconPlus, IconTrash } from '@tabler/icons-react';
+import { useQuery } from '@tanstack/react-query';
+import { Alert, Badge, Button, Group, Modal, NumberInput, Stack, Table, Text, ThemeIcon } from '@mantine/core';
+import { SearchableSelect } from './SearchableSelect';
+import { IconAlertCircle, IconInfoCircle, IconPlus, IconTrash } from '@tabler/icons-react';
 import type { ReceiptOrder } from '../../api/receiptOrders';
+import type { ReceiptOrderLine } from '../../api/receiptOrders';
+import { getCommodityReferences } from '../../api/referenceData';
 import type { Store } from '../../types/store';
 import type { Warehouse } from '../../types/warehouse';
 import type { UnitReference, UomConversion } from '../../types/referenceData';
+import { findDirectedMultiplier, resolveItemToKgMultiplier } from '../../utils/uomConversions';
+import { computePackagingPackagesHint } from '../../utils/packagingQuantityHint';
+import {
+  formatWarehouseCapacityLabel,
+  warehouseCapacityStatus,
+  whFreeMt,
+} from '../../pages/officer/FacilitiesOverviewPage_helpers';
 
 interface AssignmentPayloadRow {
   receipt_order_line_id: number;
+  hub_id?: number;
   warehouse_id: number;
   quantity: number;
+  quantity_unit_id?: number;
 }
 
 interface ReceiptWarehouseAssignmentModalProps {
   opened: boolean;
   onClose: () => void;
   receiptOrder: ReceiptOrder;
+  filteredLines?: ReceiptOrderLine[];
   warehouses: Warehouse[];
   stores: Store[];
   units: UnitReference[];
   uomConversions: UomConversion[];
   onSubmit: (payload: { assignments: AssignmentPayloadRow[] }) => void;
   loading?: boolean;
+  hubId?: number; // The hub manager's assigned hub ID
 }
 
 interface DraftRow {
@@ -51,10 +54,51 @@ interface RowValidation {
 
 interface RowPreview {
   lineRemainingBeforeRow: number | null;
-  warehouseSpaceBeforeRow: number | null;
+  warehouseRemainingMtBeforeRow: number | null;
 }
 
 const EPSILON = 0.000001;
+
+function findMtUnitId(units: UnitReference[]): number | null {
+  const mt = units.find((u) => (u.abbreviation ?? '').toLowerCase() === 'mt');
+  return mt?.id ?? null;
+}
+
+function convertQuantityToMt(
+  quantity: number,
+  fromUnitId: number,
+  commodityId: number,
+  units: UnitReference[],
+  uomConversions: UomConversion[],
+  commodityRefs?: Array<{ id: number; weight_per_unit_kg?: number }>
+): number | null {
+  const mtUnitId = findMtUnitId(units);
+  if (!mtUnitId) return quantity;
+  if (fromUnitId === mtUnitId) return quantity;
+
+  // Try standard UOM conversion graph first
+  const multiplier = findDirectedMultiplier(fromUnitId, mtUnitId, commodityId, uomConversions);
+  if (multiplier != null) return Number((quantity * multiplier).toFixed(6));
+
+  // Try inverse path
+  const inverse = findDirectedMultiplier(mtUnitId, fromUnitId, commodityId, uomConversions);
+  if (inverse != null && inverse !== 0) return Number((quantity / inverse).toFixed(6));
+
+  // For ITEM-type units (pcs), use commodity's weight_per_unit_kg → kg → mt
+  const kgMultiplier = resolveItemToKgMultiplier(fromUnitId, commodityId, units, commodityRefs ?? []);
+  if (kgMultiplier != null) {
+    const kgUnit = units.find((u) => (u.abbreviation ?? '').toLowerCase() === 'kg');
+    if (kgUnit) {
+      const kgQty = quantity * kgMultiplier;
+      const kgToMt = findDirectedMultiplier(kgUnit.id, mtUnitId, commodityId, uomConversions);
+      if (kgToMt != null) return Number((kgQty * kgToMt).toFixed(6));
+      const kgToMtInverse = findDirectedMultiplier(mtUnitId, kgUnit.id, commodityId, uomConversions);
+      if (kgToMtInverse != null && kgToMtInverse !== 0) return Number((kgQty / kgToMtInverse).toFixed(6));
+    }
+  }
+
+  return null;
+}
 
 function makeClientId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -64,68 +108,76 @@ function orderLines(receiptOrder: ReceiptOrder) {
   return receiptOrder.receipt_order_lines ?? receiptOrder.lines ?? [];
 }
 
-function findDirectedMultiplier(
-  fromUnitId: number,
-  toUnitId: number,
-  commodityId: number,
-  conversions: UomConversion[]
-): number | null {
-  if (fromUnitId === toUnitId) return 1;
-
-  const visited = new Set<number>();
-
-  function dfs(currentUnitId: number): number | null {
-    if (currentUnitId === toUnitId) return 1;
-    if (visited.has(currentUnitId)) return null;
-    visited.add(currentUnitId);
-
-    const outgoing = conversions.filter((conversion) => {
-      if (!conversion.active) return false;
-      if (conversion.from_unit_id !== currentUnitId) return false;
-      return conversion.commodity_id == null || conversion.commodity_id === commodityId;
-    });
-
-    for (const edge of outgoing) {
-      const tail = dfs(edge.to_unit_id);
-      if (tail != null) return Number(edge.multiplier) * tail;
-    }
-
-    return null;
-  }
-
-  return dfs(fromUnitId);
-}
-
 function ReceiptWarehouseAssignmentModal({
   opened,
   onClose,
   receiptOrder,
+  filteredLines,
   warehouses,
-  stores,
+  stores: _stores,
   units,
   uomConversions,
   onSubmit,
   loading = false,
+  hubId,
 }: ReceiptWarehouseAssignmentModalProps) {
-  const lines = useMemo(() => orderLines(receiptOrder), [receiptOrder]);
+  const { data: commodityRefs = [] } = useQuery({
+    queryKey: ['reference-data', 'commodities'],
+    queryFn: getCommodityReferences,
+    enabled: opened,
+  });
+
+  const lines = useMemo(() => filteredLines ?? orderLines(receiptOrder), [filteredLines, receiptOrder]);
 
   const assignedByLine = useMemo(() => {
     const result: Record<number, number> = {};
+    const lineBaseUnitMap: Record<number, number> = {};
+    const lineCommodityMap: Record<number, number> = {};
+    (filteredLines ?? orderLines(receiptOrder)).forEach((line) => {
+      if (line.id != null) {
+        lineBaseUnitMap[Number(line.id)] = Number(line.unit_id);
+        lineCommodityMap[Number(line.id)] = Number(line.commodity_id);
+      }
+    });
+
     (receiptOrder.assignments ?? []).forEach((assignment) => {
       const lineId = assignment.receipt_order_line_id;
-      if (lineId == null) return;
-      result[lineId] = (result[lineId] || 0) + Number(assignment.quantity ?? 0);
-    });
-    return result;
-  }, [receiptOrder.assignments]);
+      // Only count warehouse-level assignments, not hub-level assignments
+      // Hub managers need to see the full quantity available to assign to warehouses
+      if (lineId == null || assignment.warehouse_id == null) return;
+      // Only count assignments that belong to this hub (if hubId is provided)
+      // This prevents a warehouse's already-assigned quantity from reducing the
+      // remaining quantity shown to the hub manager for other warehouses
+      if (hubId != null && assignment.hub_id != null && assignment.hub_id !== hubId) return;
 
-  const warehouseSpaceByWarehouseId = useMemo(() => {
-    const result: Record<number, number> = {};
-    stores.forEach((store) => {
-      result[store.warehouse_id] = (result[store.warehouse_id] || 0) + Number(store.available_space || 0);
+      const rawQty = Number(assignment.quantity ?? 0);
+      const assignedUnitId = assignment.quantity_unit_id;
+      const lineBaseUnitId = lineBaseUnitMap[lineId];
+      const commodityId = lineCommodityMap[lineId] ?? 0;
+
+      // Convert assignment quantity to the line's base unit so math is consistent
+      let qtyInLineUnit = rawQty;
+      if (assignedUnitId != null && lineBaseUnitId != null && assignedUnitId !== lineBaseUnitId) {
+        const multiplier = findDirectedMultiplier(assignedUnitId, lineBaseUnitId, commodityId, uomConversions);
+        if (multiplier != null) {
+          qtyInLineUnit = Number((rawQty * multiplier).toFixed(6));
+        }
+      }
+
+      result[lineId] = (result[lineId] || 0) + qtyInLineUnit;
     });
     return result;
-  }, [stores]);
+  }, [receiptOrder.assignments, receiptOrder, filteredLines, hubId, uomConversions]);
+
+  const warehouseRemainingMtById = useMemo(() => {
+    const result: Record<number, number> = {};
+    warehouses.forEach((warehouse) => {
+      if (warehouse.capacity?.capacity_established === true) {
+        result[warehouse.id] = Number(warehouse.capacity?.remaining_capacity_mt ?? 0);
+      }
+    });
+    return result;
+  }, [warehouses]);
 
   const lineMeta = useMemo(() => {
     return lines.map((line) => {
@@ -142,6 +194,8 @@ function ReceiptWarehouseAssignmentModal({
         ordered,
         assigned,
         remaining,
+        packagingSize: line.packaging_size != null ? Number(line.packaging_size) : null,
+        packagingUnitName: line.packaging_unit_name ?? null,
       };
     });
   }, [assignedByLine, lines]);
@@ -180,7 +234,7 @@ function ReceiptWarehouseAssignmentModal({
 
   const rowComputation = useMemo(() => {
     const pendingByLine: Record<number, number> = {};
-    const pendingByWarehouse: Record<number, number> = {};
+    const pendingByWarehouseMt: Record<number, number> = {};
     const next: Record<string, RowValidation> = {};
     const previews: Record<string, RowPreview> = {};
 
@@ -228,17 +282,19 @@ function ReceiptWarehouseAssignmentModal({
       const convertedQuantity = Number((quantity * multiplier).toFixed(6));
       const alreadyPending = pendingByLine[lineId] || 0;
       const remainingBeforeRow = Math.max(0, line.remaining - alreadyPending);
-      const warehouseBaseSpace =
-        warehouseId != null && Number.isFinite(warehouseSpaceByWarehouseId[warehouseId])
-          ? warehouseSpaceByWarehouseId[warehouseId]
+      const warehouseBaseRemainingMt =
+        warehouseId != null && Number.isFinite(warehouseRemainingMtById[warehouseId])
+          ? warehouseRemainingMtById[warehouseId]
           : null;
-      const warehouseAlreadyPending = warehouseId != null ? pendingByWarehouse[warehouseId] || 0 : 0;
-      const warehouseSpaceBeforeRow =
-        warehouseBaseSpace != null ? Math.max(0, warehouseBaseSpace - warehouseAlreadyPending) : null;
+      const warehouseAlreadyPendingMt = warehouseId != null ? pendingByWarehouseMt[warehouseId] || 0 : 0;
+      const warehouseRemainingMtBeforeRow =
+        warehouseBaseRemainingMt != null
+          ? Math.max(0, warehouseBaseRemainingMt - warehouseAlreadyPendingMt)
+          : null;
 
       previews[row.clientId] = {
         lineRemainingBeforeRow: remainingBeforeRow,
-        warehouseSpaceBeforeRow,
+        warehouseRemainingMtBeforeRow,
       };
 
       if (convertedQuantity - remainingBeforeRow > EPSILON) {
@@ -249,15 +305,43 @@ function ReceiptWarehouseAssignmentModal({
         return;
       }
 
+      const convertedMt = convertQuantityToMt(
+        convertedQuantity,
+        line.unitId,
+        line.commodityId,
+        units,
+        uomConversions,
+        commodityRefs
+      );
+
+      if (convertedMt == null) {
+        next[row.clientId] = {
+          convertedQuantity,
+          error: 'Cannot convert quantity to MT for warehouse capacity check',
+        };
+        return;
+      }
+
+      if (
+        warehouseRemainingMtBeforeRow != null &&
+        convertedMt - warehouseRemainingMtBeforeRow > EPSILON
+      ) {
+        next[row.clientId] = {
+          convertedQuantity,
+          error: `Exceeds warehouse capacity (${warehouseRemainingMtBeforeRow.toLocaleString(undefined, { maximumFractionDigits: 2 })} MT remaining)`,
+        };
+        return;
+      }
+
       pendingByLine[lineId] = alreadyPending + convertedQuantity;
       if (warehouseId != null) {
-        pendingByWarehouse[warehouseId] = warehouseAlreadyPending + convertedQuantity;
+        pendingByWarehouseMt[warehouseId] = warehouseAlreadyPendingMt + convertedMt;
       }
       next[row.clientId] = { convertedQuantity, error: null };
     });
 
     return { validations: next, previews };
-  }, [lineMap, rows, uomConversions, warehouseSpaceByWarehouseId]);
+  }, [lineMap, rows, uomConversions, units, warehouseRemainingMtById, commodityRefs]);
 
   const validations = rowComputation.validations;
   const rowPreviews = rowComputation.previews;
@@ -333,11 +417,28 @@ function ReceiptWarehouseAssignmentModal({
     if (!canSubmit) return;
 
     onSubmit({
-      assignments: rows.map((row) => ({
-        receipt_order_line_id: Number(row.receipt_order_line_id),
-        warehouse_id: Number(row.warehouse_id),
-        quantity: Number(validations[row.clientId]?.convertedQuantity ?? 0),
-      })),
+      assignments: rows.map((row) => {
+        const line = lineMap.get(Number(row.receipt_order_line_id));
+        const lineUnitId = line?.unitId;
+        const unitId = row.unit_id;
+        const assignment: AssignmentPayloadRow = {
+          receipt_order_line_id: Number(row.receipt_order_line_id),
+          warehouse_id: Number(row.warehouse_id),
+          quantity: Number(row.quantity || 0),
+        };
+        
+        // Include quantity_unit_id when the selected unit differs from the line unit
+        if (unitId != null && lineUnitId != null && unitId !== lineUnitId) {
+          assignment.quantity_unit_id = unitId;
+        }
+        
+        // Include hub_id if provided (for multi-hub orders)
+        if (hubId != null) {
+          assignment.hub_id = hubId;
+        }
+        
+        return assignment;
+      }),
     });
   };
 
@@ -360,18 +461,23 @@ function ReceiptWarehouseAssignmentModal({
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {lineMeta.map((line) => (
-                <Table.Tr key={line.lineId}>
-                  <Table.Td>{line.commodityName}</Table.Td>
-                  <Table.Td>{line.ordered.toLocaleString()} {line.unitName}</Table.Td>
-                  <Table.Td>{line.assigned.toLocaleString()} {line.unitName}</Table.Td>
-                  <Table.Td>
-                    <Badge color={line.remaining > EPSILON ? 'blue' : 'green'}>
-                      {line.remaining.toLocaleString()} {line.unitName}
-                    </Badge>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
+              {lineMeta.map((line) => {
+                const pending = pendingAssignedByLine[line.lineId] || 0;
+                const displayAssigned = line.assigned + pending;
+                const displayRemaining = Math.max(0, line.remaining - pending);
+                return (
+                  <Table.Tr key={line.lineId}>
+                    <Table.Td>{line.commodityName}</Table.Td>
+                    <Table.Td>{line.ordered.toLocaleString()} {line.unitName}</Table.Td>
+                    <Table.Td>{displayAssigned.toLocaleString()} {line.unitName}</Table.Td>
+                    <Table.Td>
+                      <Badge color={displayRemaining > EPSILON ? 'blue' : 'green'}>
+                        {displayRemaining.toLocaleString()} {line.unitName}
+                      </Badge>
+                    </Table.Td>
+                  </Table.Tr>
+                );
+              })}
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>
@@ -407,21 +513,11 @@ function ReceiptWarehouseAssignmentModal({
                 ? Math.max(0, (preview?.lineRemainingBeforeRow ?? line.remaining) - validation.convertedQuantity)
                 : null;
             const warehouseOptionsForRow = warehouses.map((warehouse) => {
-              const pendingBeforeThisRow =
-                row.warehouse_id != null && warehouse.id === row.warehouse_id
-                  ? preview?.warehouseSpaceBeforeRow
-                  : Number.isFinite(warehouseSpaceByWarehouseId[warehouse.id])
-                    ? warehouseSpaceByWarehouseId[warehouse.id]
-                    : null;
-              const spaceLabel =
-                pendingBeforeThisRow != null
-                  ? `${pendingBeforeThisRow.toLocaleString()} available`
-                  : warehouse.capacity?.usable_storage_capacity_mt != null
-                    ? `${Number(warehouse.capacity.usable_storage_capacity_mt).toLocaleString()} usable cap.`
-                    : 'Available space unknown';
+              const { label, disabled } = formatWarehouseCapacityLabel(warehouse);
               return {
                 value: String(warehouse.id),
-                label: `${warehouse.name} - ${spaceLabel}`,
+                label,
+                disabled,
               };
             });
             const lineOptionsForRow = lineMeta.map((lineOption) => {
@@ -434,6 +530,27 @@ function ReceiptWarehouseAssignmentModal({
                 label: `${lineOption.commodityName} - Remaining: ${remainingForOption.toLocaleString()} ${lineOption.unitName}`,
               };
             });
+
+            const commodityMatch =
+              line != null ? commodityRefs.find((c) => c.id === line.commodityId) : undefined;
+            const packagingRowHint =
+              line != null &&
+              row.unit_id != null &&
+              validation?.error == null &&
+              validation?.convertedQuantity != null
+                ? computePackagingPackagesHint({
+                    qty: Number(row.quantity || 0),
+                    destUnitId: row.unit_id,
+                    commodityId: line.commodityId,
+                    packagingSize: line.packagingSize ?? commodityMatch?.package_size ?? null,
+                    packagingUnitLabel: line.packagingUnitName ?? commodityMatch?.package_unit_name ?? null,
+                    packageUnitPerPackageNumericId: commodityMatch?.package_unit_per_package_id ?? null,
+                    packageUnitPerPackageName: commodityMatch?.package_unit_per_package_name ?? null,
+                    fallbackBatchUnitNumericId: commodityMatch?.unit_id ?? line.unitId,
+                    units,
+                    uomConversions,
+                  })
+                : null;
 
             return (
               <Stack key={row.clientId} gap="xs" p="sm" style={{ border: '1px solid var(--mantine-color-gray-3)', borderRadius: 8 }}>
@@ -452,7 +569,7 @@ function ReceiptWarehouseAssignmentModal({
                 </Group>
 
                 <Group grow align="flex-start">
-                  <Select
+                  <SearchableSelect
                     label="Select Warehouse"
                     placeholder="Choose warehouse"
                     data={warehouseOptionsForRow}
@@ -465,7 +582,7 @@ function ReceiptWarehouseAssignmentModal({
                     }
                     searchable
                   />
-                  <Select
+                  <SearchableSelect
                     label="Commodity"
                     placeholder="Choose commodity"
                     data={lineOptionsForRow}
@@ -503,7 +620,7 @@ function ReceiptWarehouseAssignmentModal({
                     allowDecimal
                     decimalScale={3}
                   />
-                  <Select
+                  <SearchableSelect
                     label="Unit"
                     placeholder="Select unit"
                     data={unitOptions}
@@ -530,6 +647,59 @@ function ReceiptWarehouseAssignmentModal({
                     </Text>
                   </Group>
                 ) : null}
+
+                {packagingRowHint ? (
+                  <Group gap="xs" wrap="nowrap" align="flex-start">
+                    <ThemeIcon variant="light" size="sm" color="teal">
+                      <IconInfoCircle size={14} />
+                    </ThemeIcon>
+                    <Text size="sm" c="dimmed">
+                      {packagingRowHint.packageSpec}; ≈{' '}
+                      <strong>
+                        {packagingRowHint.packagesFormatted} {packagingRowHint.containerLabel}
+                      </strong>
+                      {!packagingRowHint.isWholeNumber ? ' — not a whole number of packages' : ''}
+                    </Text>
+                  </Group>
+                ) : null}
+
+                {row.warehouse_id != null ? (
+                  <Group gap="xs" mt={4}>
+                    <ThemeIcon variant="light" size="sm" color="cyan">
+                      <IconAlertCircle size={14} />
+                    </ThemeIcon>
+                    <Text size="sm" c="dimmed">
+                      {(() => {
+                        const wh = warehouses.find((w) => w.id === row.warehouse_id);
+                        if (!wh) return 'Warehouse not found';
+                        return wh.assigned_manager
+                          ? `Assigned Warehouse Manager: ${wh.assigned_manager}`
+                          : 'No manager assigned to this warehouse';
+                      })()}
+                    </Text>
+                  </Group>
+                ) : null}
+
+                {row.warehouse_id != null ? (() => {
+                  const wh = warehouses.find((w) => w.id === row.warehouse_id);
+                  if (!wh) return null;
+                  const status = warehouseCapacityStatus(wh);
+                  if (status === 'almost_full') {
+                    return (
+                      <Alert color="orange" variant="light" icon={<IconAlertCircle size={16} />}>
+                        This warehouse is almost full — {whFreeMt(wh).toLocaleString(undefined, { maximumFractionDigits: 2 })} MT remaining.
+                      </Alert>
+                    );
+                  }
+                  if (status === 'full') {
+                    return (
+                      <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />}>
+                        This warehouse is full — no remaining capacity for new commodities.
+                      </Alert>
+                    );
+                  }
+                  return null;
+                })() : null}
 
                 {validation?.error ? (
                   <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />}>

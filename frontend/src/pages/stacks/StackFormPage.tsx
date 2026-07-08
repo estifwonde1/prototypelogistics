@@ -1,30 +1,23 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Badge,
-  Button,
-  Card,
-  Divider,
-  Group,
-  NumberInput,
-  Select,
-  SimpleGrid,
-  Stack,
-  Text,
-  TextInput,
-  ThemeIcon,
-  Title,
-} from '@mantine/core';
+import { Badge, Button, Card, Divider, Group, Loader, NumberInput, SimpleGrid, Stack, Text, TextInput, ThemeIcon, Title } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { useForm } from '@mantine/form';
-import { IconArrowLeft, IconBox, IconDeviceFloppy, IconRuler3, IconStack2 } from '@tabler/icons-react';
+import { IconArrowLeft, IconBox, IconDeviceFloppy, IconRuler3, IconSearch, IconStack2 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import type { AxiosError } from 'axios';
 import { createStack, getStack, updateStack } from '../../api/stacks';
 import { getStores } from '../../api/stores';
+import { getCommodityReferences, getUnitReferences, getInventoryLots } from '../../api/referenceData';
+import { searchDeliveryByReference } from '../../api/storekeeperdashboard';
+import type { DeliverySearchResult } from '../../api/storekeeperdashboard';
 import { ErrorState } from '../../components/common/ErrorState';
 import { LoadingState } from '../../components/common/LoadingState';
+import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 import type { Stack as StackType } from '../../types/stack';
+import { mtFromVolume } from '../../utils/capacityCalculator';
 
 type ApiError = {
   error?: {
@@ -32,19 +25,7 @@ type ApiError = {
   };
 };
 
-const commodityOptions = [
-  { value: '1', label: 'Wheat' },
-  { value: '2', label: 'Maize' },
-  { value: '3', label: 'Rice' },
-  { value: '4', label: 'Barley' },
-];
 
-const unitOptions = [
-  { value: '1', label: 'Quintal (qt)' },
-  { value: '2', label: 'Kilogram (kg)' },
-  { value: '3', label: 'Metric Ton (mt)' },
-  { value: '4', label: 'Bag' },
-];
 
 const commodityStatusOptions = [
   { value: 'good', label: 'Good' },
@@ -89,10 +70,50 @@ function StackFormPage() {
     enabled: isEdit,
   });
 
-  const { data: stores } = useQuery({
-    queryKey: ['stores'],
-    queryFn: getStores,
+  // Get active assignment context for filtering
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
+  const userWarehouseId = activeAssignment?.warehouse?.id;
+  const userHubId = activeAssignment?.hub?.id;
+  const isWarehouseManager = roleSlug === 'warehouse_manager';
+  const isHubManager = roleSlug === 'hub_manager';
+
+  const { data: stores = [] } = useQuery({
+    queryKey: ['stores', { 
+      warehouse_id: isWarehouseManager ? userWarehouseId : undefined,
+      hub_id: isHubManager ? userHubId : undefined 
+    }],
+    queryFn: () => {
+      if (isWarehouseManager && userWarehouseId) {
+        return getStores({ warehouse_id: userWarehouseId });
+      } else if (isHubManager && userHubId) {
+        // For hub managers, get stores from warehouses in their hub
+        return getStores(); // Backend should handle hub-level filtering
+      }
+      return getStores();
+    },
   });
+
+  const { data: commodities = [] } = useQuery({
+    queryKey: ['commodities'],
+    queryFn: () => getCommodityReferences(),
+  });
+
+  const { data: units = [] } = useQuery({
+    queryKey: ['units'],
+    queryFn: () => getUnitReferences(),
+  });
+
+  const { data: inventoryLots = [] } = useQuery({
+    queryKey: ['inventory-lots'],
+    queryFn: () => getInventoryLots(),
+  });
+
+  // ── Reference search state for auto-fill ──
+  const [refSearchValue, setRefSearchValue] = useState('');
+  const [refSearchResults, setRefSearchResults] = useState<DeliverySearchResult[]>([]);
+  const [refSearchLoading, setRefSearchLoading] = useState(false);
+  const refSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const form = useForm({
     initialValues: {
@@ -108,6 +129,7 @@ function StackFormPage() {
       stack_status: 'active',
       quantity: 0,
       unit_id: '',
+      reference: '',
     },
     validate: {
       code: (value) => (!value ? 'Code is required' : null),
@@ -138,9 +160,11 @@ function StackFormPage() {
         stack_status: stack.stack_status,
         quantity: stack.quantity,
         unit_id: stack.unit_id.toString(),
+        reference: stack.reference || '',
       });
+      form.setFieldValue('commodity_id', stack.commodity_name || '');
     }
-  }, [form, stack]);
+  }, [stack]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const createMutation = useMutation({
     mutationFn: createStack,
@@ -189,7 +213,156 @@ function StackFormPage() {
       label: `${store.name} (${store.code})`,
     })) || [];
 
+  const commodityOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return (
+      commodities
+        ?.filter((c) => {
+          if (seen.has(c.name)) return false;
+          seen.add(c.name);
+          return true;
+        })
+        .map((c) => ({
+          value: c.name,
+          label: c.name,
+        })) || []
+    );
+  }, [commodities]);
+
+  const unitOptions = useMemo(() => {
+    const options = units.map((unit) => ({
+      value: unit.id.toString(),
+      label: unit.abbreviation || unit.name,
+    }));
+    
+    if (form.values.unit_id && !options.some(o => o.value === form.values.unit_id.toString())) {
+      options.unshift({ value: form.values.unit_id.toString(), label: `Unit #${form.values.unit_id}` });
+    }
+    
+    return options;
+  }, [units, form.values.unit_id]);
+
+  const referenceOptions = useMemo(() => {
+    const selectedCommId = Number(form.values.commodity_id);
+    if (!selectedCommId) return [];
+
+    const seen = new Set<string>();
+    const options: { value: string; label: string }[] = [];
+
+    inventoryLots.forEach((lot) => {
+      if (lot.commodity_id === selectedCommId && lot.batch_no && !seen.has(lot.batch_no)) {
+        seen.add(lot.batch_no);
+        options.push({
+          value: lot.batch_no,
+          label: lot.batch_no,
+        });
+      }
+    });
+
+    // Ensure the auto-filled reference is available in the options
+    if (form.values.reference && !seen.has(form.values.reference)) {
+      options.unshift({
+        value: form.values.reference,
+        label: form.values.reference,
+      });
+    }
+
+    return options;
+  }, [inventoryLots, form.values.commodity_id, form.values.reference]);
+
+  // ── Reference Search Options (from search_delivery API) ──
+  const refSearchOptions = useMemo(() => {
+    return refSearchResults.map((r) => ({
+      value: `${r.type}::${r.id}::0::${r.reference_no}`,
+      label: r.reference_no, // Only show reference number
+    }));
+  }, [refSearchResults]);
+
+  // ── Debounced reference search ──
+  const handleRefSearch = useCallback((query: string) => {
+    setRefSearchValue(query);
+    if (refSearchTimer.current) clearTimeout(refSearchTimer.current);
+
+    setRefSearchLoading(true);
+    refSearchTimer.current = setTimeout(async () => {
+      try {
+        // Query can be empty string now to fetch default assignments
+        const selectedStoreId = form.values.store_id;
+        const selectedStore = stores?.find(s => s.id.toString() === selectedStoreId);
+        const contextWarehouseId = selectedStore?.warehouse_id || userWarehouseId;
+        const contextStoreId = selectedStoreId ? parseInt(selectedStoreId, 10) : undefined;
+
+        const response = await searchDeliveryByReference(query, contextWarehouseId ?? undefined, contextStoreId);
+        setRefSearchResults(response.results);
+      } catch {
+        setRefSearchResults((prev) => prev.length === 0 ? prev : []);
+      } finally {
+        setRefSearchLoading(false);
+      }
+    }, 400);
+  }, [userWarehouseId, form.values.store_id, stores]);
+
+  const deliverySearchBootstrapKey = useMemo(() => {
+    const selectedStoreId = form.values.store_id;
+    if (!selectedStoreId) return null;
+    const selectedStore = stores?.find((s) => s.id.toString() === selectedStoreId);
+    const w = selectedStore?.warehouse_id ?? userWarehouseId;
+    const s = parseInt(selectedStoreId, 10);
+    if (w == null && Number.isNaN(s)) return null;
+    return `${w ?? ''}:${s}`;
+  }, [form.values.store_id, stores, userWarehouseId]);
+
+  // Fetch default assignments when store context is set (blank reference = recent ROs).
+  useEffect(() => {
+    if (!deliverySearchBootstrapKey) return;
+    handleRefSearch('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed by deliverySearchBootstrapKey only
+  }, [deliverySearchBootstrapKey]);
+
+  // ── Auto-fill handler when a reference is selected ──
+  const handleRefAutoFill = useCallback((value: string | null) => {
+    if (!value) return;
+
+    const parts = value.split('::');
+    if (parts.length < 4) return;
+
+    const [type, idStr, lineIdxStr] = parts;
+    const lineIdx = Number(lineIdxStr);
+    const result = refSearchResults.find(
+      (r) => r.type === type && r.id === Number(idStr)
+    );
+
+    if (!result) return;
+
+    const line = result.lines?.[lineIdx] || result.lines?.[0];
+
+    const newCommodity = line?.commodity_name || result.commodity || '';
+    const newBatch = line?.batch_no || result.batch_no || result.reference_no;
+    const newQuantity = line?.quantity || result.quantity || 0;
+    const newUnitId = line?.unit_id ? String(line.unit_id) : (result.unit_id ? String(result.unit_id) : '');
+
+    form.setValues((prev) => ({
+      ...prev,
+      commodity_id: newCommodity,
+      reference: newBatch || '',
+      quantity: newQuantity,
+      unit_id: newUnitId,
+    }));
+
+    notifications.show({
+      title: 'Auto-filled from ' + result.reference_no,
+      message: `Commodity: ${newCommodity}, Quantity: ${newQuantity}, Batch: ${newBatch || 'N/A'}`,
+      color: 'blue',
+      autoClose: 3000,
+    });
+  }, [refSearchResults]);
+
   const handleSubmit = (values: typeof form.values) => {
+    const selectedLot = inventoryLots.find((l) => l.batch_no === values.reference);
+    const resolvedCommId = selectedLot
+      ? selectedLot.commodity_id
+      : commodities.find((c) => c.name === values.commodity_id)?.id || 0;
+
     const payload: Partial<StackType> = {
       code: values.code,
       length: values.length,
@@ -197,12 +370,13 @@ function StackFormPage() {
       height: values.height,
       start_x: values.start_x,
       start_y: values.start_y,
-      commodity_id: Number(values.commodity_id),
+      commodity_id: resolvedCommId,
       store_id: Number(values.store_id),
       commodity_status: values.commodity_status,
       stack_status: values.stack_status,
       quantity: values.quantity,
       unit_id: Number(values.unit_id),
+      reference: values.reference,
     };
 
     if (isEdit) {
@@ -341,15 +515,53 @@ function StackFormPage() {
                   }}
                 />
 
-                <TextInput
-                  label="Stack Code"
-                  placeholder="STK-015"
-                  styles={inputStyles}
-                  {...form.getInputProps('code')}
+                {/* ── Reference Search (auto-fill from receipt order) ── */}
+                <SearchableSelect
+                  label="Search Receipt Order"
+                  placeholder="Type RO-21 or select assigned order..."
+                  data={refSearchOptions}
+                  searchable
+                  clearable
+                  searchValue={refSearchValue}
+                  onSearchChange={handleRefSearch}
+                  nothingFoundMessage={refSearchLoading ? 'Searching...' : 'No deliveries found'}
+                  onChange={handleRefAutoFill}
+                  leftSection={refSearchLoading ? <Loader size={16} /> : <IconSearch size={16} />}
+                  styles={{
+                    ...inputStyles,
+                    label: {
+                      ...inputStyles.label,
+                      color: '#0d6e3f',
+                    },
+                    input: {
+                      ...inputStyles.input,
+                      backgroundColor: '#e8f5e9',
+                      borderColor: '#c8e6c9',
+                    },
+                  }}
                 />
 
                 <Group grow align="flex-start">
-                  <Select
+                  <TextInput
+                    label="Stack Code"
+                    placeholder="STK-015"
+                    styles={inputStyles}
+                    {...form.getInputProps('code')}
+                  />
+                  <SearchableSelect
+                    key={`ref-select-${form.values.commodity_id}`}
+                    label="Batch / Reference"
+                    placeholder="Choose batch"
+                    data={referenceOptions}
+                    searchable
+                    nothingFoundMessage="No batches found for this commodity"
+                    styles={inputStyles}
+                    {...form.getInputProps('reference')}
+                  />
+                </Group>
+
+                <Group grow align="flex-start">
+                  <SearchableSelect
                     label="Store"
                     placeholder="Select store"
                     searchable
@@ -357,25 +569,32 @@ function StackFormPage() {
                     styles={inputStyles}
                     {...form.getInputProps('store_id')}
                   />
-                  <Select
+                  <SearchableSelect
                     label="Commodity"
                     placeholder="Select commodity"
                     searchable
                     data={commodityOptions}
                     styles={inputStyles}
                     {...form.getInputProps('commodity_id')}
+                    onChange={(value) => {
+                      form.setValues({
+                        ...form.values,
+                        commodity_id: value || '',
+                        reference: '',
+                      });
+                    }}
                   />
                 </Group>
 
                 <Group grow align="flex-start">
-                  <Select
+                  <SearchableSelect
                     label="Commodity Status"
                     placeholder="Select status"
                     data={commodityStatusOptions}
                     styles={inputStyles}
                     {...form.getInputProps('commodity_status')}
                   />
-                  <Select
+                  <SearchableSelect
                     label="Stack Status"
                     placeholder="Select status"
                     data={stackStatusOptions}
@@ -436,6 +655,61 @@ function StackFormPage() {
                     {...form.getInputProps('height')}
                   />
                 </Group>
+
+                {/* ── Capacity preview ── */}
+                {(() => {
+                  const selectedStore = stores.find(
+                    (s) => s.id.toString() === form.values.store_id
+                  );
+                  const l = form.values.length || 0;
+                  const w = form.values.width || 0;
+                  const h = form.values.height || 0;
+                  const stackVolume = l * w * h;
+                  const stackMaxMt = mtFromVolume(stackVolume);
+                  const storeRemaining = selectedStore?.remaining_capacity_mt;
+
+                  if (!selectedStore || stackVolume === 0) return null;
+
+                  return (
+                    <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md"
+                      style={{ background: '#f0f5ff', borderRadius: 12, padding: '12px 16px' }}
+                    >
+                      <div>
+                        <Text size="xs" fw={800} c="#5b6e8c" tt="uppercase" mb={2}>
+                          Volume
+                        </Text>
+                        <Text size="lg" fw={700} c="#1d3354">
+                          {stackVolume.toFixed(2)}{' '}
+                          <Text span size="xs" c="dimmed">m³</Text>
+                        </Text>
+                        <Text size="xs" c="dimmed">{l} × {w} × {h} m</Text>
+                      </div>
+
+                      <div>
+                        <Text size="xs" fw={800} c="#5b6e8c" tt="uppercase" mb={2}>
+                          Max capacity
+                        </Text>
+                        <Text size="lg" fw={700} c="#0d6e3f">
+                          {stackMaxMt.toFixed(2)}{' '}
+                          <Text span size="xs" c="dimmed">MT</Text>
+                        </Text>
+                        <Text size="xs" c="dimmed">System-calculated limit</Text>
+                      </div>
+
+                      <div>
+                        <Text size="xs" fw={800} c="#5b6e8c" tt="uppercase" mb={2}>
+                          Store remaining
+                        </Text>
+                        <Text size="lg" fw={700} c="#1955a5">
+                          {storeRemaining != null
+                            ? `${Number(storeRemaining).toFixed(2)} MT`
+                            : '—'}
+                        </Text>
+                        <Text size="xs" c="dimmed">Available in parent store</Text>
+                      </div>
+                    </SimpleGrid>
+                  );
+                })()}
               </Stack>
             </Card>
 
@@ -491,7 +765,7 @@ function StackFormPage() {
                     styles={inputStyles}
                     {...form.getInputProps('quantity')}
                   />
-                  <Select
+                  <SearchableSelect
                     label="Unit Of Measure"
                     placeholder="Select unit"
                     searchable

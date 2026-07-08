@@ -1,14 +1,30 @@
 Cats::Warehouse::Engine.routes.draw do
   scope :v1 do
     post "auth/login", to: "auth#login"
-    get "me/assignments", to: "me#assignments"
+    get  "me/assignments",        to: "me#assignments"
+    post "me/switch_role",        to: "me#switch_role"
+    get  "me/storekeeper_stores", to: "me#storekeeper_stores"
+    get   "me/profile",  to: "me#profile"
+    patch "me/profile",  to: "me#update_profile"
+    patch "me/password", to: "me#change_password"
+
+    get "dashboard/officer", to: "dashboard#officer"
+    get "dashboard/warehouse_manager", to: "dashboard#warehouse_manager"
+
+    get "notifications", to: "notifications#index"
+    get "notifications/unread_count", to: "notifications#unread_count"
+    patch "notifications/read_all", to: "notifications#read_all"
+    patch "notifications/:id/read", to: "notifications#mark_read"
 
     namespace :admin do
       resources :users, only: [ :index, :create, :update, :destroy ]
-      resources :roles, only: [ :index ]
+      resources :roles, only: [ :index, :create, :destroy ]
       resources :user_assignments, only: [ :index, :create, :destroy ]
       patch "user_assignments/bulk", to: "user_assignments#bulk_update"
+      resources :fdps, only: [ :index, :show, :create, :update, :destroy ]
     end
+
+    resources :fdps, only: [ :index, :show, :create, :update, :destroy ]
 
     get "locations/regions", to: "locations#regions"
     get "locations/zones", to: "locations#zones"
@@ -23,6 +39,9 @@ Cats::Warehouse::Engine.routes.draw do
     patch "reference_data/commodities/:id", to: "reference_data#update_commodity"
     delete "reference_data/commodities/:id", to: "reference_data#destroy_commodity"
     get "reference_data/categories", to: "reference_data#categories"
+    post "reference_data/categories", to: "reference_data#create_category"
+    patch "reference_data/categories/:id", to: "reference_data#update_category"
+    delete "reference_data/categories/:id", to: "reference_data#destroy_category"
 
     resources :commodity_definitions, only: [ :index, :create, :update, :destroy ]
     get "reference_data/units", to: "reference_data#units"
@@ -46,8 +65,26 @@ Cats::Warehouse::Engine.routes.draw do
       resource :infra, only: [ :show, :create, :update ], controller: "warehouse_infras"
       resource :contacts, only: [ :show, :create, :update ], controller: "warehouse_contacts"
     end
-    resources :stores, only: [ :index, :show, :create, :update, :destroy ]
-    resources :stacks, only: [ :index, :show, :create, :update, :destroy ]
+    resources :stores, only: [ :index, :show, :create, :update, :destroy ] do
+      collection do
+        get :storekeepers
+      end
+      member do
+        post :assign_storekeeper
+        delete :unassign_storekeeper
+      end
+    end
+    resources :stacks, only: [ :index, :show, :create, :update, :destroy ] do
+      member do
+        post :transfer
+      end
+    end
+    resources :transfer_requests, only: [ :index, :show, :create ] do
+      member do
+        post :approve
+        post :reject
+      end
+    end
     resources :stock_balances, only: [ :index, :show ]
     resources :receipts, only: [ :index, :show ]
     resources :receipt_orders, only: [ :index, :show, :create, :update, :destroy ] do
@@ -56,18 +93,42 @@ Cats::Warehouse::Engine.routes.draw do
       get :assignable_managers, on: :member
       post :reserve_space, on: :member
       get :workflow, on: :member
+      post :start_stacking, on: :member
+      post :finish_stacking, on: :member
+    end
+    resources :receipt_authorizations, only: [ :index, :show, :create, :update ] do
+      collection do
+        get :assignable_storekeepers
+      end
+      post :cancel, on: :member
+      post :driver_confirm, on: :member
+      post :assign_storekeeper, on: :member
     end
     resources :storekeeper_assignments, only: [ :index ] do
+      collection do
+        post :search_delivery
+        get :dashboard_data
+      end
       member do
         post :accept
         post :reject
       end
     end
-    resources :dispatch_orders, only: [ :index, :show, :create, :update ] do
+    resources :dispatch_orders, only: [ :index, :show, :create, :update, :destroy ] do
       post :confirm, on: :member
       post :assign, on: :member
       post :reserve_stock, on: :member
       get :workflow, on: :member
+    end
+
+    resources :dispatch_order_authorizations, only: [ :index, :show, :create, :update ] do
+      collection do
+        get :assignable_storekeepers
+      end
+      post :confirm, on: :member
+      post :driver_confirm, on: :member
+      post :cancel, on: :member
+      post :assign_storekeeper, on: :member
     end
 
     resources :grns, only: [ :index, :show, :create ] do
@@ -75,6 +136,8 @@ Cats::Warehouse::Engine.routes.draw do
     end
     resources :gins, only: [ :index, :show, :create ] do
       post :confirm, on: :member
+      post :driver_confirm, on: :member
+      post :cancel, on: :member
     end
     resources :inspections, only: [ :index, :show, :create ] do
       post :confirm, on: :member
@@ -84,5 +147,6 @@ Cats::Warehouse::Engine.routes.draw do
     end
 
     get "reports/bin_card", to: "reports#bin_card"
+    get "reports/stock_card", to: "reports#stock_card"
   end
 end

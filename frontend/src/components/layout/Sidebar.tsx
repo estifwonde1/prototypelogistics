@@ -11,22 +11,26 @@ import {
   IconFileExport,
   IconUsers,
   IconUserCheck,
-  IconMapPins,
-  IconBuildingSkyscraper,
   IconInbox,
   IconTruck,
+  IconTruckDelivery,
   IconReportAnalytics,
   IconClipboardList,
   IconMapPin,
+  IconFileArrowRight,
+  IconClipboardCheck,
+  IconUser,
+  IconLogout,
 } from "@tabler/icons-react";
 import { useAuthStore } from "../../store/authStore";
 import { usePermission } from "../../hooks/usePermission";
-import { useOfficerScope } from "../../hooks/useOfficerScope";
+import { useLogout } from "../../hooks/useLogout";
 import {
   OFFICER_ROLE_SLUGS,
   type Resource,
   type RoleSlug,
 } from "../../contracts/warehouse";
+import { useWarehouseManagerRaAccess } from "../../hooks/useWarehouseManagerRaAccess";
 
 interface NavItem {
   label: string;
@@ -48,15 +52,40 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
   const role = useAuthStore((state) => state.role);
   const { can } = usePermission();
   const location = useLocation();
+  const handleLogout = useLogout();
   const isAdmin = role === "admin" || role === "superadmin";
   const isSuperAdmin = role === "superadmin";
   const roleSlug = (role as RoleSlug | null) ?? null;
   const isOfficerRole = roleSlug
     ? OFFICER_ROLE_SLUGS.includes(roleSlug)
     : false;
-  const { scopeLabel, isFullAccess } = useOfficerScope();
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const { canAccessRaWorkspace: wmCanAccessRa, isStandaloneWarehouse: wmIsStandalone } = useWarehouseManagerRaAccess();
+
+  const isFullAccess = roleSlug === 'federal_officer' || roleSlug === 'officer';
+
+  const currentScopeLabel = activeAssignment?.hub?.name || 
+                           activeAssignment?.warehouse?.name || 
+                           activeAssignment?.store?.name || 
+                           activeAssignment?.location?.name ||
+                           (isFullAccess ? 'System-wide' : 'No facility assigned');
 
   const adminMenus: NavGroup[] = [
+    {
+      label: "Facilities",
+      items: [
+        {
+          label: "Hubs",
+          icon: <IconBuilding size={20} />,
+          path: "/hubs",
+        },
+        {
+          label: "Warehouses",
+          icon: <IconBuildingWarehouse size={20} />,
+          path: "/warehouses",
+        },
+      ],
+    },
     {
       label: "User Management",
       items: [
@@ -72,24 +101,14 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
       label: "Setup",
       items: [
         {
-          label: "Locations",
-          icon: <IconMapPins size={20} />,
-          path: "/admin/setup/locations",
-        },
-        {
-          label: "Create Hub",
-          icon: <IconBuildingSkyscraper size={20} />,
-          path: "/admin/setup/hubs",
-        },
-        {
-          label: "Create Warehouse",
-          icon: <IconBuildingWarehouse size={20} />,
-          path: "/admin/setup/warehouses",
-        },
-        {
           label: "Commodities",
           icon: <IconBox size={20} />,
           path: "/admin/setup/commodities",
+        },
+        {
+          label: "FDPs",
+          icon: <IconMapPin size={20} />,
+          path: "/admin/setup/fdps",
         },
       ],
     },
@@ -123,12 +142,6 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
           path: "/stacks",
           resource: "stacks",
         },
-        {
-          label: "Stacking",
-          icon: <IconBox size={20} />,
-          path: "/stacks/layout",
-          resource: "stacks",
-        },
       ],
     },
     {
@@ -141,34 +154,10 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
           resource: "grns",
         },
         {
-          label: "GIN",
-          icon: <IconFileExport size={20} />,
-          path: "/gins",
-          resource: "gins",
-        },
-        {
           label: "Receipts",
           icon: <IconInbox size={20} />,
           path: "/receipts",
           resource: "receipts",
-        },
-        {
-          label: "Dispatches",
-          icon: <IconTruck size={20} />,
-          path: "/dispatches",
-          resource: "dispatches",
-        },
-        {
-          label: "Inspections",
-          icon: <IconUserCheck size={20} />,
-          path: "/inspections",
-          resource: "inspections",
-        },
-        {
-          label: "Waybills",
-          icon: <IconTruck size={20} />,
-          path: "/waybills",
-          resource: "waybills",
         },
       ],
     },
@@ -202,6 +191,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
           label: "Hub Management",
           items: [
             {
+              label: "Dashboard",
+              icon: <IconChartBar size={20} />,
+              path: "/hub/dashboard",
+              resource: "hubs",
+            },
+            {
               label: "Hubs",
               icon: <IconBuilding size={20} />,
               path: "/hubs",
@@ -220,63 +215,33 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               resource: "stores",
             },
             {
-              label: "Stacks",
-              icon: <IconStack2 size={20} />,
-              path: "/stacks",
-              resource: "stacks",
-            },
-            {
               label: "Receipts",
               icon: <IconInbox size={20} />,
               path: "/receipts",
               resource: "receipts",
             },
             {
-              label: "Dispatches",
-              icon: <IconTruck size={20} />,
-              path: "/dispatches",
-              resource: "dispatches",
+              label: "Receipt Authorizations",
+              icon: <IconClipboardCheck size={20} />,
+              path: "/hub/receipt-authorizations",
+              resource: "receipt_authorizations",
             },
           ],
         },
         {
-          label: "Hub Operations",
+          label: "Dispatches",
           items: [
             {
-              label: "GRN",
-              icon: <IconFileImport size={20} />,
-              path: "/grns",
-              resource: "grns",
-            },
-            {
-              label: "GIN",
-              icon: <IconFileExport size={20} />,
-              path: "/gins",
-              resource: "gins",
-            },
-            {
-              label: "Inspections",
-              icon: <IconUserCheck size={20} />,
-              path: "/inspections",
-              resource: "inspections",
-            },
-            {
-              label: "Waybills",
+              label: "Dispatches",
               icon: <IconTruck size={20} />,
-              path: "/waybills",
-              resource: "waybills",
+              path: "/hub/dispatches",
+              resource: "dispatch_orders",
             },
             {
-              label: "Stock Balances",
-              icon: <IconChartBar size={20} />,
-              path: "/stock-balances",
-              resource: "stock_balances",
-            },
-            {
-              label: "Bin Card",
-              icon: <IconReportAnalytics size={20} />,
-              path: "/reports/bin-card",
-              resource: "reports",
+              label: "Dispatch Authorization",
+              icon: <IconClipboardList size={20} />,
+              path: "/hub/dispatch-authorizations",
+              resource: "dispatch_orders",
             },
           ],
         },
@@ -284,41 +249,75 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
     }
 
     if (role === "warehouse_manager") {
+      const warehouseManagementItems: NavItem[] = [
+        {
+          label: "Dashboard",
+          icon: <IconChartBar size={20} />,
+          path: "/warehouse/dashboard",
+          resource: "warehouses",
+        },
+        {
+          label: "Warehouses",
+          icon: <IconBuildingWarehouse size={20} />,
+          path: "/warehouses",
+          resource: "warehouses",
+        },
+        {
+          label: "Stores",
+          icon: <IconBox size={20} />,
+          path: "/stores",
+          resource: "stores",
+        },
+        {
+          label: "Stacks",
+          icon: <IconStack2 size={20} />,
+          path: "/stacks",
+          resource: "stacks",
+        },
+        {
+          label: "Transfer Requests",
+          icon: <IconFileArrowRight size={20} />,
+          path: "/transfer-requests",
+          resource: "transfer_requests",
+        },
+        {
+          label: "Receipts",
+          icon: <IconInbox size={20} />,
+          path: "/receipts",
+          resource: "receipt_orders",
+        },
+        ...(wmCanAccessRa
+          ? [
+              {
+              label: "Receipt Authorizations",
+                icon: <IconClipboardCheck size={20} />,
+                path: "/warehouse/receipt-authorizations",
+                resource: "receipt_authorizations" as Resource,
+              },
+              {
+                label: "Dispatch Authorizations",
+                icon: <IconClipboardList size={20} />,
+                path: "/warehouse/dispatch-authorizations",
+                resource: "dispatch_orders" as Resource,
+              },
+            ]
+          : []),
+        ...(wmIsStandalone
+          ? [
+              {
+                label: "Dispatches",
+                icon: <IconTruck size={20} />,
+                path: "/warehouse/dispatches",
+                resource: "dispatch_orders" as Resource,
+              },
+            ]
+          : []),
+      ];
+
       return [
         {
           label: "Warehouse Management",
-          items: [
-            {
-              label: "Warehouses",
-              icon: <IconBuildingWarehouse size={20} />,
-              path: "/warehouses",
-              resource: "warehouses",
-            },
-            {
-              label: "Stores",
-              icon: <IconBox size={20} />,
-              path: "/stores",
-              resource: "stores",
-            },
-            {
-              label: "Stacks",
-              icon: <IconStack2 size={20} />,
-              path: "/stacks",
-              resource: "stacks",
-            },
-            {
-              label: "Receipts",
-              icon: <IconInbox size={20} />,
-              path: "/receipts",
-              resource: "receipts",
-            },
-            {
-              label: "Dispatches",
-              icon: <IconTruck size={20} />,
-              path: "/dispatches",
-              resource: "dispatches",
-            },
-          ],
+          items: warehouseManagementItems,
         },
         {
           label: "Warehouse Operations",
@@ -328,24 +327,6 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               icon: <IconFileImport size={20} />,
               path: "/grns",
               resource: "grns",
-            },
-            {
-              label: "GIN",
-              icon: <IconFileExport size={20} />,
-              path: "/gins",
-              resource: "gins",
-            },
-            {
-              label: "Inspections",
-              icon: <IconUserCheck size={20} />,
-              path: "/inspections",
-              resource: "inspections",
-            },
-            {
-              label: "Waybills",
-              icon: <IconTruck size={20} />,
-              path: "/waybills",
-              resource: "waybills",
             },
             {
               label: "Stock Balances",
@@ -370,6 +351,12 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
           label: "Store Management",
           items: [
             {
+              label: "Dashboard",
+              icon: <IconChartBar size={20} />,
+              path: "/storekeeper/dashboard",
+              resource: "stores",
+            },
+            {
               label: "Stores",
               icon: <IconBox size={20} />,
               path: "/stores",
@@ -382,10 +369,10 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               resource: "stacks",
             },
             {
-              label: "Stacking",
-              icon: <IconBox size={20} />,
-              path: "/stacks/layout",
-              resource: "stacks",
+              label: "Transfer Requests",
+              icon: <IconFileArrowRight size={20} />,
+              path: "/transfer-requests",
+              resource: "transfer_requests",
             },
           ],
         },
@@ -397,6 +384,18 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               icon: <IconClipboardList size={20} />,
               path: "/storekeeper/assignments",
               resource: "receipt_orders",
+            },
+            {
+              label: "Receive Receipt",
+              icon: <IconTruck size={20} />,
+              path: "/storekeeper/receipt-authorizations",
+              resource: "receipt_orders",
+            },
+            {
+              label: "Dispatch Authorizations",
+              icon: <IconTruckDelivery size={20} />,
+              path: "/storekeeper/dispatch-authorizations",
+              resource: "dispatch_orders",
             },
           ],
         },
@@ -414,24 +413,6 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               icon: <IconFileExport size={20} />,
               path: "/gins",
               resource: "gins",
-            },
-            {
-              label: "Inspections",
-              icon: <IconUserCheck size={20} />,
-              path: "/inspections",
-              resource: "inspections",
-            },
-            {
-              label: "Receipts",
-              icon: <IconInbox size={20} />,
-              path: "/receipts",
-              resource: "receipts",
-            },
-            {
-              label: "Dispatches",
-              icon: <IconTruck size={20} />,
-              path: "/dispatches",
-              resource: "dispatches",
             },
           ],
         },
@@ -481,16 +462,16 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
                 resource: "receipt_orders",
               },
               {
-                label: "Dispatch Orders",
-                icon: <IconFileExport size={20} />,
-                path: "/officer/dispatch-orders",
-                resource: "dispatch_orders",
-              },
-              {
                 label: "Commodities",
                 icon: <IconBox size={20} />,
-                path: "/officer/commodities/new",
+                path: "/officer/commodities?tab=create",
                 resource: "receipt_orders",
+              },
+              {
+                label: "Dispatch Plan",
+                icon: <IconTruck size={20} />,
+                path: "/officer/dispatch-plan",
+                resource: "dispatch_orders",
               },
             ],
           },
@@ -526,16 +507,16 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               resource: "receipt_orders",
             },
             {
-              label: "Dispatch Orders",
-              icon: <IconFileExport size={20} />,
-              path: "/officer/dispatch-orders",
-              resource: "dispatch_orders",
-            },
-            {
               label: "Commodities",
               icon: <IconBox size={20} />,
-              path: "/officer/commodities/new",
+              path: "/officer/commodities?tab=create",
               resource: "receipt_orders",
+            },
+            {
+              label: "Dispatch Plan",
+              icon: <IconTruck size={20} />,
+              path: "/officer/dispatch-plan",
+              resource: "dispatch_orders",
             },
           ],
         },
@@ -543,7 +524,7 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
     }
 
     return [];
-  }, [isAdmin, role, isOfficerRole]);
+  }, [isAdmin, role, isOfficerRole, isFullAccess, activeAssignment, wmCanAccessRa, wmIsStandalone]);
 
   const filterGroupItems = (group: NavGroup) => ({
     ...group,
@@ -553,6 +534,41 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
     }),
   });
 
+  const accountSection = (
+    <div>
+      <MantineNavLink
+        label="Account"
+        childrenOffset={0}
+        defaultOpened
+        style={{
+          fontWeight: 600,
+          fontSize: "0.875rem",
+          color: "var(--mantine-color-dimmed)",
+        }}
+      >
+        <MantineNavLink
+          component={NavLink}
+          to="/profile"
+          label="Profile"
+          leftSection={<IconUser size={20} />}
+          active={location.pathname === "/profile"}
+          variant="subtle"
+          onClick={onLinkClick}
+        />
+        <MantineNavLink
+          label="Logout"
+          leftSection={<IconLogout size={20} />}
+          variant="subtle"
+          color="red"
+          onClick={() => {
+            onLinkClick?.();
+            handleLogout();
+          }}
+        />
+      </MantineNavLink>
+    </div>
+  );
+
   return (
     <Stack
       gap="md"
@@ -560,8 +576,57 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
       h="calc(100dvh - 60px)"
       style={{ overflowY: "auto", overflowX: "hidden" }}
     >
+      {!isAdmin && (
+        <div style={{ padding: "4px 8px" }}>
+          <Badge
+            leftSection={<IconMapPin size={12} />}
+            color={!activeAssignment ? "green" : "blue"}
+            variant="light"
+            size="sm"
+            fullWidth
+            style={{ justifyContent: "flex-start" }}
+          >
+            <Text size="xs" truncate>
+              {currentScopeLabel}
+            </Text>
+          </Badge>
+        </div>
+      )}
+
       {isAdmin &&
-        [...adminMenus, ...(isSuperAdmin ? superAdminMenus : [])]
+        adminMenus.map((group) => (
+          <div key={group.label}>
+            <MantineNavLink
+              label={group.label}
+              childrenOffset={0}
+              defaultOpened
+              style={{
+                fontWeight: 600,
+                fontSize: "0.875rem",
+                color: "var(--mantine-color-dimmed)",
+              }}
+            >
+              {group.items.map((item) => {
+                const isActive = location.pathname.startsWith(item.path);
+                return (
+                  <MantineNavLink
+                    key={item.path}
+                    component={NavLink}
+                    to={item.path}
+                    label={item.label}
+                    leftSection={item.icon}
+                    active={isActive}
+                    variant="subtle"
+                    onClick={onLinkClick}
+                  />
+                );
+              })}
+            </MantineNavLink>
+          </div>
+        ))}
+
+      {isSuperAdmin &&
+        superAdminMenus
           .map(filterGroupItems)
           .filter((group) => group.items.length > 0)
           .map((group) => (
@@ -576,38 +641,24 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
                   color: "var(--mantine-color-dimmed)",
                 }}
               >
-                {group.items.map((item) => (
-                  <MantineNavLink
-                    key={item.path}
-                    component={NavLink}
-                    to={item.path}
-                    label={item.label}
-                    leftSection={item.icon}
-                    active={location.pathname.startsWith(item.path)}
-                    variant="subtle"
-                    onClick={onLinkClick}
-                  />
-                ))}
+                {group.items.map((item) => {
+                  const isActive = location.pathname.startsWith(item.path);
+                  return (
+                    <MantineNavLink
+                      key={item.path}
+                      component={NavLink}
+                      to={item.path}
+                      label={item.label}
+                      leftSection={item.icon}
+                      active={isActive}
+                      variant="subtle"
+                      onClick={onLinkClick}
+                    />
+                  );
+                })}
               </MantineNavLink>
             </div>
           ))}
-
-      {!isAdmin && isOfficerRole && (
-        <div style={{ padding: "4px 8px" }}>
-          <Badge
-            leftSection={<IconMapPin size={12} />}
-            color={isFullAccess ? "green" : "blue"}
-            variant="light"
-            size="sm"
-            fullWidth
-            style={{ justifyContent: "flex-start" }}
-          >
-            <Text size="xs" truncate>
-              {isFullAccess ? "System-wide" : scopeLabel}
-            </Text>
-          </Badge>
-        </div>
-      )}
 
       {!isAdmin &&
         roleMenus
@@ -643,6 +694,8 @@ export function Sidebar({ onLinkClick }: SidebarProps) {
               </MantineNavLink>
             </div>
           ))}
+
+      {accountSection}
     </Stack>
   );
 }

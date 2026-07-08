@@ -1,13 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useMemo, useState } from 'react';
-import { Stack, Title, Group, Select, MultiSelect, Button, Table, Badge, Text } from '@mantine/core';
+import { useEffect, useMemo, useState } from 'react';
+import { Stack, Title, Group, Button, Table, Badge, Text } from '@mantine/core';
+import { SearchableSelect, SearchableMultiSelect } from '../../../components/common/SearchableSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { getAdminUsers } from '../../../api/adminUsers';
-import { getAssignments, bulkUpdateAssignments } from '../../../api/adminAssignments';
-import { getHubsForAssignment, getKebeles, getRegions, getStoresForAssignment, getWarehousesForAssignment, getWoredas, getZones } from '../../../api/locations';
+import { getAssignments, bulkUpdateAssignments, deleteAssignment } from '../../../api/adminAssignments';
+import { getHubsForAssignment, getKebeles, getRegions, getWarehousesForAssignment, getWoredas, getZones } from '../../../api/locations';
 import { LoadingState } from '../../../components/common/LoadingState';
 import { ErrorState } from '../../../components/common/ErrorState';
+import { dedupOptions } from '../../../utils/dedup';
 
 const ROLE_OPTIONS = [
   'Hub Manager',
@@ -40,7 +42,8 @@ export default function UserAssignmentsPage() {
   const isWoredaOfficer = roleName === 'Woreda Officer';
   const isKebeleOfficer = roleName === 'Kebele Officer';
   const isFederalOfficer = roleName === 'Federal Officer';
-  const canAssign = !!roleName && !!userId && !isFederalOfficer;
+  const isWarehouseRole = roleName === 'Warehouse Manager' || roleName === 'Storekeeper';
+  const canAssign = !!roleName && !!userId && !isFederalOfficer && selectedIds.length > 0;
 
   const { data: regions } = useQuery({
     queryKey: ['assignment-regions'],
@@ -72,7 +75,7 @@ export default function UserAssignmentsPage() {
     queryFn: () => {
       if (roleName === 'Hub Manager') return getHubsForAssignment();
       if (roleName === 'Warehouse Manager') return getWarehousesForAssignment();
-      if (roleName === 'Storekeeper') return getStoresForAssignment();
+      if (roleName === 'Storekeeper') return getWarehousesForAssignment();
       if (isRegionalOfficer) return getRegions();
       if (isZonalOfficer) return getZones(regionId ? Number(regionId) : undefined);
       if (isWoredaOfficer) return getWoredas(Number(zoneId));
@@ -93,6 +96,8 @@ export default function UserAssignmentsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-assignments', roleName] });
       notifications.show({ title: 'Success', message: 'Assignments updated', color: 'green' });
+      setUserId(null);
+      setSelectedIds([]);
     },
     onError: (err: any) => {
       notifications.show({
@@ -103,10 +108,47 @@ export default function UserAssignmentsPage() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: deleteAssignment,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-assignments', roleName] });
+      notifications.show({ title: 'Success', message: 'Assignment removed', color: 'green' });
+    },
+    onError: (err: any) => {
+      notifications.show({
+        title: 'Error',
+        message: err.response?.data?.error?.message || 'Failed to remove assignment',
+        color: 'red',
+      });
+    },
+  });
+
   const locationOptions = useMemo(
-    () => locations?.map((l) => ({ value: String(l.id), label: l.name })) || [],
+    () => dedupOptions(locations?.map((l) => ({ value: String(l.id), label: l.name })) || []),
     [locations]
   );
+
+  useEffect(() => {
+    if (!roleName || !userId || !assignments) {
+      setSelectedIds([]);
+      return;
+    }
+
+    const selectedUserId = Number(userId);
+    const existingIds = assignments
+      .filter((assignment) => assignment.user?.id === selectedUserId)
+      .map((assignment) => {
+        if (roleName === 'Hub Manager') return assignment.hub?.id;
+        if (roleName === 'Warehouse Manager' || roleName === 'Storekeeper') return assignment.warehouse?.id;
+        if (isRegionalOfficer || isZonalOfficer || isWoredaOfficer || isKebeleOfficer) {
+          return assignment.location?.id;
+        }
+        return undefined;
+      })
+      .filter((id): id is number => id !== undefined);
+
+    setSelectedIds(Array.from(new Set(existingIds.map(String))));
+  }, [roleName, userId, assignments, isRegionalOfficer, isZonalOfficer, isWoredaOfficer, isKebeleOfficer]);
 
   const handleAssign = () => {
     if (!roleName || !userId) return;
@@ -114,7 +156,7 @@ export default function UserAssignmentsPage() {
     const payload: any = { user_id: Number(userId), role_name: roleName };
     if (roleName === 'Hub Manager') payload.hub_ids = selectedIds.map(Number);
     if (roleName === 'Warehouse Manager') payload.warehouse_ids = selectedIds.map(Number);
-    if (roleName === 'Storekeeper') payload.store_ids = selectedIds.map(Number);
+    if (roleName === 'Storekeeper') payload.warehouse_ids = selectedIds.map(Number);
     if (isRegionalOfficer || isZonalOfficer || isWoredaOfficer || isKebeleOfficer) {
       payload.location_ids = selectedIds.map(Number);
     }
@@ -130,7 +172,7 @@ export default function UserAssignmentsPage() {
       <Title order={2}>User Assignments</Title>
 
       <Group align="end">
-        <Select
+        <SearchableSelect
           label="Role"
           data={ROLE_OPTIONS.map((r) => ({ value: r, label: r }))}
           value={roleName}
@@ -144,19 +186,19 @@ export default function UserAssignmentsPage() {
           }}
           w={260}
         />
-        <Select
+        <SearchableSelect
           label="User"
           placeholder="Select user"
-          data={users?.map((u) => ({ value: String(u.id), label: `${u.first_name} ${u.last_name}` })) || []}
+          data={dedupOptions(users?.map((u) => ({ value: String(u.id), label: `${u.first_name} ${u.last_name}` })) || [])}
           value={userId}
           onChange={setUserId}
           w={320}
         />
         {(isZonalOfficer || isWoredaOfficer || isKebeleOfficer) && (
-          <Select
+          <SearchableSelect
             label="Region"
             placeholder="Select region"
-            data={regions?.map((r) => ({ value: String(r.id), label: r.name })) || []}
+            data={dedupOptions(regions?.map((r) => ({ value: String(r.id), label: r.name })) || [])}
             value={regionId}
             onChange={(value) => {
               setRegionId(value);
@@ -168,10 +210,10 @@ export default function UserAssignmentsPage() {
           />
         )}
         {(isWoredaOfficer || isKebeleOfficer) && (
-          <Select
+          <SearchableSelect
             label="Zone"
             placeholder="Select zone"
-            data={zones?.map((z) => ({ value: String(z.id), label: z.name })) || []}
+            data={dedupOptions(zones?.map((z) => ({ value: String(z.id), label: z.name })) || [])}
             value={zoneId}
             onChange={(value) => {
               setZoneId(value);
@@ -183,10 +225,10 @@ export default function UserAssignmentsPage() {
           />
         )}
         {isKebeleOfficer && (
-          <Select
+          <SearchableSelect
             label="Woreda"
             placeholder="Select woreda"
-            data={woredas?.map((w) => ({ value: String(w.id), label: w.name })) || []}
+            data={dedupOptions(woredas?.map((w) => ({ value: String(w.id), label: w.name })) || [])}
             value={woredaId}
             onChange={(value) => {
               setWoredaId(value);
@@ -196,8 +238,8 @@ export default function UserAssignmentsPage() {
             disabled={!zoneId}
           />
         )}
-        <MultiSelect
-          label="Assign Locations"
+        <SearchableMultiSelect
+          label={isWarehouseRole ? 'Assign Warehouses' : 'Assign Locations'}
           placeholder="Select locations"
           data={locationOptions}
           value={selectedIds}
@@ -222,6 +264,7 @@ export default function UserAssignmentsPage() {
               <Table.Th>Role</Table.Th>
               <Table.Th>User</Table.Th>
               <Table.Th>Location</Table.Th>
+              <Table.Th>Action</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -232,6 +275,17 @@ export default function UserAssignmentsPage() {
                 </Table.Td>
                 <Table.Td>{a.user?.name || '-'}</Table.Td>
                 <Table.Td>{a.hub?.name || a.warehouse?.name || a.store?.name || a.location?.name || '-'}</Table.Td>
+                <Table.Td>
+                  <Button
+                    size="xs"
+                    variant="subtle"
+                    color="red"
+                    loading={deleteMutation.isPending}
+                    onClick={() => deleteMutation.mutate(a.id)}
+                  >
+                    Unassign
+                  </Button>
+                </Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>

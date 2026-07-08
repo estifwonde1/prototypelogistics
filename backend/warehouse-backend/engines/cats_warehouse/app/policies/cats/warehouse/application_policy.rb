@@ -53,7 +53,7 @@ module Cats
       end
 
       def warehouse_manager?
-        user&.has_role?("Warehouse Manager")
+        user&.has_role?("Warehouse Manager") || user&.has_role?("Independent Warehouse Manager")
       end
 
       def storekeeper?

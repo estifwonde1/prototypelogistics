@@ -39,7 +39,9 @@ module Cats
       end
 
       def batch_no
-        object.inventory_lot&.batch_no
+        object.inventory_lot&.batch_no.presence ||
+          object.commodity&.batch_no.presence ||
+          object.gin_id.to_s
       end
 
       def expiry_date

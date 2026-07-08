@@ -38,26 +38,34 @@ module Cats
         return scoped_relation.where(id: access.assigned_hub_ids) if access.hub_manager?
         return scoped_relation.where(id: access.accessible_hub_ids) if access.officer?
 
+        if access.warehouse_manager?
+          warehouse_hub_ids =
+            Cats::Warehouse::Warehouse
+              .where(id: access.assigned_warehouse_ids)
+              .where.not(hub_id: nil)
+              .distinct
+              .pluck(:hub_id)
+          return scoped_relation.where(id: warehouse_hub_ids) if warehouse_hub_ids.any?
+        end
+
         scoped_relation.none
       end
 
       def warehouses_scope
         return scoped_relation if access.admin?
-        # Hub Manager before Warehouse Manager (same as AccessContext#accessible_warehouse_ids).
-        return scoped_relation.where(hub_id: access.assigned_hub_ids) if access.hub_manager?
-        return scoped_relation.where(id: access.assigned_warehouse_ids) if access.warehouse_manager?
-        return scoped_relation.where(id: access.accessible_warehouse_ids) if access.storekeeper?
-        return scoped_relation.where(id: access.accessible_warehouse_ids) if access.officer?
+        return scoped_relation.where(id: access.accessible_warehouse_ids) if access.hub_manager? || access.warehouse_manager? || access.storekeeper? || access.officer?
 
         scoped_relation.none
       end
 
       def stores_scope
         return scoped_relation if access.admin?
-        # Storekeeper role takes precedence - they should only see their assigned stores
-        # even if they have other roles like Officer
-        return scoped_relation.where(id: access.assigned_store_ids) if access.storekeeper?
+        # Warehouse Manager and Hub Manager take precedence over Storekeeper:
+        # a user who is both WM and Storekeeper must see all stores in their
+        # managed warehouses, not just the ones they are assigned to as Storekeeper.
         return scoped_relation.where(warehouse_id: access.accessible_warehouse_ids) if access.hub_manager? || access.warehouse_manager?
+        # Storekeeper-only: explicit stores plus sole store for single-store warehouses
+        return scoped_relation.where(id: access.storekeeper_accessible_store_ids) if access.storekeeper?
         return scoped_relation.where(warehouse_id: access.accessible_warehouse_ids) if access.officer?
 
         scoped_relation.none

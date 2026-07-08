@@ -3,8 +3,8 @@ import type { Gin, GinItem } from '../types/gin';
 import type { ApiResponse } from '../types/common';
 import { toCreateGinRequest, type CreateGinRequest } from '../contracts/documents';
 
-export const getGins = async (): Promise<Gin[]> => {
-  const response = await apiClient.get<ApiResponse<Gin[]>>('/gins');
+export const getGins = async (params?: { warehouse_id?: number }): Promise<Gin[]> => {
+  const response = await apiClient.get<ApiResponse<Gin[]>>('/gins', { params });
   return response.data.data;
 };
 
@@ -22,5 +22,15 @@ export const createGin = async (
 
 export const confirmGin = async (id: number): Promise<Gin> => {
   const response = await apiClient.post<ApiResponse<Gin>>(`/gins/${id}/confirm`);
+  return response.data.data;
+};
+
+export const cancelGin = async (id: number): Promise<Gin> => {
+  const response = await apiClient.post<ApiResponse<Gin>>(`/gins/${id}/cancel`);
+  return response.data.data;
+};
+
+export const driverConfirmGin = async (id: number, payload: { driver_confirmed_by_id: number }): Promise<Gin> => {
+  const response = await apiClient.post<ApiResponse<Gin>>(`/gins/${id}/driver_confirm`, payload);
   return response.data.data;
 };

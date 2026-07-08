@@ -1,6 +1,9 @@
 # Legacy reference copy (do not version Rails tmp/log from a nested app)
 cats_warehouse-main (1)/
-
+backend/warehouse-backend/test_production.rb
 # OS / editor
 .DS_Store
 Thumbs.db
+
+# Local Docker Compose development overrides
+docker-compose.override.yml

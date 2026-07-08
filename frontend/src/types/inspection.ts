@@ -6,6 +6,7 @@ export interface Inspection {
   inspector_id?: number;
   source_type?: string;
   source_id?: number;
+  receipt_order_id?: number;
   status: string;
   inspection_items?: InspectionItem[];
 }
@@ -21,6 +22,9 @@ export interface InspectionItem {
   /** Resolved lot batch when present (API). */
   batch_no?: string;
   unit_id?: number;
+  entered_unit_id?: number;
+  base_unit_id?: number;
+  base_quantity?: number;
   quantity_received: number;
   quantity_damaged?: number;
   quantity_lost?: number;

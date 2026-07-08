@@ -20,7 +20,7 @@ module Cats
       def assigned_hub_manager
         assignment = UserAssignment.includes(:user)
                                    .where(hub_id: id, role_name: "Hub Manager")
-                                   .order(:id)
+                                   .order(id: :desc)
                                    .first
         assignment&.user
       end

@@ -2,21 +2,10 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  TextInput,
-  Select,
-  Card,
-  Table,
-  ActionIcon,
-  Text,
-  NumberInput,
-  Alert,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, TextInput, Card, Table, ActionIcon, Text, NumberInput, Alert } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { DateInput } from '@mantine/dates';
+
 import { IconTrash, IconPlus, IconChevronDown, IconChevronUp } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { createGrn, getGrns } from '../../api/grns';
@@ -29,6 +18,7 @@ import { getCommodityReferences, getUnitReferences, getUomConversions } from '..
 import { getReceiptOrder, getReceiptOrders } from '../../api/receiptOrders';
 import type { ReceiptOrder } from '../../api/receiptOrders';
 import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 import { QualityStatus } from '../../utils/constants';
 import { generateSourceDetailReference } from '../../utils/sourceDetailReference';
 import type { GrnItem } from '../../types/grn';
@@ -120,20 +110,44 @@ function GrnCreatePage() {
   const [sourceId, setSourceId] = useState('');
   const [items, setItems] = useState<GrnItem[]>([createEmptyItem()]);
   const [showLotTracking, setShowLotTracking] = useState<{ [key: number]: boolean }>({});
+  const [batchFilters, setBatchFilters] = useState<{ [key: number]: string }>({});
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses({}),
   });
 
   const { data: stores = [] } = useQuery({
     queryKey: ['stores'],
-    queryFn: getStores,
+    queryFn: () => getStores({}),
   });
 
+  // Get active assignment context for filtering
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
+  const userWarehouseId = activeAssignment?.warehouse?.id;
+  const userStoreId = activeAssignment?.store?.id;
+  const userHubId = activeAssignment?.hub?.id;
+  const isWarehouseManager = roleSlug === 'warehouse_manager';
+  const isStorekeeper = roleSlug === 'storekeeper';
+  const isHubManager = roleSlug === 'hub_manager';
+
   const { data: stacks = [] } = useQuery({
-    queryKey: ['stacks'],
-    queryFn: getStacks,
+    queryKey: ['stacks', { 
+      warehouse_id: isWarehouseManager ? userWarehouseId : undefined,
+      store_id: isStorekeeper ? userStoreId : undefined,
+      hub_id: isHubManager ? userHubId : undefined 
+    }],
+    queryFn: () => {
+      if (isWarehouseManager && userWarehouseId) {
+        return getStacks({ warehouse_id: userWarehouseId });
+      } else if (isStorekeeper && userStoreId) {
+        return getStacks({ store_id: userStoreId });
+      } else if (isHubManager && userHubId) {
+        return getStacks(); // Backend should handle hub-level filtering
+      }
+      return getStacks();
+    },
   });
 
   const { data: receipts = [] } = useQuery({
@@ -148,12 +162,12 @@ function GrnCreatePage() {
 
   const { data: grns = [] } = useQuery({
     queryKey: ['grns'],
-    queryFn: getGrns,
+    queryFn: () => getGrns(),
   });
 
   const { data: receiptOrders = [] } = useQuery({
     queryKey: ['receipt_orders'],
-    queryFn: getReceiptOrders,
+    queryFn: () => getReceiptOrders({}),
   });
 
   const receiptOrderIdParam = useMemo(() => {
@@ -194,12 +208,12 @@ function GrnCreatePage() {
 
   const { data: units = [] } = useQuery({
     queryKey: ['reference-data', 'units'],
-    queryFn: getUnitReferences,
+    queryFn: () => getUnitReferences(),
   });
 
   useQuery({
     queryKey: ['reference-data', 'uom_conversions'],
-    queryFn: getUomConversions,
+    queryFn: () => getUomConversions(),
   });
 
   const warehouseOptions =
@@ -445,6 +459,22 @@ function GrnCreatePage() {
     return list;
   };
 
+  /** Filtered commodity options based on batch filter for a specific item. */
+  const filteredCommodityOptionsForItem = (item: GrnItem, itemIndex: number) => {
+    const allOptions = commodityOptionsForItem(item);
+    const filter = batchFilters[itemIndex]?.trim().toLowerCase();
+    
+    if (!filter) return allOptions;
+
+    return allOptions.filter((opt) => {
+      const commodity = commodities.find((c) => c.id.toString() === opt.value);
+      if (!commodity) return false;
+      
+      const batchNo = (commodity.batch_no || '').toLowerCase();
+      return batchNo.includes(filter);
+    });
+  };
+
   const selectedCommodityTemplateStack = (item: GrnItem) =>
     reservedStacks.find(
       (stack) =>
@@ -550,7 +580,7 @@ function GrnCreatePage() {
               onChange={(event) => setReferenceNo(event.target.value)}
               required
             />
-            <Select
+            <SearchableSelect
               label="Warehouse"
               placeholder="Select warehouse"
               data={warehouseOptions}
@@ -610,7 +640,7 @@ function GrnCreatePage() {
           </Group>
 
           <Group grow align="flex-start">
-            <Select
+            <SearchableSelect
               label="Source Type"
               description="Optional. Use this only when the GRN should be linked to an earlier document such as a receipt, waybill, or another GRN."
               placeholder="Select source type"
@@ -622,7 +652,7 @@ function GrnCreatePage() {
               }}
               clearable
             />
-            <Select
+            <SearchableSelect
               label="Source Reference"
               description="Optional. Choose the exact source document to link this GRN back to."
               placeholder={sourceType ? 'Select source reference' : 'Select source type first'}
@@ -673,7 +703,7 @@ function GrnCreatePage() {
                     <Fragment key={index}>
                       <Table.Tr>
                       <Table.Td>
-                        <Select
+                        <SearchableSelect
                           placeholder={effectiveWarehouseId ? 'Select store' : 'Select warehouse first'}
                           data={storeOptions}
                           value={item.store_id?.toString() || null}
@@ -691,31 +721,50 @@ function GrnCreatePage() {
                       </Table.Td>
 
                       <Table.Td>
-                        <Select
-                          placeholder={item.store_id ? 'Select commodity' : 'Select store first'}
-                          data={commodityOptionsForItem(item)}
-                          value={item.commodity_id ? item.commodity_id.toString() : null}
-                          onChange={(value) => {
-                            const nextCommodityId = value ? parseInt(value, 10) : 0;
-                            const templateStack = reservedStacks.find(
-                              (entry) =>
-                                entry.store_id === item.store_id &&
-                                entry.commodity_id === nextCommodityId
-                            );
-                            const refCommodity = commodities.find((c) => c.id === nextCommodityId);
+                        <Stack gap="xs">
+                          <TextInput
+                            placeholder="Filter by batch number..."
+                            value={batchFilters[index] || ''}
+                            onChange={(e) => {
+                              setBatchFilters((prev) => ({
+                                ...prev,
+                                [index]: e.target.value,
+                              }));
+                            }}
+                            size="xs"
+                            disabled={!item.store_id}
+                          />
+                          <SearchableSelect
+                            placeholder={item.store_id ? 'Select commodity' : 'Select store first'}
+                            data={filteredCommodityOptionsForItem(item, index)}
+                            value={item.commodity_id ? item.commodity_id.toString() : null}
+                            onChange={(value) => {
+                              const nextCommodityId = value ? parseInt(value, 10) : 0;
+                              const templateStack = reservedStacks.find(
+                                (entry) =>
+                                  entry.store_id === item.store_id &&
+                                  entry.commodity_id === nextCommodityId
+                              );
+                              const refCommodity = commodities.find((c) => c.id === nextCommodityId);
 
-                            handleItemChange(index, 'commodity_id', nextCommodityId);
-                            handleItemChange(index, 'stack_id', undefined);
-                            handleItemChange(
-                              index,
-                              'unit_id',
-                              templateStack?.unit_id || refCommodity?.unit_id || 0
-                            );
-                          }}
-                          searchable
-                          clearable
-                          disabled={!item.store_id}
-                        />
+                              handleItemChange(index, 'commodity_id', nextCommodityId);
+                              handleItemChange(index, 'stack_id', undefined);
+                              handleItemChange(
+                                index,
+                                'unit_id',
+                                templateStack?.unit_id || refCommodity?.unit_id || 0
+                              );
+                            }}
+                            searchable
+                            clearable
+                            disabled={!item.store_id}
+                          />
+                          {batchFilters[index]?.trim() && filteredCommodityOptionsForItem(item, index).length === 0 && (
+                            <Text size="xs" c="dimmed">
+                              No commodities found for this batch number.
+                            </Text>
+                          )}
+                        </Stack>
                       </Table.Td>
 
                       <Table.Td>
@@ -745,7 +794,7 @@ function GrnCreatePage() {
                       </Table.Td>
 
                       <Table.Td>
-                        <Select
+                        <SearchableSelect
                           placeholder={item.commodity_id ? 'Select stack' : 'Select commodity first'}
                           data={stackOptionsForItem(item)}
                           value={item.stack_id?.toString() || null}
@@ -781,7 +830,7 @@ function GrnCreatePage() {
                       </Table.Td>
 
                       <Table.Td>
-                        <Select
+                        <SearchableSelect
                           placeholder="Select unit"
                           data={unitOptionsForItem(item)}
                           value={item.unit_id ? item.unit_id.toString() : null}
@@ -798,7 +847,7 @@ function GrnCreatePage() {
                       </Table.Td>
 
                       <Table.Td>
-                        <Select
+                        <SearchableSelect
                           placeholder="Select quality"
                           data={qualityOptions}
                           value={item.quality_status}
@@ -865,7 +914,7 @@ function GrnCreatePage() {
                                 />
                               </Group>
                               <Group grow>
-                                <Select
+                                <SearchableSelect
                                   label="Entered Unit"
                                   description="Unit as received (e.g., bags)"
                                   placeholder="Select entered unit"
@@ -923,3 +972,7 @@ function GrnCreatePage() {
 }
 
 export default GrnCreatePage;
+
+
+
+

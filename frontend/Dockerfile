@@ -10,6 +10,8 @@ COPY . .
 
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
+ARG VITE_API_BASE_URL
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 RUN npm run build
 
@@ -21,6 +23,7 @@ WORKDIR /app
 RUN npm install -g serve
 
 COPY --from=build /app/dist ./dist
+COPY --from=build /app/serve.json ./serve.json
 
 EXPOSE 3000
 

@@ -8,6 +8,7 @@ module Cats
 
       def call
         @gin.ensure_confirmable!
+        raise ArgumentError, "GIN must be confirmed by the driver before it can be finalized" if @gin.driver_confirmed_at.blank?
 
         Gin.transaction do
           old_status = @gin.status
@@ -58,9 +59,7 @@ module Cats
 
       private
       def enqueue_notification(event, payload)
-        return unless ENV["ENABLE_WAREHOUSE_JOBS"] == "true"
-
-        NotificationJob.perform_later(event, payload)
+        NotificationFanout.deliver(event, payload)
       end
     end
   end

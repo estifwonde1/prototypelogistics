@@ -1,58 +1,130 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createBrowserRouter, Navigate } from 'react-router-dom';
-import { lazy, Suspense } from 'react';
+import { createBrowserRouter, Navigate, useParams } from 'react-router-dom';
+import { lazy, Suspense, useEffect } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import { Center, Loader } from '@mantine/core';
 import { useAuthStore } from './store/authStore';
 import { AppShell } from './components/layout/AppShell';
 import { usePermission } from './hooks/usePermission';
 import { AccessDenied } from './components/common/AccessDenied';
+import { RequireStandaloneWarehouseRa } from './components/common/RequireStandaloneWarehouseRa';
 import { getDefaultRouteForRole, type RoleSlug } from './contracts/warehouse';
+import {
+  assignmentHasRequiredFacility,
+  effectiveActiveAssignment,
+  needsWorkspaceSelection,
+} from './utils/workspaceSelection';
+
+const CHUNK_RELOAD_KEY = 'cats:chunk-reload-attempted';
+
+function isChunkLoadError(error: unknown): boolean {
+  const message = String(error instanceof Error ? error.message : error);
+  return /dynamically imported module|failed to fetch dynamically imported module|importing a module script failed|loading chunk/i.test(
+    message
+  );
+}
+
+function lazyWithReload<T extends ComponentType<unknown>>(
+  importer: () => Promise<{ default: T }>
+) {
+  return lazy(() =>
+    importer()
+      .then((module) => {
+        sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+        return module;
+      })
+      .catch((error) => {
+        if (
+          isChunkLoadError(error) &&
+          sessionStorage.getItem(CHUNK_RELOAD_KEY) !== 'true'
+        ) {
+          sessionStorage.setItem(CHUNK_RELOAD_KEY, 'true');
+          window.location.reload();
+          return new Promise<{ default: T }>(() => {});
+        }
+        throw error;
+      })
+  );
+}
 
 // Lazy load pages
-const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
-const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage'));
-const OfficerDashboardPage = lazy(() => import('./pages/officer/OfficerDashboardPage'));
-const FacilitiesOverviewPage = lazy(() => import('./pages/officer/FacilitiesOverviewPage'));
-const ReceiptOrdersListPage = lazy(() => import('./pages/officer/ReceiptOrdersListPage'));
-const ReceiptOrderFormPage = lazy(() => import('./pages/officer/ReceiptOrderFormPage'));
-const ReceiptOrderDetailPage = lazy(() => import('./pages/officer/ReceiptOrderDetailPage'));
-const CommodityFormPage = lazy(() => import('./pages/officer/CommodityFormPage'));
-const CommoditiesSetupPage = lazy(() => import('./pages/admin/setup/CommoditiesSetupPage'));
-const DispatchOrdersListPage = lazy(() => import('./pages/officer/DispatchOrdersListPage'));
-const DispatchOrderFormPage = lazy(() => import('./pages/officer/DispatchOrderFormPage'));
-const DispatchOrderDetailPage = lazy(() => import('./pages/officer/DispatchOrderDetailPage'));
-const HubListPage = lazy(() => import('./pages/hubs/HubListPage'));
-const HubDetailPage = lazy(() => import('./pages/hubs/HubDetailPage'));
-const HubFormPage = lazy(() => import('./pages/hubs/HubFormPage'));
-const WarehouseListPage = lazy(() => import('./pages/warehouses/WarehouseListPage'));
-const WarehouseDetailPage = lazy(() => import('./pages/warehouses/WarehouseDetailPage'));
-const WarehouseFormPage = lazy(() => import('./pages/warehouses/WarehouseFormPage'));
-const StoreListPage = lazy(() => import('./pages/stores/StoreListPage'));
-const StoreFormPage = lazy(() => import('./pages/stores/StoreFormPage'));
-const StackListPage = lazy(() => import('./pages/stacks/StackListPage'));
-const StackFormPage = lazy(() => import('./pages/stacks/StackFormPage'));
-const StockBalancePage = lazy(() => import('./pages/stock/StockBalancePage'));
-const GrnListPage = lazy(() => import('./pages/grns/GrnListPage'));
-const GrnCreatePage = lazy(() => import('./pages/grns/GrnCreatePage'));
-const GrnDetailPage = lazy(() => import('./pages/grns/GrnDetailPage'));
-const GinListPage = lazy(() => import('./pages/gins/GinListPage'));
-const GinCreatePage = lazy(() => import('./pages/gins/GinCreatePage'));
-const GinDetailPage = lazy(() => import('./pages/gins/GinDetailPage'));
-const InspectionListPage = lazy(() => import('./pages/inspections/InspectionListPage'));
-const InspectionCreatePage = lazy(() => import('./pages/inspections/InspectionCreatePage'));
-const InspectionDetailPage = lazy(() => import('./pages/inspections/InspectionDetailPage'));
-const WaybillListPage = lazy(() => import('./pages/waybills/WaybillListPage'));
-const WaybillCreatePage = lazy(() => import('./pages/waybills/WaybillCreatePage'));
-const WaybillDetailPage = lazy(() => import('./pages/waybills/WaybillDetailPage'));
-const AdminUsersPage = lazy(() => import('./pages/admin/users/AdminUsersPage'));
-const UserAssignmentsPage = lazy(() => import('./pages/admin/assignments/UserAssignmentsPage'));
-const LocationsSetupPage = lazy(() => import('./pages/admin/setup/LocationsSetupPage'));
-const HubSetupPage = lazy(() => import('./pages/admin/setup/HubSetupPage'));
-const WarehouseSetupPage = lazy(() => import('./pages/admin/setup/WarehouseSetupPage'));
-const StorekeeperAssignmentsPage = lazy(() => import('./pages/storekeeper/StorekeeperAssignmentsPage'));
-const DispatchListPage = lazy(() => import('./pages/dispatches/DispatchListPage'));
-const BinCardReportPage = lazy(() => import('./pages/reports/BinCardReportPage'));
-const StackLayoutPage = lazy(() => import('./pages/stacks/StackLayoutPage'));
+const LoginPage = lazyWithReload(() => import('./pages/auth/LoginPage'));
+const RoleSelectionPage = lazyWithReload(() => import('./pages/auth/RoleSelectionPage'));
+const DashboardPage = lazyWithReload(() => import('./pages/dashboard/DashboardPage'));
+const OfficerDashboardPage = lazyWithReload(() => import('./pages/officer/OfficerDashboardPage'));
+const HubManagerDashboardPage = lazyWithReload(() => import('./pages/hubs/HubManagerDashboardPage'));
+const WarehouseManagerDashboardPage = lazyWithReload(() => import('./pages/warehouses/WarehouseManagerDashboardPage'));
+const StorekeeperDashboardPage = lazyWithReload(() => import('./pages/storekeeper/StorekeeperDashboardPage'));
+const FacilitiesOverviewPage = lazyWithReload(() => import('./pages/officer/FacilitiesOverviewPage'));
+const ReceiptOrdersListPage = lazyWithReload(() => import('./pages/officer/ReceiptOrdersListPage'));
+const ReceiptOrderFormPage = lazyWithReload(() => import('./pages/officer/ReceiptOrderFormPage'));
+const ReceiptOrderDetailPage = lazyWithReload(() => import('./pages/officer/ReceiptOrderDetailPage'));
+const CommodityFormPage = lazyWithReload(() => import('./pages/officer/CommodityFormPage'));
+const CommoditiesSetupPage = lazyWithReload(() => import('./pages/admin/setup/CommoditiesSetupPage'));
+const DispatchOrderDetailPage = lazyWithReload(() => import('./pages/officer/DispatchOrderDetailPage'));
+const DispatchPlanListPage = lazyWithReload(() => import('./pages/officer/DispatchPlanListPage'));
+const DispatchPlanFormPage = lazyWithReload(() => import('./pages/officer/DispatchPlanFormPage'));
+const FdpSetupPage = lazyWithReload(() => import('./pages/admin/setup/FdpSetupPage'));
+const DispatchAuthorizationListPage = lazyWithReload(() => import('./pages/hub-manager/DispatchAuthorizationListPage'));
+// Split DA forms
+// (Hub manager uses HubDispatchAuthorizationFormPage; independent/warehouse manager uses WarehouseDispatchAuthorizationFormPage)
+
+const HubDispatchOrdersPage = lazyWithReload(() => import('./pages/hub-manager/HubDispatchOrdersPage'));
+const HubDispatchOrderDetailPage = lazyWithReload(() => import('./pages/hub-manager/HubDispatchOrderDetailPage'));
+const DAListPage = lazyWithReload(() => import('./pages/hub-manager/DAListPage'));
+// NOTE: warehouse/dispatch-authorizations/new uses WarehouseDispatchAuthorizationFormPage.
+// DAFormPage import kept only if referenced elsewhere.
+// const DAFormPage = lazyWithReload(() => import('./pages/hub-manager/DAFormPage'));
+const HubDispatchAuthorizationFormPage = lazyWithReload(
+  () => import('./pages/hub-manager/HubDispatchAuthorizationFormPage')
+);
+const WarehouseDispatchAuthorizationFormPage = lazyWithReload(
+  () => import('./pages/hub-manager/WarehouseDispatchAuthorizationFormPage')
+);
+const DADetailPage = lazyWithReload(() => import('./pages/hub-manager/DADetailPage'));
+const HubListPage = lazyWithReload(() => import('./pages/hubs/HubListPage'));
+const HubDetailPage = lazyWithReload(() => import('./pages/hubs/HubDetailPage'));
+const HubFormPage = lazyWithReload(() => import('./pages/hubs/HubFormPage'));
+const WarehouseListPage = lazyWithReload(() => import('./pages/warehouses/WarehouseListPage'));
+const WarehouseDetailPage = lazyWithReload(() => import('./pages/warehouses/WarehouseDetailPage'));
+const WarehouseFormPage = lazyWithReload(() => import('./pages/warehouses/WarehouseFormPage'));
+const StoreListPage = lazyWithReload(() => import('./pages/stores/StoreListPage'));
+const StoreDetailPage = lazyWithReload(() => import('./pages/stores/StoreDetailPage'));
+const StoreFormPage = lazyWithReload(() => import('./pages/stores/StoreFormPage'));
+const StackListPage = lazyWithReload(() => import('./pages/stacks/StackListPage'));
+const StackFormPage = lazyWithReload(() => import('./pages/stacks/StackFormPage'));
+const StockBalancePage = lazyWithReload(() => import('./pages/stock/StockBalancePage'));
+const GrnListPage = lazyWithReload(() => import('./pages/grns/GrnListPage'));
+const GrnCreatePage = lazyWithReload(() => import('./pages/grns/GrnCreatePage'));
+const GrnDetailPage = lazyWithReload(() => import('./pages/grns/GrnDetailPage'));
+const GinListPage = lazyWithReload(() => import('./pages/gins/GinListPage'));
+const GinCreatePage = lazyWithReload(() => import('./pages/gins/GinCreatePage'));
+const GinDetailPage = lazyWithReload(() => import('./pages/gins/GinDetailPage'));
+const InspectionListPage = lazyWithReload(() => import('./pages/inspections/InspectionListPage'));
+const InspectionCreatePage = lazyWithReload(() => import('./pages/inspections/InspectionCreatePage'));
+const InspectionDetailPage = lazyWithReload(() => import('./pages/inspections/InspectionDetailPage'));
+const WaybillListPage = lazyWithReload(() => import('./pages/waybills/WaybillListPage'));
+const WaybillCreatePage = lazyWithReload(() => import('./pages/waybills/WaybillCreatePage'));
+const WaybillDetailPage = lazyWithReload(() => import('./pages/waybills/WaybillDetailPage'));
+const AdminUsersPage = lazyWithReload(() => import('./pages/admin/users/AdminUsersPage'));
+const ProfilePage = lazyWithReload(() => import('./pages/profile/ProfilePage'));
+const UserAssignmentsPage = lazyWithReload(() => import('./pages/admin/assignments/UserAssignmentsPage'));
+const RolesManagementPage = lazyWithReload(() => import('./pages/admin/roles/RolesManagementPage'));
+const LocationsSetupPage = lazyWithReload(() => import('./pages/admin/setup/LocationsSetupPage'));
+const HubSetupPage = lazyWithReload(() => import('./pages/admin/setup/HubSetupPage'));
+const WarehouseSetupPage = lazyWithReload(() => import('./pages/admin/setup/WarehouseSetupPage'));
+const StorekeeperAssignmentsPage = lazyWithReload(() => import('./pages/storekeeper/StorekeeperAssignmentsPage'));
+const DispatchListPage = lazyWithReload(() => import('./pages/dispatches/DispatchListPage'));
+const BinCardReportPage = lazyWithReload(() => import('./pages/reports/BinCardReportPage'));
+const StackLayoutPage = lazyWithReload(() => import('./pages/stacks/StackLayoutPage'));
+const TransferRequestsPage = lazyWithReload(() => import('./pages/stock/TransferRequestsPage'));
+const ReceiptAuthorizationListPage = lazyWithReload(() => import('./pages/hub-manager/ReceiptAuthorizationListPage'));
+const ReceiptAuthorizationFormPage = lazyWithReload(() => import('./pages/hub-manager/ReceiptAuthorizationFormPage'));
+const ReceiptAuthorizationDetailPage = lazyWithReload(() => import('./pages/hub-manager/ReceiptAuthorizationDetailPage'));
+const StorekeeperRAListPage = lazyWithReload(() => import('./pages/storekeeper/StorekeeperRAListPage'));
+const StorekeeperRADetailPage = lazyWithReload(() => import('./pages/storekeeper/StorekeeperRADetailPage'));
+const StorekeeperDAListPage = lazyWithReload(() => import('./pages/storekeeper/StorekeeperDAListPage'));
+const StorekeeperDADetailPage = lazyWithReload(() => import('./pages/storekeeper/StorekeeperDADetailPage'));
 
 // Loading fallback
 const LoadingFallback = () => (
@@ -66,7 +138,7 @@ type PermissionResource = PermissionArgs[0];
 type PermissionAction = PermissionArgs[1];
 
 // Protected Route Component
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+const ProtectedRoute = ({ children }: { children: ReactNode }) => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated());
   
   if (!isAuthenticated) {
@@ -83,7 +155,7 @@ const RequirePermission = ({
 }: {
   resource: PermissionResource;
   action: PermissionAction;
-  children: React.ReactNode;
+  children: ReactNode;
 }) => {
   const { can } = usePermission();
   if (!can(resource, action)) {
@@ -92,7 +164,7 @@ const RequirePermission = ({
   return <>{children}</>;
 };
 
-const RequireAdmin = ({ children }: { children: React.ReactNode }) => {
+const RequireAdmin = ({ children }: { children: ReactNode }) => {
   const role = useAuthStore((state) => state.role);
   if (role !== 'admin' && role !== 'superadmin') {
     return <AccessDenied />;
@@ -100,12 +172,43 @@ const RequireAdmin = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+function HubEditRedirect() {
+  const { id } = useParams();
+  return <Navigate to={`/admin/setup/hubs?id=${id}`} replace />;
+}
+
+function RedirectOfficerDispatchOrderToPlan() {
+  const { id } = useParams();
+  return <Navigate to={`/officer/dispatch-plan/${id}`} replace />;
+}
+
 const EntryRoute = () => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated());
   const role = useAuthStore((state) => state.role);
+  const assignments = useAuthStore((state) => state.assignments);
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const setActiveAssignment = useAuthStore((state) => state.setActiveAssignment);
+
+  useEffect(() => {
+    if (assignments.length !== 1) return;
+    const only = assignments[0];
+    if (!activeAssignment || activeAssignment.id !== only.id) {
+      setActiveAssignment(only);
+    }
+  }, [assignments, activeAssignment, setActiveAssignment]);
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  const workspace = effectiveActiveAssignment(assignments, activeAssignment);
+
+  if (assignments.length > 1 && needsWorkspaceSelection(assignments, activeAssignment)) {
+    return <Navigate to="/select-role" replace state={{ fromLogin: true }} />;
+  }
+
+  if (assignments.length > 0 && !assignmentHasRequiredFacility(workspace, role)) {
+    return <Navigate to="/select-role" replace state={{ fromLogin: true }} />;
   }
 
   return <Navigate to={getDefaultRouteForRole((role as RoleSlug | null) ?? null)} replace />;
@@ -118,6 +221,16 @@ export const router = createBrowserRouter([
       <Suspense fallback={<LoadingFallback />}>
         <LoginPage />
       </Suspense>
+    ),
+  },
+  {
+    path: '/select-role',
+    element: (
+      <ProtectedRoute>
+        <Suspense fallback={<LoadingFallback />}>
+          <RoleSelectionPage />
+        </Suspense>
+      </ProtectedRoute>
     ),
   },
   {
@@ -141,6 +254,182 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission resource="receipt_orders" action="read">
             <OfficerDashboardPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'hub/dashboard',
+        element: (
+          <RequirePermission resource="hubs" action="read">
+            <HubManagerDashboardPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'hub/receipt-authorizations',
+        element: (
+          <RequirePermission resource="receipt_authorizations" action="read">
+            <ReceiptAuthorizationListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'hub/receipt-authorizations/new',
+        element: (
+          <RequirePermission resource="receipt_authorizations" action="read">
+            <ReceiptAuthorizationFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'hub/receipt-authorizations/:id',
+        element: (
+          <RequirePermission resource="receipt_authorizations" action="read">
+            <ReceiptAuthorizationDetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'hub/receipt-authorizations/:id/edit',
+        element: (
+          <RequirePermission resource="receipt_authorizations" action="read">
+            <ReceiptAuthorizationFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'hub/dispatch-authorizations',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <DAListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'hub/dispatch-authorizations/new',
+        element: (
+          <RequirePermission resource="dispatch_order_authorizations" action="create">
+            <HubDispatchAuthorizationFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'hub/dispatch-authorizations/:id',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <DADetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'hub/dispatches',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <HubDispatchOrdersPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'hub/dispatches/:id',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <HubDispatchOrderDetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/dashboard',
+        element: (
+          <RequirePermission resource="warehouses" action="read">
+            <WarehouseManagerDashboardPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/receipt-authorizations',
+        element: (
+          <RequirePermission resource="receipt_authorizations" action="read">
+            <RequireStandaloneWarehouseRa>
+              <ReceiptAuthorizationListPage />
+            </RequireStandaloneWarehouseRa>
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/receipt-authorizations/new',
+        element: (
+          <RequirePermission resource="receipt_authorizations" action="read">
+            <RequireStandaloneWarehouseRa requireCreate>
+              <ReceiptAuthorizationFormPage />
+            </RequireStandaloneWarehouseRa>
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/receipt-authorizations/:id',
+        element: (
+          <RequirePermission resource="receipt_authorizations" action="read">
+            <RequireStandaloneWarehouseRa>
+              <ReceiptAuthorizationDetailPage />
+            </RequireStandaloneWarehouseRa>
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/receipt-authorizations/:id/edit',
+        element: (
+          <RequirePermission resource="receipt_authorizations" action="read">
+            <RequireStandaloneWarehouseRa requireCreate>
+              <ReceiptAuthorizationFormPage />
+            </RequireStandaloneWarehouseRa>
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/dispatch-authorizations',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <DAListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/dispatch-authorizations/new',
+        element: (
+          <RequirePermission resource="dispatch_order_authorizations" action="create">
+            <WarehouseDispatchAuthorizationFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/dispatch-authorizations/:id',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <DADetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/dispatches',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <HubDispatchOrdersPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'warehouse/dispatches/:id',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <HubDispatchOrderDetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'storekeeper/dashboard',
+        element: (
+          <RequirePermission resource="stores" action="read">
+            <StorekeeperDashboardPage />
           </RequirePermission>
         ),
       },
@@ -201,7 +490,7 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: 'officer/commodities/new',
+        path: 'officer/commodities',
         element: (
           <RequirePermission resource="receipt_orders" action="create">
             <CommodityFormPage />
@@ -209,23 +498,23 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: 'officer/commodities/new',
+        element: <Navigate to="/officer/commodities?tab=create" replace />,
+      },
+      {
         path: 'officer/dispatch-orders',
-        element: (
-          <RequirePermission resource="dispatch_orders" action="read">
-            <DispatchOrdersListPage />
-          </RequirePermission>
-        ),
+        element: <Navigate to="/officer/dispatch-plan" replace />,
       },
       {
         path: 'officer/dispatch-orders/new',
-        element: (
-          <RequirePermission resource="dispatch_orders" action="create">
-            <DispatchOrderFormPage />
-          </RequirePermission>
-        ),
+        element: <Navigate to="/officer/dispatch-plan/new" replace />,
       },
       {
         path: 'officer/dispatch-orders/:id',
+        element: <RedirectOfficerDispatchOrderToPlan />,
+      },
+      {
+        path: 'dispatch-orders/:id',
         element: (
           <RequirePermission resource="dispatch_orders" action="read">
             <DispatchOrderDetailPage />
@@ -234,9 +523,29 @@ export const router = createBrowserRouter([
       },
       {
         path: 'officer/dispatch-orders/:id/edit',
+        element: <RedirectOfficerDispatchOrderToPlan />,
+      },
+      {
+        path: 'officer/dispatch-plan',
         element: (
-          <RequirePermission resource="dispatch_orders" action="update">
-            <DispatchOrderFormPage />
+          <RequirePermission resource="dispatch_orders" action="read">
+            <DispatchPlanListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/dispatch-plan/new',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="create">
+            <DispatchPlanFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'officer/dispatch-plan/:id',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <DispatchOrderDetailPage />
           </RequirePermission>
         ),
       },
@@ -268,7 +577,7 @@ export const router = createBrowserRouter([
         path: 'hubs/:id/edit',
         element: (
           <RequirePermission resource="hubs" action="update">
-            <HubFormPage />
+            <HubEditRedirect />
           </RequirePermission>
         ),
       },
@@ -317,6 +626,14 @@ export const router = createBrowserRouter([
         element: (
           <RequirePermission resource="stores" action="create">
             <StoreFormPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'stores/:id',
+        element: (
+          <RequirePermission resource="stores" action="read">
+            <StoreDetailPage />
           </RequirePermission>
         ),
       },
@@ -481,6 +798,38 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: 'storekeeper/receipt-authorizations',
+        element: (
+          <RequirePermission resource="receipt_orders" action="read">
+            <StorekeeperRAListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'storekeeper/receipt-authorizations/:id',
+        element: (
+          <RequirePermission resource="receipt_orders" action="read">
+            <StorekeeperRADetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'storekeeper/dispatch-authorizations',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <StorekeeperDAListPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'storekeeper/dispatch-authorizations/:id',
+        element: (
+          <RequirePermission resource="dispatch_orders" action="read">
+            <StorekeeperDADetailPage />
+          </RequirePermission>
+        ),
+      },
+      {
         path: 'reports/bin-card',
         element: (
           <RequirePermission resource="reports" action="read">
@@ -497,10 +846,30 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: 'transfer-requests',
+        element: (
+          <RequirePermission resource="transfer_requests" action="read">
+            <TransferRequestsPage />
+          </RequirePermission>
+        ),
+      },
+      {
+        path: 'profile',
+        element: <ProfilePage />,
+      },
+      {
         path: 'admin/users',
         element: (
           <RequireAdmin>
             <AdminUsersPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: 'admin/roles',
+        element: (
+          <RequireAdmin>
+            <RolesManagementPage />
           </RequireAdmin>
         ),
       },
@@ -541,6 +910,14 @@ export const router = createBrowserRouter([
         element: (
           <RequireAdmin>
             <CommoditiesSetupPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: 'admin/setup/fdps',
+        element: (
+          <RequireAdmin>
+            <FdpSetupPage />
           </RequireAdmin>
         ),
       },

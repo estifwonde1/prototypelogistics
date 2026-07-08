@@ -10,6 +10,11 @@ module Cats
       def call
         raise ArgumentError, "reservations are required" if @reservations.empty?
 
+        warehouse = @order.warehouse
+        if warehouse.present? && !warehouse.capacity_established?
+          raise ArgumentError, "Warehouse capacity must be established before reserving space"
+        end
+
         ReceiptOrder.transaction do
           @reservations.each do |payload|
             line =
@@ -89,6 +94,11 @@ module Cats
 
       # GRN requires a concrete stack row; space reservation alone does not create one.
       # One deterministic stack per (receipt order, line, store) for receiving.
+      #
+      # Reservation placeholders are intentionally unpositioned (start_x/start_y nil).
+      # This lets multiple reservations coexist in the same store without triggering
+      # the overlap validation, which only fires when both coordinates are present.
+      # A real floor position must be assigned at putaway time (GRN confirmation).
       def ensure_reservation_stack_for_line!(line:, store:)
         return if store.blank?
         return if line.blank? || line.commodity_id.blank? || line.unit_id.blank?
@@ -104,8 +114,8 @@ module Cats
           stack_status: "Reserved",
           commodity_status: "Good",
           quantity: 0,
-          start_x: 0,
-          start_y: 0,
+          start_x: nil,
+          start_y: nil,
           **dims
         )
         stack.save!
@@ -132,14 +142,22 @@ module Cats
               "cannot reserve #{requested} units; only #{remaining.round(4)} remaining for this line (ordered #{max_qty})"
       end
 
-      def ensure_space_available!(target, reserved_volume, reserved_quantity)
+      def ensure_space_available!(target, reserved_volume, _reserved_quantity)
         return unless target.is_a?(Store)
 
-        currently_reserved = target.space_reservations.where(status: "Reserved").sum(:reserved_volume).to_f
-        requested = reserved_volume.to_f
-        return if requested <= 0 || (currently_reserved + requested) <= target.available_space.to_f
+        wh = target.warehouse
+        unless wh&.capacity_established?
+          raise ArgumentError, "Warehouse capacity must be established before reserving store space"
+        end
 
-        raise ArgumentError, "reserved volume exceeds available store capacity"
+        vol = reserved_volume.to_f
+        return if vol <= 0
+
+        remaining = target.available_volume_m3.to_f
+        return if vol <= remaining + 1e-6
+
+        raise ArgumentError,
+              "cannot reserve #{vol.round(4)} m³; only #{remaining.round(4)} m³ available in store #{target.name}"
       end
 
       def transition_order!(new_status, event_type, payload)

@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import {
@@ -12,8 +12,9 @@ import {
   Badge,
   Grid,
   Modal,
+  Divider,
 } from '@mantine/core';
-import { IconArrowLeft, IconCheck } from '@tabler/icons-react';
+import { IconArrowLeft, IconCheck, IconDownload } from '@tabler/icons-react';
 import { getGrn, confirmGrn } from '../../api/grns';
 import { getWarehouses } from '../../api/warehouses';
 import { LoadingState } from '../../components/common/LoadingState';
@@ -23,16 +24,66 @@ import { ExpiryBadge } from '../../components/common/ExpiryBadge';
 import { UomConversionDisplay } from '../../components/common/UomConversionDisplay';
 import { notifications } from '@mantine/notifications';
 import { DocumentStatus } from '../../utils/constants';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { ApiError } from '../../types/common';
+import type { Grn, GrnItem } from '../../types/grn';
 import { usePermission } from '../../hooks/usePermission';
+import { useAuthStore } from '../../store/authStore';
+
+function formatQuantity(value: number): string {
+  return value.toLocaleString(undefined, { maximumFractionDigits: 3 });
+}
+
+function raDisplayUnit(grn: Grn): string {
+  const inputName = (grn.ra_authorized_quantity_input_unit_name ?? '').trim();
+  const inputAbbr = (grn.ra_authorized_quantity_input_unit_abbreviation ?? '').trim();
+  return inputName || inputAbbr;
+}
+
+function raLineToInputMultiplier(grn: Grn): number | null {
+  const input = Number(grn.ra_authorized_quantity_input ?? 0);
+  const line = Number(grn.ra_authorized_quantity ?? 0);
+  if (input > 0 && line > 0) return input / line;
+  return null;
+}
+
+function itemDisplayQuantity(grn: Grn, item: GrnItem): number {
+  return Number(item.quantity);
+}
+
+function itemDisplayUnit(grn: Grn, item: GrnItem): string {
+  return item.unit_abbreviation || item.unit_name || String(item.unit_id);
+}
+
+function grnSourceType(grn: Grn): string {
+  return (grn.receipt_order?.source_type || grn.source_type || '').trim();
+}
+
+function sourceTypeMatches(sourceType: string, option: string): boolean {
+  const normalized = sourceType.toLowerCase();
+  return normalized.includes(option.toLowerCase());
+}
+
+function sourceCheckbox(sourceType: string, option: string): string {
+  return `<span class="cb${sourceTypeMatches(sourceType, option) ? ' checked' : ''}"></span>`;
+}
+
+function formatPrintValue(value: string | number | null | undefined): string {
+  if (value == null) return '___________';
+  const text = String(value).trim();
+  return text || '___________';
+}
 
 function GrnDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const { can } = usePermission();
+  const printRef = useRef<HTMLDivElement>(null);
+  const currentUser = useAuthStore((s) => s.userId);
+  const returnTo = searchParams.get('returnTo');
 
   const { data: grn, isLoading, error, refetch } = useQuery({
     queryKey: ['grn', id],
@@ -42,7 +93,7 @@ function GrnDetailPage() {
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses({}),
   });
 
   const confirmMutation = useMutation({
@@ -79,6 +130,268 @@ function GrnDetailPage() {
     }
   };
 
+  const handleDownload = () => {
+    if (!grn) return;
+
+    const items = grn.grn_items ?? [];
+    const receivedDate = grn.received_on ? new Date(grn.received_on).toLocaleDateString('en-GB') : '___________';
+
+    // RA-linked fields
+    const transporterName = grn.ra_transporter_name || '___________';
+    const vehicleNo       = grn.ra_truck_plate_number || '___________';
+    const waybillNo       = grn.ra_waybill_number || '___________';
+    const driverName      = grn.ra_driver_name || '___________';
+    const supplierDonor   = grn.receipt_order?.source_name || grn.source_type || '___________';
+    const warehouseName   = grn.warehouse_name || String(grn.warehouse_id);
+    const warehouseNo     = grn.warehouse_code || String(grn.warehouse_id);
+    const receivedBy      = grn.received_by_name || 'Store Keeper';
+    const sourceType      = grnSourceType(grn);
+    const sourceTypeLabel = sourceType || '___________';
+    const containerType   =
+      (grn.ra_packaging_unit_name || grn.ra_packaging_unit_abbreviation || '').trim() || '___________';
+    const numberOfBags    =
+      grn.ra_expected_packaging_units != null && Number(grn.ra_expected_packaging_units) > 0
+        ? formatQuantity(Number(grn.ra_expected_packaging_units))
+        : '___________';
+    const lostMultiplier  = raLineToInputMultiplier(grn) ?? 1;
+    const lostQuantity    = Number(grn.inspection_lost_quantity ?? 0) * lostMultiplier;
+    const lostUnit        = items[0] ? itemDisplayUnit(grn, items[0]) : '';
+    const lostCommodity   = `${formatQuantity(lostQuantity)}${lostUnit ? ` ${lostUnit}` : ''}`;
+
+    const MIN_ROWS = 8;
+    const filledRows = items.map((item, idx) => {
+      // Qty Delivered = authorized quantity from RA (what was supposed to come)
+      // Qty Accepted = quantity actually received (what's on the GRN item)
+      const qtyAccepted = itemDisplayQuantity(grn, item);
+      // If single item and RA authorized quantity exists, use it as delivered
+      const qtyDelivered = (grn.ra_authorized_quantity_input && items.length === 1)
+        ? Number(grn.ra_authorized_quantity_input)
+        : qtyAccepted;
+      const unit = itemDisplayUnit(grn, item);
+      return `
+      <tr>
+        <td style="text-align:center">${idx + 1}</td>
+        <td></td>
+        <td>${item.commodity_name || item.commodity_code || String(item.commodity_id)}<br/>
+            <span style="font-size:9px;color:#555">${item.line_reference_no || item.batch_no || ''}</span></td>
+        <td style="text-align:center">${unit}</td>
+        <td style="text-align:right">${formatQuantity(Number(qtyDelivered))}</td>
+        <td style="text-align:right">${formatQuantity(Number(qtyAccepted))}</td>
+        <td></td><td></td><td></td><td></td><td></td>
+      </tr>`;
+    }).join('');
+
+    const emptyRows = Array.from({ length: Math.max(0, MIN_ROWS - items.length) })
+      .map(() => `<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`).join('');
+
+    const qualityGrade = items[0]?.quality_status
+      ? items[0].quality_status.charAt(0).toUpperCase() + items[0].quality_status.slice(1)
+      : '___________';
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>GRN ${grn.reference_no}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; font-size: 11px; color: #000; padding: 16px 20px; }
+    .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+    .org-am { font-size: 12px; font-weight: bold; }
+    .title-band { text-align: center; margin: 8px 0 4px; }
+    .title-am { font-size: 13px; font-weight: bold; }
+    .title-en { font-size: 13px; font-weight: bold; letter-spacing: 0.5px; }
+    .date-line { text-align: right; font-size: 10px; margin-bottom: 6px; }
+    .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+    .meta-table td { padding: 2px 4px; font-size: 10px; vertical-align: bottom; }
+    .meta-value { border-bottom: 1px solid #000; min-width: 120px; display: inline-block; padding: 0 4px; }
+    .source-row { display: flex; gap: 12px; font-size: 10px; margin: 4px 0 6px; flex-wrap: wrap; }
+    .cb { width: 10px; height: 10px; border: 1px solid #000; display: inline-block; }
+    .cb.checked::after { content: "✓"; display: block; font-size: 10px; line-height: 9px; text-align: center; }
+    .source-selected { border-bottom: 1px solid #000; padding: 0 18px 0 4px; }
+    .items-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+    .items-table th, .items-table td { border: 1px solid #000; padding: 3px 4px; font-size: 10px; text-align: left; }
+    .items-table th { background: #f0f0f0; text-align: center; font-size: 9px; }
+    .sig-row { display: flex; justify-content: space-between; margin-top: 12px; }
+    .sig-block { flex: 1; margin: 0 8px; }
+    .sig-block:first-child { margin-left: 0; }
+    .sig-block:last-child { margin-right: 0; }
+    .sig-line { border-bottom: 1px solid #000; margin-top: 18px; }
+    .sig-sub { font-size: 9px; color: #555; margin-top: 2px; }
+    .copy-footer { margin-top: 14px; font-size: 9px; border-top: 1px solid #ccc; padding-top: 4px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; }
+    @media print { body { padding: 8px 12px; } @page { margin: 10mm; } }
+  </style>
+</head>
+<body>
+  <div class="page-header">
+    <div>
+      <div class="org-am">The Federal Democratic Republic of Ethiopia</div>
+      <div class="org-am">DISASTER RISK MANAGEMENT COMMISSION</div>
+      <div style="height:4px"></div>
+      <div class="org-am">በኢትዮጵያ ፌዴራላዊ ዲሞክራሲያዊ ሪፐብሊክ</div>
+      <div class="org-am">የአደጋ ስጋት አመራር ኮሚሽን</div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:11px">No &nbsp;<strong>${grn.reference_no}</strong></div>
+    </div>
+  </div>
+
+  <div class="title-band">
+    <div class="title-am">የምግብና ምግብ ነክ ያልሆኑ ገቢ ደረሰኝ</div>
+    <div class="title-en">FOOD &amp; NON FOOD ITEMS RECEIVING RECEIPT</div>
+  </div>
+  <div class="date-line">ቀን፡ &nbsp;<strong>${receivedDate}</strong> &nbsp;&nbsp; Date:</div>
+
+  <table class="meta-table">
+    <tr>
+      <td width="50%">
+        <span style="font-size:10px">የሻጭ ነጋዴ/በጎ አድራጊ ስም፡</span><br/>
+        <strong>Supplier/Donor</strong> &nbsp;<span class="meta-value">${supplierDonor}</span>
+      </td>
+      <td width="50%">
+        <span style="font-size:10px">ላኪው፡</span><br/>
+        <strong>Shipped by</strong> &nbsp;<span class="meta-value">${supplierDonor}</span>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <span style="font-size:10px">ያጓጓዘው ስም፡</span><br/>
+        <strong>Transported by</strong> &nbsp;<span class="meta-value">${transporterName}</span>
+      </td>
+      <td>
+        <span style="font-size:10px">የማጓጓዣው ቁጥር፡</span><br/>
+        <strong>Vehicle/Wagon/Flight No</strong> &nbsp;<span class="meta-value">${vehicleNo}</span>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <span style="font-size:10px">መጋዘኑ የሚገኝበት ስፍራ፡</span><br/>
+        <strong>Location of Warehouse</strong> &nbsp;<span class="meta-value">${warehouseName}</span>
+      </td>
+      <td>
+        <span style="font-size:10px">የመጋዘን ቁጥር፡</span><br/>
+        <strong>W.H.No</strong> &nbsp;<span class="meta-value">${warehouseNo}</span>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <span style="font-size:10px">የመላኪያ ሰ/ቁ፡</span><br/>
+        <strong>W.Bil/D.O.No.</strong> &nbsp;<span class="meta-value">${waybillNo}</span>
+      </td>
+      <td>
+        <span style="font-size:10px">የፋክቱር ቁጥር፡</span><br/>
+        <strong>Invoice No.</strong> &nbsp;<span class="meta-value">___________</span>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <span style="font-size:10px">ያዘዘው ክፍል፡</span><br/>
+        <strong>Requested by</strong> &nbsp;<span class="meta-value">${receivedBy}</span>
+      </td>
+      <td>
+        <span style="font-size:10px">የምድር ሚዛን ቲኬት ቁጥር፡</span><br/>
+        <strong>Weight Bridge Ticket No.</strong> &nbsp;<span class="meta-value">___________</span>
+      </td>
+    </tr>
+  </table>
+
+  <div class="source-row">
+    <strong style="font-size:10px">የግዢ ምንጭ / Source Type</strong>
+    <span class="source-selected">${sourceTypeLabel}</span>
+    <span>${sourceCheckbox(sourceType, 'Purchase')} በግዢ / Purchase</span>
+    <span>${sourceCheckbox(sourceType, 'Loan')} በብድር / Loan</span>
+    <span>${sourceCheckbox(sourceType, 'Return')} ተመላሽ / Return</span>
+    <span>${sourceCheckbox(sourceType, 'Custody')} በአደራ / Custody</span>
+    <span>${sourceCheckbox(sourceType, 'Aid')} በዕርዳታ / Aid</span>
+    <span>${sourceCheckbox(sourceType, 'Other')} በሌላ / Other</span>
+    <span>${sourceCheckbox(sourceType, 'Transfer')} በዝውውር / Transfer</span>
+    <span>${sourceCheckbox(sourceType, 'Surplus')} ፍሳሽ/ትርፍ / Surplus</span>
+    <span>${sourceCheckbox(sourceType, 'Exchange')} በልውውጥ / Exchange</span>
+  </div>
+
+  <table class="items-table">
+    <thead>
+      <tr>
+        <th rowspan="2" style="width:28px">ተ.ቁ<br/>Item</th>
+        <th rowspan="2">የመለያ ቁጥር<br/>Part No.</th>
+        <th rowspan="2">የዕቃ ዝርዝር<br/>Commodity Type</th>
+        <th rowspan="2" style="width:36px">መስፈሪያ<br/>Unit</th>
+        <th rowspan="2" style="width:60px">የተላከው<br/>Qty Delivered</th>
+        <th rowspan="2" style="width:60px">የተረከበው<br/>Qty Accepted</th>
+        <th colspan="4">ያንዱ ዋጋ / Unit Price</th>
+        <th rowspan="2">ጠቅላላ ዋጋ<br/>Total Price</th>
+      </tr>
+      <tr><th>በአሀዝ</th><th>በፊደል</th><th></th><th></th></tr>
+    </thead>
+    <tbody>
+      ${filledRows}
+      ${emptyRows}
+    </tbody>
+  </table>
+
+  <div style="font-size:10px;margin:4px 0">
+    <strong>ተጨማሪ መግለጫ፡- Additional Explanation</strong> &nbsp;
+    የመያዣው ዓይነት / Container Type: <span class="meta-value">${formatPrintValue(containerType)}</span> &nbsp;&nbsp;
+    የከረጢት ብዛት / No. of Bags: <span class="meta-value">${formatPrintValue(numberOfBags)}</span> &nbsp;&nbsp;
+    የጠፋ ምርት / Lost Commodity: <span class="meta-value">${lostCommodity}</span> &nbsp;&nbsp;
+    በግሮስ / Gross: _____________________ &nbsp;&nbsp;
+    በንጥር / Net: _____________________
+  </div>
+
+  <div style="font-size:10px;margin:4px 0">
+    <strong>የጥራት ሁኔታ መግለጫ / Quality condition:</strong> &nbsp;
+    <span style="border-bottom:1px solid #000;padding:0 40px">${qualityGrade}</span>
+  </div>
+
+  <div style="margin-top:16px">
+    <div style="font-size:10px">ያዘጋጁ ስም / <strong>Prepared by</strong></div>
+    <div style="font-size:10px;margin-top:2px">${receivedBy}</div>
+    <div style="border-bottom:1px solid #000;margin-top:18px"></div>
+    <div style="font-size:9px;color:#555;margin-top:2px">ፊርማ / Signature &nbsp;&nbsp;&nbsp; ቀን / Date</div>
+  </div>
+
+  <div class="sig-row" style="margin-top:20px">
+    <div class="sig-block">
+      <div style="font-size:10px">የአስረካቢው ስም / <strong>Delivered by</strong></div>
+      <div style="font-size:10px;margin-top:2px">${driverName}</div>
+      <div class="sig-line"></div>
+      <div class="sig-sub">ፊርማ / Signature &nbsp;&nbsp;&nbsp; ቀን / Date</div>
+    </div>
+    <div style="width:40px"></div>
+    <div class="sig-block">
+      <div style="font-size:10px">የተረካቢው ስም / <strong>Recipient</strong></div>
+      <div style="font-size:10px;margin-top:2px">${receivedBy}</div>
+      <div class="sig-line"></div>
+      <div class="sig-sub">ፊርማ / Signature &nbsp;&nbsp;&nbsp; ቀን / Date</div>
+    </div>
+  </div>
+
+  <div class="copy-footer">
+    <span>Original: Finance / ዋናው፡ ለሂሳብ ክፍል</span>
+    <span>2nd Copy: Deliverer / 2ኛው: ለአስረካቢ</span>
+    <span>3rd Copy: Procurement / 3ኛው: ለዕቃ ግዢ</span>
+    <span>4th Copy: Registration / 4ኛው: ለክምችት ን/ምዝገባ</span>
+    <span>5th Copy: Store man / 5ኛው: ለመጋዘን ኃላፊው</span>
+    <span>6th Copy: Clerk / 6ኛው: ለፀሐፊ</span>
+  </div>
+
+  <p style="margin-top:8px;font-size:9px;color:#aaa;text-align:right">
+    Printed on ${new Date().toLocaleString()} &nbsp;|&nbsp; GRN ID: ${grn.id}
+  </p>
+</body>
+</html>`;
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank');
+    if (win) {
+      win.addEventListener('load', () => {
+        win.print();
+        URL.revokeObjectURL(url);
+      });
+    }
+  };
+
   if (isLoading) {
     return <LoadingState message="Loading GRN details..." />;
   }
@@ -105,23 +418,24 @@ function GrnDetailPage() {
   const warehouseInScope = warehouses?.some(
     (w) => Number(w.id) === Number(grn.warehouse_id)
   );
-  /** Prefer server flag; fallback if older API omitted it (scoped user can see this warehouse). */
   const canConfirm =
     isDraft &&
     can('grns', 'confirm') &&
     (grn.can_confirm === true ||
       (grn.can_confirm === undefined && Boolean(warehouseInScope)));
 
+  const totalQuantity = (grn.grn_items ?? []).reduce((s, i) => s + itemDisplayQuantity(grn, i), 0);
+
   return (
-    <Stack gap="md">
+    <Stack gap="md" ref={printRef}>
       <Group justify="space-between">
         <Group>
           <Button
             variant="subtle"
             leftSection={<IconArrowLeft size={16} />}
-            onClick={() => navigate('/grns')}
+            onClick={() => navigate(returnTo || '/grns')}
           >
-            Back to GRNs
+            {returnTo ? 'Back' : 'Back to GRNs'}
           </Button>
           <div>
             <Title order={2}>GRN: {grn.reference_no}</Title>
@@ -130,15 +444,25 @@ function GrnDetailPage() {
             </Text>
           </div>
         </Group>
-        {isDraft && canConfirm && (
+        <Group gap="sm">
+          {isDraft && canConfirm && (
+            <Button
+              leftSection={<IconCheck size={16} />}
+              color="green"
+              onClick={() => setConfirmModalOpen(true)}
+              loading={confirmMutation.isPending}
+            >
+              Confirm GRN
+            </Button>
+          )}
           <Button
-            leftSection={<IconCheck size={16} />}
-            color="green"
-            onClick={() => setConfirmModalOpen(true)}
+            leftSection={<IconDownload size={16} />}
+            variant="light"
+            onClick={handleDownload}
           >
-            Confirm GRN
+            Download GRN
           </Button>
-        )}
+        </Group>
       </Group>
 
       {grn.receipt_order_id && grn.receipt_order && (
@@ -152,13 +476,6 @@ function GrnDetailPage() {
                 Order RO-{grn.receipt_order.id} • {grn.receipt_order.source_type}: {grn.receipt_order.source_name}
               </Text>
             </div>
-            <Button
-              variant="light"
-              size="sm"
-              onClick={() => navigate(`/officer/receipt-orders/${grn.receipt_order_id}`)}
-            >
-              View Order
-            </Button>
           </Group>
         </Card>
       )}
@@ -172,46 +489,38 @@ function GrnDetailPage() {
 
           <Grid>
             <Grid.Col span={{ base: 12, sm: 6 }}>
-              <Text size="sm" c="dimmed">
-                Reference Number
-              </Text>
+              <Text size="sm" c="dimmed">Reference Number</Text>
               <Text fw={600}>{grn.reference_no}</Text>
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 6 }}>
-              <Text size="sm" c="dimmed">
-                Warehouse
-              </Text>
+              <Text size="sm" c="dimmed">Warehouse</Text>
               <Text fw={600}>{warehouseLabel}</Text>
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 6 }}>
-              <Text size="sm" c="dimmed">
-                Received On
-              </Text>
+              <Text size="sm" c="dimmed">Received On</Text>
               <Text fw={600}>{new Date(grn.received_on).toLocaleDateString()}</Text>
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 6 }}>
-              <Text size="sm" c="dimmed">
-                Received By
-              </Text>
+              <Text size="sm" c="dimmed">Received By</Text>
               <Text fw={600}>{grn.received_by_name || '-'}</Text>
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 6 }}>
-              <Text size="sm" c="dimmed">
-                Source Type
-              </Text>
+              <Text size="sm" c="dimmed">Source Type</Text>
               <Text fw={600}>{grn.source_type || '-'}</Text>
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 6 }}>
-              <Text size="sm" c="dimmed">
-                Source Reference
-              </Text>
+              <Text size="sm" c="dimmed">Source Reference</Text>
               <Text fw={600}>{grn.source_reference || grn.source_id || '-'}</Text>
             </Grid.Col>
+            {grn.receipt_order_id && (
+              <Grid.Col span={{ base: 12, sm: 6 }}>
+                <Text size="sm" c="dimmed">Receipt Order</Text>
+                <Text fw={600}>RO-{grn.receipt_order_id}</Text>
+              </Grid.Col>
+            )}
             {grn.approved_by_id && (
               <Grid.Col span={{ base: 12, sm: 6 }}>
-                <Text size="sm" c="dimmed">
-                  Approved By
-                </Text>
+                <Text size="sm" c="dimmed">Approved By</Text>
                 <Text fw={600}>{grn.approved_by_name || grn.approved_by_id}</Text>
               </Grid.Col>
             )}
@@ -228,6 +537,7 @@ function GrnDetailPage() {
               <Table striped highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
+                    <Table.Th>#</Table.Th>
                     <Table.Th>Commodity</Table.Th>
                     <Table.Th>Line ref / batch</Table.Th>
                     <Table.Th>Quantity</Table.Th>
@@ -235,19 +545,22 @@ function GrnDetailPage() {
                     <Table.Th>Quality Status</Table.Th>
                     <Table.Th>Store</Table.Th>
                     <Table.Th>Stack</Table.Th>
-                    <Table.Th>Batch/Expiry</Table.Th>
+                    <Table.Th>Expiry</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
                   {grn.grn_items.map((item, index) => (
                     <Table.Tr key={item.id || index}>
-                      <Table.Td>{item.commodity_name || item.commodity_code || item.commodity_id}</Table.Td>
-                      <Table.Td style={{ fontWeight: 600 }}>
+                      <Table.Td c="dimmed">{index + 1}</Table.Td>
+                      <Table.Td fw={600}>
+                        {item.commodity_name || item.commodity_code || item.commodity_id}
+                      </Table.Td>
+                      <Table.Td style={{ fontFamily: 'monospace', fontWeight: 600 }}>
                         {item.line_reference_no || item.batch_no || '—'}
                       </Table.Td>
-                      <Table.Td style={{ fontWeight: 600 }}>
-                        {item.quantity.toLocaleString()}
-                        {item.entered_quantity && item.entered_unit_name && (
+                      <Table.Td fw={700}>
+                        {formatQuantity(itemDisplayQuantity(grn, item))}
+                        {!raDisplayUnit(grn) && item.entered_quantity && item.entered_unit_name && (
                           <Text size="xs" c="dimmed" mt={4}>
                             <UomConversionDisplay
                               enteredQuantity={item.entered_quantity}
@@ -258,7 +571,7 @@ function GrnDetailPage() {
                           </Text>
                         )}
                       </Table.Td>
-                      <Table.Td>{item.unit_abbreviation || item.unit_name || item.unit_id}</Table.Td>
+                      <Table.Td>{itemDisplayUnit(grn, item)}</Table.Td>
                       <Table.Td>
                         <Badge
                           color={
@@ -276,17 +589,10 @@ function GrnDetailPage() {
                       <Table.Td>{item.store_name || item.store_code || item.store_id || '-'}</Table.Td>
                       <Table.Td>{item.stack_name || item.stack_code || item.stack_id || '-'}</Table.Td>
                       <Table.Td>
-                        {item.batch_no || item.expiry_date ? (
-                          <Stack gap="xs">
-                            {item.batch_no && (
-                              <Text size="sm" fw={500}>
-                                {item.batch_no}
-                              </Text>
-                            )}
-                            {item.expiry_date && <ExpiryBadge expiryDate={item.expiry_date} size="sm" />}
-                          </Stack>
+                        {item.expiry_date ? (
+                          <ExpiryBadge expiryDate={item.expiry_date} size="sm" />
                         ) : (
-                          <Text c="dimmed">-</Text>
+                          <Text c="dimmed" size="sm">-</Text>
                         )}
                       </Table.Td>
                     </Table.Tr>
@@ -301,22 +607,30 @@ function GrnDetailPage() {
           )}
 
           {grn.grn_items && grn.grn_items.length > 0 && (
-            <Group justify="flex-end">
-              <Text size="sm" c="dimmed">
-                Total Items:
-              </Text>
-              <Text fw={600}>{grn.grn_items.length}</Text>
-              <Text size="sm" c="dimmed" ml="xl">
-                Total Quantity:
-              </Text>
-              <Text fw={600}>
-                {grn.grn_items
-                  .reduce((sum, item) => sum + item.quantity, 0)
-                  .toLocaleString()}
-              </Text>
-            </Group>
+            <>
+              <Divider />
+              <Group justify="flex-end" gap="xl">
+                <Text size="sm" c="dimmed">Total Items: <Text span fw={700} c="dark">{grn.grn_items.length}</Text></Text>
+                <Text size="sm" c="dimmed">Total Quantity: <Text span fw={700} c="dark">{formatQuantity(totalQuantity)}</Text></Text>
+              </Group>
+            </>
           )}
         </Stack>
+      </Card>
+
+      {/* Signature section — visible on screen and in print */}
+      <Card shadow="sm" padding="lg" radius="md" withBorder>
+        <Grid>
+          {(['Prepared By', 'Received By', 'Approved By'] as const).map((label) => (
+            <Grid.Col key={label} span={{ base: 12, sm: 4 }}>
+              <Stack gap="xs">
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">{label}</Text>
+                <div style={{ borderBottom: '1px solid #ced4da', height: 40 }} />
+                <Text size="xs" c="dimmed">Name &amp; Signature</Text>
+              </Stack>
+            </Grid.Col>
+          ))}
+        </Grid>
       </Card>
 
       {canConfirm ? (

@@ -4,11 +4,18 @@ export interface Warehouse {
   name: string;
   warehouse_type: string;
   status: string;
+  operational?: boolean;
+  operational_blockers?: string[];
   description?: string;
   location_id?: number;
   location_name?: string;
+  region_id?: number;
+  region_name?: string;
+  zone_id?: number;
   subcity_name?: string;
+  woreda_id?: number;
   woreda_name?: string;
+  kebele_id?: number;
   kebele_name?: string;
   kebele?: number;
   hub_id?: number;
@@ -22,6 +29,7 @@ export interface Warehouse {
   infra?: WarehouseInfra;
   contacts?: WarehouseContacts;
   rental_agreement_document?: UploadedDocument | null;
+  assigned_manager?: string;
 }
 
 export interface UploadedDocument {
@@ -59,11 +67,29 @@ export interface WarehouseGeo {
 export interface WarehouseCapacity {
   id: number;
   warehouse_id: number;
+  length_m?: number;
+  width_m?: number;
+  height_m?: number;
   total_area_sqm?: number;
+  usable_volume_m3?: number;
   total_storage_capacity_mt?: number;
   usable_storage_capacity_mt?: number;
+  usable_space_percentage?: number;
+  capacity_established?: boolean;
+  used_capacity_mt?: number;
+  remaining_capacity_mt?: number;
+  utilization_pct?: number;
   no_of_stores?: number;
   construction_year?: number;
+}
+
+export interface WarehouseCapacityPayload {
+  length_m?: number;
+  width_m?: number;
+  height_m?: number;
+  construction_year?: number;
+  usable_space_percentage?: number;
+  no_of_stores?: number;
 }
 
 export interface WarehouseAccess {

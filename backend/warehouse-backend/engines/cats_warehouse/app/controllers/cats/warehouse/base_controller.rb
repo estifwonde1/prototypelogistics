@@ -7,6 +7,7 @@ module Cats
       rescue_from ActiveRecord::RecordInvalid, with: :render_record_invalid
       rescue_from ActionController::ParameterMissing, with: :render_bad_request
       rescue_from ArgumentError, with: :render_invalid_argument
+      rescue_from Cats::Warehouse::InsufficientSpaceError, with: :render_invalid_argument
       rescue_from Pundit::NotAuthorizedError, with: :render_forbidden
 
       private
@@ -27,7 +28,9 @@ module Cats
         payload = ActiveModelSerializers::SerializableResource.new(
           resource,
           serializer: serializer,
-          each_serializer: each_serializer
+          each_serializer: each_serializer,
+          scope: current_user,
+          scope_name: :current_user
         ).as_json
         render_success(payload, status: status)
       end
@@ -93,11 +96,15 @@ module Cats
       end
 
       def warehouse_manager?
-        current_user&.has_role?("Warehouse Manager")
+        current_user&.has_role?("Warehouse Manager") || current_user&.has_role?("Independent Warehouse Manager")
       end
 
       def storekeeper?
         current_user&.has_role?("Storekeeper")
+      end
+
+      def officer?
+        access_context.officer?
       end
 
       def assigned_hub_ids
@@ -143,7 +150,7 @@ module Cats
         end
 
         if storekeeper?
-          return assigned_store_ids
+          return access_context.storekeeper_accessible_store_ids
         end
 
         []

@@ -3,6 +3,7 @@ module Cats
     class Waybill < ApplicationRecord
       self.table_name = "cats_warehouse_waybills"
       include DocumentLifecycle
+      attr_accessor :source_context
 
       belongs_to :dispatch, class_name: "Cats::Core::Dispatch", optional: true
       belongs_to :source_location, class_name: "Cats::Core::Location"
@@ -21,6 +22,9 @@ module Cats
 
       def locations_must_differ
         return if source_location_id.blank? || destination_location_id.blank?
+        # In inbound receipt flows (RO/RA), source can be external/unknown; controller/service may map
+        # source to destination location to keep the document creatable and traceable.
+        return if source_context.in?(%w[receipt_order receipt_authorization])
         return if source_location_id != destination_location_id
 
         errors.add(:destination_location_id, "must differ from source location")

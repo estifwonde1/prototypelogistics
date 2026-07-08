@@ -52,6 +52,7 @@ apiClient.interceptors.response.use(
         if (isAuthLoginRequest) {
           return Promise.reject(error);
         }
+       
 
         // Unauthorized - clear auth and redirect to login
         notifications.show({
@@ -79,6 +80,10 @@ apiClient.interceptors.response.use(
         break;
 
       case 422:
+         const isPasswordChangeRequest = requestUrl.includes('/me/password');
+        if (isPasswordChangeRequest){
+          return Promise.reject(error);
+        }
         // Validation error - let individual components handle this
         break;
 

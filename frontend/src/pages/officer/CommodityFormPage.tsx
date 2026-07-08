@@ -1,5 +1,6 @@
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import dayjs from "dayjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -9,9 +10,8 @@ import {
   Group,
   TextInput,
   NumberInput,
-  Select,
   Card,
-  Text,  
+  Text,
   Table,
   Switch,
   Badge,
@@ -20,6 +20,9 @@ import {
   Collapse,
   Box,
   Divider,
+  SegmentedControl,
+  Modal,
+  Grid,
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import {
@@ -29,6 +32,8 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconSearch,
+  IconEdit,
+  IconBox,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { isAxiosError } from "axios";
@@ -41,10 +46,138 @@ import {
 import { getCommodityDefinitions } from "../../api/commodityDefinitions";
 import type { ApiError } from "../../types/common";
 import type { CreateCommodityPayload } from "../../api/referenceData";
+import type { UnitReference, CommodityReference } from "../../types/referenceData";
+import { REFERENCE_M3_PER_MT } from "../../utils/capacityCalculator";
+
+// Fixed packaging container options — these are the physical containers/packaging types.
+// They are stored as UnitOfMeasure records on the backend (package_unit_id).
+// The label is what the officer sees; the value is the abbreviation used to match
+// against the unit abbreviation returned from the server.
+const PACKAGING_UNIT_OPTIONS = [
+  { value: "BAG", label: "BAG – Bag/Sack" },
+  { value: "CTN", label: "CTN – Carton" },
+  { value: "BDL", label: "BDL – Bundle/Bale" },
+  { value: "PLT", label: "PLT – Pallet" },
+  { value: "CRT", label: "CRT – Crate" },
+  { value: "DRM", label: "DRM – Drum" },
+  { value: "PKG", label: "PKG – Package" },
+  { value: "UNT", label: "UNT – Unit/Each" },
+  { value: "ROL", label: "ROL – Roll" },
+];
+
+/**
+ * Resolve a packaging unit abbreviation to a UnitOfMeasure id.
+ * Falls back to creating a virtual match by abbreviation.
+ */
+function resolvePackagingUnitId(
+  abbreviation: string,
+  units: UnitReference[]
+): number | undefined {
+  const match = units.find(
+    (u) =>
+      (u.abbreviation ?? "").toUpperCase() === abbreviation.toUpperCase() ||
+      (u.name ?? "").toUpperCase() === abbreviation.toUpperCase()
+  );
+  return match?.id;
+}
+
+/**
+ * Format a packaging description like "50 kg per BAG".
+ */
+function formatPackaging(
+  packageSize: number | null | undefined,
+  unitPerPackageName: string | null | undefined,
+  packageUnitName: string | null | undefined
+): string {
+  if (!packageSize && !packageUnitName) return "—";
+  const size = packageSize != null ? packageSize : "";
+  const unit = unitPerPackageName ?? "";
+  const container = packageUnitName ?? "";
+  if (size && unit && container) return `${size} ${unit} per ${container}`;
+  if (size && container) return `${size} per ${container}`;
+  if (container) return container;
+  return "—";
+}
+
+/**
+ * Calculate packaged quantity: how many packages make up the total commodity quantity.
+ *
+ * quantity    — total amount in the commodity's default unit (e.g. 1 MT)
+ * unitAbbr    — abbreviation of the commodity's default unit (e.g. "MT")
+ * packageSize — numeric size per package (e.g. 50)
+ * pkgUnitName — unit of the package size (e.g. "KG")
+ *
+ * When the commodity unit and the package unit match, divide directly.
+ * When they differ, attempt well-known conversions first; if no conversion is
+ * found, fall back to dividing quantity / packageSize directly using the
+ * package unit as the reference (per user requirement: "on unit mismatch take
+ * the unit of package").
+ *
+ * Returns { count, unitLabel } so the caller can format the label.
+ */
+function calcPackagedQty(
+  quantity: number | null | undefined,
+  unitAbbreviation: string | null | undefined,
+  packageSize: number | null | undefined,
+  unitPerPackageName: string | null | undefined
+): { count: string; fallback: boolean } {
+  if (!quantity || !packageSize || packageSize <= 0)
+    return { count: "—", fallback: false };
+
+  const qtyUnit = (unitAbbreviation ?? "").toUpperCase();
+  const pkgUnit = (unitPerPackageName ?? "").toUpperCase();
+
+  let qtyInPkgUnit = quantity;
+  let fallback = false;
+
+  if (qtyUnit !== pkgUnit && qtyUnit !== "" && pkgUnit !== "") {
+    const conversionKey = `${qtyUnit}→${pkgUnit}`;
+    const knownConversions: Record<string, number> = {
+      "MT→KG": 1000,
+      "MT→G": 1000000,
+      "KG→G": 1000,
+      "KG→MT": 0.001,
+      "G→KG": 0.001,
+      "G→MT": 0.000001,
+      "TON→KG": 1000,
+      "KG→TON": 0.001,
+      "LB→KG": 0.453592,
+      "KG→LB": 2.20462,
+      "QTL→KG": 100,
+      "KG→QTL": 0.01,
+    };
+    const factor = knownConversions[conversionKey];
+    if (factor != null) {
+      qtyInPkgUnit = quantity * factor;
+    } else {
+      // No known conversion — divide directly using the package unit as reference
+      qtyInPkgUnit = quantity;
+      fallback = true;
+    }
+  }
+
+  const bags = qtyInPkgUnit / packageSize;
+  return {
+    count: bags.toLocaleString(undefined, { maximumFractionDigits: 2 }),
+    fallback,
+  };
+}
+
+type CommodityTab = "create" | "existing";
 
 function CommodityFormPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
+
+  const activeTab: CommodityTab =
+    searchParams.get("tab") === "existing" ? "existing" : "create";
+  const isCreateTab = activeTab === "create";
+  const isExistingTab = activeTab === "existing";
+
+  const setActiveTab = (tab: CommodityTab) => {
+    setSearchParams(tab === "create" ? {} : { tab: "existing" }, { replace: true });
+  };
 
   const [name, setName] = useState("");
   const [unitId, setUnitId] = useState<string | null>(null);
@@ -52,66 +185,69 @@ function CommodityFormPage() {
   const [expiryDate, setExpiryDate] = useState<Date | null>(null);
   const [batchNo, setBatchNo] = useState("");
   const [autoGenBatch, setAutoGenBatch] = useState(true);
-  const [quantity, setQuantity] = useState<number | string>(1);
-  const [packageUnitId, setPackageUnitId] = useState<string | null>(null);
+  const [quantity, setQuantity] = useState<number | string>("");
+  // packageUnitAbbr holds the abbreviation string (e.g. "BAG") for the packaging container
+  const [packageUnitAbbr, setPackageUnitAbbr] = useState<string | null>(null);
   const [packageSize, setPackageSize] = useState<number | string>("");
+  // packageUnitPerPackageId holds the UoM id for the measurement unit inside the package (e.g. kg)
+  const [packageUnitPerPackageId, setPackageUnitPerPackageId] = useState<string | null>(null);
   const [sourceType, setSourceType] = useState("");
   const [sourceName, setSourceName] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [expandedCommodities, setExpandedCommodities] = useState<Set<string>>(
-    new Set(),
+    new Set()
   );
+  const [selectedBatch, setSelectedBatch] = useState<CommodityReference | null>(null);
 
   const generateBatchNo = () =>
-    `BATCH-${dayjs().format("YYYYMMDD")}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
+    `BATCH-${dayjs().format("YYYYMMDD")}-${Math.random()
+      .toString(36)
+      .slice(2, 5)
+      .toUpperCase()}`;
 
   const [previewBatch, setPreviewBatch] = useState(() => generateBatchNo());
 
-  // Commodity definitions created by admin — used for the dropdown
-  const { data: commodityDefinitions = [], isLoading: definitionsLoading } = useQuery({
-    queryKey: ["commodity-definitions"],
-    queryFn: getCommodityDefinitions,
-  });
+  // Commodity definitions — shared by create dropdown and existing list grouping
+  const { data: commodityDefinitions = [], isLoading: definitionsLoading } =
+    useQuery({
+      queryKey: ["commodity-definitions"],
+      queryFn: () => getCommodityDefinitions(),
+    });
 
-  // Actual batches created by officers — used for the list below
+  // Officer-created batches — only needed on Existing tab
   const { data: commodityBatches = [], isLoading: batchesLoading } = useQuery({
     queryKey: ["reference-data", "commodities"],
     queryFn: getCommodityReferences,
+    enabled: isExistingTab,
   });
 
-  const isLoading = definitionsLoading || batchesLoading;
-
-  // Alias for the dropdown
-  const commodities = commodityBatches;
+  const existingListLoading = definitionsLoading || batchesLoading;
 
   // Track which definition the officer selected so we can auto-fill category
-  const [selectedDefinitionId, setSelectedDefinitionId] = useState<string | null>(null);
+  const [selectedDefinitionId, setSelectedDefinitionId] = useState<
+    string | null
+  >(null);
+  const [volumePerMetricTon, setVolumePerMetricTon] = useState<number | string>(
+    REFERENCE_M3_PER_MT
+  );
+  const [weightPerUnitKg, setWeightPerUnitKg] = useState<number | string>(1.0);
 
   const { data: units = [] } = useQuery({
     queryKey: ["reference-data", "units"],
-    queryFn: getUnitReferences,
+    queryFn: () => getUnitReferences(),
+    enabled: isCreateTab,
   });
 
   const { data: categories = [] } = useQuery({
     queryKey: ["reference-data", "categories"],
     queryFn: getCategoryReferences,
+    enabled: isCreateTab,
   });
 
   const createMutation = useMutation({
     mutationFn: async (payload: CreateCommodityPayload) => {
-      return createCommodity({
-        name: payload.name,
-        batch_no: payload.batch_no,
-        quantity: payload.quantity,
-        unit_id: payload.unit_id || undefined,
-        commodity_category_id: payload.commodity_category_id || undefined,
-        best_use_before: payload.best_use_before,
-        package_unit_id: payload.package_unit_id,
-        package_size: payload.package_size,
-        source_type: payload.source_type,
-        source_name: payload.source_name,
-      });
+      return createCommodity(payload);
     },
     onSuccess: (newCommodity) => {
       queryClient.invalidateQueries({
@@ -124,15 +260,18 @@ function CommodityFormPage() {
       setBatchNo("");
       setAutoGenBatch(true);
       setPreviewBatch(generateBatchNo());
-      setQuantity(1);
+      setQuantity("");
       setUnitId(null);
-      setPackageUnitId(null);
+      setPackageUnitAbbr(null);
       setPackageSize("");
+      setPackageUnitPerPackageId(null);
       setCategory(null);
       setExpiryDate(null);
       setSourceType("");
       setSourceName("");
       setSelectedDefinitionId(null);
+      setVolumePerMetricTon(REFERENCE_M3_PER_MT);
+      setWeightPerUnitKg(1.0);
       notifications.show({
         title: "Success",
         message: `Commodity "${newCommodity.name}" created successfully`,
@@ -153,27 +292,43 @@ function CommodityFormPage() {
 
   const handleSubmit = () => {
     if (!name.trim()) {
-      notifications.show({
-        title: "Error",
-        message: "Commodity name is required",
-        color: "red",
-      });
+      notifications.show({ title: "Error", message: "Commodity name is required", color: "red" });
       return;
     }
     if (!sourceType.trim()) {
+      notifications.show({ title: "Error", message: "Source type is required", color: "red" });
+      return;
+    }
+    if (!sourceName.trim()) {
+      notifications.show({ title: "Error", message: "Source name is required", color: "red" });
+      return;
+    }
+    if (!unitId) {
+      notifications.show({ title: "Error", message: "Default unit is required", color: "red" });
+      return;
+    }
+    if (!packageUnitAbbr) {
+      notifications.show({ title: "Error", message: "Packaging unit is required", color: "red" });
+      return;
+    }
+    if (!packageUnitPerPackageId) {
+      notifications.show({ title: "Error", message: "Unit per package is required", color: "red" });
+      return;
+    }
+    if (
+      packageSize === "" ||
+      packageSize === null ||
+      (typeof packageSize === "number" && packageSize <= 0)
+    ) {
       notifications.show({
         title: "Error",
-        message: "Source type is required",
+        message: "Size per package is required and must be greater than 0",
         color: "red",
       });
       return;
     }
-    if (!sourceName.trim()) {
-      notifications.show({
-        title: "Error",
-        message: "Source name is required",
-        color: "red",
-      });
+    if (!expiryDate) {
+      notifications.show({ title: "Error", message: "Expiry date is required", color: "red" });
       return;
     }
     const qty =
@@ -181,11 +336,7 @@ function CommodityFormPage() {
         ? quantity
         : parseFloat(quantity as string) || 0;
     if (qty <= 0) {
-      notifications.show({
-        title: "Error",
-        message: "Quantity must be greater than 0",
-        color: "red",
-      });
+      notifications.show({ title: "Error", message: "Quantity must be greater than 0", color: "red" });
       return;
     }
     if (!autoGenBatch && !batchNo.trim()) {
@@ -196,6 +347,12 @@ function CommodityFormPage() {
       });
       return;
     }
+
+    // Resolve packaging container abbreviation to a UnitOfMeasure id
+    const resolvedPackageUnitId = packageUnitAbbr
+      ? resolvePackagingUnitId(packageUnitAbbr, units)
+      : undefined;
+
     createMutation.mutate({
       name: name.trim(),
       batch_no: autoGenBatch ? undefined : batchNo.trim(),
@@ -203,22 +360,45 @@ function CommodityFormPage() {
       unit_id: unitId ? parseInt(unitId) : undefined,
       commodity_category_id: category ? parseInt(category) : undefined,
       best_use_before: expiryDate ? dayjs(expiryDate).toISOString() : undefined,
-      package_unit_id: packageUnitId ? parseInt(packageUnitId) : undefined,
+      package_unit_id: resolvedPackageUnitId,
       package_size:
         packageSize !== ""
           ? typeof packageSize === "number"
             ? packageSize
             : parseFloat(packageSize as string) || undefined
           : undefined,
+      package_unit_per_package_id: packageUnitPerPackageId
+        ? parseInt(packageUnitPerPackageId)
+        : undefined,
       source_type: sourceType.trim(),
       source_name: sourceName.trim(),
+      volume_per_metric_ton:
+        volumePerMetricTon !== "" &&
+        volumePerMetricTon != null &&
+        Number(volumePerMetricTon) > 0
+          ? typeof volumePerMetricTon === "number"
+            ? volumePerMetricTon
+            : parseFloat(String(volumePerMetricTon)) || REFERENCE_M3_PER_MT
+          : REFERENCE_M3_PER_MT,
+      weight_per_unit_kg:
+        weightPerUnitKg !== "" && weightPerUnitKg != null && Number(weightPerUnitKg) > 0
+          ? typeof weightPerUnitKg === "number"
+            ? weightPerUnitKg
+            : parseFloat(String(weightPerUnitKg)) || 1.0
+          : 1.0,
     });
   };
 
-  const unitOptions = units.map((u) => ({
-    value: String(u.id),
-    label: u.name,
-  }));
+  // Packaging units that should be excluded from Default Unit and Unit per Package
+  const packagingAbbreviations = new Set(PACKAGING_UNIT_OPTIONS.map((p) => p.value));
+
+  // Unit options for the commodity's default unit and unit-per-package
+  const unitOptions = units
+    .filter((u) => !(u.abbreviation && packagingAbbreviations.has(u.abbreviation.toUpperCase())))
+    .map((u) => ({
+      value: String(u.id),
+      label: u.abbreviation ? `${u.name} (${u.abbreviation})` : u.name,
+    }));
 
   const categoryOptions = categories.map((c) => ({
     value: String(c.id),
@@ -246,6 +426,8 @@ function CommodityFormPage() {
     if (!val) {
       setName("");
       setCategory(null);
+      setVolumePerMetricTon(REFERENCE_M3_PER_MT);
+      setWeightPerUnitKg(1.0);
       return;
     }
     const definition = commodityDefinitions.find((d) => String(d.id) === val);
@@ -256,33 +438,28 @@ function CommodityFormPage() {
       } else {
         setCategory(null);
       }
+      setVolumePerMetricTon(
+        definition.volume_per_metric_ton != null &&
+          definition.volume_per_metric_ton > 0
+          ? definition.volume_per_metric_ton
+          : REFERENCE_M3_PER_MT
+      );
+      setWeightPerUnitKg(1.0);
     }
   };
 
-  const commodityNameOptions = useMemo(() => {
-    const names = commodities
-      .map((c) => c.name?.trim())
-      .filter((val): val is string => Boolean(val));
-    return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
-  }, [commodities]);
-
-  const normalizedName = name.trim().toLowerCase();
-  const existingNameMatch = useMemo(
-    () =>
-      Boolean(normalizedName) &&
-      commodityNameOptions.some((n) => n.toLowerCase() === normalizedName),
-    [commodityNameOptions, normalizedName],
-  );
-
   // Group: one entry per commodity definition, batches from cats_core_commodities matched by name
   const groupedCommodities = useMemo(() => {
-    return commodityDefinitions.map((definition) => {
-      const batches = commodityBatches.filter(
-        (b) => (b.name || "").toLowerCase() === definition.name.toLowerCase()
-      );
-      batches.sort((a, b) => b.id - a.id);
-      return { name: definition.name, batches };
-    }).sort((a, b) => a.name.localeCompare(b.name));
+    return commodityDefinitions
+      .map((definition) => {
+        const batches = commodityBatches.filter(
+          (b) =>
+            (b.name || "").toLowerCase() === definition.name.toLowerCase()
+        );
+        batches.sort((a, b) => b.id - a.id);
+        return { name: definition.name, group_name: definition.group_name, batches };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [commodityDefinitions, commodityBatches]);
 
   // Filter commodities based on search query and category
@@ -291,8 +468,7 @@ function CommodityFormPage() {
 
     if (categoryFilter) {
       result = result.filter((group) => {
-        const batch = group.batches[0];
-        return batch?.category_name === categoryFilter;
+        return group.group_name === categoryFilter;
       });
     }
 
@@ -307,7 +483,7 @@ function CommodityFormPage() {
             group.name.toLowerCase().includes(query) ||
             batch.batch_no?.toLowerCase().includes(query) ||
             batch.source_type?.toLowerCase().includes(query) ||
-            batch.source_name?.toLowerCase().includes(query),
+            batch.source_name?.toLowerCase().includes(query)
         ),
       }))
       .filter((group) => group.batches.length > 0);
@@ -327,21 +503,37 @@ function CommodityFormPage() {
 
   return (
     <Stack gap="md">
-      <Group>
-        <Button
-          variant="default"
-          leftSection={<IconArrowLeft size={16} />}
-          onClick={() => navigate("/officer/receipt-orders/new")}
-        >
-          Back to Receipt Order
-        </Button>
+      <Group justify="space-between" align="flex-start" wrap="wrap" gap="md">
+        <Title order={2}>Commodity Batch</Title>
+        <SegmentedControl
+          value={activeTab}
+          onChange={(value) => setActiveTab(value as CommodityTab)}
+          data={[
+            { label: "Create New", value: "create" },
+            { label: "Existing Commodities", value: "existing" },
+          ]}
+          style={{ maxWidth: "100%" }}
+        />
       </Group>
 
+      {isCreateTab && (
+        <Group>
+          <Button
+            variant="default"
+            leftSection={<IconArrowLeft size={16} />}
+            onClick={() => navigate("/officer/receipt-orders/new")}
+          >
+            Back to Receipt Order
+          </Button>
+        </Group>
+      )}
+
+      {isCreateTab && (
       <Card padding="lg">
         <Stack gap="md">
-          <Title order={3}>Create New Commodity</Title>
+          <Title order={3}>Create New Commodity Batch</Title>
 
-          <Select
+          <SearchableSelect
             label="Commodity Name"
             placeholder="Type to search (e.g. Rice, Wheat...)"
             required
@@ -354,13 +546,13 @@ function CommodityFormPage() {
             nothingFoundMessage="No commodity found with that name"
           />
 
-          {existingNameMatch && (
+          {selectedDefinitionId && name && (
             <Text size="sm" c="blue">
               A new batch will be created under <strong>{name}</strong>.
             </Text>
           )}
 
-          <Select
+          <SearchableSelect
             label="Source Type"
             placeholder="Select source type"
             required
@@ -426,54 +618,117 @@ function CommodityFormPage() {
           <NumberInput
             label="Quantity"
             placeholder="e.g. 1000"
-            min={1}
+            min={0}
             value={quantity}
             onChange={setQuantity}
             description="Must be greater than 0"
             required
           />
 
-          <Select
-            label="Default Unit (optional)"
+          <SearchableSelect
+            label="Default Unit"
             placeholder="Select unit"
             data={unitOptions}
             value={unitId}
             onChange={setUnitId}
             clearable
+            required
+            description="Unit of measurement for this commodity (e.g. MT, KG)"
           />
 
-          <Select
-            label="Packaging Unit (optional)"
+          {/* Packaging section */}
+          <Divider label="Packaging" labelPosition="left" />
+
+          <SearchableSelect
+            label="Packaging Unit"
             placeholder="Select packaging unit"
-            data={unitOptions}
-            value={packageUnitId}
-            onChange={setPackageUnitId}
+            data={PACKAGING_UNIT_OPTIONS}
+            value={packageUnitAbbr}
+            onChange={setPackageUnitAbbr}
             clearable
+            required
+            description="Physical container used for packaging (e.g. BAG, CTN)"
           />
 
-          <NumberInput
-            label="Size per Package (optional)"
-            placeholder="e.g. 25"
-            min={0}
-            value={packageSize}
-            onChange={setPackageSize}
-          />
+          <Group grow align="flex-start">
+            <NumberInput
+              label="Size per Package"
+              placeholder="e.g. 50"
+              min={0}
+              value={packageSize}
+              onChange={setPackageSize}
+              required
+              description="Numeric amount per package"
+            />
 
-          <Select
+            <SearchableSelect
+              label="Unit per Package"
+              placeholder="Select unit"
+              data={unitOptions}
+              value={packageUnitPerPackageId}
+              onChange={setPackageUnitPerPackageId}
+              clearable
+              required
+              description="Measurement unit for the size (e.g. KG, G)"
+            />
+          </Group>
+
+          {/* Live preview of packaging description */}
+          {packageSize !== "" && packageUnitPerPackageId && packageUnitAbbr && (
+            <Text size="sm" c="dimmed">
+              Packaging:{" "}
+              <strong>
+                {packageSize}{" "}
+                {units.find((u) => String(u.id) === packageUnitPerPackageId)
+                  ?.abbreviation ??
+                  units.find((u) => String(u.id) === packageUnitPerPackageId)
+                    ?.name}{" "}
+                per {packageUnitAbbr}
+              </strong>
+            </Text>
+          )}
+
+          <Divider />
+
+          <SearchableSelect
             label="Category"
             placeholder="Auto-filled when commodity is selected"
             data={categoryOptions}
             value={category}
             readOnly
-            description={category ? "Fetched from the selected commodity" : undefined}
+            description={
+              category ? "Fetched from the selected commodity" : undefined
+            }
+          />
+
+          <NumberInput
+            label="Volume per MT (m³/MT)"
+            placeholder="1.25"
+            min={0.01}
+            decimalScale={4}
+            value={volumePerMetricTon}
+            onChange={setVolumePerMetricTon}
+            description="Cubic meters per metric ton for warehouse capacity. Pre-filled from the catalog; defaults to 1.25."
+          />
+
+          <NumberInput
+            label="Weight per Unit (kg)"
+            placeholder="1.0"
+            min={0.001}
+            decimalScale={6}
+            value={weightPerUnitKg}
+            onChange={setWeightPerUnitKg}
+            description="How many kg one piece/unit weighs. Used to convert pcs → kg → MT for warehouse capacity. Defaults to 1.0 kg/unit."
           />
 
           <DateInput
-            label="Expiry Date (optional)"
+            label="Expiry Date"
             placeholder="Select expiry date"
             value={expiryDate}
             onChange={(val) => setExpiryDate(val as Date | null)}
             clearable
+            required
+            description="Best use before date for this commodity"
           />
 
           <Group>
@@ -487,18 +742,20 @@ function CommodityFormPage() {
           </Group>
         </Stack>
       </Card>
+      )}
 
+      {isExistingTab && (
       <Card padding="lg">
         <Stack gap="md">
-          <Group justify="space-between">
+          <Group justify="space-between" wrap="wrap" gap="sm">
             <Title order={3}>Existing Commodities</Title>
             <Badge size="lg" variant="light">
               {filteredGroups.length} Commodit
-{filteredGroups.length === 1 ? "y" : "ies"}
+              {filteredGroups.length === 1 ? "y" : "ies"}
             </Badge>
           </Group>
 
-          <Group gap="sm" align="flex-end">
+          <Group gap="sm" align="flex-end" wrap="wrap" grow preventGrowOverflow={false}>
             <TextInput
               placeholder="Search by name, batch number, source type, or source name..."
               leftSection={<IconSearch size={16} />}
@@ -515,9 +772,9 @@ function CommodityFormPage() {
                   </ActionIcon>
                 )
               }
-              style={{ flex: 1 }}
+              style={{ flex: 1, minWidth: 220 }}
             />
-            <Select
+            <SearchableSelect
               placeholder="All categories"
               data={[
                 { value: "Food", label: "Food" },
@@ -526,11 +783,11 @@ function CommodityFormPage() {
               value={categoryFilter}
               onChange={setCategoryFilter}
               clearable
-              w={160}
+              w={{ base: "100%", sm: 160 }}
             />
           </Group>
 
-          {isLoading ? (
+          {existingListLoading ? (
             <Text>Loading...</Text>
           ) : filteredGroups.length === 0 ? (
             <Text c="dimmed" ta="center" py="xl">
@@ -559,11 +816,7 @@ function CommodityFormPage() {
                     >
                       <Group justify="space-between" wrap="nowrap">
                         <Group gap="xs">
-                          <ActionIcon
-                            variant="subtle"
-                            size="sm"
-                            color="gray"
-                          >
+                          <ActionIcon variant="subtle" size="sm" color="gray">
                             {isExpanded ? (
                               <IconChevronDown size={16} />
                             ) : (
@@ -591,7 +844,11 @@ function CommodityFormPage() {
                           <Text size="sm" c="dimmed">
                             Latest Batch
                           </Text>
-                          <Text size="sm" fw={500} style={{ fontFamily: "monospace" }}>
+                          <Text
+                            size="sm"
+                            fw={500}
+                            style={{ fontFamily: "monospace" }}
+                          >
                             {latestBatch?.batch_no || "—"}
                           </Text>
                         </Box>
@@ -600,68 +857,128 @@ function CommodityFormPage() {
 
                     <Collapse in={isExpanded}>
                       <Divider my="md" />
+                      <Table.ScrollContainer minWidth={900}>
                       <Table striped highlightOnHover>
                         <Table.Thead>
                           <Table.Tr>
                             <Table.Th>Batch No</Table.Th>
                             <Table.Th>Source Type</Table.Th>
                             <Table.Th>Source Name</Table.Th>
-                            <Table.Th>Quantity</Table.Th>
+                            <Table.Th>Batch Quantity</Table.Th>
+                            <Table.Th>Allocated Quantity</Table.Th>
+                            <Table.Th>Remaining Quantity</Table.Th>
                             <Table.Th>Unit</Table.Th>
                             <Table.Th>Packaging</Table.Th>
+                            <Table.Th>Packaged Qty</Table.Th>
                           </Table.Tr>
                         </Table.Thead>
                         <Table.Tbody>
-                          {group.batches.map((batch) => (
-                            <Table.Tr key={batch.id}>
-                              <Table.Td>
-                                <Text
-                                  size="sm"
-                                  fw={500}
-                                  style={{ fontFamily: "monospace" }}
-                                >
-                                  {batch.batch_no || "—"}
-                                </Text>
-                              </Table.Td>
-                              <Table.Td>
-                                {batch.source_type ? (
-                                  <Badge size="sm" variant="light" color="green">
-                                    {batch.source_type}
-                                  </Badge>
-                                ) : (
-                                  "—"
-                                )}
-                              </Table.Td>
-                              <Table.Td>
-                                <Text size="sm">
-                                  {batch.source_name || "—"}
-                                </Text>
-                              </Table.Td>
-                              <Table.Td>
-                                <Text size="sm" fw={500}>
-                                  {batch.quantity?.toLocaleString() ?? "—"}
-                                </Text>
-                              </Table.Td>
-                              <Table.Td>
-                                <Text size="sm">
-                                  {batch.unit_abbreviation ||
-                                    batch.unit_name ||
-                                    "—"}
-                                </Text>
-                              </Table.Td>
-                              <Table.Td>
-                                {batch.package_size && batch.package_unit_name ? (
-                                  <Text size="sm">
-                                    {batch.package_size} {batch.package_unit_name}
+                          {group.batches.map((batch) => {
+                            const packagingLabel = formatPackaging(
+                              batch.package_size,
+                              batch.package_unit_per_package_name,
+                              batch.package_unit_name
+                            );
+
+                            const { count: packagedCount, fallback } = calcPackagedQty(
+                              batch.quantity,
+                              batch.unit_abbreviation,
+                              batch.package_size,
+                              batch.package_unit_per_package_name
+                            );
+
+                            const containerLabel = batch.package_unit_name ?? "pkg";
+                            const packagedQtyLabel =
+                              packagedCount !== "—"
+                                ? `${packagedCount} ${containerLabel}`
+                                : "—";
+
+                            return (
+                              <Table.Tr 
+                                key={batch.id}
+                                onClick={() => setSelectedBatch(batch as CommodityReference)}
+                                style={{ cursor: "pointer" }}
+                              >
+                                <Table.Td>
+                                  <Text
+                                    size="sm"
+                                    fw={500}
+                                    style={{ fontFamily: "monospace" }}
+                                  >
+                                    {batch.batch_no || "—"}
                                   </Text>
-                                ) : (
-                                  "—"
-                                )}
-                              </Table.Td>
-                            </Table.Tr>
-                          ))}
+                                </Table.Td>
+                                <Table.Td>
+                                  {batch.source_type ? (
+                                    <Badge
+                                      size="sm"
+                                      variant="light"
+                                      color="green"
+                                    >
+                                      {batch.source_type}
+                                    </Badge>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </Table.Td>
+                                <Table.Td>
+                                  <Text size="sm">
+                                    {batch.source_name || "—"}
+                                  </Text>
+                                </Table.Td>
+                                <Table.Td>
+                                  <Text size="sm" fw={500}>
+                                    {batch.quantity?.toLocaleString() ?? "—"}
+                                  </Text>
+                                </Table.Td>
+                                <Table.Td>
+                                  <Text size="sm" fw={500} c="orange">
+                                    {batch.allocated_quantity != null
+                                      ? batch.allocated_quantity.toLocaleString()
+                                      : "—"}
+                                  </Text>
+                                </Table.Td>
+                                <Table.Td>
+                                  <Text
+                                    size="sm"
+                                    fw={500}
+                                    c={
+                                      batch.remaining_quantity != null && batch.remaining_quantity < 0
+                                        ? "red"
+                                        : "blue"
+                                    }
+                                  >
+                                    {batch.remaining_quantity != null
+                                      ? batch.remaining_quantity.toLocaleString()
+                                      : "—"}
+                                  </Text>
+                                </Table.Td>
+                                <Table.Td>
+                                  <Text size="sm">
+                                    {batch.unit_abbreviation ||
+                                      batch.unit_name ||
+                                      "—"}
+                                  </Text>
+                                </Table.Td>
+                                <Table.Td>
+                                  <Text size="sm">{packagingLabel}</Text>
+                                </Table.Td>
+                                <Table.Td>
+                                  <Text size="sm" fw={500}>
+                                    {packagedQtyLabel}
+                                  </Text>
+                                  {fallback && packagedCount !== "—" && (
+                                    <Text size="xs" c="dimmed">
+                                      (qty unit differs)
+                                    </Text>
+                                  )}
+                                </Table.Td>
+                              </Table.Tr>
+                            );
+                          })}
                         </Table.Tbody>
                       </Table>
+                      </Table.ScrollContainer>
                     </Collapse>
                   </Card>
                 );
@@ -670,6 +987,107 @@ function CommodityFormPage() {
           )}
         </Stack>
       </Card>
+      )}
+
+      {/* Batch Details Modal */}
+      <Modal
+        opened={!!selectedBatch}
+        onClose={() => setSelectedBatch(null)}
+        title={
+          <Group gap="xs">
+            <IconBox size={20} color="#228be6" />
+            <Text fw={700} size="lg">{selectedBatch?.batch_no || "Unnamed Batch"}</Text>
+          </Group>
+        }
+        size="lg"
+        padding="xl"
+        radius="md"
+      >
+        {selectedBatch && (() => {
+          const packagingLabel = formatPackaging(
+            selectedBatch.package_size,
+            selectedBatch.package_unit_per_package_name,
+            selectedBatch.package_unit_name
+          );
+
+          const { count: packagedCount, fallback } = calcPackagedQty(
+            selectedBatch.quantity,
+            selectedBatch.unit_abbreviation,
+            selectedBatch.package_size,
+            selectedBatch.package_unit_per_package_name
+          );
+
+          const containerLabel = selectedBatch.package_unit_name ?? "pkg";
+          const packagedQtyLabel = packagedCount !== "—" ? `${packagedCount} ${containerLabel}` : "—";
+
+          return (
+          <Stack gap="xl">
+            <Grid gutter="xl">
+              <Grid.Col span={6}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Commodity Name</Text>
+                <Text size="md" fw={500} mt={4}>{selectedBatch.name || "—"}</Text>
+              </Grid.Col>
+              <Grid.Col span={6}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Category</Text>
+                <Text size="md" fw={500} mt={4}>{selectedBatch.category_name || "—"}</Text>
+              </Grid.Col>
+              <Grid.Col span={6}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Source Type</Text>
+                <Text size="md" fw={500} mt={4}>{selectedBatch.source_type || "—"}</Text>
+              </Grid.Col>
+              <Grid.Col span={6}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Source Name</Text>
+                <Text size="md" fw={500} mt={4}>{selectedBatch.source_name || "—"}</Text>
+              </Grid.Col>
+              
+              <Grid.Col span={12}>
+                <Divider />
+              </Grid.Col>
+
+              <Grid.Col span={4}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Batch Quantity</Text>
+                <Text size="md" fw={600} mt={4}>{selectedBatch.quantity?.toLocaleString() || "—"} {selectedBatch.unit_abbreviation || selectedBatch.unit_name || ""}</Text>
+              </Grid.Col>
+              <Grid.Col span={4}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Allocated Quantity</Text>
+                <Text size="md" fw={600} mt={4} c="orange">{selectedBatch.allocated_quantity != null ? selectedBatch.allocated_quantity.toLocaleString() : "0"} {selectedBatch.unit_abbreviation || ""}</Text>
+              </Grid.Col>
+              <Grid.Col span={4}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Remaining Quantity</Text>
+                <Text size="md" fw={600} mt={4} c={selectedBatch.remaining_quantity != null && selectedBatch.remaining_quantity < 0 ? "red" : "blue"}>{selectedBatch.remaining_quantity != null ? selectedBatch.remaining_quantity.toLocaleString() : "—"} {selectedBatch.unit_abbreviation || ""}</Text>
+              </Grid.Col>
+              
+              <Grid.Col span={12}>
+                <Divider />
+              </Grid.Col>
+
+              <Grid.Col span={4}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Packaging</Text>
+                <Text size="md" fw={500} mt={4}>{packagingLabel}</Text>
+              </Grid.Col>
+              <Grid.Col span={4}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Packaged Qty</Text>
+                <Text size="md" fw={500} mt={4}>
+                  {packagedQtyLabel}
+                  {fallback && packagedCount !== "—" && (
+                    <Text span size="xs" c="dimmed" ml="xs">(qty unit differs)</Text>
+                  )}
+                </Text>
+              </Grid.Col>
+              <Grid.Col span={4}>
+                <Text size="xs" c="dimmed" fw={700} tt="uppercase">Volume Per MT</Text>
+                <Text size="md" fw={500} mt={4}>{selectedBatch.volume_per_metric_ton || "—"} CBM</Text>
+              </Grid.Col>
+            </Grid>
+            
+            <Group justify="flex-end" mt="md">
+              <Button variant="default" onClick={() => setSelectedBatch(null)}>Close</Button>
+            </Group>
+          </Stack>
+          );
+        })()}
+      </Modal>
+
     </Stack>
   );
 }

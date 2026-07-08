@@ -11,6 +11,8 @@ export interface BinCardEntry {
   commodity_name?: string | null;
   reference_type?: string | null;
   reference_id?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
   balance?: number | null;
   reference_no?: string | null;
   reference_status?: string | null;

@@ -1,17 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  TextInput,
-  Table,
-  ActionIcon,
-  Text,
-  Select,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, TextInput, Table, ActionIcon, Text } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { IconPlus, IconSearch, IconEye } from '@tabler/icons-react';
 import { getWaybills } from '../../api/waybills';
 import { StatusBadge } from '../../components/common/StatusBadge';
@@ -19,6 +10,7 @@ import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
 import { DocumentStatus } from '../../utils/constants';
+import { multiFieldTextFilter, safeStatusFilter, sanitizeSearchInput } from '../../utils/filterUtils';
 
 function WaybillListPage() {
   const navigate = useNavigate();
@@ -27,15 +19,17 @@ function WaybillListPage() {
 
   const { data: waybills, isLoading, error, refetch } = useQuery({
     queryKey: ['waybills'],
-    queryFn: getWaybills,
+    queryFn: () => getWaybills(),
   });
 
   const filteredWaybills = waybills?.filter((waybill) => {
-    const matchesSearch =
-      waybill.reference_no.toLowerCase().includes(search.toLowerCase()) ||
-      (waybill.source_location_name || '').toLowerCase().includes(search.toLowerCase()) ||
-      (waybill.destination_location_name || '').toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = !statusFilter || waybill.status === statusFilter;
+    const sanitizedSearch = sanitizeSearchInput(search);
+    const matchesSearch = multiFieldTextFilter(
+      waybill,
+      sanitizedSearch,
+      ['reference_no', 'source_location_name', 'destination_location_name']
+    );
+    const matchesStatus = safeStatusFilter(waybill.status, statusFilter);
     return matchesSearch && matchesStatus;
   });
 
@@ -82,7 +76,7 @@ function WaybillListPage() {
           onChange={(e) => setSearch(e.target.value)}
           style={{ flex: 1, maxWidth: 400 }}
         />
-        <Select
+        <SearchableSelect
           placeholder="Filter by status"
           data={statusOptions}
           value={statusFilter}

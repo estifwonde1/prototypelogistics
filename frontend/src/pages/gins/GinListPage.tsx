@@ -1,39 +1,58 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  TextInput,
-  Table,
-  ActionIcon,
-  Text,
-  Select,
-} from '@mantine/core';
-import { IconPlus, IconSearch, IconEye } from '@tabler/icons-react';
-import { getGins } from '../../api/gins';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Stack, Title, Button, Group, TextInput, Table, ActionIcon, Text } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
+import { IconPlus, IconSearch, IconEye, IconCheck, IconX } from '@tabler/icons-react';
+import { getGins, confirmGin, cancelGin } from '../../api/gins';
 import { getWarehouses } from '../../api/warehouses';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
 import { DocumentStatus } from '../../utils/constants';
+import { notifications } from '@mantine/notifications';
+import { isAxiosError } from 'axios';
+import type { ApiError } from '../../types/common';
 
 function GinListPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
   const { data: gins, isLoading, error, refetch } = useQuery({
     queryKey: ['gins'],
-    queryFn: getGins,
+    queryFn: () => getGins(),
+  });
+
+  const confirmMutation = useMutation({
+    mutationFn: confirmGin,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gins'] });
+      notifications.show({ title: 'Confirmed', message: 'GIN confirmed successfully', color: 'green' });
+    },
+    onError: (err: unknown) => {
+      const msg = (isAxiosError<ApiError>(err) ? err.response?.data?.error?.message : undefined) || 'Failed to confirm GIN';
+      notifications.show({ title: 'Error', message: msg, color: 'red' });
+    },
+  });
+
+  const discardMutation = useMutation({
+    mutationFn: cancelGin,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gins'] });
+      notifications.show({ title: 'Discarded', message: 'GIN has been discarded', color: 'orange' });
+    },
+    onError: (err: unknown) => {
+      const msg = (isAxiosError<ApiError>(err) ? err.response?.data?.error?.message : undefined) || 'Failed to discard GIN';
+      notifications.show({ title: 'Error', message: msg, color: 'red' });
+    },
   });
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses({}),
   });
 
   const filteredGins = gins?.filter((gin) => {
@@ -87,7 +106,7 @@ function GinListPage() {
           onChange={(e) => setSearch(e.target.value)}
           style={{ flex: 1, maxWidth: 400 }}
         />
-        <Select
+        <SearchableSelect
           placeholder="Filter by status"
           data={statusOptions}
           value={statusFilter}
@@ -160,6 +179,28 @@ function GinListPage() {
                         >
                           <IconEye size={16} />
                         </ActionIcon>
+                        {gin.status === DocumentStatus.DRAFT && (
+                          <>
+                            <ActionIcon
+                              variant="subtle"
+                              color="green"
+                              onClick={() => confirmMutation.mutate(gin.id)}
+                              loading={confirmMutation.isPending}
+                              title="Confirm GIN"
+                            >
+                              <IconCheck size={16} />
+                            </ActionIcon>
+                            <ActionIcon
+                              variant="subtle"
+                              color="red"
+                              onClick={() => discardMutation.mutate(gin.id)}
+                              loading={discardMutation.isPending}
+                              title="Discard GIN"
+                            >
+                              <IconX size={16} />
+                            </ActionIcon>
+                          </>
+                        )}
                       </Group>
                     </Table.Td>
                   </Table.Tr>
@@ -174,3 +215,5 @@ function GinListPage() {
 }
 
 export default GinListPage;
+
+

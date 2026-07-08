@@ -11,18 +11,23 @@ export interface StockBalance {
   commodity_id: number;
   commodity_name?: string | null;
   commodity_batch_no?: string | null;
+  commodity_category_id?: number | null;
   quantity: number;
+  available_quantity?: number | null;
+  reserved_quantity?: number | null;
+  base_quantity?: number | null;
   unit_id: number;
   unit_name?: string | null;
   unit_abbreviation?: string | null;
-  // Phase 2: Lot/UOM fields
+  inventory_lot_id?: number | null;
+  lot_batch_no?: string | null;
+  lot_expiry_date?: string | null;
+  // Legacy fields
   batch_no?: string | null;
   expiry_date?: string | null;
-  inventory_lot_id?: number | null;
   entered_unit_id?: number | null;
   entered_unit_name?: string | null;
   entered_quantity?: number | null;
   base_unit_id?: number | null;
   base_unit_name?: string | null;
-  base_quantity?: number | null;
 }

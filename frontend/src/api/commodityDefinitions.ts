@@ -4,13 +4,18 @@ import type { ApiResponse } from '../types/common';
 export interface CommodityDefinition {
   id: number;
   name: string;
+  commodity_code: string;
   category_id: number | null;
   category_name: string | null;
+  group_name: string | null;
+  volume_per_metric_ton?: number;
 }
 
 export interface CommodityDefinitionPayload {
   name: string;
+  commodity_code: string;
   commodity_category_id: number;
+  volume_per_metric_ton?: number;
 }
 
 export const getCommodityDefinitions = async (): Promise<CommodityDefinition[]> => {

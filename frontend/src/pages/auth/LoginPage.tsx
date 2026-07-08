@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { isAxiosError } from 'axios';
 import { TextInput, PasswordInput, Button, Paper, Title, Container, Alert } from '@mantine/core';
 import { useForm } from '@mantine/form';
@@ -8,24 +8,49 @@ import { useQueryClient } from '@tanstack/react-query';
 import { login } from '../../api/auth';
 import { getMyAssignments } from '../../api/me';
 import { useAuthStore } from '../../store/authStore';
-import { normalizeRoleSlug, getDefaultRouteForRole, type RoleSlug } from '../../utils/constants';
-import { OFFICER_ROLE_SLUGS } from '../../contracts/warehouse';
+import {
+  normalizeRoleSlug,
+  getDefaultRouteForRole,
+  type RoleSlug,
+  ROLES,
+  OFFICER_ROLE_SLUGS,
+} from '../../utils/constants';
 import type { ApiError } from '../../types/common';
+import { needsWorkspaceSelection } from '../../utils/workspaceSelection';
 
 function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const setAuth = useAuthStore((state) => state.setAuth);
   const setAssignments = useAuthStore((state) => state.setAssignments);
+  const setActiveAssignment = useAuthStore((state) => state.setActiveAssignment);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isAuthenticated) {
-      navigate(getDefaultRouteForRole((useAuthStore.getState().role as RoleSlug | null) ?? null), { replace: true });
+    if (!isAuthenticated || location.pathname !== '/login') return;
+
+    const { assignments, activeAssignment, role } = useAuthStore.getState();
+
+    if (assignments.length === 1) {
+      const only = assignments[0];
+      if (!activeAssignment || activeAssignment.id !== only.id) {
+        setActiveAssignment(only);
+      }
+      const roleSlug = normalizeRoleSlug(only.role_name) ?? (role as RoleSlug | null);
+      navigate(getDefaultRouteForRole(roleSlug), { replace: true });
+      return;
     }
-  }, [isAuthenticated, navigate]);
+
+    if (needsWorkspaceSelection(assignments, activeAssignment)) {
+      navigate('/select-role', { replace: true, state: { fromLogin: true } });
+      return;
+    }
+
+    navigate(getDefaultRouteForRole((role as RoleSlug | null) ?? null), { replace: true });
+  }, [isAuthenticated, location.pathname, navigate]);
 
   const form = useForm({
     initialValues: {
@@ -48,28 +73,87 @@ function LoginPage() {
 
     try {
       const response = await login(values);
-      const roleSlug = normalizeRoleSlug(response.role ?? undefined);
-      if (!roleSlug) {
-        throw new Error('Your account does not have a supported warehouse role. Contact an administrator.');
-      }
+      const primaryRole = normalizeRoleSlug(response.role);
+      const isAdmin = primaryRole === 'admin' || primaryRole === 'superadmin';
+      
+      setAuth(response.token, response.user_id, primaryRole);
 
-      setAuth(response.token, response.user_id, roleSlug);
-
-      // Clear ALL cached query data so the new user gets fresh, role-scoped data
-      // (prevents a previous admin session's unscoped hub/warehouse data from leaking)
       queryClient.clear();
 
-      // Fetch assignments for officer roles so the dashboard can show scoped data
-      if (OFFICER_ROLE_SLUGS.includes(roleSlug)) {
-        try {
-          const assignments = await getMyAssignments();
-          setAssignments(assignments);
-        } catch {
-          // non-fatal — dashboard will still render with empty scope
-        }
+      // Fetch ALL assignments to determine role/facility scope
+      const assignments = await getMyAssignments();
+      setAssignments(assignments);
+
+      if (isAdmin) {
+        // Admins go to the default dashboard (usually /admin/users or global dashboard)
+        navigate(getDefaultRouteForRole(primaryRole));
+        return;
       }
 
-      navigate(getDefaultRouteForRole(roleSlug));
+      if (assignments.length === 0) {
+        throw new Error('Your account has not been assigned to a facility yet. Please contact your administrator.');
+      }
+
+      if (assignments.length === 1) {
+        // Auto-select single assignment
+        const assignment = assignments[0];
+        const roleSlug = normalizeRoleSlug(assignment.role_name);
+        if (!roleSlug) {
+          throw new Error('Your account does not have a supported warehouse role. Contact an administrator.');
+        }
+        setAuth(response.token, response.user_id, roleSlug);
+        setActiveAssignment(assignment);
+        navigate(getDefaultRouteForRole(roleSlug));
+      } else {
+        // Multiple assignments: check if they are all officer roles
+        const allAssignments = assignments.map(a => ({ ...a, slug: normalizeRoleSlug(a.role_name) }));
+        const officerAssignments = allAssignments.filter(a => a.slug && OFFICER_ROLE_SLUGS.includes(a.slug as RoleSlug));
+
+        // CRITICAL: Officers cannot have mixed roles. 
+        // If they have ANY officer role, we treat them exclusively as an officer and auto-select the highest one.
+        if (officerAssignments.length > 0) {
+          // Sort by precedence (Federal > Regional > Zonal > Woreda > Kebele > Officer)
+          const precedence: Record<string, number> = {
+            [ROLES.FEDERAL_OFFICER]: 6,
+            [ROLES.REGIONAL_OFFICER]: 5,
+            [ROLES.ZONAL_OFFICER]: 4,
+            [ROLES.WOREDA_OFFICER]: 3,
+            [ROLES.KEBELE_OFFICER]: 2,
+            [ROLES.OFFICER]: 1,
+          };
+
+          const bestAssignment = [...officerAssignments].sort((a, b) => {
+            const slugA = a.slug || '';
+            const slugB = b.slug || '';
+            return (precedence[slugB] || 0) - (precedence[slugA] || 0);
+          })[0];
+
+          const roleSlug = bestAssignment.slug as RoleSlug;
+          setAuth(response.token, response.user_id, roleSlug);
+          setActiveAssignment(bestAssignment);
+          navigate(getDefaultRouteForRole(roleSlug));
+        } else {
+          // Try to restore the last active assignment from a previous session
+          const { lastActiveAssignmentId } = useAuthStore.getState();
+          const restoredAssignment = lastActiveAssignmentId
+            ? assignments.find(a => a.id === lastActiveAssignmentId) ?? null
+            : null;
+
+          if (restoredAssignment) {
+            const roleSlug = normalizeRoleSlug(restoredAssignment.role_name) as RoleSlug | null;
+            if (roleSlug) {
+              setAuth(response.token, response.user_id, roleSlug);
+              setActiveAssignment(restoredAssignment);
+              navigate(getDefaultRouteForRole(roleSlug));
+              return;
+            }
+          }
+
+          // No restorable session — show the role picker
+          setActiveAssignment(null);
+          navigate('/select-role', { state: { fromLogin: true } });
+        }
+      }
     } catch (err: unknown) {
       const errorMessage =
         (isAxiosError<ApiError>(err) ? err.response?.data?.error?.message : undefined) ||
@@ -84,7 +168,7 @@ function LoginPage() {
   return (
     <Container size={420} my={100}>
       <Title ta="center" mb="md">
-        CATS Warehouse Management
+        DRiMS Warehouse Management
       </Title>
       <Title order={3} ta="center" mb="xl" c="dimmed">
         Sign in to your account

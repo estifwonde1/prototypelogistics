@@ -1,11 +1,12 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { normalizeRoleSlug } from '../contracts/warehouse';
 
 export interface OfficerAssignment {
   id: number;
   role_name: string;
   hub?: { id: number; name: string } | null;
-  warehouse?: { id: number; name: string } | null;
+  warehouse?: { id: number; name: string; hub_id?: number | null } | null;
   store?: { id: number; name: string } | null;
   location?: { id: number; name: string; location_type: string } | null;
 }
@@ -15,8 +16,12 @@ interface AuthState {
   userId: number | null;
   role: string | null;
   assignments: OfficerAssignment[];
-  setAuth: (token: string, userId: number, role: string) => void;
+  activeAssignment: OfficerAssignment | null;
+  /** Persisted so the next login can restore the last used workspace. */
+  lastActiveAssignmentId: number | null;
+  setAuth: (token: string, userId: number, role: string | null) => void;
   setAssignments: (assignments: OfficerAssignment[]) => void;
+  setActiveAssignment: (assignment: OfficerAssignment | null) => void;
   clearAuth: () => void;
   isAuthenticated: () => boolean;
 }
@@ -28,9 +33,28 @@ export const useAuthStore = create<AuthState>()(
       userId: null,
       role: null,
       assignments: [],
+      activeAssignment: null,
+      lastActiveAssignmentId: null,
       setAuth: (token, userId, role) => set({ token, userId, role }),
       setAssignments: (assignments) => set({ assignments }),
-      clearAuth: () => set({ token: null, userId: null, role: null, assignments: [] }),
+      setActiveAssignment: (activeAssignment) =>
+        set({
+          activeAssignment,
+          role: activeAssignment?.role_name
+            ? normalizeRoleSlug(activeAssignment.role_name)
+            : null,
+          // Remember this assignment id so the next login can restore it
+          lastActiveAssignmentId: activeAssignment?.id ?? null,
+        }),
+      clearAuth: () =>
+        set({
+          token: null,
+          userId: null,
+          role: null,
+          assignments: [],
+          activeAssignment: null,
+          // Intentionally keep lastActiveAssignmentId so next login can restore it
+        }),
       isAuthenticated: () => !!get().token,
     }),
     {

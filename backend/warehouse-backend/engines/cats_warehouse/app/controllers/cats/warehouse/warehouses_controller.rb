@@ -3,11 +3,30 @@ module Cats
     class WarehousesController < BaseController
       def index
         authorize Warehouse
-        render_resource(policy_scope(Warehouse).order(:id), each_serializer: WarehouseSerializer)
+        warehouses = policy_scope(Warehouse)
+                     .includes(:warehouse_capacity, :warehouse_access, :warehouse_infra, :warehouse_contacts, :location, :hub, :geo, user_assignments: :user)
+        
+        # Filter by hub_id if provided (for hub managers with multiple hub assignments)
+        if params[:hub_id].present?
+          hub_id = params[:hub_id].to_i
+          
+          # Verify user has access to this hub
+          access = AccessContext.new(user: current_user)
+          unless access.can_access_hub?(hub_id)
+            return render_error("Access denied to hub #{hub_id}", status: :forbidden)
+          end
+          
+          warehouses = warehouses.where(hub_id: hub_id)
+        end
+        
+        warehouses = warehouses.order(:id)
+        render_resource(warehouses, each_serializer: WarehouseSerializer)
       end
 
       def show
-        warehouse = policy_scope(Warehouse).find(params[:id])
+        warehouse = policy_scope(Warehouse)
+                    .includes(:warehouse_capacity, :warehouse_access, :warehouse_infra, :warehouse_contacts, :location, :hub, :geo, user_assignments: :user)
+                    .find(params[:id])
         authorize warehouse
         render_resource(warehouse, serializer: WarehouseSerializer)
       end

@@ -1,0 +1,121 @@
+﻿           
+Humanitarian Commodity Dispatch Management Requirements
+1. Overview
+Humanitarian Commodity Dispatch is the process of planning, authorizing, dispatching, and tracking relief commodities from warehouses or hubs to designated Food Distribution Points (FDPs) located at kebele or woreda levels.
+Commodity dispatch activities shall only be undertaken based on an approved Humanitarian Response Plan authorized by the Emergency Relief and Rehabilitation Directorate.
+Managing
+ Humanitarian Response Plans is outside the scope of this module. However, the system shall capture essential information related to 
+approved response plans to support dispatch planning and execution.
+2. Objectives
+The Humanitarian Commodity Dispatch Module shall enable users to:
+Register approved humanitarian response plans;
+Assign sourcing hubs and warehouses to fulfill approved plans;
+Prepare and authorize commodity dispatches;
+Track dispatch execution against planned allocations;
+Manage loading and issuance of commodities;
+Generate dispatch documents and notifications; and
+Maintain inventory and stockkeeping records.
+3. Functional Requirements
+3.1 Capture Approved Humanitarian Response Plans
+The system shall allow users to register the details of approved humanitarian response plans.
+Response Plan Information
+Response Plan Reference Number
+Approval Date
+Response Type
+Description
+Food Distribution Point (FDP) Information
+A response plan may contain one or more FDPs. For each FDP, the system shall capture:
+FDP Name and Location
+Number of Families to be Supported
+Number of Beneficiaries
+Expected Delivery Date
+Commodity Requirements
+A response plan may contain one or more commodity items. For each item, the system shall capture:
+Commodity Item
+Required Quantity
+Unit of Measure
+Associated FDP
+3.2 Assign Sourcing Hubs and Warehouses
+The system shall support allocation of approved response plans to one or more sourcing hubs or warehouses.
+The system shall allow users to:
+Select an approved humanitarian response plan;
+Assign one or more hubs or warehouses to execute the response plan;
+Allocate commodities and quantities to be dispatched from each hub or warehouse;
+Associate allocations with specific FDPs;
+Generate Dispatch Orders or Release Orders for each assigned hub or warehouse
+ (includes destinations information)
+; and
+Notify the respective hubs or warehouses regarding their dispatch assignments.
+The generated dispatch document shall authorize the movement of commodities from the assigned warehouse.
+3.3 Dispatch Tracking and Monitoring
+The system shall provide real-time visibility of dispatch execution against planned allocations.
+The system shall allow users to:
+View quantities dispatched from each hub or warehouse;
+View quantities allocated but not yet dispatched;
+Monitor dispatch status by commodity, warehouse, FDP, and response plan;
+Monitor cumulative dispatch performance across all assigned hubs.
+The system shall provide, at a minimum:
+Per Hub/Warehouse
+Quantity allocated for dispatch
+Quantity dispatched
+Quantity remaining to be dispatched
+Per Response Plan
+Total quantity allocated
+Total quantity dispatched
+Total quantity outstanding
+3.4 Dispatch Authorization
+When an approved vehicle arrives at a warehouse or hub, the warehouse manager or delegated officer shall verify the transportation authorization
+ (transport order 
+information )
+ and prepare a dispatch authorization.
+The system shall allow users to:
+Select the relevant Dispatch Order;
+Automatically retrieve commodity allocation details;
+Record Transport Order Reference (optional);
+Capture transporter information, including:
+Transport company
+Truck or trailer plate number
+Driver name
+Driver identification details
+Identify the warehouse or stores from which commodities will be sourced;
+Notify the assigned stores regarding the planned dispatch.
+3.5 Commodity Location, Picking, and Loading
+Upon arrival of the transporter at the assigned warehouse or store, commodities shall be located, picked, loaded, and prepared for dispatch.
+The system shall support:
+Commodity Picking
+Identification of commodity location within the warehouse;
+Picking commodities from specific stacks and inventory locations
+ taking into account
+;
+Expiry dates; and
+Receipt dates;
+Generation of alerts for commodities nearing expiry
+ (it may be deferred for latter)
+.
+Loading Management
+Recording the number of bags, containers, or packages loaded onto the vehicle;
+Capturing quantities confirmed by 
+both
+ storekeeper
+ and driver
+;
+Requiring reconciliation of any discrepancies before dispatch documentation can be finalized.
+3.6 Goods Issue Note (GIN) Preparation
+Upon completion of loading, the system shall support preparation of Goods Issue Notes (GIN) and related dispatch documents.
+The system shall:
+Generate Goods Issue Notes (GIN);
+Include transporter and waybill information;
+Include references to the respective response plan and dispatch order;
+Support verification and co-signature of dispatch documents;
+ (Future plan)
+Generate truck departure notifications to receiving locations and other concerned stakeholders, where applicable
+ (This might also be deferred for latter)
+.
+3.7 Update Inventory and Stockkeeping Records
+Upon completion of dispatch, the system shall automatically update inventory records.
+The system shall update:
+Bin Cards;
+Stack Cards; and
+Stock Ledgers.
+All stock movements resulting from dispatch shall be fully traceable and auditable.
+                             

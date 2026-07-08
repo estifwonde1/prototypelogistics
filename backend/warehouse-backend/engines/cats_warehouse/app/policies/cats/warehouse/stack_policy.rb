@@ -27,6 +27,10 @@ module Cats
         admin?
       end
 
+      def transfer?
+        admin? || warehouse_manager? || storekeeper?
+      end
+
       private
 
       def officer?

@@ -22,6 +22,16 @@ def kebele_location_type
   Cats::Core::Location::KEBELE
 end
 
+def kebele_number_for(location)
+  return unless location
+
+  match = location.name.to_s.match(/\d+/)
+  return unless match
+
+  number = match[0].to_i
+  number if number.between?(1, 40)
+end
+
 puts "Creating application module and roles..."
 application_module = find_or_create_with(
   Cats::Core::ApplicationModule,
@@ -33,7 +43,7 @@ roles = {
   hub_manager: find_or_create_with(Cats::Core::Role, { name: "Hub Manager", application_module: application_module }),
   warehouse_manager: find_or_create_with(Cats::Core::Role, { name: "Warehouse Manager", application_module: application_module }),
   store_keeper: find_or_create_with(Cats::Core::Role, { name: "Storekeeper", application_module: application_module }),
-  officer: find_or_create_with(Cats::Core::Role, { name: "Officer", application_module: application_module }),
+  receipt_authorizer: find_or_create_with(Cats::Core::Role, { name: "Receipt Authorizer", application_module: application_module }),
   federal_officer: find_or_create_with(Cats::Core::Role, { name: "Federal Officer", application_module: application_module }),
   regional_officer: find_or_create_with(Cats::Core::Role, { name: "Regional Officer", application_module: application_module }),
   zonal_officer: find_or_create_with(Cats::Core::Role, { name: "Zonal Officer", application_module: application_module }),
@@ -46,12 +56,14 @@ roles = {
 puts "Creating notification rules..."
 find_or_create_with(Cats::Core::NotificationRule, { code: "allocation" }, { roles: %w[Warehouse\ Manager Hub\ Manager] })
 find_or_create_with(Cats::Core::NotificationRule, { code: "dispatch" }, { roles: %w[Warehouse\ Manager Hub\ Manager] })
-receipt_auth_rule = Cats::Core::NotificationRule.find_or_initialize_by(code: "receipt_authorization")
-receipt_auth_rule.roles = %w[Warehouse\ Manager Hub\ Manager]
-receipt_auth_rule.save! if receipt_auth_rule.new_record? || receipt_auth_rule.changed?
-dispatch_auth_rule = Cats::Core::NotificationRule.find_or_initialize_by(code: "dispatch_authorization")
-dispatch_auth_rule.roles = %w[Warehouse\ Manager Hub\ Manager]
-dispatch_auth_rule.save! if dispatch_auth_rule.new_record? || dispatch_auth_rule.changed?
+# receipt_authorization rule covers all RA lifecycle events:
+#   receipt_authorization.created       → Req 12.1 (notify Storekeeper)
+#   receipt_authorization.driver_confirmed → Req 12.2 (notify Hub/Warehouse Manager)
+#   receipt_authorization.grn_confirmed → Req 12.3 (notify Hub/Warehouse Manager)
+#   receipt_order.completed             → Req 12.4 (notify Officer)
+#   receipt_authorization.cancelled     → Req 12.6 (notify Storekeeper)
+find_or_create_with(Cats::Core::NotificationRule, { code: "receipt_authorization" }, { roles: %w[Warehouse\ Manager Hub\ Manager Storekeeper Officer] })
+find_or_create_with(Cats::Core::NotificationRule, { code: "dispatch_authorization" }, { roles: %w[Warehouse\ Manager Hub\ Manager] })
 
 puts "Creating users..."
 admin_user = find_or_create_with(
@@ -158,18 +170,70 @@ store_keeper_user_2 = find_or_create_with(
 )
 add_role(store_keeper_user_2, "Storekeeper")
 
-officer_user = find_or_create_with(
+federal_officer_user = find_or_create_with(
   Cats::Core::User,
-  { email: "officer@example.com" },
+  { email: "federal_officer@example.com" },
   {
-    first_name: "Abebe",
-    last_name: "Bikila",
+    first_name: "Selam",
+    last_name: "Tesfaye",
     password: "password123",
-    phone_number: "0911111119",
+    phone_number: "0911111120",
     application_module: application_module
   }
 )
-add_role(officer_user, "Officer")
+add_role(federal_officer_user, "Federal Officer")
+
+regional_officer_user = find_or_create_with(
+  Cats::Core::User,
+  { email: "regional_officer@example.com" },
+  {
+    first_name: "Daniel",
+    last_name: "Haile",
+    password: "password123",
+    phone_number: "0911111121",
+    application_module: application_module
+  }
+)
+add_role(regional_officer_user, "Regional Officer")
+
+zonal_officer_user = find_or_create_with(
+  Cats::Core::User,
+  { email: "zonal_officer@example.com" },
+  {
+    first_name: "Liya",
+    last_name: "Desta",
+    password: "password123",
+    phone_number: "0911111122",
+    application_module: application_module
+  }
+)
+add_role(zonal_officer_user, "Zonal Officer")
+
+woreda_officer_user = find_or_create_with(
+  Cats::Core::User,
+  { email: "woreda_officer@example.com" },
+  {
+    first_name: "Tewodros",
+    last_name: "Mamo",
+    password: "password123",
+    phone_number: "0911111123",
+    application_module: application_module
+  }
+)
+add_role(woreda_officer_user, "Woreda Officer")
+
+kebele_officer_user = find_or_create_with(
+  Cats::Core::User,
+  { email: "kebele_officer@example.com" },
+  {
+    first_name: "Mimi",
+    last_name: "Worku",
+    password: "password123",
+    phone_number: "0911111124",
+    application_module: application_module
+  }
+)
+add_role(kebele_officer_user, "Kebele Officer")
 
 puts "Seeding Ethiopian regions..."
 ethiopian_regions = [
@@ -305,6 +369,8 @@ puts "Seeding core reference data..."
 units = {
   kg: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "kg" }, { name: "Kilogram", unit_type: Cats::Core::UnitOfMeasure::WEIGHT }),
   mt: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "mt" }, { name: "Metric Ton", unit_type: Cats::Core::UnitOfMeasure::WEIGHT }),
+  kntl: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "kntl" }, { name: "Kuntal", unit_type: Cats::Core::UnitOfMeasure::WEIGHT }),
+  lb: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "lb" }, { name: "Pound", unit_type: Cats::Core::UnitOfMeasure::WEIGHT }),
   l: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "l" }, { name: "Liter", unit_type: Cats::Core::UnitOfMeasure::VOLUME }),
   pcs: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "pcs" }, { name: "Pieces", unit_type: Cats::Core::UnitOfMeasure::ITEM }),
   bag: find_or_create_with(Cats::Core::UnitOfMeasure, { abbreviation: "bag" }, { name: "Bag", unit_type: Cats::Core::UnitOfMeasure::ITEM })
@@ -322,6 +388,27 @@ if table_exists?("cats_warehouse_uom_conversions")
     { from_unit: units[:kg], to_unit: units[:mt] },
     { multiplier: 0.001 }
   )
+  # Metric kuntal (quintal) and pound bridge into kg so any kg→… chain (e.g. to mt) applies automatically.
+  find_or_create_with(
+    Cats::Warehouse::UomConversion,
+    { from_unit: units[:kntl], to_unit: units[:kg] },
+    { multiplier: 100.0 }
+  )
+  find_or_create_with(
+    Cats::Warehouse::UomConversion,
+    { from_unit: units[:lb], to_unit: units[:kg] },
+    { multiplier: 0.45359237 }
+  )
+  find_or_create_with(
+    Cats::Warehouse::UomConversion,
+    { from_unit: units[:kntl], to_unit: units[:mt] },
+    { multiplier: 0.1 }
+  )
+  find_or_create_with(
+    Cats::Warehouse::UomConversion,
+    { from_unit: units[:lb], to_unit: units[:mt] },
+    { multiplier: 0.00045359237 }
+  )
 else
   puts "Skipping UOM conversions: table cats_warehouse_uom_conversions is not present in the current database."
 end
@@ -330,13 +417,19 @@ currencies = {
   etb: find_or_create_with(Cats::Core::Currency, { code: "ETB" }, { name: "Ethiopian Birr" })
 }
 
-# Commodity categories (used by donation + commodities)
-commodity_groups = [
-  { code: "FOOD", name: "Food" },
-  { code: "NONFOOD", name: "Non-Food" }
-].map do |group|
-  find_or_create_with(Cats::Core::CommodityCategory, { code: group[:code] }, { name: group[:name] })
-end
+# Commodity groups (top-level, no parent)
+food_group    = find_or_create_with(Cats::Core::CommodityCategory, { code: "FOOD" },    { name: "Food" })
+nonfood_group = find_or_create_with(Cats::Core::CommodityCategory, { code: "NONFOOD" }, { name: "Non-Food" })
+
+# Commodity categories (children of groups)
+cat_cereals    = find_or_create_with(Cats::Core::CommodityCategory, { code: "FOOD-CRL" },  { name: "Cereals & Grains",     parent: food_group })
+cat_oils       = find_or_create_with(Cats::Core::CommodityCategory, { code: "FOOD-OIL" },  { name: "Oils & Fats",          parent: food_group })
+cat_pulses     = find_or_create_with(Cats::Core::CommodityCategory, { code: "FOOD-PLS" },  { name: "Pulses & Legumes",     parent: food_group })
+cat_hygiene    = find_or_create_with(Cats::Core::CommodityCategory, { code: "NF-HYG" },    { name: "Hygiene & Sanitation", parent: nonfood_group })
+cat_nfis       = find_or_create_with(Cats::Core::CommodityCategory, { code: "NF-NFI" },    { name: "Non-Food Items",       parent: nonfood_group })
+cat_shelter    = find_or_create_with(Cats::Core::CommodityCategory, { code: "NF-SHT" },    { name: "Shelter & Bedding",    parent: nonfood_group })
+
+commodity_groups = [food_group, nonfood_group]
 
 # Ensure donor exists before records that depend on it
 donor = find_or_create_with(
@@ -364,23 +457,29 @@ project = find_or_create_with(
   }
 )
 
-# Step 2: Create commodities
+# Step 2: Create commodities (assigned to leaf categories, not top-level groups)
 commodities = [
-  { batch_no: "ADD-RICE-001", description: "Rice", category: commodity_groups[0], unit: units[:kg] },
-  { batch_no: "ADD-WHEAT-001", description: "Wheat Flour", category: commodity_groups[0], unit: units[:kg] },
-  { batch_no: "ADD-OIL-001", description: "Cooking Oil", category: commodity_groups[0], unit: units[:l] },
-  { batch_no: "ADD-BEAN-001", description: "Beans", category: commodity_groups[0], unit: units[:kg] },
-  { batch_no: "ADD-SOAP-001", description: "Soap Bars", category: commodity_groups[1], unit: units[:pcs] },
-  { batch_no: "ADD-BLANKET-001", description: "Blankets", category: commodity_groups[1], unit: units[:pcs] },
-  { batch_no: "ADD-JERRYCAN-001", description: "Jerry Cans", category: commodity_groups[1], unit: units[:pcs] },
-  { batch_no: "ADD-BAG-001", description: "Storage Bags", category: commodity_groups[1], unit: units[:bag] }
+  { batch_no: "ADD-RICE-001",     description: "Rice",          commodity_code: "RICE",     category: cat_cereals, unit: units[:kg] },
+  { batch_no: "ADD-WHEAT-001",    description: "Wheat Flour",   commodity_code: "WHEAT",    category: cat_cereals, unit: units[:kg] },
+  { batch_no: "ADD-OIL-001",      description: "Cooking Oil",   commodity_code: "OIL",      category: cat_oils,    unit: units[:l] },
+  { batch_no: "ADD-BEAN-001",     description: "Beans",         commodity_code: "BEANS",    category: cat_pulses,  unit: units[:kg] },
+  { batch_no: "ADD-SOAP-001",     description: "Soap Bars",     commodity_code: "SOAP",     category: cat_hygiene, unit: units[:pcs] },
+  { batch_no: "ADD-BLANKET-001",  description: "Blankets",      commodity_code: "BLANKET",  category: cat_shelter, unit: units[:pcs] },
+  { batch_no: "ADD-JERRYCAN-001", description: "Jerry Cans",    commodity_code: "JERRYCAN", category: cat_nfis,    unit: units[:pcs] },
+  { batch_no: "ADD-BAG-001",      description: "Storage Bags",  commodity_code: "STOREBAG", category: cat_nfis,    unit: units[:bag] }
 ].map do |c|
   # Create a Commodity Definition so it's available in the frontend dropdown
   if Object.const_defined?("Cats::Warehouse::CommodityDefinition")
-    Cats::Warehouse::CommodityDefinition.find_or_create_by!(
-      name: c[:description],
-    ) do |d|
-      d.commodity_category_id = c[:category].id
+    commodity_def = Cats::Warehouse::CommodityDefinition.find_or_initialize_by(name: c[:description])
+    if commodity_def.new_record?
+      commodity_def.commodity_category_id = c[:category].id
+      commodity_def.commodity_code = c[:commodity_code]
+      begin
+        commodity_def.save!
+      rescue ActiveRecord::RecordInvalid => e
+        puts "  Warning: Could not create commodity definition '#{c[:description]}': #{e.message}"
+        commodity_def = Cats::Warehouse::CommodityDefinition.find_by(name: c[:description])
+      end
     end
   end
 
@@ -393,9 +492,11 @@ commodities = [
       unit_of_measure: c[:unit],
       project_id: project.id,   # <-- add this line
       quantity: 1000,
+      received_quantity: 0,
       best_use_before: Date.today + 365,
       status: Cats::Core::Commodity::DRAFT,
-      arrival_status: Cats::Core::Commodity::AT_SOURCE
+      arrival_status: Cats::Core::Commodity::AT_SOURCE,
+      volume_per_metric_ton: 1.2
     }
   )
 end
@@ -413,7 +514,11 @@ transporters = [
 end
 
 # Ensure funding records exist before records that depend on them
-etb_currency = Cats::Core::Currency.find_or_create_by!(code: "ETB", name: "Ethiopian Birr")
+etb_currency = Cats::Core::Currency.find_or_initialize_by(code: "ETB")
+if etb_currency.new_record?
+  etb_currency.name = "Ethiopian Birr"
+  etb_currency.save!
+end
 
 cash_donation = find_or_create_with(
   Cats::Core::CashDonation,
@@ -557,6 +662,7 @@ dispatch = find_or_create_with(
 )
 
 puts "Seeding warehouse structures..."
+facility_locations = kebeles.any? ? kebeles.first(3) : woredas.first(3)
 geos = [
   { latitude: 8.995, longitude: 38.789, address: "Bole, Addis Ababa" },
   { latitude: 9.005, longitude: 38.765, address: "Yeka, Addis Ababa" },
@@ -566,9 +672,9 @@ geos = [
 end
 
 hubs = [
-  { code: "ADD-HUB-01", name: "Bole Hub", location: hub_locations[0], geo: geos[0] },
-  { code: "ADD-HUB-02", name: "Yeka Hub", location: hub_locations[1], geo: geos[1] },
-  { code: "ADD-HUB-03", name: "Kirkos Hub", location: hub_locations[2], geo: geos[2] }
+  { code: "ADD-HUB-01", name: "Bole Hub", location: facility_locations[0], geo: geos[0] },
+  { code: "ADD-HUB-02", name: "Yeka Hub", location: facility_locations[1], geo: geos[1] },
+  { code: "ADD-HUB-03", name: "Kirkos Hub", location: facility_locations[2], geo: geos[2] }
 ].map do |h|
   find_or_create_with(
     Cats::Warehouse::Hub,
@@ -577,8 +683,9 @@ hubs = [
       name: h[:name],
       location: h[:location],
       geo: h[:geo],
-      hub_type: "regional",
-      status: "Active",
+      hub_type: h[:location]&.location_type.to_s == kebele_location_type.to_s ? "kebele" : "woreda",
+      status: "active",
+      kebele: kebele_number_for(h[:location]),
       description: "Addis Ababa hub"
     }
   )
@@ -596,22 +703,23 @@ hubs.each_with_index do |hub, idx|
 end
 
 warehouses = [
-  { code: "ADD-WH-01", name: "Bole Central Warehouse", location: warehouse_locations[0], hub: hubs[0], geo: geos[0] },
-  { code: "ADD-WH-02", name: "Yeka Logistics Warehouse", location: warehouse_locations[1], hub: hubs[1], geo: geos[1] },
-  { code: "ADD-WH-03", name: "Kirkos Storage Warehouse", location: warehouse_locations[2], hub: hubs[2], geo: geos[2] }
+  { code: "ADD-WH-01", name: "Bole Central Warehouse", hub: hubs[0], geo: geos[0] },
+  { code: "ADD-WH-02", name: "Yeka Logistics Warehouse", hub: hubs[1], geo: geos[1] },
+  { code: "ADD-WH-03", name: "Kirkos Storage Warehouse", hub: hubs[2], geo: geos[2] }
 ].map do |w|
   find_or_create_with(
     Cats::Warehouse::Warehouse,
     { code: w[:code] },
     {
       name: w[:name],
-      location: w[:location],
+      location: w[:hub].location,
       hub: w[:hub],
       geo: w[:geo],
       ownership_type: "self_owned",
       managed_under: "Hub",
-      warehouse_type: "Standard",
-      status: "Active",
+      warehouse_type: "main",
+      status: "active",
+      kebele: kebele_number_for(w[:hub].location),
       description: "Addis Ababa warehouse"
     }
   )
@@ -650,11 +758,13 @@ warehouses.each_with_index do |warehouse, idx|
     Cats::Warehouse::WarehouseCapacity,
     { warehouse: warehouse },
     {
-      total_area_sqm: 10000 + idx * 500,
-      total_storage_capacity_mt: 100000 + idx * 1000,
-      usable_storage_capacity_mt: 80000 + idx * 1000,
+      length_m: 100,
+      width_m: 80,
+      height_m: 10,
+      usable_space_percentage: 75,
       no_of_stores: 2,
-      ownership_type: "Government"
+      ownership_type: "Government",
+      capacity_established_at: Time.current
     }
   )
   find_or_create_with(
@@ -663,6 +773,7 @@ warehouses.each_with_index do |warehouse, idx|
     {
       has_loading_dock: true,
       number_of_loading_docks: 1,
+      loading_dock_type: "flush",
       access_road_type: "asphalt"
     }
   )
@@ -691,11 +802,11 @@ stores = warehouses.flat_map do |warehouse|
       { code: "#{warehouse.code}-ST#{i}" },
       {
         name: "#{warehouse.name} Store #{i}",
-        length: 60,
-        width: 40,
+        length: 30,
+        width: 20,
         height: 10,
-        usable_space: 2400,
-        available_space: 2000,
+        has_gangway: false,
+        temporary: false,
         warehouse: warehouse
       }
     )
@@ -718,25 +829,9 @@ stores.each do |store|
   )
 end
 
-stacks = stores.flat_map.with_index do |store, idx|
-  commodities.sample(3).map.with_index do |commodity, i|
-    find_or_create_with(
-      Cats::Warehouse::Stack,
-      { code: "#{store.code}-S#{i + 1}" },
-      {
-        length: 10,
-        width: 10,
-        height: 5,
-        start_x: 1,
-        start_y: 1,
-        commodity: commodity,
-        store: store,
-        unit: commodity.unit_of_measure,
-        quantity: 200 + (idx * 10)
-      }
-    )
-  end
-end
+puts "Cleaning up legacy seed-only stacks (user-created stacks are kept)..."
+removed = Cats::Warehouse::SeedStackCleanup.destroy_legacy_seed_stacks!
+puts "  Removed #{removed} legacy seed stack(s)."
 
 puts "Seeding receipts (GRN) and dispatches (GIN)..."
 grn = find_or_create_with(
@@ -761,13 +856,18 @@ grn_items = commodities.first(3).map.with_index do |commodity, idx|
       unit: commodity.unit_of_measure,
       quality_status: "Good",
       store: stores.first,
-      stack: stacks.first,
       line_reference_no: "SEED-GRN-ADD-001-#{idx}-#{commodity.id}"
     }
   )
 end
 
-Cats::Warehouse::GrnConfirmer.new(grn: grn, approved_by: warehouse_manager_user).call if grn.status != "confirmed"
+if grn.status != "confirmed"
+  begin
+    Cats::Warehouse::GrnConfirmer.new(grn: grn, approved_by: warehouse_manager_user).call
+  rescue => e
+    puts "  Warning: Could not confirm GRN: #{e.message}"
+  end
+end
 
 gin = find_or_create_with(
   Cats::Warehouse::Gin,
@@ -789,13 +889,18 @@ commodities.first(2).each_with_index do |commodity, idx|
     {
       quantity: 30 + idx * 10,
       unit: commodity.unit_of_measure,
-      store: stores.first,
-      stack: stacks.first
+      store: stores.first
     }
   )
 end
 
-Cats::Warehouse::GinConfirmer.new(gin: gin, approved_by: warehouse_manager_user).call if gin.status != "confirmed"
+if gin.status != "confirmed"
+  begin
+    Cats::Warehouse::GinConfirmer.new(gin: gin, approved_by: warehouse_manager_user).call
+  rescue => e
+    puts "  Warning: Could not confirm GIN: #{e.message}"
+  end
+end
 
 waybill = find_or_create_with(
   Cats::Warehouse::Waybill,
@@ -831,6 +936,32 @@ end
 puts "Seeding user assignments..."
 find_or_create_with(
   Cats::Warehouse::UserAssignment,
+  { user: federal_officer_user, role_name: "Federal Officer" }
+)
+find_or_create_with(
+  Cats::Warehouse::UserAssignment,
+  { user: regional_officer_user, role_name: "Regional Officer" },
+  { location: region_addis }
+)
+find_or_create_with(
+  Cats::Warehouse::UserAssignment,
+  { user: zonal_officer_user, role_name: "Zonal Officer" },
+  { location: zones.first }
+)
+find_or_create_with(
+  Cats::Warehouse::UserAssignment,
+  { user: woreda_officer_user, role_name: "Woreda Officer" },
+  { location: woredas.first }
+)
+if kebeles.any?
+  find_or_create_with(
+    Cats::Warehouse::UserAssignment,
+    { user: kebele_officer_user, role_name: "Kebele Officer" },
+    { location: kebeles.first }
+  )
+end
+find_or_create_with(
+  Cats::Warehouse::UserAssignment,
   { user: hub_manager_user, hub: hubs.first },
   { role_name: "Hub Manager" }
 )
@@ -859,12 +990,21 @@ find_or_create_with(
   { user: store_keeper_user_2, store: stores.second },
   { role_name: "Storekeeper" }
 )
-warehouses.each do |warehouse|
-  find_or_create_with(
-    Cats::Warehouse::UserAssignment,
-    { user: officer_user, warehouse: warehouse },
-    { role_name: "Officer" }
-  )
+
+puts "Syncing warehouse manager contacts from assignments..."
+[
+  [warehouse_manager_user, warehouses[0]],
+  [warehouse_manager_user_2, warehouses[1]]
+].each do |user, warehouse|
+  next if warehouse.blank?
+
+  contacts = warehouse.warehouse_contacts || Cats::Warehouse::WarehouseContacts.new(warehouse: warehouse)
+  manager_name = [user.first_name, user.last_name].compact.join(" ").strip
+  manager_name = user.email if manager_name.empty?
+  contacts.manager_name = manager_name
+  contacts.contact_phone = user.phone_number if user.phone_number.present?
+  contacts.contact_email = user.email if user.email.present?
+  contacts.save!
 end
 
 ui_seed = Rails.root.join("db", "seeds", "ui.rb")

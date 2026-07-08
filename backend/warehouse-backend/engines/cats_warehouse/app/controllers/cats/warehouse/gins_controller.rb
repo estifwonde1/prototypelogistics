@@ -3,7 +3,9 @@ module Cats
     class GinsController < BaseController
       def index
         authorize Gin
-        render_resource(policy_scope(Gin).includes(:gin_items).order(created_at: :desc), each_serializer: GinSerializer)
+        scope = policy_scope(Gin).includes(:gin_items).order(created_at: :desc)
+        scope = scope.where(warehouse_id: params[:warehouse_id]) if params[:warehouse_id].present?
+        render_resource(scope, each_serializer: GinSerializer)
       end
 
       def show
@@ -23,10 +25,34 @@ module Cats
           items: payload[:items],
           destination: PolymorphicReferenceResolver.resolve_destination(payload[:destination_type], payload[:destination_id]),
           reference_no: payload[:reference_no],
-          status: payload[:status] || "draft"
+          status: payload[:status] || "draft",
+          transporter_id: payload[:transporter_id],
+          truck_plate_number: payload[:truck_plate_number],
+          driver_name: payload[:driver_name],
+          driver_id_number: payload[:driver_id_number],
+          dispatch_order_authorization_id: payload[:dispatch_order_authorization_id]
         ).call
 
         render_resource(gin, status: :created, serializer: GinSerializer)
+      end
+
+      def driver_confirm
+        gin = policy_scope(Gin).find(params[:id])
+        authorize gin, :driver_confirm?
+        actor = Cats::Core::User.find(params[:driver_confirmed_by_id]) if params[:driver_confirmed_by_id].present?
+
+        GinDriverConfirmService.new(gin: gin, actor: actor).call
+        render_resource(gin, serializer: GinSerializer)
+      end
+
+      def cancel
+        gin = policy_scope(Gin).find(params[:id])
+        authorize gin, :cancel?
+
+        raise ArgumentError, "Only draft GINs can be discarded" unless gin.status_draft?
+
+        gin.update!(status: :cancelled)
+        render_resource(gin, serializer: GinSerializer)
       end
 
       def confirm
@@ -51,6 +77,11 @@ module Cats
           :status,
           :destination_type,
           :destination_id,
+          :transporter_id,
+          :truck_plate_number,
+          :driver_name,
+          :driver_id_number,
+          :dispatch_order_authorization_id,
           items: [
             :commodity_id,
             :quantity,
@@ -66,7 +97,6 @@ module Cats
           ]
         )
       end
-
     end
   end
 end

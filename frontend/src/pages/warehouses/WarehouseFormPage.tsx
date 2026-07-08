@@ -1,19 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  TextInput,
-  Textarea,
-  Select,
-  NumberInput,
-  Card,
-  Alert,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, TextInput, Textarea, NumberInput, Card, Alert } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { useForm } from '@mantine/form';
 import { IconArrowLeft, IconDeviceFloppy } from '@tabler/icons-react';
 import { getWarehouse, createWarehouse, updateWarehouse } from '../../api/warehouses';
@@ -25,6 +15,7 @@ import { notifications } from '@mantine/notifications';
 import type { WarehouseUpsertPayload } from '../../types/warehouse';
 import { usePermission } from '../../hooks/usePermission';
 import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 
 const HUB_MANAGER_OWNERSHIP_OPTIONS = [
   { value: 'self_owned', label: 'Self Owned' },
@@ -41,12 +32,18 @@ const LEGACY_OWNERSHIP_SELECT_OPTIONS = [
 function WarehouseFormPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const isEdit = !!id;
   const { can } = usePermission();
   const canReadHubs = can('hubs', 'read');
   const role = useAuthStore((state) => state.role);
-  const isHubManager = role === 'hub_manager';
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || role);
+  const isHubManager = roleSlug === 'hub_manager';
+  const assignedHubId = activeAssignment?.hub?.id;
+  const hubIdFromQuery = searchParams.get('hub_id');
+  const lockedHubId = isHubManager ? (assignedHubId?.toString() || hubIdFromQuery || '') : '';
   const [rentalAgreementFile, setRentalAgreementFile] = useState<File | null>(null);
 
   const { data: warehouse, isLoading } = useQuery({
@@ -57,7 +54,7 @@ function WarehouseFormPage() {
 
   const { data: hubs } = useQuery({
     queryKey: ['hubs'],
-    queryFn: getHubs,
+    queryFn: () => getHubs(),
     enabled: canReadHubs,
   });
 
@@ -97,6 +94,13 @@ function WarehouseFormPage() {
       setRentalAgreementFile(null);
     }
   }, [warehouse, isHubManager]);
+
+  useEffect(() => {
+    if (isEdit || !isHubManager || !lockedHubId) return;
+    if (!form.values.hub_id) {
+      form.setFieldValue('hub_id', lockedHubId);
+    }
+  }, [isEdit, isHubManager, lockedHubId, form]);
 
   const createMutation = useMutation({
     mutationFn: createWarehouse,
@@ -234,7 +238,7 @@ function WarehouseFormPage() {
               </Group>
 
               <Group grow>
-                <Select
+                <SearchableSelect
                   label="Warehouse Type"
                   placeholder="Select type"
                   required
@@ -245,7 +249,7 @@ function WarehouseFormPage() {
                   ]}
                   {...form.getInputProps('warehouse_type')}
                 />
-                <Select
+                <SearchableSelect
                   label="Status"
                   placeholder="Select status"
                   required
@@ -259,7 +263,7 @@ function WarehouseFormPage() {
               </Group>
 
               {isHubManager ? (
-                <Select
+                <SearchableSelect
                   label="Ownership Type"
                   placeholder="Select ownership"
                   required
@@ -271,7 +275,7 @@ function WarehouseFormPage() {
                   }}
                 />
               ) : (
-                <Select
+                <SearchableSelect
                   label="Ownership Type"
                   placeholder="Select ownership"
                   data={LEGACY_OWNERSHIP_SELECT_OPTIONS}
@@ -289,12 +293,13 @@ function WarehouseFormPage() {
               )}
 
               {canReadHubs && (
-                <Select
+                <SearchableSelect
                   label="Hub"
                   placeholder="Select hub"
                   data={hubOptions || []}
                   searchable
-                  clearable
+                  clearable={!isHubManager || !lockedHubId}
+                  disabled={isHubManager && !!lockedHubId}
                   {...form.getInputProps('hub_id')}
                 />
               )}

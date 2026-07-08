@@ -1,3 +1,4 @@
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -8,7 +9,6 @@ import {
   Button,
   Group,
   TextInput,
-  Select,
   Card,
   Table,
   ActionIcon,
@@ -16,9 +16,10 @@ import {
   NumberInput,
   Textarea,
   SimpleGrid,
+  Alert,
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
-import { IconTrash, IconPlus } from "@tabler/icons-react";
+import { IconTrash, IconPlus, IconAlertCircle } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import {
   createDispatchOrder,
@@ -33,6 +34,7 @@ import {
   getUnitReferences,
 } from "../../api/referenceData";
 import { getStockBalances } from "../../api/stockBalances";
+import { useAuthStore } from "../../store/authStore";
 import type { DispatchOrderLine } from "../../api/dispatchOrders";
 import type { ApiError } from "../../types/common";
 
@@ -49,6 +51,17 @@ function DispatchOrderFormPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  // ── Auth & location context ──
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const location = activeAssignment?.location;
+
+  // Check if sub-federal officer without location
+  const SUB_FEDERAL_ROLES = ["Regional Officer", "Zonal Officer", "Woreda Officer", "Kebele Officer"];
+  const isSubFederalOfficer = activeAssignment?.role_name
+    ? SUB_FEDERAL_ROLES.includes(activeAssignment.role_name)
+    : false;
+  const hasLocationIssue = isSubFederalOfficer && !location;
+
   const [warehouseId, setWarehouseId] = useState<string | null>(null);
   const [destinationType, setDestinationType] = useState("");
   const [destinationName, setDestinationName] = useState("");
@@ -60,12 +73,12 @@ function DispatchOrderFormPage() {
 
   const { data: warehouses } = useQuery({
     queryKey: ["warehouses"],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses({}),
   });
 
   const { data: hubs } = useQuery({
     queryKey: ["hubs"],
-    queryFn: getHubs,
+    queryFn: () => getHubs(),
   });
 
   const { data: commodities = [] } = useQuery({
@@ -75,12 +88,12 @@ function DispatchOrderFormPage() {
 
   const { data: units = [] } = useQuery({
     queryKey: ["reference-data", "units"],
-    queryFn: getUnitReferences,
+    queryFn: () => getUnitReferences(),
   });
 
   const { data: stockBalances = [] } = useQuery({
     queryKey: ["stock_balances"],
-    queryFn: getStockBalances,
+    queryFn: () => getStockBalances({}),
   });
 
   const { data: existingOrder } = useQuery({
@@ -328,6 +341,8 @@ function DispatchOrderFormPage() {
       expected_pickup_date: dateStr,
       notes,
       lines: items,
+      location_id: location?.id ?? null,
+      hierarchical_level: location?.location_type ?? "Federal",
     };
 
     if (isEdit) {
@@ -357,12 +372,19 @@ function DispatchOrderFormPage() {
 
       <Card shadow="sm" padding="lg" radius="md" withBorder>
         <Stack gap="md">
+          {/* ── Warning: Missing location assignment ── */}
+          {hasLocationIssue && (
+            <Alert icon={<IconAlertCircle size={16} />} color="yellow" title="Missing Geographic Assignment">
+              Your account has no geographic assignment. Contact your administrator.
+            </Alert>
+          )}
+
           <div>
             <Text size="sm" fw={600} mb="md">
               Order Details
             </Text>
             <SimpleGrid cols={{ base: 1, sm: 2 }}>
-              <Select
+              <SearchableSelect
                 label="Source Warehouse"
                 placeholder="Select warehouse"
                 data={warehouseOptions}
@@ -371,7 +393,7 @@ function DispatchOrderFormPage() {
                 required
                 disabled={isEdit}
               />
-              <Select
+              <SearchableSelect
                 label="Destination Type"
                 placeholder="Select destination type"
                 data={destinationTypeOptions}
@@ -390,7 +412,7 @@ function DispatchOrderFormPage() {
                   disabled={isEdit}
                 />
               ) : (
-                <Select
+                <SearchableSelect
                   label="Destination Name"
                   placeholder="Select destination"
                   data={destinationOptions}
@@ -458,7 +480,7 @@ function DispatchOrderFormPage() {
                   {items.map((item, index) => (
                     <Table.Tr key={index}>
                       <Table.Td>
-                        <Select
+                        <SearchableSelect
                           placeholder="Select commodity"
                           data={commodityOptions}
                           value={item.commodity_id?.toString()}
@@ -504,7 +526,7 @@ function DispatchOrderFormPage() {
                         </Stack>
                       </Table.Td>
                       <Table.Td>
-                        <Select
+                        <SearchableSelect
                           placeholder="Select unit"
                           data={unitOptions}
                           value={item.unit_id?.toString()}
@@ -564,7 +586,7 @@ function DispatchOrderFormPage() {
               </Button>
             )}
             {!isEdit && (
-              <Button onClick={handleSave} loading={isLoading}>
+              <Button onClick={handleSave} loading={isLoading} disabled={hasLocationIssue}>
                 Save as Draft
               </Button>
             )}
@@ -576,3 +598,5 @@ function DispatchOrderFormPage() {
 }
 
 export default DispatchOrderFormPage;
+
+

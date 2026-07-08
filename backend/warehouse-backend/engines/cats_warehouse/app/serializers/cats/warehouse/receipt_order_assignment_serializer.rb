@@ -3,7 +3,8 @@ module Cats
     class ReceiptOrderAssignmentSerializer < ApplicationSerializer
       attributes :id, :receipt_order_id, :receipt_order_line_id, :hub_id, :hub_name, :warehouse_id, :warehouse_name,
                  :hub_warehouses_count, :store_id, :store_name, :assigned_by_id, :assigned_by_name, :assigned_to_id,
-                 :assigned_to_name, :quantity, :status, :assigned_at, :created_at, :updated_at
+                 :assigned_to_name, :quantity, :quantity_unit_id, :quantity_unit_abbreviation, :status, :assigned_at,
+                 :created_at, :updated_at
 
       def hub_name
         object.hub&.name
@@ -16,7 +17,9 @@ module Cats
       def hub_warehouses_count
         return nil if object.hub_id.blank?
 
-        Warehouse.where(hub_id: object.hub_id).count
+        # Memoize per hub_id within request lifecycle to avoid N+1 COUNT queries
+        cache = Thread.current[:roa_hub_warehouses_count_cache] ||= {}
+        cache[object.hub_id] ||= Warehouse.where(hub_id: object.hub_id).count
       end
 
       def store_name
@@ -35,7 +38,50 @@ module Cats
         object.created_at&.iso8601
       end
 
+      # Derive display status from assignment shape so legacy rows and new rules stay consistent.
+      def status
+        stored = object.read_attribute(:status).to_s.strip.downcase.tr(" ", "_")
+        progressed = %w[accepted in_progress completed rejected]
+        return stored if progressed.include?(stored)
+
+        ReceiptOrderAssignmentStatus.resolve(
+          warehouse_id: object.warehouse_id,
+          store_id: object.store_id
+        )
+      end
+
+      # Unit for displayed quantity: use stored quantity_unit_id when present (user-selected unit),
+      # otherwise fall back to the line's unit.
+      def quantity_unit_id
+        object.quantity_unit_id.presence || measurement_line&.unit_id
+      end
+
+      def quantity_unit_abbreviation
+        if object.quantity_unit_id.present?
+          # Use the pre-loaded association (belongs_to :quantity_unit)
+          u = object.quantity_unit
+          return u&.abbreviation.presence || u&.name if u
+        end
+        line = measurement_line
+        return if line.blank?
+
+        u = line.try(:unit)
+        u&.abbreviation.presence || u&.name
+      end
+
       private
+
+      def measurement_line
+        if object.receipt_order_line.present?
+          object.receipt_order_line
+        else
+          ro = object.receipt_order
+          return unless ro
+
+          rel = ro.receipt_order_lines
+          rel.loaded? ? rel.min_by(&:id) : rel.order(:id).first
+        end
+      end
 
       def user_display_name(user)
         return if user.blank?

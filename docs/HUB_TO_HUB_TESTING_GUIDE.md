@@ -25,9 +25,9 @@ After running `rails db:seed`, the database contains:
 
 | Hub | Warehouse | Stores | Stacks |
 |-----|-----------|--------|--------|
-| **Bole Hub** (`ADD-HUB-01`) | Bole Central Warehouse (`ADD-WH-01`) | `ADD-WH-01-ST1`, `ADD-WH-01-ST2` | 3 stacks per store (random commodities) |
-| **Yeka Hub** (`ADD-HUB-02`) | Yeka Logistics Warehouse (`ADD-WH-02`) | `ADD-WH-02-ST1`, `ADD-WH-02-ST2` | 3 stacks per store |
-| **Kirkos Hub** (`ADD-HUB-03`) | Kirkos Storage Warehouse (`ADD-WH-03`) | `ADD-WH-03-ST1`, `ADD-WH-03-ST2` | 3 stacks per store |
+| **Bole Hub** (`ADD-HUB-01`) | Bole Central Warehouse (`ADD-WH-01`) | `ADD-WH-01-ST1`, `ADD-WH-01-ST2` | None (create stacks in the UI) |
+| **Yeka Hub** (`ADD-HUB-02`) | Yeka Logistics Warehouse (`ADD-WH-02`) | `ADD-WH-02-ST1`, `ADD-WH-02-ST2` | None (create stacks in the UI) |
+| **Kirkos Hub** (`ADD-HUB-03`) | Kirkos Storage Warehouse (`ADD-WH-03`) | `ADD-WH-03-ST1`, `ADD-WH-03-ST2` | None (create stacks in the UI) |
 
 ### Commodities (already seeded)
 

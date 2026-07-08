@@ -18,8 +18,11 @@ module Cats
           :quantity,
           :package_unit_id,
           :package_size,
+          :package_unit_per_package_id,
           :source_type,
-          :source_name
+          :source_name,
+          :volume_per_metric_ton,
+          :weight_per_unit_kg
         )
 
         project = Cats::Core::Project.order(:id).first
@@ -42,58 +45,56 @@ module Cats
           status: Cats::Core::Commodity::DRAFT,
           arrival_status: Cats::Core::Commodity::AT_SOURCE,
           quantity: payload[:quantity].present? ? payload[:quantity].to_f : 1,
+          received_quantity: payload[:quantity].present? ? payload[:quantity].to_f : 1,
           best_use_before: payload[:best_use_before].presence || (Date.today + 365),
           project_id: project.id,
           unit_of_measure_id: unit_id,
           package_unit_id: payload[:package_unit_id],
           package_size: payload[:package_size].present? ? payload[:package_size].to_f : nil,
+          package_unit_per_package_id: payload[:package_unit_per_package_id],
           commodity_category_id: payload[:commodity_category_id],
           source_type: payload[:source_type],
-          source_name: payload[:source_name]
+          source_name: payload[:source_name],
+          volume_per_metric_ton: CommodityDensityResolver.resolve(
+            name: payload[:name],
+            explicit: payload[:volume_per_metric_ton]
+          ),
+          weight_per_unit_kg: payload[:weight_per_unit_kg].presence ? payload[:weight_per_unit_kg].to_f : 1.0
         }
 
         commodity = Cats::Core::Commodity.create!(attrs)
 
-        package_unit = Cats::Core::UnitOfMeasure.find_by(id: commodity.package_unit_id)
-        category = Cats::Core::CommodityCategory.find_by(id: commodity.commodity_category_id)
-
-        render_success({
-          id: commodity.id,
-          name: commodity.read_attribute(:name).presence || commodity.batch_no || "Commodity ##{commodity.id}",
-          batch_no: commodity.batch_no,
-          quantity: commodity.quantity,
-          unit_id: commodity.unit_of_measure_id,
-          unit_name: commodity.unit_of_measure&.name,
-          package_unit_id: commodity.package_unit_id,
-          package_unit_name: package_unit&.abbreviation || package_unit&.name,
-          package_size: commodity.respond_to?(:package_size) ? commodity.package_size : nil,
-          source_type: commodity.source_type,
-          source_name: commodity.source_name,
-          category_id: commodity.commodity_category_id,
-          category_name: category&.name
-        })
+        render_success(serialize_commodity_reference(commodity))
       end
 
       def update_commodity
         authorize :reference_data, :create_commodity?, policy_class: ReferenceDataPolicy
 
         commodity = Cats::Core::Commodity.find(params[:id])
-        payload = params.require(:commodity).permit(:name, :commodity_category_id)
-
-        commodity.update!(
-          name: payload[:name],
-          commodity_category_id: payload[:commodity_category_id]
+        payload = params.require(:commodity).permit(
+          :name,
+          :commodity_category_id,
+          :volume_per_metric_ton,
+          :weight_per_unit_kg
         )
 
-        category = Cats::Core::CommodityCategory.find_by(id: commodity.commodity_category_id)
+        attrs = {
+          name: payload[:name],
+          commodity_category_id: payload[:commodity_category_id]
+        }
+        if payload.key?(:volume_per_metric_ton)
+          attrs[:volume_per_metric_ton] = CommodityDensityResolver.resolve(
+            name: payload[:name].presence || commodity.read_attribute(:name),
+            explicit: payload[:volume_per_metric_ton]
+          )
+        end
+        if payload.key?(:weight_per_unit_kg)
+          attrs[:weight_per_unit_kg] = payload[:weight_per_unit_kg].to_f
+        end
 
-        render_success({
-          id: commodity.id,
-          name: commodity.read_attribute(:name).presence || commodity.batch_no || "Commodity ##{commodity.id}",
-          batch_no: commodity.batch_no,
-          category_id: commodity.commodity_category_id,
-          category_name: category&.name
-        })
+        commodity.update!(attrs)
+
+        render_success(serialize_commodity_reference(commodity))
       end
 
       def destroy_commodity
@@ -108,17 +109,176 @@ module Cats
       def categories
         authorize :reference_data, :facility_options?, policy_class: ReferenceDataPolicy
 
-        categories = Cats::Core::CommodityCategory
-          .order(:name, :id)
-          .map do |cat|
-            {
-              id: cat.id,
-              name: cat.name,
-              code: cat.code
-            }
-          end
+        all_categories = Cats::Core::CommodityCategory.order(:name, :id).to_a
+        category_map = all_categories.index_by(&:id)
+
+        categories = all_categories.map do |cat|
+          serialize_category(cat, category_map)
+        end
 
         render_success(categories: categories)
+      end
+
+      # POST /reference_data/categories
+      def create_category
+        authorize :reference_data, :create_category?, policy_class: ReferenceDataPolicy
+
+        payload = params.require(:category).permit(:name, :code, :parent_id)
+
+        name = payload[:name]&.strip
+        if name.blank?
+          return render_error("Category name is required", status: :unprocessable_entity)
+        end
+
+        parent_id = payload[:parent_id].presence
+
+        # Validate parent exists if provided
+        parent = nil
+        if parent_id.present?
+          parent = Cats::Core::CommodityCategory.find_by(id: parent_id)
+          unless parent
+            return render_error("Parent category not found", status: :not_found)
+          end
+          # Only allow one level of nesting (parent must be a root/top-level group)
+          unless parent.is_root?
+            return render_error("Categories can only be nested one level deep", status: :unprocessable_entity)
+          end
+        end
+
+        # Check for duplicate name at the same level using ancestry scoping
+        # (ancestry gem stores hierarchy in the 'ancestry' string column, not parent_id)
+        scope = if parent.present?
+          parent.children.where("LOWER(name) = ?", name.downcase)
+        else
+          Cats::Core::CommodityCategory.roots.where("LOWER(name) = ?", name.downcase)
+        end
+
+        if scope.exists?
+          return render_error("A category with this name already exists at this level", status: :unprocessable_entity)
+        end
+
+        # code is required by the model — generate one if not provided
+        code = payload[:code]&.strip
+        if code.blank?
+          base = name.upcase.gsub(/[^A-Z0-9]/, '').first(6)
+          code = "#{base}-#{SecureRandom.hex(2).upcase}"
+          # Ensure uniqueness
+          while Cats::Core::CommodityCategory.exists?(code: code)
+            code = "#{base}-#{SecureRandom.hex(2).upcase}"
+          end
+        end
+
+        if Cats::Core::CommodityCategory.exists?(code: code)
+          return render_error("A category with code '#{code}' already exists", status: :unprocessable_entity)
+        end
+
+        category = Cats::Core::CommodityCategory.new(name: name, code: code)
+        category.parent = parent if parent.present?
+        category.save!
+
+        all_categories = Cats::Core::CommodityCategory.order(:name, :id).to_a
+        category_map = all_categories.index_by(&:id)
+
+        render_success({ category: serialize_category(category, category_map) }, status: :created)
+      rescue ActiveRecord::RecordInvalid => e
+        render_error(e.record.errors.full_messages.to_sentence, status: :unprocessable_entity)
+      end
+
+      # PATCH /reference_data/categories/:id
+      def update_category
+        authorize :reference_data, :update_category?, policy_class: ReferenceDataPolicy
+
+        category = Cats::Core::CommodityCategory.find_by(id: params[:id])
+        unless category
+          return render_error("Category not found", status: :not_found)
+        end
+
+        # Groups (roots) cannot be renamed via this endpoint to keep the Food/Non-Food hierarchy stable.
+        if category.is_root?
+          return render_error("Top-level commodity groups cannot be renamed here.", status: :unprocessable_entity)
+        end
+
+        payload = params.require(:category).permit(:name, :code, :parent_id)
+
+        name = payload[:name]&.strip
+        if name.blank?
+          return render_error("Category name is required", status: :unprocessable_entity)
+        end
+
+        # Resolve new parent if provided (can be used to move between groups)
+        parent_id = payload.key?(:parent_id) ? payload[:parent_id].presence : category.parent_id
+        parent = nil
+        if parent_id.present?
+          parent = Cats::Core::CommodityCategory.find_by(id: parent_id)
+          unless parent
+            return render_error("Parent category not found", status: :not_found)
+          end
+          unless parent.is_root?
+            return render_error("Categories can only be nested one level deep", status: :unprocessable_entity)
+          end
+        end
+
+        # Check for duplicate name at the same level (excluding the current record)
+        scope = if parent.present?
+          parent.children.where("LOWER(name) = ? AND id != ?", name.downcase, category.id)
+        else
+          Cats::Core::CommodityCategory.roots.where("LOWER(name) = ? AND id != ?", name.downcase, category.id)
+        end
+        if scope.exists?
+          return render_error("A category with this name already exists at this level", status: :unprocessable_entity)
+        end
+
+        category.name = name
+        if payload[:code].present?
+          code = payload[:code].strip
+          if code != category.code && Cats::Core::CommodityCategory.exists?(code: code)
+            return render_error("A category with code '#{code}' already exists", status: :unprocessable_entity)
+          end
+          category.code = code
+        end
+        category.parent = parent if parent.present?
+        category.save!
+
+        all_categories = Cats::Core::CommodityCategory.order(:name, :id).to_a
+        category_map = all_categories.index_by(&:id)
+
+        render_success({ category: serialize_category(category, category_map) })
+      rescue ActiveRecord::RecordInvalid => e
+        render_error(e.record.errors.full_messages.to_sentence, status: :unprocessable_entity)
+      end
+
+      # DELETE /reference_data/categories/:id
+      def destroy_category
+        authorize :reference_data, :destroy_category?, policy_class: ReferenceDataPolicy
+
+        category = Cats::Core::CommodityCategory.find_by(id: params[:id])
+        unless category
+          return render_error("Category not found", status: :not_found)
+        end
+
+        # Prevent deletion if any commodity definitions use this category
+        definition_count = Cats::Warehouse::CommodityDefinition
+          .where(commodity_category_id: category.id)
+          .count
+
+        if definition_count > 0
+          return render_error(
+            "Cannot delete '#{category.name}': #{definition_count} commodity definition(s) are using this category.",
+            status: :unprocessable_entity
+          )
+        end
+
+        # Prevent deletion if it has child categories (ancestry gem)
+        child_count = category.children.count
+        if child_count > 0
+          return render_error(
+            "Cannot delete '#{category.name}': it has #{child_count} sub-categor#{child_count == 1 ? 'y' : 'ies'}. Delete or reassign them first.",
+            status: :unprocessable_entity
+          )
+        end
+
+        category.destroy!
+        render_success({ id: category.id })
       end
 
       def commodities
@@ -130,28 +290,7 @@ module Cats
         commodities = Cats::Core::Commodity
           .includes(:unit_of_measure)
           .order(:name, :batch_no, :id)
-          .map do |commodity|
-            commodity_name = commodity[:name].presence || commodity[:batch_no].presence
-            package_unit = Cats::Core::UnitOfMeasure.find_by(id: commodity.package_unit_id)
-            category = category_map[commodity.commodity_category_id]
-
-            {
-              id: commodity.id,
-              name: commodity_name || "Commodity ##{commodity.id}",
-              batch_no: commodity[:batch_no],
-              quantity: commodity.quantity,
-              unit_id: commodity.unit_of_measure_id,
-              unit_name: commodity.unit_of_measure&.name,
-              unit_abbreviation: commodity.unit_of_measure&.abbreviation,
-              package_unit_id: commodity.package_unit_id,
-              package_unit_name: package_unit&.abbreviation || package_unit&.name,
-              package_size: commodity.respond_to?(:package_size) ? commodity.package_size : nil,
-              source_type: commodity.source_type,
-              source_name: commodity.source_name,
-              category_id: commodity.commodity_category_id,
-              category_name: category&.name
-            }
-          end
+          .map { |commodity| serialize_commodity_reference(commodity, category_map: category_map) }
 
         render_success(commodities: commodities)
       end
@@ -229,6 +368,88 @@ module Cats
       end
 
       private
+
+      def serialize_commodity_reference(commodity, category_map: nil)
+        category_map ||= Cats::Core::CommodityCategory.all.index_by(&:id)
+        commodity_name = commodity[:name].presence || commodity[:batch_no].presence
+        package_unit = Cats::Core::UnitOfMeasure.find_by(id: commodity.package_unit_id)
+        package_unit_per_package = Cats::Core::UnitOfMeasure.find_by(
+          id: commodity.respond_to?(:package_unit_per_package_id) ? commodity.package_unit_per_package_id : nil
+        )
+        category = category_map[commodity.commodity_category_id]
+        stored_vpm = commodity.volume_per_metric_ton.to_f
+        volume_per_metric_ton = stored_vpm.positive? ? stored_vpm : CommodityDensityResolver.default_density
+
+        allocated_quantity = Cats::Warehouse::ReceiptOrderLine
+          .where(commodity_id: commodity.id)
+          .pluck(:quantity, :unit_id)
+          .sum do |qty, unit_id|
+            Cats::Warehouse::UomConversionResolver.convert(
+              qty.to_f,
+              from_unit_id: unit_id,
+              to_unit_id: commodity.unit_of_measure_id,
+              commodity_id: commodity.id
+            )
+          end.to_f
+
+        # Use received_quantity for original batch amount (preserved on create),
+        # fall back to reconstructed value for pre-migration records
+        original_quantity = commodity.received_quantity.to_f
+        if original_quantity <= 0
+          original_quantity = commodity.quantity.to_f + allocated_quantity
+        end
+
+        remaining_quantity = commodity.quantity.to_f
+
+        {
+          id: commodity.id,
+          name: commodity_name || "Commodity ##{commodity.id}",
+          batch_no: commodity[:batch_no],
+          quantity: original_quantity,
+          allocated_quantity: allocated_quantity,
+          remaining_quantity: remaining_quantity,
+          unit_id: commodity.unit_of_measure_id,
+          unit_name: commodity.unit_of_measure&.name,
+          unit_abbreviation: commodity.unit_of_measure&.abbreviation,
+          package_unit_id: commodity.package_unit_id,
+          package_unit_name: package_unit&.abbreviation || package_unit&.name,
+          package_size: commodity.respond_to?(:package_size) ? commodity.package_size : nil,
+          package_unit_per_package_id: commodity.respond_to?(:package_unit_per_package_id) ? commodity.package_unit_per_package_id : nil,
+          package_unit_per_package_name: package_unit_per_package&.abbreviation || package_unit_per_package&.name,
+          source_type: commodity.source_type,
+          source_name: commodity.source_name,
+          category_id: commodity.commodity_category_id,
+          category_name: category&.name,
+          volume_per_metric_ton: volume_per_metric_ton,
+          weight_per_unit_kg: commodity.weight_per_unit_kg.to_f
+        }
+      end
+
+      def serialize_category(cat, category_map)
+        # ancestry gem provides parent_id as a virtual method (derived from the ancestry string)
+        parent_id = cat.respond_to?(:parent_id) ? cat.parent_id : nil
+        parent_name = parent_id.present? ? category_map[parent_id]&.name : nil
+
+        # Walk up to the root ancestor for the group name
+        group_name = if cat.respond_to?(:ancestor_ids) && cat.ancestor_ids.any?
+          root_id = cat.ancestor_ids.first
+          category_map[root_id]&.name
+        else
+          nil # This category IS a top-level group (root)
+        end
+
+        is_group = cat.respond_to?(:is_root?) ? cat.is_root? : parent_id.blank?
+
+        {
+          id: cat.id,
+          name: cat.name,
+          code: cat.respond_to?(:code) ? cat.code : nil,
+          parent_id: parent_id,
+          parent_name: parent_name,
+          group_name: group_name,
+          is_group: is_group
+        }
+      end
 
       def inventory_lot_payload
         InventoryLot

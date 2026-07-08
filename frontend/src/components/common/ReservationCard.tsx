@@ -1,7 +1,21 @@
 import { Card, Group, Stack, Text, Badge, Progress } from '@mantine/core';
 
 interface ReservationCardProps {
-  reservation: any;
+  reservation: {
+    id: number;
+    status?: string;
+    quantity?: number;
+    reserved_quantity?: number;
+    commodity_name?: string;
+    store_name?: string;
+    warehouse_name?: string;
+    batch_no?: string;
+    notes?: string;
+    reserved_by_name?: string;
+    reserved_at?: string;
+    unit_name?: string;
+    receipt_order_line_id?: number;
+  };
   type: 'space' | 'stock';
   /** When set (e.g. line or order total qty), progress bar shows reserved / denominator. */
   progressDenominator?: number;

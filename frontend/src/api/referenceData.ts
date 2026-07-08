@@ -19,8 +19,11 @@ export interface CreateCommodityPayload {
   best_use_before?: string;
   package_unit_id?: number;
   package_size?: number;
+  package_unit_per_package_id?: number;
   source_type?: string;
   source_name?: string;
+  volume_per_metric_ton?: number;
+  weight_per_unit_kg?: number;
 }
 
 export const getFacilityOptions = async (): Promise<FacilityOptions> => {
@@ -47,6 +50,38 @@ export const getCategoryReferences = async (): Promise<CommodityCategory[]> => {
     '/reference_data/categories'
   );
   return response.data.data.categories;
+};
+
+export interface CreateCategoryPayload {
+  name: string;
+  code?: string;
+  parent_id?: number | null;
+}
+
+export interface UpdateCategoryPayload {
+  name: string;
+  code?: string;
+  parent_id?: number | null;
+}
+
+export const createCategory = async (payload: CreateCategoryPayload): Promise<CommodityCategory> => {
+  const response = await apiClient.post<ApiResponse<{ category: CommodityCategory }>>(
+    '/reference_data/categories',
+    { category: payload }
+  );
+  return response.data.data.category;
+};
+
+export const updateCategory = async (id: number, payload: UpdateCategoryPayload): Promise<CommodityCategory> => {
+  const response = await apiClient.patch<ApiResponse<{ category: CommodityCategory }>>(
+    `/reference_data/categories/${id}`,
+    { category: payload }
+  );
+  return response.data.data.category;
+};
+
+export const deleteCategory = async (id: number): Promise<void> => {
+  await apiClient.delete(`/reference_data/categories/${id}`);
 };
 
 export const getTransporterReferences = async (): Promise<TransporterReference[]> => {

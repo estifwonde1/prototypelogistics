@@ -14,6 +14,7 @@ RUN apt-get update -qq && apt-get install -y \
 WORKDIR /app
 
 ENV RAILS_LOG_TO_STDOUT=true
+ENV BUNDLE_JOBS=1
 
 # Copy engine first (needed for bundle install)
 COPY engines ./engines
@@ -22,7 +23,7 @@ COPY engines ./engines
 COPY Gemfile Gemfile.lock ./
 
 # Install gems
-RUN bundle install
+RUN gem install bundler -v 4.0.5 && bundle install --jobs=1
 
 # Copy the rest of the application
 COPY . .

@@ -16,16 +16,22 @@ export interface CommodityReference {
   code?: string | null;
   batch_no?: string | null;
   quantity?: number | null;
+  allocated_quantity?: number | null;
+  remaining_quantity?: number | null;
   unit_id?: number | null;
   unit_name?: string | null;
   unit_abbreviation?: string | null;
   package_unit_id?: number | null;
   package_unit_name?: string | null;
   package_size?: number | null;
+  package_unit_per_package_id?: number | null;
+  package_unit_per_package_name?: string | null;
   source_type?: string | null;
   source_name?: string | null;
   category_id?: number | null;
   category_name?: string | null;
+  volume_per_metric_ton?: number;
+  weight_per_unit_kg?: number;
 }
 
 export interface UnitReference {
@@ -72,4 +78,8 @@ export interface CommodityCategory {
   id: number;
   name: string;
   code?: string;
+  parent_id?: number | null;
+  parent_name?: string | null;
+  group_name?: string | null;
+  is_group?: boolean;
 }

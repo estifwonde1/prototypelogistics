@@ -3,7 +3,9 @@ module Cats
     class GrnsController < BaseController
       def index
         authorize Grn
-        render_resource(policy_scope(Grn).includes(:warehouse, :grn_items).order(created_at: :desc), each_serializer: GrnSerializer)
+        scope = policy_scope(Grn).includes(:warehouse, :grn_items).order(created_at: :desc)
+        scope = scope.where(warehouse_id: params[:warehouse_id]) if params[:warehouse_id].present?
+        render_resource(scope, each_serializer: GrnSerializer)
       end
 
       def show
@@ -18,7 +20,12 @@ module Cats
         authorize Grn
         receipt_order =
           payload[:receipt_order_id].present? ? ReceiptOrder.find(payload[:receipt_order_id]) : nil
-        if receipt_order.present? && payload[:warehouse_id].present? && receipt_order.warehouse_id.to_i != payload[:warehouse_id].to_i
+        # Only validate warehouse match when the receipt order has an explicit warehouse_id set.
+        # Hub-level orders have warehouse_id = nil until a warehouse manager assigns one,
+        # so we skip the check in that case.
+        if receipt_order.present? && payload[:warehouse_id].present? &&
+           receipt_order.warehouse_id.present? &&
+           receipt_order.warehouse_id.to_i != payload[:warehouse_id].to_i
           raise ArgumentError, "receipt order must belong to the selected warehouse"
         end
 
@@ -52,7 +59,16 @@ module Cats
       private
 
       def render_grn_payload(grn, status: :ok)
-        grn = Grn.includes(:warehouse, :grn_items, receipt_order: [:hub, :warehouse]).find(grn.id)
+        grn = Grn.includes(
+          :warehouse, :grn_items,
+          receipt_order: [:hub, :warehouse],
+          generated_from_inspection: :inspection_items,
+          receipt_authorization: [
+            :transporter,
+            :authorized_quantity_input_unit,
+            { receipt_order_line: [:unit, :packaging_unit] }
+          ]
+        ).find(grn.id)
         payload = ActiveModelSerializers::SerializableResource.new(
           grn,
           serializer: GrnSerializer

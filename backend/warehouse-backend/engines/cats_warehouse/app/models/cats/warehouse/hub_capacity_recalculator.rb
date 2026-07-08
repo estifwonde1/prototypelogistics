@@ -11,7 +11,7 @@ module Cats
 
         capacity = hub.hub_capacity || HubCapacity.new(hub: hub)
         capacity.total_area_sqm = capacities.sum(:total_area_sqm).to_f
-        capacity.total_capacity_mt = capacities.sum(:total_storage_capacity_mt).to_f
+        capacity.total_capacity_mt = capacities.sum(:usable_storage_capacity_mt).to_f
         capacity.save!
       end
     end

@@ -1,21 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import {
-  Stack,
-  Title,
-  Button,
-  Group,
-  TextInput,
-  Select,
-  Card,
-  Table,
-  ActionIcon,
-  Text,
-  NumberInput,
-  Alert,
-} from '@mantine/core';
+import { Stack, Title, Button, Group, TextInput, Card, Table, ActionIcon, Text, NumberInput, Alert } from '@mantine/core';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { DateInput } from '@mantine/dates';
 import { IconTrash, IconPlus, IconChevronDown, IconChevronUp } from '@tabler/icons-react';
 import { createGin } from '../../api/gins';
@@ -26,11 +14,13 @@ import { getStores } from '../../api/stores';
 import { getStacks } from '../../api/stacks';
 import { getStockBalances } from '../../api/stockBalances';
 import { getInventoryLots } from '../../api/referenceData';
+import { getDispatchOrderAuthorization } from '../../api/dispatchOrderAuthorizations';
 import { notifications } from '@mantine/notifications';
 import { ExpiryBadge } from '../../components/common/ExpiryBadge';
 import type { GinItem } from '../../types/gin';
 import type { ApiError } from '../../types/common';
 import { useAuthStore } from '../../store/authStore';
+import { normalizeRoleSlug } from '../../contracts/warehouse';
 
 function GinCreatePage() {
   const destinationTypeOptions = [
@@ -39,9 +29,12 @@ function GinCreatePage() {
   ];
 
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const daoId = searchParams.get('dao_id');
   const queryClient = useQueryClient();
   const loggedInUserId = useAuthStore((s) => s.userId);
   const defaultedIssuedByRef = useRef(false);
+  const autoPopulatedRef = useRef(false);
 
   // Form state
   const [referenceNo, setReferenceNo] = useState('');
@@ -57,6 +50,13 @@ function GinCreatePage() {
   }, [loggedInUserId]);
   const [destinationType, setDestinationType] = useState('');
   const [destinationId, setDestinationId] = useState('');
+
+  // Transporter state
+  const [transporterId, setTransporterId] = useState<string | null>(null);
+  const [truckPlateNumber, setTruckPlateNumber] = useState('');
+  const [driverName, setDriverName] = useState('');
+  const [driverIdNumber, setDriverIdNumber] = useState('');
+
   const [items, setItems] = useState<GinItem[]>([
     {
       commodity_id: 0,
@@ -68,17 +68,40 @@ function GinCreatePage() {
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: getWarehouses,
+    queryFn: () => getWarehouses({}),
   });
 
   const { data: stores } = useQuery({
     queryKey: ['stores'],
-    queryFn: getStores,
+    queryFn: () => getStores({}),
   });
 
+  // Get active assignment context for filtering
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const roleSlug = normalizeRoleSlug(useAuthStore((state) => state.role));
+  const userWarehouseId = activeAssignment?.warehouse?.id;
+  const userStoreId = activeAssignment?.store?.id;
+  const userHubId = activeAssignment?.hub?.id;
+  const isWarehouseManager = roleSlug === 'warehouse_manager';
+  const isStorekeeper = roleSlug === 'storekeeper';
+  const isHubManager = roleSlug === 'hub_manager';
+
   const { data: stacks = [] } = useQuery({
-    queryKey: ['stacks'],
-    queryFn: getStacks,
+    queryKey: ['stacks', { 
+      warehouse_id: isWarehouseManager ? userWarehouseId : undefined,
+      store_id: isStorekeeper ? userStoreId : undefined,
+      hub_id: isHubManager ? userHubId : undefined 
+    }],
+    queryFn: () => {
+      if (isWarehouseManager && userWarehouseId) {
+        return getStacks({ warehouse_id: userWarehouseId });
+      } else if (isStorekeeper && userStoreId) {
+        return getStacks({ store_id: userStoreId });
+      } else if (isHubManager && userHubId) {
+        return getStacks(); // Backend should handle hub-level filtering
+      }
+      return getStacks();
+    },
   });
 
   const { data: dispatches = [] } = useQuery({
@@ -93,7 +116,7 @@ function GinCreatePage() {
 
   const { data: stockBalances = [] } = useQuery({
     queryKey: ['stockBalances'],
-    queryFn: getStockBalances,
+    queryFn: () => getStockBalances({}),
     refetchOnMount: 'always',
   });
 
@@ -101,6 +124,37 @@ function GinCreatePage() {
     queryKey: ['reference-data', 'inventory_lots'],
     queryFn: getInventoryLots,
   });
+
+  const { data: dao } = useQuery({
+    queryKey: ['dispatchOrderAuthorization', daoId],
+    queryFn: () => getDispatchOrderAuthorization(Number(daoId)),
+    enabled: !!daoId,
+  });
+
+  useEffect(() => {
+    if (dao && !autoPopulatedRef.current) {
+      if (dao.warehouse_id) setWarehouseId(String(dao.warehouse_id));
+      setDestinationType('Dispatch');
+      if (dao.dispatch_order_id) setDestinationId(String(dao.dispatch_order_id));
+      
+      if (dao.transporter_id) setTransporterId(String(dao.transporter_id));
+      if (dao.truck_plate_number) setTruckPlateNumber(dao.truck_plate_number);
+      if (dao.driver_name) setDriverName(dao.driver_name);
+      if (dao.driver_id_number) setDriverIdNumber(dao.driver_id_number);
+
+      if (dao.authorization_stores && dao.authorization_stores.length > 0) {
+        setItems(
+          dao.authorization_stores.map((as) => ({
+            commodity_id: as.commodity_id,
+            quantity: as.authorized_quantity,
+            unit_id: as.base_quantity ? as.commodity_id : 1, // Will likely need actual unit_id if available, fallback to 1 or adjust later
+            store_id: as.store_id,
+          } as GinItem))
+        );
+      }
+      autoPopulatedRef.current = true;
+    }
+  }, [dao]);
 
   useEffect(() => {
     if (warehouseId !== null) return;
@@ -236,6 +290,10 @@ function GinCreatePage() {
       issued_by_id: parseInt(issuedById.trim(), 10),
       destination_type: destinationType || undefined,
       destination_id: destinationId ? parseInt(destinationId) : undefined,
+      transporter_id: transporterId ? parseInt(transporterId) : undefined,
+      truck_plate_number: truckPlateNumber,
+      driver_name: driverName,
+      driver_id_number: driverIdNumber,
       items,
     });
   };
@@ -386,7 +444,7 @@ function GinCreatePage() {
               onChange={(e) => setReferenceNo(e.target.value)}
               required
             />
-            <Select
+            <SearchableSelect
               label="Warehouse"
               placeholder="Select warehouse"
               data={warehouseOptions || []}
@@ -427,7 +485,7 @@ function GinCreatePage() {
           </Group>
 
           <Group grow>
-            <Select
+            <SearchableSelect
               label="Destination Type"
               placeholder="Select destination type"
               data={destinationTypeOptions}
@@ -438,7 +496,7 @@ function GinCreatePage() {
               }}
               clearable
             />
-            <Select
+            <SearchableSelect
               label="Destination Reference"
               placeholder={destinationType ? 'Select destination reference' : 'Select destination type first'}
               data={destinationOptions}
@@ -447,6 +505,43 @@ function GinCreatePage() {
               searchable
               clearable
               disabled={!destinationType}
+            />
+          </Group>
+        </Stack>
+      </Card>
+
+      <Card shadow="sm" padding="lg" radius="md" withBorder>
+        <Stack gap="md">
+          <Title order={4}>Transporter & Driver Information</Title>
+          <Group grow>
+            <TextInput
+              label="Transporter (Optional)"
+              placeholder="Enter transporter ID"
+              value={transporterId || ''}
+              onChange={(e) => setTransporterId(e.target.value)}
+            />
+            <TextInput
+              label="Truck Plate Number"
+              placeholder="Enter truck plate"
+              value={truckPlateNumber}
+              onChange={(e) => setTruckPlateNumber(e.target.value)}
+              required
+            />
+          </Group>
+          <Group grow>
+            <TextInput
+              label="Driver Name"
+              placeholder="Enter driver name"
+              value={driverName}
+              onChange={(e) => setDriverName(e.target.value)}
+              required
+            />
+            <TextInput
+              label="Driver ID Number"
+              placeholder="Enter driver ID"
+              value={driverIdNumber}
+              onChange={(e) => setDriverIdNumber(e.target.value)}
+              required
             />
           </Group>
         </Stack>
@@ -492,7 +587,7 @@ function GinCreatePage() {
                       return (
                         <>
                     <Table.Td>
-                      <Select
+                      <SearchableSelect
                         placeholder="Select available stock"
                         data={commodityOptionsForItem(item)}
                         value={
@@ -530,7 +625,7 @@ function GinCreatePage() {
                       </Text>
                     </Table.Td>
                     <Table.Td>
-                      <Select
+                      <SearchableSelect
                         placeholder="Store"
                         data={storeOptions || []}
                         value={item.store_id?.toString() || null}
@@ -549,7 +644,7 @@ function GinCreatePage() {
                       />
                     </Table.Td>
                     <Table.Td>
-                      <Select
+                      <SearchableSelect
                         placeholder="Stack"
                         data={stackOptionsForItem(item.store_id)}
                         value={item.stack_id?.toString() || null}
@@ -600,7 +695,7 @@ function GinCreatePage() {
                             <Text size="sm" fw={600}>
                               Lot Selection (Optional)
                             </Text>
-                            <Select
+                            <SearchableSelect
                               label="Select Lot"
                               description="Choose which lot to issue from"
                               placeholder="Select lot"
@@ -662,3 +757,6 @@ function GinCreatePage() {
 }
 
 export default GinCreatePage;
+
+
+

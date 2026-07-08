@@ -14,20 +14,36 @@ module Cats
         "Hub Manager",
         "Warehouse Manager",
         "Storekeeper",
+        "Receipt Authorizer",
         "Officer",
         "Federal Officer",
         "Regional Officer",
         "Zonal Officer",
         "Woreda Officer",
-        "Kebele Officer"
+        "Kebele Officer",
+        "Quality Assurance",
+        "Receipt Authorizer"
       ] }
       validate :assignment_target_present
       validate :assignment_target_matches_role
+
+      def self.clear_other_warehouse_managers!(warehouse_id:, user_id:)
+        where(warehouse_id: warehouse_id, role_name: "Warehouse Manager")
+          .where.not(user_id: user_id)
+          .delete_all
+      end
+
+      def self.clear_other_hub_managers!(hub_id:, user_id:)
+        where(hub_id: hub_id, role_name: "Hub Manager")
+          .where.not(user_id: user_id)
+          .delete_all
+      end
 
       private
 
       def assignment_target_present
         return if federal_officer?
+        return if no_location_required_role?
         return if hub_id.present? || warehouse_id.present? || store_id.present? || location_id.present?
 
         errors.add(:base, "Assignment must include a hub, warehouse, or store")
@@ -41,9 +57,13 @@ module Cats
         when "Warehouse Manager"
           errors.add(:warehouse_id, "is required for Warehouse Manager") if warehouse_id.blank?
           errors.add(:base, "Hub/store not allowed for Warehouse Manager") if hub_id.present? || store_id.present?
+        when "Receipt Authorizer"
+          errors.add(:base, "Receipt Authorizer must be assigned to a hub or warehouse") if hub_id.blank? && warehouse_id.blank?
+          errors.add(:base, "Store not allowed for Receipt Authorizer") if store_id.present?
         when "Storekeeper"
-          errors.add(:store_id, "is required for Storekeeper") if store_id.blank?
-          errors.add(:base, "Hub/warehouse not allowed for Storekeeper") if hub_id.present? || warehouse_id.present?
+          errors.add(:base, "Storekeeper must be assigned to a warehouse or store") if warehouse_id.blank? && store_id.blank?
+          errors.add(:base, "Hub not allowed for Storekeeper") if hub_id.present?
+          errors.add(:base, "Storekeeper cannot have both warehouse and store assignment") if warehouse_id.present? && store_id.present?
         when "Officer"
           errors.add(:warehouse_id, "is required for Officer") if warehouse_id.blank?
           errors.add(:base, "Hub/store not allowed for Officer") if hub_id.present? || store_id.present?
@@ -57,6 +77,10 @@ module Cats
           validate_location_assignment(expected_type: Cats::Core::Location::WOREDA, label: "woreda")
         when "Kebele Officer"
           validate_location_assignment(expected_type: kebele_location_type, label: "kebele")
+        when "Quality Assurance", "Receipt Authorizer"
+          # These roles are assigned at warehouse level
+          errors.add(:warehouse_id, "is required for #{role_name}") if warehouse_id.blank?
+          errors.add(:base, "Hub/store not allowed for #{role_name}") if hub_id.present? || store_id.present?
         end
       end
 
@@ -77,6 +101,10 @@ module Cats
 
       def federal_officer?
         role_name == "Federal Officer"
+      end
+
+      def no_location_required_role?
+        false # All non-federal roles require a location target
       end
     end
   end

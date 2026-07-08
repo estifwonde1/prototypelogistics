@@ -21,6 +21,8 @@ export interface ReceiptOrderLine {
   total_quantity?: number;
   source_type?: string;
   source_name?: string;
+  destination_hub_id?: number | null;
+  destination_warehouse_id?: number | null;
 }
 
 export interface AssignableManagerOption {
@@ -76,6 +78,10 @@ export interface ReceiptOrder {
   workflow_events?: WorkflowEvent[];
   /** Raw API key; prefer `assignments` after normalization */
   receipt_order_assignments?: ReceiptOrderAssignment[];
+  // Hierarchical order management
+  location_id?: number | null;
+  hierarchical_level?: string | null;
+  location_name?: string | null;
 }
 
 function normalizeReceiptOrderAssignment(raw: Record<string, unknown>): ReceiptOrderAssignment {
@@ -113,6 +119,9 @@ function normalizeReceiptOrderAssignment(raw: Record<string, unknown>): ReceiptO
     assigned_by_id: Number(raw.assigned_by_id),
     assigned_by_name: typeof raw.assigned_by_name === 'string' ? raw.assigned_by_name : undefined,
     quantity: raw.quantity != null ? Number(raw.quantity) : undefined,
+    quantity_unit_id: raw.quantity_unit_id != null ? Number(raw.quantity_unit_id) : undefined,
+    quantity_unit_abbreviation:
+      typeof raw.quantity_unit_abbreviation === 'string' ? raw.quantity_unit_abbreviation : undefined,
     status,
     assigned_at: assignedAt,
     accepted_at: typeof raw.accepted_at === 'string' ? raw.accepted_at : undefined,
@@ -149,18 +158,21 @@ export interface CreateReceiptOrderPayload {
   expected_delivery_date: string;
   notes?: string;
   lines: ReceiptOrderLine[];
+  /** Location tagging for hierarchical order management */
+  location_id?: number | null;
+  hierarchical_level?: string | null;
 }
 
-export async function getReceiptOrders(): Promise<ReceiptOrder[]> {
-  const response = await apiClient.get('/receipt_orders');
+export async function getReceiptOrders(params?: { warehouse_id?: number; hub_id?: number }): Promise<ReceiptOrder[]> {
+  const response = await apiClient.get('/receipt_orders', { params });
   const rows = Array.isArray(response.data) ? response.data : response.data.data || [];
-  return rows.map((row: any) =>
+  return rows.map((row: unknown) =>
     normalizeReceiptOrder(typeof row === 'object' && row !== null ? (row as Record<string, unknown>) : {})
   );
 }
 
-export async function getReceiptOrder(id: number): Promise<ReceiptOrder> {
-  const response = await apiClient.get(`/receipt_orders/${id}`);
+export async function getReceiptOrder(id: number, params?: { warehouse_id?: number }): Promise<ReceiptOrder> {
+  const response = await apiClient.get(`/receipt_orders/${id}`, { params });
   const raw = response.data.data || response.data;
   return normalizeReceiptOrder(typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {});
 }
@@ -189,7 +201,11 @@ export async function confirmReceiptOrder(id: number): Promise<ReceiptOrder> {
 
 export type AssignableManagersScope = 'hub' | 'warehouse' | null;
 
-export async function getReceiptOrderAssignableManagers(id: number, managerOnly = false): Promise<{
+export async function getReceiptOrderAssignableManagers(
+  id: number, 
+  managerOnly = false,
+  params?: { warehouse_id?: number }
+): Promise<{
   assignable_managers: AssignableManagerOption[];
   stores: StoreOption[];
   hub_id?: number | null;
@@ -199,7 +215,7 @@ export async function getReceiptOrderAssignableManagers(id: number, managerOnly 
   managers_scope?: AssignableManagersScope;
 }> {
   const response = await apiClient.get(`/receipt_orders/${id}/assignable_managers`, {
-    params: { manager_only: managerOnly },
+    params: { manager_only: managerOnly, ...params },
   });
   const data = response.data.data || response.data;
   const scope = data.managers_scope;
@@ -254,4 +270,16 @@ function extractWorkflowEvents(responseData: unknown): WorkflowEvent[] {
 export async function getReceiptOrderWorkflow(id: number): Promise<WorkflowEvent[]> {
   const response = await apiClient.get(`/receipt_orders/${id}/workflow`);
   return extractWorkflowEvents(response.data);
+}
+
+export async function startStacking(id: number): Promise<ReceiptOrder> {
+  const response = await apiClient.post(`/receipt_orders/${id}/start_stacking`);
+  const raw = response.data.data || response.data;
+  return normalizeReceiptOrder(typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {});
+}
+
+export async function finishStacking(id: number, placements: Array<{ stack_id: number; quantity: number }>, receipt_authorization_id?: number): Promise<ReceiptOrder> {
+  const response = await apiClient.post(`/receipt_orders/${id}/finish_stacking`, { placements, receipt_authorization_id });
+  const raw = response.data.data || response.data;
+  return normalizeReceiptOrder(typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {});
 }

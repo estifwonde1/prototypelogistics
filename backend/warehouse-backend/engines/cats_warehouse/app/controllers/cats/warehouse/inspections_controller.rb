@@ -3,7 +3,9 @@ module Cats
     class InspectionsController < BaseController
       def index
         authorize Inspection
-        render_resource(policy_scope(Inspection).includes(:inspection_items).order(created_at: :desc), each_serializer: InspectionSerializer)
+        scope = policy_scope(Inspection).includes(:inspection_items).order(created_at: :desc)
+        scope = scope.where(warehouse_id: params[:warehouse_id]) if params[:warehouse_id].present?
+        render_resource(scope, each_serializer: InspectionSerializer)
       end
 
       def show
@@ -26,7 +28,8 @@ module Cats
           reference_no: payload[:reference_no],
           status: payload[:status] || "draft",
           receipt_order: payload[:receipt_order_id].present? ? ReceiptOrder.find(payload[:receipt_order_id]) : nil,
-          dispatch_order: payload[:dispatch_order_id].present? ? DispatchOrder.find(payload[:dispatch_order_id]) : nil
+          dispatch_order: payload[:dispatch_order_id].present? ? DispatchOrder.find(payload[:dispatch_order_id]) : nil,
+          receipt_authorization_id: payload[:receipt_authorization_id].presence
         ).call
 
         render_resource(inspection, status: :created, serializer: InspectionSerializer)
@@ -54,6 +57,7 @@ module Cats
           :source_id,
           :receipt_order_id,
           :dispatch_order_id,
+          :receipt_authorization_id,
           items: [
             :commodity_id,
             :unit_id,

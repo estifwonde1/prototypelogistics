@@ -38,7 +38,7 @@ function HubListPage() {
 
   const { data: hubs, isLoading, error, refetch } = useQuery({
     queryKey: ['hubs'],
-    queryFn: getHubs,
+    queryFn: () => getHubs(),
   });
 
   const deleteMutation = useMutation({
@@ -97,7 +97,7 @@ function HubListPage() {
           </Text>
         </div>
         {canCreate && (
-          <Button leftSection={<IconPlus size={16} />} onClick={() => navigate('/hubs/new')}>
+          <Button leftSection={<IconPlus size={16} />} onClick={() => navigate('/admin/setup/locations?flow=hub')}>
             Create Hub
           </Button>
         )}
@@ -119,7 +119,7 @@ function HubListPage() {
             !search && canCreate
               ? {
                   label: 'Create Hub',
-                  onClick: () => navigate('/hubs/new'),
+                  onClick: () => navigate('/admin/setup/locations?flow=hub'),
                 }
               : undefined
           }
@@ -158,7 +158,7 @@ function HubListPage() {
                         <ActionIcon
                           variant="subtle"
                           color="gray"
-                          onClick={() => navigate(`/hubs/${hub.id}/edit`)}
+                          onClick={() => navigate(`/admin/setup/hubs?id=${hub.id}`)}
                         >
                           <IconEdit size={16} />
                         </ActionIcon>
@@ -204,3 +204,4 @@ function HubListPage() {
 }
 
 export default HubListPage;
+

@@ -18,6 +18,14 @@ FactoryBot.define do
     name { "Warehouse #{generate(:core_name)}" }
   end
 
+  factory :cats_warehouse_warehouse_capacity, class: "Cats::Warehouse::WarehouseCapacity" do
+    warehouse { association :cats_warehouse_warehouse }
+    length_m { 100 }
+    width_m { 80 }
+    height_m { 10 }
+    usable_space_percentage { 75 }
+  end
+
   factory :cats_warehouse_store, class: "Cats::Warehouse::Store" do
     warehouse { association :cats_warehouse_warehouse }
     name { "Store #{generate(:core_name)}" }

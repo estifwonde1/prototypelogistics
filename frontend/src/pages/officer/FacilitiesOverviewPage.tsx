@@ -36,33 +36,35 @@ import type { Hub } from '../../types/hub';
 import type { Warehouse } from '../../types/warehouse';
 import type { Store } from '../../types/store';
 
-// ── helpers ──────────────────────────────────────────────────────────────────
-// usable_space = total volume of the store (set by model callback: l×w×h)
-// available_space = what's still free (decremented as stock is added)
-// used = usable - available
-const storeUsed  = (s: Store) => s.usable_space - s.available_space;
-const storeFree  = (s: Store) => s.available_space;
-const storeTotal = (s: Store) => s.usable_space;
-
-const sumUsed  = (ss: Store[]) => ss.reduce((a, s) => a + storeUsed(s),  0);
-const sumFree  = (ss: Store[]) => ss.reduce((a, s) => a + storeFree(s),  0);
-const sumTotal = (ss: Store[]) => ss.reduce((a, s) => a + storeTotal(s), 0);
-
-const pct = (used: number, total: number) =>
-  total > 0 ? (used / total) * 100 : 0;
-
-const pctColor = (p: number) =>
-  p > 90 ? 'red' : p > 70 ? 'orange' : p > 40 ? 'yellow' : 'green';
-
-const fmt = (n: number) =>
-  n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+import {
+  fmt,
+  pct,
+  pctColor,
+  whCapacityMt,
+  whUsedMt,
+  whFreeMt,
+  whUtilPct,
+  storeCapacityMt,
+  storeUsedMt,
+  storeFreeMt,
+  storeUtilPct,
+  sumWhCapacity,
+  sumWhUsed,
+  sumWhFree,
+  hubWarehouses,
+  hubCapacityFromWarehouses,
+  hubUsedFromWarehouses,
+  hubFreeFromWarehouses,
+  hubUtilPctFromWarehouses,
+  progressBarValue,
+} from './FacilitiesOverviewPage_helpers';
 
 // ── Store detail row (inside expanded warehouse) ──────────────────────────────
 function StoreRow({ store }: { store: Store }) {
-  const used  = storeUsed(store);
-  const free  = storeFree(store);
-  const total = storeTotal(store);
-  const p     = pct(used, total);
+  const cap   = storeCapacityMt(store);
+  const used  = storeUsedMt(store);
+  const free  = storeFreeMt(store);
+  const p     = storeUtilPct(store);
 
   return (
     <Table.Tr style={{ background: 'var(--mantine-color-gray-1)' }}>
@@ -81,18 +83,18 @@ function StoreRow({ store }: { store: Store }) {
         <Text size="xs" c="dimmed">—</Text>
       </Table.Td>
       <Table.Td>
-        <Text size="xs">{fmt(total)} m³</Text>
+        <Text size="xs">{cap > 0 ? `${fmt(cap)} MT` : '—'}</Text>
       </Table.Td>
       <Table.Td>
-        <Text size="xs" c={used > 0 ? 'blue' : 'dimmed'}>{used > 0 ? `${fmt(used)} m³` : '0'}</Text>
+        <Text size="xs" c={used > 0 ? 'blue' : 'dimmed'}>{cap > 0 ? `${fmt(used)} MT` : '—'}</Text>
       </Table.Td>
       <Table.Td>
-        <Text size="xs" fw={600} c="green">{fmt(free)} m³</Text>
+        <Text size="xs" fw={600} c="green">{cap > 0 ? `${fmt(free)} MT` : '—'}</Text>
       </Table.Td>
       <Table.Td>
-        {total > 0 ? (
+        {cap > 0 ? (
           <Group gap={4} wrap="nowrap">
-            <Progress value={p} color={pctColor(p)} size="xs" style={{ flex: 1, minWidth: 50 }} />
+            <Progress value={progressBarValue(p)} color={pctColor(p)} size="xs" style={{ flex: 1, minWidth: 50 }} />
             <Text size="xs" c={pctColor(p)}>{p.toFixed(0)}%</Text>
           </Group>
         ) : <Text size="xs" c="dimmed">—</Text>}
@@ -105,11 +107,10 @@ function StoreRow({ store }: { store: Store }) {
 function WarehouseRow({ warehouse, stores }: { warehouse: Warehouse; stores: Store[] }) {
   const [open, setOpen] = useState(false);
   const whStores = stores.filter((s) => s.warehouse_id === warehouse.id);
-  const total    = sumTotal(whStores);
-  const used     = sumUsed(whStores);
-  const free     = sumFree(whStores);
-  const p        = pct(used, total);
-  const capacityMt = warehouse.capacity?.total_storage_capacity_mt ?? 0;
+  const capacityMt = whCapacityMt(warehouse);
+  const used       = whUsedMt(warehouse);
+  const free       = whFreeMt(warehouse);
+  const p          = whUtilPct(warehouse);
 
   return (
     <>
@@ -135,18 +136,15 @@ function WarehouseRow({ warehouse, stores }: { warehouse: Warehouse; stores: Sto
           <Text size="sm">{capacityMt > 0 ? `${fmt(capacityMt)} MT` : '—'}</Text>
         </Table.Td>
         <Table.Td>
-          <Text size="sm">{total > 0 ? `${fmt(total)} m³` : '—'}</Text>
+          <Text size="sm" c={used > 0 ? 'blue' : 'dimmed'}>{capacityMt > 0 ? `${fmt(used)} MT` : '—'}</Text>
         </Table.Td>
         <Table.Td>
-          <Text size="sm" c={used > 0 ? 'blue' : 'dimmed'}>{total > 0 ? (used > 0 ? `${fmt(used)} m³` : '0') : '—'}</Text>
+          <Text size="sm" fw={600} c="green">{capacityMt > 0 ? `${fmt(free)} MT` : '—'}</Text>
         </Table.Td>
         <Table.Td>
-          <Text size="sm" fw={600} c="green">{total > 0 ? `${fmt(free)} m³` : '—'}</Text>
-        </Table.Td>
-        <Table.Td>
-          {total > 0 ? (
+          {capacityMt > 0 ? (
             <Group gap={6} wrap="nowrap">
-              <Progress value={p} color={pctColor(p)} size="sm" style={{ flex: 1, minWidth: 60 }} />
+              <Progress value={progressBarValue(p)} color={pctColor(p)} size="sm" style={{ flex: 1, minWidth: 60 }} />
               <Text size="xs" c={pctColor(p)}>{p.toFixed(0)}%</Text>
             </Group>
           ) : <Text size="sm" c="dimmed">—</Text>}
@@ -156,7 +154,7 @@ function WarehouseRow({ warehouse, stores }: { warehouse: Warehouse; stores: Sto
       {open && whStores.map((s) => <StoreRow key={s.id} store={s} />)}
       {open && whStores.length === 0 && (
         <Table.Tr style={{ background: 'var(--mantine-color-gray-1)' }}>
-          <Table.Td colSpan={9} pl={72}>
+          <Table.Td colSpan={8} pl={72}>
             <Text size="xs" c="dimmed">No stores configured in this warehouse</Text>
           </Table.Td>
         </Table.Tr>
@@ -168,13 +166,11 @@ function WarehouseRow({ warehouse, stores }: { warehouse: Warehouse; stores: Sto
 // ── Hub row ───────────────────────────────────────────────────────────────────
 function HubRow({ hub, warehouses, stores }: { hub: Hub; warehouses: Warehouse[]; stores: Store[] }) {
   const [open, setOpen] = useState(false);
-  const hubWarehouses = warehouses.filter((w) => w.hub_id === hub.id);
-  const hubStores     = stores.filter((s) => hubWarehouses.some((w) => w.id === s.warehouse_id));
-  const total         = sumTotal(hubStores);
-  const used          = sumUsed(hubStores);
-  const free          = sumFree(hubStores);
-  const p             = pct(used, total);
-  const capacityMt    = hub.capacity?.total_capacity_mt ?? 0;
+  const hubWhs     = hubWarehouses(hub, warehouses);
+  const capacityMt = hubCapacityFromWarehouses(hub, warehouses);
+  const used       = hubUsedFromWarehouses(hub, warehouses);
+  const free       = hubFreeFromWarehouses(hub, warehouses);
+  const p          = hubUtilPctFromWarehouses(hub, warehouses);
 
   return (
     <>
@@ -191,36 +187,33 @@ function HubRow({ hub, warehouses, stores }: { hub: Hub; warehouses: Warehouse[]
         <Table.Td><Text size="sm">{hub.code || '—'}</Text></Table.Td>
         <Table.Td><Text size="sm">{hub.location_name || '—'}</Text></Table.Td>
         <Table.Td>
-          <Badge variant="light" color="blue" size="sm">{hubWarehouses.length} warehouses</Badge>
+          <Badge variant="light" color="blue" size="sm">{hubWhs.length} warehouses</Badge>
         </Table.Td>
         <Table.Td>
           <Text size="sm">{capacityMt > 0 ? `${fmt(capacityMt)} MT` : '—'}</Text>
         </Table.Td>
         <Table.Td>
-          <Text size="sm" fw={500}>{total > 0 ? `${fmt(total)} m³` : '—'}</Text>
+          <Text size="sm" c={used > 0 ? 'blue' : 'dimmed'}>{capacityMt > 0 ? `${fmt(used)} MT` : '—'}</Text>
         </Table.Td>
         <Table.Td>
-          <Text size="sm" c={used > 0 ? 'blue' : 'dimmed'}>{total > 0 ? (used > 0 ? `${fmt(used)} m³` : '0') : '—'}</Text>
+          <Text size="sm" fw={600} c="green">{capacityMt > 0 ? `${fmt(free)} MT` : '—'}</Text>
         </Table.Td>
         <Table.Td>
-          <Text size="sm" fw={600} c="green">{total > 0 ? `${fmt(free)} m³` : '—'}</Text>
-        </Table.Td>
-        <Table.Td>
-          {total > 0 ? (
+          {capacityMt > 0 ? (
             <Group gap={6} wrap="nowrap">
-              <Progress value={p} color={pctColor(p)} size="sm" style={{ flex: 1, minWidth: 60 }} />
+              <Progress value={progressBarValue(p)} color={pctColor(p)} size="sm" style={{ flex: 1, minWidth: 60 }} />
               <Text size="xs" c={pctColor(p)}>{p.toFixed(0)}%</Text>
             </Group>
           ) : <Text size="sm" c="dimmed">—</Text>}
         </Table.Td>
       </Table.Tr>
 
-      {open && hubWarehouses.map((wh) => (
+      {open && hubWhs.map((wh) => (
         <WarehouseRow key={wh.id} warehouse={wh} stores={stores} />
       ))}
-      {open && hubWarehouses.length === 0 && (
+      {open && hubWhs.length === 0 && (
         <Table.Tr style={{ background: 'var(--mantine-color-gray-0)' }}>
-          <Table.Td colSpan={9} pl={40}>
+          <Table.Td colSpan={8} pl={40}>
             <Text size="sm" c="dimmed">No warehouses under this hub</Text>
           </Table.Td>
         </Table.Tr>
@@ -233,11 +226,10 @@ function HubRow({ hub, warehouses, stores }: { hub: Hub; warehouses: Warehouse[]
 function StandaloneRow({ warehouse, stores }: { warehouse: Warehouse; stores: Store[] }) {
   const [open, setOpen] = useState(false);
   const whStores   = stores.filter((s) => s.warehouse_id === warehouse.id);
-  const total      = sumTotal(whStores);
-  const used       = sumUsed(whStores);
-  const free       = sumFree(whStores);
-  const p          = pct(used, total);
-  const capacityMt = warehouse.capacity?.total_storage_capacity_mt ?? 0;
+  const capacityMt = whCapacityMt(warehouse);
+  const used       = whUsedMt(warehouse);
+  const free       = whFreeMt(warehouse);
+  const p          = whUtilPct(warehouse);
 
   return (
     <>
@@ -261,18 +253,15 @@ function StandaloneRow({ warehouse, stores }: { warehouse: Warehouse; stores: St
           <Text size="sm">{capacityMt > 0 ? `${fmt(capacityMt)} MT` : '—'}</Text>
         </Table.Td>
         <Table.Td>
-          <Text size="sm" fw={500}>{total > 0 ? `${fmt(total)} m³` : '—'}</Text>
+          <Text size="sm" c={used > 0 ? 'blue' : 'dimmed'}>{capacityMt > 0 ? `${fmt(used)} MT` : '—'}</Text>
         </Table.Td>
         <Table.Td>
-          <Text size="sm" c={used > 0 ? 'blue' : 'dimmed'}>{total > 0 ? (used > 0 ? `${fmt(used)} m³` : '0') : '—'}</Text>
+          <Text size="sm" fw={600} c="green">{capacityMt > 0 ? `${fmt(free)} MT` : '—'}</Text>
         </Table.Td>
         <Table.Td>
-          <Text size="sm" fw={600} c="green">{total > 0 ? `${fmt(free)} m³` : '—'}</Text>
-        </Table.Td>
-        <Table.Td>
-          {total > 0 ? (
+          {capacityMt > 0 ? (
             <Group gap={6} wrap="nowrap">
-              <Progress value={p} color={pctColor(p)} size="sm" style={{ flex: 1, minWidth: 60 }} />
+              <Progress value={progressBarValue(p)} color={pctColor(p)} size="sm" style={{ flex: 1, minWidth: 60 }} />
               <Text size="xs" c={pctColor(p)}>{p.toFixed(0)}%</Text>
             </Group>
           ) : <Text size="sm" c="dimmed">—</Text>}
@@ -282,7 +271,7 @@ function StandaloneRow({ warehouse, stores }: { warehouse: Warehouse; stores: St
       {open && whStores.map((s) => <StoreRow key={s.id} store={s} />)}
       {open && whStores.length === 0 && (
         <Table.Tr style={{ background: 'var(--mantine-color-gray-0)' }}>
-          <Table.Td colSpan={9} pl={40}>
+          <Table.Td colSpan={8} pl={40}>
             <Text size="xs" c="dimmed">No stores configured</Text>
           </Table.Td>
         </Table.Tr>
@@ -295,9 +284,9 @@ function StandaloneRow({ warehouse, stores }: { warehouse: Warehouse; stores: St
 function FacilitiesOverviewPage() {
   const queryClient = useQueryClient();
 
-  const { data: hubs = [],       isLoading: l1, error: e1, isFetching: f1 } = useQuery({ queryKey: ['hubs'],       queryFn: getHubs });
-  const { data: warehouses = [], isLoading: l2, error: e2, isFetching: f2 } = useQuery({ queryKey: ['warehouses'], queryFn: getWarehouses });
-  const { data: stores = [],     isLoading: l3, error: e3, isFetching: f3 } = useQuery({ queryKey: ['stores'],     queryFn: getStores });
+  const { data: hubs = [],       isLoading: l1, error: e1, isFetching: f1 } = useQuery({ queryKey: ['hubs'],       queryFn: () => getHubs() });
+  const { data: warehouses = [], isLoading: l2, error: e2, isFetching: f2 } = useQuery({ queryKey: ['warehouses'], queryFn: () => getWarehouses({}) });
+  const { data: stores = [],     isLoading: l3, error: e3, isFetching: f3 } = useQuery({ queryKey: ['stores'],     queryFn: () => getStores({}) });
 
   const isRefreshing = f1 || f2 || f3;
 
@@ -314,16 +303,11 @@ function FacilitiesOverviewPage() {
 
   const standalone = (warehouses as Warehouse[]).filter((w) => !w.hub_id);
 
-  // Summary numbers — all from real store data
-  const allUsed  = sumUsed(stores as Store[]);
-  const allFree  = sumFree(stores as Store[]);
-  const allTotal = sumTotal(stores as Store[]);
-  const allPct   = pct(allUsed, allTotal);
-
-  // Total registered capacity in MT from warehouse capacity records
-  const totalCapacityMt = (warehouses as Warehouse[]).reduce(
-    (a, w) => a + (w.capacity?.total_storage_capacity_mt ?? 0), 0
-  );
+  const whList = warehouses as Warehouse[];
+  const totalCapacityMt = sumWhCapacity(whList);
+  const allUsed = sumWhUsed(whList);
+  const allFree = sumWhFree(whList);
+  const allPct = pct(allUsed, totalCapacityMt);
 
   return (
     <Stack gap="md">
@@ -364,25 +348,25 @@ function FacilitiesOverviewPage() {
 
         <Card shadow="sm" padding="md" radius="md" withBorder>
           <Group gap={4} mb={4}>
-            <Text size="xs" c="dimmed" fw={500} tt="uppercase">Available Volume</Text>
-            <Tooltip label="Sum of available_space across all stores. Decreases as stock is received." withArrow>
+            <Text size="xs" c="dimmed" fw={500} tt="uppercase">Available Capacity</Text>
+            <Tooltip label="Sum of remaining MT across all warehouses (from stock balances)." withArrow>
               <IconInfoCircle size={13} color="var(--mantine-color-dimmed)" />
             </Tooltip>
           </Group>
-          <Text size="xl" fw={700} c="green">{fmt(allFree)} m³</Text>
-          <Text size="xs" c="dimmed">of {fmt(allTotal)} m³ total</Text>
+          <Text size="xl" fw={700} c="green">{fmt(allFree)} MT</Text>
+          <Text size="xs" c="dimmed">of {fmt(totalCapacityMt)} MT total</Text>
         </Card>
 
         <Card shadow="sm" padding="md" radius="md" withBorder>
           <Text size="xs" c="dimmed" fw={500} tt="uppercase" mb={4}>Utilization</Text>
           <Text size="xl" fw={700} c={pctColor(allPct)}>{allPct.toFixed(1)}%</Text>
-          <Text size="xs" c="dimmed">{fmt(allUsed)} m³ used</Text>
+          <Text size="xs" c="dimmed">{fmt(allUsed)} MT in use</Text>
         </Card>
       </SimpleGrid>
 
-      {allUsed === 0 && allTotal > 0 && (
+      {allUsed === 0 && totalCapacityMt > 0 && (
         <Alert icon={<IconInfoCircle size={16} />} color="blue" variant="light">
-          All stores show 0 used space. This is expected if no GRNs have been confirmed yet — space is only decremented when stock is received into a store.
+          No stock recorded yet — MT in use updates when GRNs are confirmed and goods are received into stacks.
         </Alert>
       )}
 
@@ -404,18 +388,13 @@ function FacilitiesOverviewPage() {
                 </Tooltip>
               </Table.Th>
               <Table.Th>
-                <Tooltip label="Total physical volume of all stores (length × width × height)" withArrow>
-                  <Group gap={4}>Volume (m³) <IconInfoCircle size={13} /></Group>
+                <Tooltip label="MT currently stored (from stock balances)" withArrow>
+                  <Group gap={4}>Used (MT) <IconInfoCircle size={13} /></Group>
                 </Tooltip>
               </Table.Th>
               <Table.Th>
-                <Tooltip label="Volume currently occupied by stock" withArrow>
-                  <Group gap={4}>Used <IconInfoCircle size={13} /></Group>
-                </Tooltip>
-              </Table.Th>
-              <Table.Th>
-                <Tooltip label="Volume still available for incoming stock" withArrow>
-                  <Group gap={4}>Free <IconInfoCircle size={13} /></Group>
+                <Tooltip label="MT still available for incoming stock" withArrow>
+                  <Group gap={4}>Free (MT) <IconInfoCircle size={13} /></Group>
                 </Tooltip>
               </Table.Th>
               <Table.Th>Utilization</Table.Th>
@@ -428,7 +407,7 @@ function FacilitiesOverviewPage() {
 
             {standalone.length > 0 && (
               <Table.Tr>
-                <Table.Td colSpan={9} py={4}>
+                <Table.Td colSpan={8} py={4}>
                   <Divider label={<Text size="xs" c="dimmed" fw={600} tt="uppercase">Standalone Warehouses</Text>} labelPosition="left" />
                 </Table.Td>
               </Table.Tr>

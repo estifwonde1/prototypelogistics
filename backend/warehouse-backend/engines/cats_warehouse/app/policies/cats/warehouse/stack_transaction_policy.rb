@@ -14,6 +14,10 @@ module Cats
       def show?
         index?
       end
+
+      def create?
+        admin? || warehouse_manager? || storekeeper?
+      end
     end
   end
 end

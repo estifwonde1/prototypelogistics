@@ -26,7 +26,7 @@ module Cats
         when "Cats::Warehouse::ReceiptOrder"
           receipt_orders_scope
         when "Cats::Warehouse::DispatchOrder"
-          scoped_relation.where(warehouse_id: access.accessible_warehouse_ids)
+          dispatch_orders_scope
         when "Cats::Warehouse::Waybill"
           waybills_scope
         when "Cats::Core::Receipt"
@@ -94,16 +94,210 @@ module Cats
       end
 
       # Hub-only receipt orders have warehouse_id nil but hub_id set; include those for hub (and related) roles.
-      # Hub Managers only see orders in their hub workflow queue: status must be +assigned+ (not draft/confirmed/etc.).
+      # Hub managers: scoped by hub / hub assignments; statuses include confirmed through completed (excludes draft/cancelled).
+      # CRITICAL: Hub managers should see orders with lines destined for their hub, even if the order-level hub_id is different
       def receipt_orders_scope
+        # Sub-federal officers use hierarchical scoping based on location and level
+        if access.officer? && !access.officer_full_access?
+          return HierarchicalOrderScopeQuery.new(user: access.user, scope: scoped_relation).call
+        end
+
         wh_ids = access.accessible_warehouse_ids
         hub_ids = receipt_order_visible_hub_ids
         by_warehouse = scoped_relation.where(warehouse_id: wh_ids)
+        
+        # For hub managers, also include orders where they have hub-level assignments (multi-hub orders)
+        if access.hub_manager?
+          by_hub = scoped_relation.where(hub_id: hub_ids)
+          roa_t = ReceiptOrderAssignment.table_name
+          # Assignments whose hub_id matches (officer / hub-level rows)
+          assigned_order_ids = ReceiptOrderAssignment.where(hub_id: hub_ids).distinct.pluck(:receipt_order_id)
+
+          # Warehouse-only assignment rows often omit hub_id; still belong to this hub if the warehouse is under it.
+          wh_ids_in_hubs = Warehouse.where(hub_id: hub_ids).pluck(:id)
+          assign_wh_order_ids =
+            if wh_ids_in_hubs.any?
+              ReceiptOrderAssignment
+                .where(warehouse_id: wh_ids_in_hubs)
+                .where.not("LOWER(TRIM(#{roa_t}.status)) = ?", "rejected")
+                .distinct
+                .pluck(:receipt_order_id)
+            else
+              []
+            end
+
+          # Lines explicitly destined to this hub (federal / multi-hub ROs with order.hub_id blank)
+          line_dest_order_ids =
+            ReceiptOrderLine.where(destination_hub_id: hub_ids).distinct.pluck(:receipt_order_id)
+
+          ra_t = ReceiptAuthorization.table_name
+          ra_wh_order_ids =
+            if wh_ids_in_hubs.any?
+              ReceiptAuthorization
+                .where(warehouse_id: wh_ids_in_hubs)
+                .where.not("LOWER(TRIM(#{ra_t}.status)) = ?", ReceiptAuthorization::CANCELLED)
+                .distinct
+                .pluck(:receipt_order_id)
+            else
+              []
+            end
+
+          linked_order_ids =
+            (assigned_order_ids + assign_wh_order_ids + line_dest_order_ids + ra_wh_order_ids).uniq
+
+          rel = by_warehouse.or(by_hub)
+          rel = rel.or(scoped_relation.where(id: linked_order_ids)) if linked_order_ids.any?
+          # Hub managers must keep seeing receipt orders through the physical receipt lifecycle:
+          # after partial warehouse assignment / RAs / stacking, status moves past +assigned+ (e.g.
+          # +reserved+, +in_progress+). Those rows must not disappear from the hub Receipt Orders list.
+          return rel.where(status: receipt_order_operational_statuses)
+        end
+        
         rel = hub_ids.blank? ? by_warehouse : by_warehouse.or(scoped_relation.where(hub_id: hub_ids))
 
-        return rel.where(status: DOCUMENT_STATUSES[:assigned]) if access.hub_manager?
+        # Warehouse managers also see hub-based orders where they have a warehouse assignment,
+        # or trucks were authorized directly to their warehouse via Receipt Authorization (routing override).
+        if access.warehouse_manager?
+          assigned_order_ids = receipt_order_ids_for_warehouse_manager_assignments(wh_ids)
+          ra_order_ids = receipt_order_ids_for_warehouse_manager_receipt_authorizations(wh_ids)
+          combined_ids = (assigned_order_ids + ra_order_ids).uniq
+          return rel.or(scoped_relation.where(id: combined_ids)).where(status: receipt_order_operational_statuses)
+        end
+
+        # Storekeepers: store/warehouse assignments plus standalone hub-less orders and RAs at their warehouse.
+        if access.storekeeper?
+          return storekeeper_receipt_orders_scope
+        end
 
         rel
+      end
+
+      def storekeeper_receipt_orders_scope
+        store_ids = Array(access.storekeeper_accessible_store_ids).map(&:to_i).uniq
+        wh_ids = (
+          Array(access.storekeeper_warehouse_ids) +
+          (store_ids.any? ? Store.where(id: store_ids).where.not(warehouse_id: nil).distinct.pluck(:warehouse_id) : [])
+        ).map(&:to_i).uniq
+
+        return scoped_relation.none if store_ids.empty? && wh_ids.empty?
+
+        roa_t = ReceiptOrderAssignment.table_name
+        not_rejected = ReceiptOrderAssignment.where.not("LOWER(TRIM(#{roa_t}.status)) = ?", "rejected")
+
+        linked_ids = []
+
+        if store_ids.any?
+          linked_ids.concat(not_rejected.where(store_id: store_ids).distinct.pluck(:receipt_order_id))
+        end
+
+        if wh_ids.any?
+          linked_ids.concat(
+            not_rejected.where(warehouse_id: wh_ids, store_id: nil).distinct.pluck(:receipt_order_id)
+          )
+          linked_ids.concat(scoped_relation.where(warehouse_id: wh_ids).pluck(:id))
+        end
+
+        ra_t = ReceiptAuthorization.table_name
+        ra_rel = ReceiptAuthorization.where.not("LOWER(TRIM(#{ra_t}.status)) = ?", ReceiptAuthorization::CANCELLED)
+        if wh_ids.any?
+          ra_rel = ra_rel.where(warehouse_id: wh_ids)
+          ra_rel = ra_rel.where("store_id IN (?) OR store_id IS NULL", store_ids) if store_ids.any?
+        elsif store_ids.any?
+          ra_rel = ra_rel.where(store_id: store_ids)
+        end
+        linked_ids.concat(ra_rel.distinct.pluck(:receipt_order_id))
+
+        order_ids = linked_ids.compact.uniq
+        return scoped_relation.none if order_ids.empty?
+
+        scoped_relation.where(id: order_ids).where(status: receipt_order_operational_statuses)
+      end
+
+      def receipt_order_operational_statuses
+        RECEIPT_ORDER_OPERATIONAL_STATUSES
+      end
+
+      # Dispatch orders: hub managers see hub-sourced plans; warehouse managers only
+      # see plans for standalone (non-hub) warehouses they manage.
+      def dispatch_orders_scope
+        if access.officer? && !access.officer_full_access?
+          return HierarchicalOrderScopeQuery.new(user: access.user, scope: scoped_relation).call
+        end
+
+        wh_ids = Array(access.accessible_warehouse_ids).map(&:to_i).uniq
+        hub_ids = receipt_order_visible_hub_ids
+        rel = scoped_relation.none
+
+        if access.hub_manager? && hub_ids.any?
+          wh_in_hubs = Warehouse.where(hub_id: hub_ids).pluck(:id)
+          line_hub_order_ids = DispatchOrderLine.where(hub_id: hub_ids).distinct.pluck(:dispatch_order_id)
+          line_wh_hub_order_ids =
+            if wh_in_hubs.any?
+              DispatchOrderLine.where(warehouse_id: wh_in_hubs).distinct.pluck(:dispatch_order_id)
+            else
+              []
+            end
+
+          doa_t = DispatchOrderAssignment.table_name
+          assignment_order_ids =
+            DispatchOrderAssignment
+              .where(hub_id: hub_ids)
+              .where.not("LOWER(TRIM(#{doa_t}.status)) = ?", "rejected")
+              .distinct
+              .pluck(:dispatch_order_id)
+
+          linked_ids = (line_hub_order_ids + line_wh_hub_order_ids + assignment_order_ids).uniq
+          rel = scoped_relation.where(hub_id: hub_ids)
+          rel = rel.or(scoped_relation.where(id: linked_ids)) if linked_ids.any?
+        end
+
+        if access.warehouse_manager? && wh_ids.any?
+          standalone_wh_ids = Warehouse.where(id: wh_ids, hub_id: nil).pluck(:id)
+          if standalone_wh_ids.any?
+            line_wh_order_ids =
+              DispatchOrderLine.where(warehouse_id: standalone_wh_ids).distinct.pluck(:dispatch_order_id)
+            assignment_order_ids =
+              DispatchOrderAssignment.where(warehouse_id: standalone_wh_ids).distinct.pluck(:dispatch_order_id)
+
+            wm_rel = scoped_relation.where(warehouse_id: standalone_wh_ids)
+            wm_rel = wm_rel.or(scoped_relation.where(id: line_wh_order_ids)) if line_wh_order_ids.any?
+            wm_rel = wm_rel.or(scoped_relation.where(id: assignment_order_ids)) if assignment_order_ids.any?
+            rel = rel.or(wm_rel)
+          end
+        elsif wh_ids.any?
+          line_wh_order_ids = DispatchOrderLine.where(warehouse_id: wh_ids).distinct.pluck(:dispatch_order_id)
+          other_rel = scoped_relation.where(warehouse_id: wh_ids)
+          other_rel = other_rel.or(scoped_relation.where(id: line_wh_order_ids)) if line_wh_order_ids.any?
+          rel = rel.or(other_rel)
+        end
+
+        if access.hub_manager? || access.warehouse_manager?
+          rel = rel.where.not(status: DOCUMENT_STATUSES[:draft])
+        end
+
+        rel
+      end
+
+      # Orders linked by assignment row: same facility warehouse(s) OR personally assigned (covers
+      # multi-warehouse managers who only have one UserAssignment row but are assigned_to on other WH rows).
+      def receipt_order_ids_for_warehouse_manager_assignments(wh_ids)
+        t  = ReceiptOrderAssignment.table_name
+        nr = ReceiptOrderAssignment.where.not("LOWER(TRIM(#{t}.status)) = ?", "rejected")
+        uid = access.user&.id
+        by_wh = nr.where(warehouse_id: wh_ids)
+        by_me = uid.present? ? nr.where(assigned_to_id: uid) : nr.none
+        by_wh.or(by_me).distinct.pluck(:receipt_order_id)
+      end
+
+      def receipt_order_ids_for_warehouse_manager_receipt_authorizations(wh_ids)
+        return [] if wh_ids.blank?
+
+        ra_t = ReceiptAuthorization.table_name
+        ReceiptAuthorization
+          .where(warehouse_id: wh_ids)
+          .where.not("LOWER(TRIM(#{ra_t}.status)) = ?", "cancelled")
+          .distinct
+          .pluck(:receipt_order_id)
       end
 
       def receipt_order_visible_hub_ids

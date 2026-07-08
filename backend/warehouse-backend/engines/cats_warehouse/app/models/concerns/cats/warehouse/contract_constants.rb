@@ -11,6 +11,15 @@ module Cats
         cancelled: "cancelled"
       }.freeze
 
+      # Hub/WM/storekeeper receipt-order visibility: after officer confirmation, not draft/cancelled.
+      RECEIPT_ORDER_OPERATIONAL_STATUSES = [
+        DOCUMENT_STATUSES[:confirmed],
+        DOCUMENT_STATUSES[:assigned],
+        DOCUMENT_STATUSES[:reserved],
+        DOCUMENT_STATUSES[:in_progress],
+        DOCUMENT_STATUSES[:completed]
+      ].freeze
+
       DOCUMENT_STATUS_TRANSITIONS = {
         draft: [ :assigned, :reserved, :in_progress, :confirmed, :cancelled ],
         assigned: [ :reserved, :in_progress, :confirmed, :cancelled ],
@@ -38,6 +47,8 @@ module Cats
         "Storekeeper",
         "Inspector",
         "Dispatcher",
+        "Quality Assurance",
+        "Receipt Authorizer",
         *OFFICER_ROLE_NAMES
       ].freeze
     end

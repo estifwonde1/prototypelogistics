@@ -2,9 +2,19 @@ name: Backend CI
 
 on:
   push:
-    branches: [ "main", "phases", "setup", "comodities" ]
+    branches:
+      - main
+      - phases
+      - setup
+      - comodities
+      - sprint2
   pull_request:
-    branches: [ "main", "phases", "setup", "comodities" ]
+    branches:
+      - main
+      - phases
+      - setup
+      - comodities
+      - sprint2
 
 jobs:
   test:
@@ -29,6 +39,7 @@ jobs:
 
     env:
       RAILS_ENV: test
+      POSTGRES_PASSWORD: password
       DATABASE_URL: "postgres://postgres:password@localhost:5432/warehouse_backend_test"
       REDIS_URL: "redis://localhost:6379/1"
       RUBYOPT: "-W0"
@@ -52,6 +63,7 @@ jobs:
       - name: Install dependencies
         run: |
           bundle config set --local frozen false
+          bundle config set --local with 'development test'
           bundle install
 
       - name: Set up database

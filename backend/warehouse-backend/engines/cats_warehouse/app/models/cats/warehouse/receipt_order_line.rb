@@ -7,6 +7,8 @@ module Cats
       belongs_to :commodity, class_name: "Cats::Core::Commodity"
       belongs_to :unit, class_name: "Cats::Core::UnitOfMeasure"
       belongs_to :packaging_unit, class_name: "Cats::Core::UnitOfMeasure", optional: true
+      belongs_to :destination_hub, class_name: "Cats::Warehouse::Hub", optional: true, foreign_key: :destination_hub_id
+      belongs_to :destination_warehouse, class_name: "Cats::Warehouse::Warehouse", optional: true, foreign_key: :destination_warehouse_id
       has_many :receipt_order_assignments, class_name: "Cats::Warehouse::ReceiptOrderAssignment", dependent: :nullify
       has_many :space_reservations, class_name: "Cats::Warehouse::SpaceReservation", dependent: :nullify
 
@@ -37,6 +39,12 @@ module Cats
         end
         if cols.include?("line_reference_no")
           attrs[:line_reference_no] = item[:line_reference_no].presence
+        end
+        if cols.include?("destination_hub_id")
+          attrs[:destination_hub_id] = item[:destination_hub_id].presence
+        end
+        if cols.include?("destination_warehouse_id")
+          attrs[:destination_warehouse_id] = item[:destination_warehouse_id].presence
         end
         attrs
       end

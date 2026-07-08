@@ -2,8 +2,8 @@ import apiClient from './client';
 import type { Stack } from '../types/stack';
 import type { ApiResponse } from '../types/common';
 
-export const getStacks = async (): Promise<Stack[]> => {
-  const response = await apiClient.get<ApiResponse<Stack[]>>('/stacks');
+export const getStacks = async (params?: { store_id?: number; warehouse_id?: number }): Promise<Stack[]> => {
+  const response = await apiClient.get<ApiResponse<Stack[]>>('/stacks', { params });
   return response.data.data;
 };
 
@@ -24,4 +24,23 @@ export const updateStack = async (id: number, data: Partial<Stack>): Promise<Sta
 
 export const deleteStack = async (id: number): Promise<void> => {
   await apiClient.delete(`/stacks/${id}`);
+};
+
+export interface StackTransferPayload {
+  destination_id: number;
+  quantity: number;
+  entered_unit_id?: number;
+  entered_quantity?: number;
+  package_count?: number;
+}
+
+export const transferStack = async (
+  sourceId: number,
+  data: StackTransferPayload
+): Promise<Stack> => {
+  const response = await apiClient.post<ApiResponse<Stack>>(
+    `/stacks/${sourceId}/transfer`,
+    data
+  );
+  return response.data.data;
 };

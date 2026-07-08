@@ -16,17 +16,26 @@ module Cats
         payload = waybill_params
 
         authorize Waybill
+        destination_location = Cats::Core::Location.find(payload[:destination_location_id])
+        source_location =
+          if payload[:source_location_id].present?
+            Cats::Core::Location.find(payload[:source_location_id])
+          elsif payload[:source_context].to_s.in?(%w[receipt_order receipt_authorization])
+            destination_location
+          end
+
         waybill = WaybillCreator.new(
           reference_no: payload[:reference_no],
           issued_on: payload[:issued_on],
-          source_location: Cats::Core::Location.find(payload[:source_location_id]),
-          destination_location: Cats::Core::Location.find(payload[:destination_location_id]),
+          source_location: source_location,
+          destination_location: destination_location,
           items: payload[:items],
           transport: payload[:transport],
           dispatch: resolve_dispatch(payload[:dispatch_id]),
           status: payload[:status],
           dispatch_order: payload[:dispatch_order_id].present? ? DispatchOrder.find(payload[:dispatch_order_id]) : nil,
-          prepared_by: current_user
+          prepared_by: current_user,
+          source_context: payload[:source_context]
         ).call
 
         render_resource(waybill, status: :created, serializer: WaybillSerializer)
@@ -53,6 +62,7 @@ module Cats
           :issued_on,
           :source_location_id,
           :destination_location_id,
+          :source_context,
           :dispatch_id,
           :dispatch_order_id,
           :status,

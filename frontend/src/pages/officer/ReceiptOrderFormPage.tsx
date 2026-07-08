@@ -1,3 +1,4 @@
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -7,21 +8,20 @@ import {
   Title,
   Button,
   Group,
-  Select,
   Card,
-  Table,
-  ActionIcon,
   Text,
-  NumberInput,
   Textarea,
   SimpleGrid,
-  Badge,
   Divider,
+  ActionIcon,
+  NumberInput,
+  Badge,
   Alert,
+  ThemeIcon,
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
-import { IconTrash, IconPlus, IconInfoCircle } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
+import { IconPlus, IconTrash, IconAlertCircle, IconInfoCircle } from "@tabler/icons-react";
 import {
   createReceiptOrder,
   getReceiptOrder,
@@ -30,31 +30,42 @@ import {
 } from "../../api/receiptOrders";
 import { getWarehouses } from "../../api/warehouses";
 import { getHubs } from "../../api/hubs";
-import { getCommodityReferences, getUnitReferences } from "../../api/referenceData";
+import { getCommodityReferences, getUnitReferences, getUomConversions } from "../../api/referenceData";
+import { getCommodityDefinitions } from "../../api/commodityDefinitions";
+import { useAuthStore } from "../../store/authStore";
+import { normalizeRoleSlug } from '../../contracts/warehouse';
+import { formatWarehouseCapacityLabel } from './FacilitiesOverviewPage_helpers';
+import { findDirectedMultiplier } from '../../utils/uomConversions';
+import { computePackagingPackagesHint } from '../../utils/packagingQuantityHint';
 import type { ReceiptOrderLine } from "../../api/receiptOrders";
 import type { ApiError } from "../../types/common";
+import type { UomConversion } from "../../types/referenceData";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type DestinationKind = "hub" | "warehouse";
 
-interface DestinationLine {
-  id: string;
+interface DestinationRow {
+  id: string; // local key only
   kind: DestinationKind | "";
-  hub_id: string | null;
-  warehouse_id: string | null;
-  quantity: number;
+  hubId: string | null;
+  warehouseId: string | null;
+  quantity: number | string;
+  unitId: string | null;
   notes: string;
 }
 
-const createEmptyDestination = (): DestinationLine => ({
-  id: Math.random().toString(36).slice(2),
-  kind: "",
-  hub_id: null,
-  warehouse_id: null,
-  quantity: 0,
-  notes: "",
-});
+function newDestinationRow(): DestinationRow {
+  return {
+    id: Math.random().toString(36).slice(2),
+    kind: "",
+    hubId: null,
+    warehouseId: null,
+    quantity: "",
+    unitId: null,
+    notes: "",
+  };
+}
 
 // ── Component ──────────────────────────────────────────────────────────────
 
@@ -64,45 +75,81 @@ function ReceiptOrderFormPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  // ── Auth & location context ──
+  const activeAssignment = useAuthStore((state) => state.activeAssignment);
+  const location = activeAssignment?.location;
+
+  // Check if sub-federal officer without location
+  const SUB_FEDERAL_ROLES = ["Regional Officer", "Zonal Officer", "Woreda Officer", "Kebele Officer"];
+  const isSubFederalOfficer = activeAssignment?.role_name
+    ? SUB_FEDERAL_ROLES.includes(activeAssignment.role_name)
+    : false;
+  const hasLocationIssue = isSubFederalOfficer && !location;
+
   // ── Commodity & batch selection ──
   const [selectedCommodityId, setSelectedCommodityId] = useState<string | null>(null);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+  // The numeric commodity id used for UoM conversion lookups
+  const [commodityNumericId, setCommodityNumericId] = useState<number | null>(null);
 
   // ── Auto-filled from batch ──
   const [unitId, setUnitId] = useState<string | null>(null);
   const [packagingUnitId, setPackagingUnitId] = useState<string | null>(null);
+  const [packagingUnitName, setPackagingUnitName] = useState<string | null>(null);
   const [packagingSize, setPackagingSize] = useState<number | null>(null);
+  const [packageUnitPerPackageName, setPackageUnitPerPackageName] = useState<string | null>(null);
+  const [packageUnitPerPackageNumericId, setPackageUnitPerPackageNumericId] = useState<number | null>(null);
   const [batchQuantity, setBatchQuantity] = useState<number>(0);
 
   // ── Order header ──
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState<Date | null>(new Date());
   const [notes, setNotes] = useState("");
 
-  // ── Destination lines ──
-  const [destinations, setDestinations] = useState<DestinationLine[]>([createEmptyDestination()]);
+  // ── Multiple destinations ──
+  const [destinations, setDestinations] = useState<DestinationRow[]>([newDestinationRow()]);
 
   // ── Edit hydration guard ──
   const hydratedRef = useRef<string | null>(null);
 
   // ── Data queries ──
+  const { data: commodityDefinitions = [] } = useQuery({
+    queryKey: ["reference-data", "commodity-definitions"],
+    queryFn: getCommodityDefinitions,
+  });
+
   const { data: commodities = [] } = useQuery({
     queryKey: ["reference-data", "commodities"],
-    queryFn: getCommodityReferences,
+    queryFn: () => getCommodityReferences(),
   });
 
   const { data: units = [] } = useQuery({
     queryKey: ["reference-data", "units"],
-    queryFn: getUnitReferences,
+    queryFn: () => getUnitReferences(),
   });
 
-  const { data: warehouses } = useQuery({
-    queryKey: ["warehouses"],
-    queryFn: getWarehouses,
+  const { data: uomConversions = [] } = useQuery({
+    queryKey: ["reference-data", "uom_conversions"],
+    queryFn: () => getUomConversions(),
+  });
+
+  // Get active assignment context for filtering
+  const roleSlug = normalizeRoleSlug(activeAssignment?.role_name || useAuthStore((state) => state.role));
+  const userHubId = activeAssignment?.hub?.id;
+  const isHubManager = roleSlug === 'hub_manager';
+
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ["warehouses", { hub_id: isHubManager ? userHubId : undefined }],
+    queryFn: () => {
+      if (isHubManager && userHubId) {
+        return getWarehouses({ hub_id: userHubId });
+      }
+      return getWarehouses();
+    },
   });
 
   const { data: hubs } = useQuery({
     queryKey: ["hubs"],
-    queryFn: getHubs,
+    queryFn: () => getHubs(),
   });
 
   const {
@@ -123,34 +170,29 @@ function ReceiptOrderFormPage() {
 
   // ── Derived: unique commodity names ──
   const commodityNameOptions = useMemo(() => {
-    const seen = new Set<string>();
-    return commodities
-      .filter((c) => {
-        const key = c.name || `Commodity #${c.id}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .map((c) => ({ value: String(c.id), label: c.name || `Commodity #${c.id}` }))
+    return commodityDefinitions
+      .map((d) => ({ value: String(d.id), label: d.name }))
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, [commodities]);
+  }, [commodityDefinitions]);
 
   // ── Derived: batches for selected commodity ──
   const batchOptions = useMemo(() => {
     if (!selectedCommodityId) return [];
-    const selectedName = commodities.find((c) => String(c.id) === selectedCommodityId)?.name;
+    const selectedName = commodityDefinitions.find((d) => String(d.id) === selectedCommodityId)?.name;
     if (!selectedName) return [];
     return commodities
-      .filter((c) => c.name === selectedName && c.batch_no)
+      .filter((c) => {
+        if (c.name !== selectedName || !c.batch_no) return false;
+        // Always include the currently selected batch (for editing existing drafts)
+        if (selectedBatchId && String(c.id) === selectedBatchId) return true;
+        // Hide batches that are fully allocated
+        return (c.remaining_quantity ?? 0) > 0;
+      })
       .map((c) => ({
         value: String(c.id),
         label: c.batch_no || `Batch #${c.id}`,
       }));
-  }, [commodities, selectedCommodityId]);
-
-  // ── Derived: remaining quantity ──
-  const totalAssigned = destinations.reduce((sum, d) => sum + (d.quantity || 0), 0);
-  const remaining = batchQuantity - totalAssigned;
+  }, [commodities, commodityDefinitions, selectedCommodityId, selectedBatchId]);
 
   // ── Hub / warehouse options ──
   const hubOptions = useMemo(
@@ -162,11 +204,50 @@ function ReceiptOrderFormPage() {
     () =>
       (warehouses ?? [])
         .filter((w) => w.hub_id == null)
-        .map((w) => ({ value: String(w.id), label: w.name })),
+        .map((w) => {
+          const { label, disabled } = formatWarehouseCapacityLabel(w);
+          return { value: String(w.id), label, disabled };
+        }),
     [warehouses]
   );
 
+  // ── Derived: total quantity assigned — converted to batch unit ──
+  const batchUnitNumericId = unitId ? parseInt(unitId) : null;
 
+  const totalAssignedInBatchUnit = useMemo(() => {
+    if (!batchUnitNumericId || !commodityNumericId) {
+      // No batch unit known yet — fall back to raw sum
+      return destinations.reduce((sum, d) => {
+        const q = Number(d.quantity);
+        return sum + (isNaN(q) ? 0 : q);
+      }, 0);
+    }
+    return destinations.reduce((sum, d) => {
+      const q = Number(d.quantity);
+      if (isNaN(q) || q <= 0) return sum;
+      const destUnitId = d.unitId ? parseInt(d.unitId) : batchUnitNumericId;
+      if (destUnitId === batchUnitNumericId) return sum + q;
+      let factor = findDirectedMultiplier(destUnitId, batchUnitNumericId, commodityNumericId, uomConversions);
+      if (factor == null) {
+        const reverse = findDirectedMultiplier(batchUnitNumericId, destUnitId, commodityNumericId, uomConversions);
+        if (reverse != null && reverse !== 0) factor = 1 / reverse;
+      }
+      if (factor == null) return sum; // incompatible unit — excluded from total
+      return sum + q * factor;
+    }, 0);
+  }, [destinations, batchUnitNumericId, commodityNumericId, uomConversions]);
+
+  // Keep a plain alias used in validation
+  const totalAssigned = totalAssignedInBatchUnit;
+
+  // Selected batch data from API (includes computed allocated_quantity / remaining_quantity)
+  const selectedBatch = useMemo(() => {
+    if (!selectedBatchId) return null;
+    return commodities.find((c) => String(c.id) === selectedBatchId) ?? null;
+  }, [selectedBatchId, commodities]);
+
+  // Remaining after accounting for this form's allocation
+  const remaining = (selectedBatch?.remaining_quantity ?? 0) - totalAssignedInBatchUnit;
 
   // ── Handlers: commodity selection ──
   const handleCommoditySelect = useCallback(
@@ -175,8 +256,12 @@ function ReceiptOrderFormPage() {
       setSelectedBatchId(null);
       setUnitId(null);
       setPackagingUnitId(null);
+      setPackagingUnitName(null);
       setPackagingSize(null);
+      setPackageUnitPerPackageName(null);
+      setPackageUnitPerPackageNumericId(null);
       setBatchQuantity(0);
+      setCommodityNumericId(null);
     },
     []
   );
@@ -188,52 +273,58 @@ function ReceiptOrderFormPage() {
       if (!val) {
         setUnitId(null);
         setPackagingUnitId(null);
+        setPackagingUnitName(null);
         setPackagingSize(null);
+        setPackageUnitPerPackageName(null);
+        setPackageUnitPerPackageNumericId(null);
         setBatchQuantity(0);
         return;
       }
       const batch = commodities.find((c) => String(c.id) === val);
       if (batch) {
-        setUnitId(batch.unit_id ? String(batch.unit_id) : null);
+        const batchUnitId = batch.unit_id ? String(batch.unit_id) : null;
+        setUnitId(batchUnitId);
         setPackagingUnitId(batch.package_unit_id ? String(batch.package_unit_id) : null);
+        setPackagingUnitName(batch.package_unit_name ?? null);
         setPackagingSize(batch.package_size ?? null);
+        setPackageUnitPerPackageName(batch.package_unit_per_package_name ?? null);
+        setPackageUnitPerPackageNumericId(batch.package_unit_per_package_id ?? null);
         setBatchQuantity(batch.quantity ?? 0);
+        setCommodityNumericId(batch.id);
+        // Seed unitId into all existing destination rows
+        setDestinations((prev) =>
+          prev.map((d) => ({ ...d, unitId: batchUnitId }))
+        );
       }
     },
     [commodities]
   );
 
-  // ── Handlers: destination lines ──
-  const handleAddDestination = () => {
-    setDestinations((prev) => [...prev, createEmptyDestination()]);
-  };
+  // ── Handlers: destinations ──
+  const updateDestination = useCallback(
+    (rowId: string, patch: Partial<DestinationRow>) => {
+      setDestinations((prev) =>
+        prev.map((d) => (d.id === rowId ? { ...d, ...patch } : d))
+      );
+    },
+    []
+  );
 
-  const handleRemoveDestination = (lineId: string) => {
-    setDestinations((prev) => prev.filter((d) => d.id !== lineId));
-  };
+  const addDestination = useCallback(() => {
+    setDestinations((prev) => [...prev, { ...newDestinationRow(), unitId }]);
+  }, [unitId]);
 
-  const handleDestinationChange = <K extends keyof DestinationLine>(
-    lineId: string,
-    field: K,
-    value: DestinationLine[K]
-  ) => {
-    setDestinations((prev) =>
-      prev.map((d) => {
-        if (d.id !== lineId) return d;
-        const updated = { ...d, [field]: value };
-        // Reset destination selection when kind changes
-        if (field === "kind") {
-          updated.hub_id = null;
-          updated.warehouse_id = null;
-        }
-        return updated;
-      })
-    );
-  };
+  const removeDestination = useCallback((rowId: string) => {
+    setDestinations((prev) => {
+      if (prev.length <= 1) return prev; // keep at least one row
+      return prev.filter((d) => d.id !== rowId);
+    });
+  }, []);
 
   // ── Hydrate edit form ──
   useEffect(() => {
     if (!isEdit || !existingOrder) return;
+    if (commodities.length === 0 || commodityDefinitions.length === 0) return;
     const key = `${id}:${existingOrder.updated_at ?? existingOrder.id}`;
     if (hydratedRef.current === key) return;
     hydratedRef.current = key;
@@ -245,27 +336,46 @@ function ReceiptOrderFormPage() {
     const rawLines = existingOrder.lines ?? existingOrder.receipt_order_lines ?? [];
     if (rawLines.length > 0) {
       const first = rawLines[0];
-      setSelectedCommodityId(first.commodity_id ? String(first.commodity_id) : null);
+      const batch = commodities.find((c) => c.id === first.commodity_id);
+      const definition = commodityDefinitions.find((d) => d.name === batch?.name);
+
+      setSelectedCommodityId(definition ? String(definition.id) : null);
       setSelectedBatchId(first.commodity_id ? String(first.commodity_id) : null);
-      setUnitId(first.unit_id ? String(first.unit_id) : null);
+      setUnitId(batch?.unit_id ? String(batch.unit_id) : (first.unit_id ? String(first.unit_id) : null));
       setPackagingUnitId(first.packaging_unit_id ? String(first.packaging_unit_id) : null);
       setPackagingSize(first.packaging_size ?? null);
 
-      const batch = commodities.find((c) => c.id === first.commodity_id);
       setBatchQuantity(batch?.quantity ?? 0);
+      setCommodityNumericId(batch?.id ?? null);
 
-      setDestinations(
-        rawLines.map((line) => ({
+      // Build destination rows from lines
+      const rows: DestinationRow[] = rawLines.map((line) => {
+        // Prefer per-line destination fields; fall back to order-level for legacy data
+        const lineHubId = line.destination_hub_id
+          ? String(line.destination_hub_id)
+          : existingOrder.hub_id
+          ? String(existingOrder.hub_id)
+          : null;
+        const lineWarehouseId = line.destination_warehouse_id
+          ? String(line.destination_warehouse_id)
+          : existingOrder.warehouse_id
+          ? String(existingOrder.warehouse_id)
+          : null;
+        const kind: DestinationKind | "" = lineHubId ? "hub" : lineWarehouseId ? "warehouse" : "";
+
+        return {
           id: Math.random().toString(36).slice(2),
-          kind: existingOrder.hub_id ? "hub" : "warehouse",
-          hub_id: existingOrder.hub_id ? String(existingOrder.hub_id) : null,
-          warehouse_id: existingOrder.warehouse_id ? String(existingOrder.warehouse_id) : null,
-          quantity: line.quantity,
-          notes: line.notes || "",
-        }))
-      );
+          kind,
+          hubId: lineHubId,
+          warehouseId: lineWarehouseId,
+          quantity: line.quantity ?? "",
+          unitId: line.unit_id ? String(line.unit_id) : (first.unit_id ? String(first.unit_id) : null),
+          notes: line.notes ?? "",
+        };
+      });
+      setDestinations(rows.length > 0 ? rows : [newDestinationRow()]);
     }
-  }, [isEdit, existingOrder, id, commodities]);
+  }, [isEdit, existingOrder, id, commodities, commodityDefinitions]);
 
   // ── Mutations ──
   const createMutation = useMutation({
@@ -334,58 +444,70 @@ function ReceiptOrderFormPage() {
       return;
     }
     if (!unitId) {
-      notifications.show({ title: "Validation Error", message: "Unit is required", color: "red" });
-      return;
-    }
-    if (destinations.length === 0) {
-      notifications.show({ title: "Validation Error", message: "Add at least one destination", color: "red" });
+      notifications.show({ title: "Validation Error", message: "Unit is required — select a batch first", color: "red" });
       return;
     }
 
-    const invalidDest = destinations.find(
-      (d) => !d.kind || (!d.hub_id && !d.warehouse_id) || !d.quantity || d.quantity <= 0
-    );
-    if (invalidDest) {
+    // Validate destinations
+    for (const dest of destinations) {
+      if (!dest.kind || (!dest.hubId && !dest.warehouseId)) {
+        notifications.show({
+          title: "Validation Error",
+          message: "Each destination must have a type and a facility selected",
+          color: "red",
+        });
+        return;
+      }
+      const q = Number(dest.quantity);
+      if (!dest.quantity || isNaN(q) || q <= 0) {
+        notifications.show({
+          title: "Validation Error",
+          message: "Each destination must have a quantity greater than 0",
+          color: "red",
+        });
+        return;
+      }
+    }
+
+    if (remaining < 0) {
       notifications.show({
         title: "Validation Error",
-        message: "Each destination must have a type, a hub or warehouse, and a quantity greater than 0",
+        message: `Total assigned (${totalAssigned}) exceeds available quantity (${selectedBatch?.remaining_quantity ?? 0})`,
         color: "red",
       });
       return;
     }
 
-    if (totalAssigned > batchQuantity) {
-      notifications.show({
-        title: "Validation Error",
-        message: `Total assigned (${totalAssigned}) exceeds batch quantity (${batchQuantity})`,
-        color: "red",
-      });
-      return;
-    }
+    // Build one line per destination
+    const lines: ReceiptOrderLine[] = destinations.map((dest) => {
+      const lineUnitId = dest.unitId ? parseInt(dest.unitId) : parseInt(unitId!);
 
+      return {
+        commodity_id: parseInt(selectedBatchId!),
+        quantity: Number(dest.quantity),
+        unit_id: lineUnitId,
+        packaging_unit_id: packagingUnitId ? parseInt(packagingUnitId) : undefined,
+        packaging_size: packagingSize ?? undefined,
+        notes: dest.notes,
+        destination_hub_id: dest.kind === "hub" && dest.hubId ? parseInt(dest.hubId) : null,
+        destination_warehouse_id: dest.kind === "warehouse" && dest.warehouseId ? parseInt(dest.warehouseId) : null,
+      };
+    });
 
-
-    const lines: ReceiptOrderLine[] = destinations.map((d) => ({
-      commodity_id: parseInt(selectedBatchId),
-      quantity: d.quantity,
-      unit_id: parseInt(unitId),
-      packaging_unit_id: packagingUnitId ? parseInt(packagingUnitId) : undefined,
-      packaging_size: packagingSize ?? undefined,
-      notes: d.kind === "hub"
-        ? `Hub: ${hubs?.find((h) => String(h.id) === d.hub_id)?.name ?? d.hub_id}${d.notes ? ` | ${d.notes}` : ""}`
-        : `Warehouse: ${warehouses?.find((w) => String(w.id) === d.warehouse_id)?.name ?? d.warehouse_id}${d.notes ? ` | ${d.notes}` : ""}`,
-    }));
-
-    // Use the first destination as the order-level destination
+    // Use first destination for hub/warehouse headers (backend links the order to one primary destination)
     const firstDest = destinations[0];
     const payload = {
-      hub_id: firstDest.kind === "hub" ? Number(firstDest.hub_id) : null,
-      destination_warehouse_id: firstDest.kind === "warehouse" ? Number(firstDest.warehouse_id) : null,
-      expected_delivery_date: expectedDeliveryDate instanceof Date
-        ? expectedDeliveryDate.toISOString().split("T")[0]
-        : new Date().toISOString().split("T")[0],
+      hub_id: firstDest.kind === "hub" ? Number(firstDest.hubId) : null,
+      destination_warehouse_id:
+        firstDest.kind === "warehouse" ? Number(firstDest.warehouseId) : null,
+      expected_delivery_date:
+        expectedDeliveryDate instanceof Date
+          ? expectedDeliveryDate.toISOString().split("T")[0]
+          : new Date().toISOString().split("T")[0],
       notes,
       lines,
+      location_id: location?.id ?? null,
+      hierarchical_level: location?.location_type ?? "Federal",
     };
 
     if (isEdit) {
@@ -398,9 +520,7 @@ function ReceiptOrderFormPage() {
   const isSaving = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
 
   // ── Selected batch info ──
-  const selectedBatch = commodities.find((c) => String(c.id) === selectedBatchId);
   const unitLabel = units.find((u) => String(u.id) === unitId)?.name ?? "";
-  const packagingUnitLabel = units.find((u) => String(u.id) === packagingUnitId)?.name ?? "";
 
   // ── Error / loading states for edit ──
   if (isEdit && orderError) {
@@ -452,12 +572,19 @@ function ReceiptOrderFormPage() {
       <Card shadow="sm" padding="lg" radius="md" withBorder>
         <Stack gap="lg">
 
+          {/* ── Warning: Missing location assignment ── */}
+          {hasLocationIssue && (
+            <Alert icon={<IconAlertCircle size={16} />} color="yellow" title="Missing Geographic Assignment">
+              Your account has no geographic assignment. Contact your administrator.
+            </Alert>
+          )}
+
           {/* ── Section 1: Commodity & Batch ── */}
           <div>
-            <Text size="sm" fw={700} mb="sm">Commodity & Batch</Text>
+            <Text size="sm" fw={700} mb="sm">Commodity &amp; Batch</Text>
 
             <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-              <Select
+              <SearchableSelect
                 label="Commodity"
                 placeholder="Search and select a commodity"
                 data={commodityNameOptions}
@@ -468,7 +595,7 @@ function ReceiptOrderFormPage() {
                 required
                 disabled={!fieldsEditable}
               />
-              <Select
+              <SearchableSelect
                 label="Batch Number"
                 placeholder={selectedCommodityId ? "Select a batch" : "Select commodity first"}
                 data={batchOptions}
@@ -481,28 +608,41 @@ function ReceiptOrderFormPage() {
               />
             </SimpleGrid>
 
-            {selectedBatch && (
-              <Card withBorder mt="sm" padding="sm" bg="blue.0" radius="md">
-                <Group gap="xl" wrap="wrap">
+            {/* Batch quantity / remaining info bar */}
+            {selectedBatchId && selectedBatch && (
+              <Card
+                withBorder
+                mt="sm"
+                padding="xs"
+                radius="sm"
+                style={{ background: "var(--mantine-color-blue-0)" }}
+              >
+                <Group gap="xl">
                   <div>
                     <Text size="xs" c="dimmed" fw={600} tt="uppercase">Batch Quantity</Text>
-                    <Text fw={700}>{batchQuantity.toLocaleString()} {unitLabel}</Text>
+                    <Text fw={700} size="sm">
+                      {batchQuantity.toLocaleString()} {unitLabel}
+                    </Text>
                   </div>
-                  {packagingUnitLabel && (
-                    <div>
-                      <Text size="xs" c="dimmed" fw={600} tt="uppercase">Packaging Unit</Text>
-                      <Text fw={700}>{packagingUnitLabel}</Text>
-                    </div>
-                  )}
-                  {packagingSize && (
-                    <div>
-                      <Text size="xs" c="dimmed" fw={600} tt="uppercase">Size per Package</Text>
-                      <Text fw={700}>{packagingSize}</Text>
-                    </div>
-                  )}
+                  <div>
+                    <Text size="xs" c="dimmed" fw={600} tt="uppercase">Total Allocated</Text>
+                    <Text fw={700} size="sm" c="orange">
+                      {selectedBatch.allocated_quantity?.toLocaleString() ?? "—"} {unitLabel}
+                    </Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed" fw={600} tt="uppercase">This Allocation</Text>
+                    <Text fw={700} size="sm" c="orange">
+                      {totalAssignedInBatchUnit.toLocaleString(undefined, { maximumFractionDigits: 4 })} {unitLabel}
+                    </Text>
+                  </div>
                   <div>
                     <Text size="xs" c="dimmed" fw={600} tt="uppercase">Remaining</Text>
-                    <Text fw={700} c={remaining < 0 ? "red" : remaining === 0 ? "dimmed" : "green"}>
+                    <Text
+                      fw={700}
+                      size="sm"
+                      c={remaining < 0 ? "red" : "blue"}
+                    >
                       {remaining.toLocaleString()} {unitLabel}
                     </Text>
                   </div>
@@ -516,18 +656,14 @@ function ReceiptOrderFormPage() {
           {/* ── Section 2: Order Details ── */}
           <div>
             <Text size="sm" fw={700} mb="sm">Order Details</Text>
-            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-              <DateInput
-                label="Expected Delivery Date"
-                placeholder="Select date"
-                value={expectedDeliveryDate}
-                onChange={(val: string | null) =>
-                  setExpectedDeliveryDate(val ? new Date(val) : null)
-                }
-                required
-                disabled={!fieldsEditable}
-              />
-            </SimpleGrid>
+            <DateInput
+              label="Expected Delivery Date"
+              placeholder="Select date"
+              value={expectedDeliveryDate}
+              onChange={(val: any) => setExpectedDeliveryDate(val ? new Date(val) : null)}
+              required
+              disabled={!fieldsEditable}
+            />
             <Textarea
               label="Notes"
               placeholder="Add any general notes about this order..."
@@ -547,143 +683,81 @@ function ReceiptOrderFormPage() {
               <Text size="sm" fw={700}>Destinations</Text>
               {fieldsEditable && (
                 <Button
-                  size="xs"
-                  variant="light"
-                  leftSection={<IconPlus size={14} />}
-                  onClick={handleAddDestination}
-                  disabled={!selectedBatchId}
+                  size="sm"
+                  variant="filled"
+                  leftSection={<IconPlus size={16} />}
+                  onClick={addDestination}
+                  disabled={remaining <= 0}
                 >
                   Add Destination
                 </Button>
               )}
             </Group>
 
-            {!selectedBatchId && (
-              <Alert icon={<IconInfoCircle size={16} />} color="blue" variant="light">
-                Select a commodity and batch first, then assign destinations.
-              </Alert>
-            )}
+            {/* Column headers */}
+            <SimpleGrid cols={{ base: 1, sm: 5 }} spacing="sm" mb={4}>
+              <Text size="xs" c="dimmed" fw={600} tt="uppercase">Destination Type</Text>
+              <Text size="xs" c="dimmed" fw={600} tt="uppercase">Hub / Warehouse</Text>
+              <Text size="xs" c="dimmed" fw={600} tt="uppercase" pl={60}>Quantity</Text>
+              <Text size="xs" c="dimmed" fw={600} tt="uppercase">Unit</Text>
+              <Text size="xs" c="dimmed" fw={600} tt="uppercase">Notes</Text>
+            </SimpleGrid>
 
-            {selectedBatchId && remaining < 0 && (
-              <Alert icon={<IconInfoCircle size={16} />} color="red" variant="light" mb="sm">
-                Total assigned ({totalAssigned}) exceeds batch quantity ({batchQuantity}). Please reduce quantities.
-              </Alert>
-            )}
+            <Stack gap="xs">
+              {destinations.map((dest, idx) => {
+                const destQty = Number(dest.quantity);
+                const destQtyInBatchUnit = (isNaN(destQty) || destQty <= 0 || !batchUnitNumericId || !commodityNumericId)
+                  ? 0
+                  : (() => {
+                      const destUnitId = dest.unitId ? parseInt(dest.unitId) : batchUnitNumericId;
+                      if (destUnitId === batchUnitNumericId) return destQty;
+                      let factor = findDirectedMultiplier(destUnitId, batchUnitNumericId, commodityNumericId, uomConversions);
+                      if (factor == null) {
+                        const reverse = findDirectedMultiplier(batchUnitNumericId, destUnitId, commodityNumericId, uomConversions);
+                        if (reverse != null && reverse !== 0) factor = 1 / reverse;
+                      }
+                      return factor != null ? destQty * factor : 0;
+                    })();
+                const availableForRow = (selectedBatch?.remaining_quantity ?? 0) - (totalAssignedInBatchUnit - destQtyInBatchUnit);
+                return (
+                  <DestinationRowItem
+                    key={dest.id}
+                    dest={dest}
+                    index={idx}
+                    fieldsEditable={fieldsEditable}
+                    hubOptions={hubOptions}
+                    warehouseOptions={standaloneWarehouseOptions}
+                    batchUnitNumericId={batchUnitNumericId}
+                    commodityNumericId={commodityNumericId}
+                    uomConversions={uomConversions}
+                    unitOptions={units.map((u) => ({
+                      value: String(u.id),
+                      label: u.abbreviation ? `${u.abbreviation}` : u.name,
+                    }))}
+                    allUnits={units}
+                    packagingSize={packagingSize}
+                    packagingUnitName={packagingUnitName}
+                    packageUnitPerPackageNumericId={packageUnitPerPackageNumericId}
+                    packageUnitPerPackageName={packageUnitPerPackageName}
+                    canRemove={destinations.length > 1}
+                    destQtyError={destQtyInBatchUnit > 0 && destQtyInBatchUnit > availableForRow ? `Exceeds available quantity (max ${Math.max(0, availableForRow).toLocaleString()} ${unitLabel})` : null}
+                    onUpdate={(patch) => updateDestination(dest.id, patch)}
+                    onRemove={() => removeDestination(dest.id)}
+                  />
+                );
+              })}
+            </Stack>
 
-            {selectedBatchId && (
-              <Table.ScrollContainer minWidth={900}>
-                <Table striped verticalSpacing="sm">
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>Destination Type</Table.Th>
-                      <Table.Th>Hub / Warehouse</Table.Th>
-                      <Table.Th>Quantity</Table.Th>
-                      <Table.Th>Notes</Table.Th>
-                      {fieldsEditable && <Table.Th style={{ width: 50 }} />}
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {destinations.map((dest) => {
-                      const maxForThis = batchQuantity - (totalAssigned - dest.quantity);
-                      return (
-                        <Table.Tr key={dest.id}>
-                          <Table.Td>
-                            <Select
-                              placeholder="Hub or Warehouse"
-                              data={[
-                                { value: "hub", label: "Hub" },
-                                { value: "warehouse", label: "Warehouse" },
-                              ]}
-                              value={dest.kind || null}
-                              onChange={(val) =>
-                                handleDestinationChange(dest.id, "kind", (val || "") as DestinationKind)
-                              }
-                              disabled={!fieldsEditable}
-                            />
-                          </Table.Td>
-                          <Table.Td>
-                            {dest.kind === "hub" && (
-                              <Select
-                                placeholder="Select hub"
-                                data={hubOptions}
-                                value={dest.hub_id}
-                                onChange={(val) => handleDestinationChange(dest.id, "hub_id", val)}
-                                searchable
-                                disabled={!fieldsEditable}
-                              />
-                            )}
-                            {dest.kind === "warehouse" && (
-                              <Select
-                                placeholder="Select warehouse"
-                                data={standaloneWarehouseOptions}
-                                value={dest.warehouse_id}
-                                onChange={(val) => handleDestinationChange(dest.id, "warehouse_id", val)}
-                                searchable
-                                disabled={!fieldsEditable}
-                              />
-                            )}
-                            {!dest.kind && (
-                              <Text size="sm" c="dimmed">Select type first</Text>
-                            )}
-                          </Table.Td>
-                          <Table.Td>
-                            <Stack gap={2}>
-                              <NumberInput
-                                placeholder="0"
-                                value={dest.quantity}
-                                onChange={(val) =>
-                                  handleDestinationChange(dest.id, "quantity", Number(val) || 0)
-                                }
-                                min={0}
-                                max={maxForThis > 0 ? maxForThis : undefined}
-                                disabled={!fieldsEditable}
-                              />
-                              {batchQuantity > 0 && (
-                                <Text size="xs" c={dest.quantity > maxForThis ? "red" : "dimmed"}>
-                                  Max: {maxForThis.toLocaleString()} {unitLabel}
-                                </Text>
-                              )}
-                            </Stack>
-                          </Table.Td>
-                          <Table.Td>
-                            <input
-                              placeholder="Notes for this destination"
-                              value={dest.notes}
-                              onChange={(e) => handleDestinationChange(dest.id, "notes", e.target.value)}
-                              disabled={!fieldsEditable}
-                              style={{
-                                width: "100%",
-                                padding: "6px 10px",
-                                border: "1px solid var(--mantine-color-gray-4)",
-                                borderRadius: 4,
-                                fontSize: 14,
-                              }}
-                            />
-                          </Table.Td>
-                          {fieldsEditable && (
-                            <Table.Td>
-                              <ActionIcon
-                                color="red"
-                                variant="subtle"
-                                onClick={() => handleRemoveDestination(dest.id)}
-                                disabled={destinations.length === 1}
-                              >
-                                <IconTrash size={16} />
-                              </ActionIcon>
-                            </Table.Td>
-                          )}
-                        </Table.Tr>
-                      );
-                    })}
-                  </Table.Tbody>
-                </Table>
-              </Table.ScrollContainer>
-            )}
-
-            {selectedBatchId && destinations.length > 0 && (
+            {/* Running total */}
+            {selectedBatchId && (selectedBatch?.remaining_quantity ?? 0) > 0 && (
               <Group justify="flex-end" mt="xs">
-                <Badge variant="light" color={remaining < 0 ? "red" : remaining === 0 ? "green" : "blue"} size="lg">
-                  {totalAssigned.toLocaleString()} / {batchQuantity.toLocaleString()} {unitLabel} assigned
+                <Badge
+                  color={remaining < 0 ? "red" : "blue"}
+                  variant="light"
+                  size="md"
+                  tt="uppercase"
+                >
+                  {totalAssignedInBatchUnit.toLocaleString(undefined, { maximumFractionDigits: 4 })} / {selectedBatch?.remaining_quantity?.toLocaleString() ?? 0} {unitLabel} assigned
                 </Badge>
               </Group>
             )}
@@ -691,7 +765,7 @@ function ReceiptOrderFormPage() {
 
           {/* ── Actions ── */}
           <Group justify="flex-end" mt="md">
-            <Button variant="light" onClick={() => navigate("/officer/receipt-orders")}>
+            <Button variant="light" onClick={() => navigate(isEdit ? `/officer/receipt-orders/${id}` : "/officer/receipt-orders")}>
               Cancel
             </Button>
             {isEdit && (
@@ -705,7 +779,7 @@ function ReceiptOrderFormPage() {
               </Button>
             )}
             {fieldsEditable && (
-              <Button onClick={handleSave} loading={isSaving}>
+              <Button onClick={handleSave} loading={isSaving} disabled={hasLocationIssue}>
                 {isEdit ? "Update draft" : "Save as Draft"}
               </Button>
             )}
@@ -714,6 +788,232 @@ function ReceiptOrderFormPage() {
         </Stack>
       </Card>
     </Stack>
+  );
+}
+
+// ── DestinationRowItem sub-component ──────────────────────────────────────
+
+interface DestinationRowItemProps {
+  dest: DestinationRow;
+  index: number;
+  fieldsEditable: boolean;
+  hubOptions: { value: string; label: string }[];
+  warehouseOptions: { value: string; label: string }[];
+  batchUnitNumericId: number | null;
+  commodityNumericId: number | null;
+  uomConversions: UomConversion[];
+  unitOptions: { value: string; label: string }[];
+  allUnits: { id: number; name: string; abbreviation?: string | null }[];
+  packagingSize: number | null;
+  packagingUnitName: string | null;
+  packageUnitPerPackageNumericId: number | null;
+  packageUnitPerPackageName: string | null;
+  canRemove: boolean;
+  destQtyError: string | null;
+  onUpdate: (patch: Partial<DestinationRow>) => void;
+  onRemove: () => void;
+}
+
+function DestinationRowItem({
+  dest,
+  fieldsEditable,
+  hubOptions,
+  warehouseOptions,
+  batchUnitNumericId,
+  commodityNumericId,
+  uomConversions,
+  unitOptions,
+  allUnits,
+  packagingSize,
+  packagingUnitName,
+  packageUnitPerPackageNumericId,
+  packageUnitPerPackageName,
+  canRemove,
+  destQtyError,
+  onUpdate,
+  onRemove,
+}: DestinationRowItemProps) {
+  const facilityOptions = dest.kind === "hub" ? hubOptions : warehouseOptions;
+  const facilityValue = dest.kind === "hub" ? dest.hubId : dest.warehouseId;
+
+  const handleKindChange = (val: string | null) => {
+    onUpdate({
+      kind: (val || "") as DestinationKind | "",
+      hubId: null,
+      warehouseId: null,
+    });
+  };
+
+  const handleFacilityChange = (val: string | null) => {
+    if (dest.kind === "hub") onUpdate({ hubId: val });
+    else onUpdate({ warehouseId: val });
+  };
+
+  // ── Unit compatibility check (for remaining/total) ──
+  // Tells us whether the selected unit can be converted to the batch unit
+  const unitCompatible = useMemo(() => {
+    if (!dest.unitId || !batchUnitNumericId || !commodityNumericId) return true;
+    const destUnitId = parseInt(dest.unitId);
+    if (destUnitId === batchUnitNumericId) return true;
+    const forward = findDirectedMultiplier(destUnitId, batchUnitNumericId, commodityNumericId, uomConversions);
+    if (forward != null) return true;
+    const reverse = findDirectedMultiplier(batchUnitNumericId, destUnitId, commodityNumericId, uomConversions);
+    return reverse != null;
+  }, [dest.unitId, batchUnitNumericId, commodityNumericId, uomConversions]);
+
+  const packagingHint = useMemo(() => {
+    const qty = Number(dest.quantity);
+    if (!unitCompatible || !qty || qty <= 0) return null;
+
+    const destUnitId = dest.unitId ? parseInt(dest.unitId) : null;
+    return computePackagingPackagesHint({
+      qty,
+      destUnitId,
+      commodityId: commodityNumericId,
+      packagingSize,
+      packagingUnitLabel: packagingUnitName,
+      packageUnitPerPackageNumericId,
+      packageUnitPerPackageName,
+      fallbackBatchUnitNumericId: batchUnitNumericId,
+      units: allUnits,
+      uomConversions,
+    });
+  }, [
+    dest.quantity,
+    dest.unitId,
+    packagingSize,
+    packagingUnitName,
+    packageUnitPerPackageNumericId,
+    packageUnitPerPackageName,
+    allUnits,
+    unitCompatible,
+    commodityNumericId,
+    uomConversions,
+    batchUnitNumericId,
+  ]);
+
+  return (
+    <Group gap="sm" align="flex-start" wrap="nowrap">
+      {/* Destination Type */}
+      <SearchableSelect
+        placeholder="Select type"
+        data={[
+          { value: "hub", label: "Hub" },
+          { value: "warehouse", label: "Independent Warehouse" },
+        ]}
+        value={dest.kind || null}
+        onChange={handleKindChange}
+        disabled={!fieldsEditable}
+        style={{ flex: "0 0 180px" }}
+      />
+
+      {/* Hub / Warehouse */}
+      <SearchableSelect
+        placeholder={dest.kind ? `Select ${dest.kind === "hub" ? "hub" : "warehouse"}` : "Type first"}
+        data={dest.kind ? facilityOptions : []}
+        value={facilityValue ?? null}
+        onChange={handleFacilityChange}
+        searchable
+        disabled={!fieldsEditable || !dest.kind}
+        style={{ flex: 1 }}
+      />
+
+      {/* Quantity + Unit + packaging hint stacked together */}
+      <Stack gap={4} style={{ flex: "0 0 250px" }}>
+        <Group gap="xs" align="flex-end" wrap="nowrap">
+          <div style={{ flex: 1 }}>
+            <NumberInput
+              placeholder="Quantity"
+              value={dest.quantity === "" ? undefined : Number(dest.quantity)}
+              onChange={(val) => onUpdate({ quantity: val ?? "" })}
+              min={0}
+              disabled={!fieldsEditable}
+              error={destQtyError}
+            />
+          </div>
+          <div style={{ flex: "0 0 100px" }}>
+            <SearchableSelect
+              placeholder="Unit"
+              data={unitOptions}
+              value={dest.unitId}
+              onChange={(val) => onUpdate({ unitId: val })}
+              disabled={!fieldsEditable}
+              searchable
+              clearable
+            />
+          </div>
+        </Group>
+
+        {/* Packaging hint — sits directly under Quantity + Unit */}
+        {!unitCompatible && dest.unitId && (
+          <Group gap={4} align="center">
+            <ThemeIcon size="xs" variant="transparent" color="red">
+              <IconAlertCircle size={13} />
+            </ThemeIcon>
+            <Text size="xs" c="red.7">Can't use this unit for this commodity</Text>
+          </Group>
+        )}
+        {packagingHint && (
+          packagingHint.isWholeNumber ? (
+            <Group gap={4} align="center">
+              <ThemeIcon size="xs" variant="transparent" color="teal">
+                <IconInfoCircle size={13} />
+              </ThemeIcon>
+              <Text size="xs" c="teal.7">
+                {packagingHint.packageSpec ? <><strong>{packagingHint.packageSpec}</strong>; </> : null}
+                ≈{' '}
+                <strong>{packagingHint.packagesFormatted} {packagingHint.containerLabel}</strong>
+              </Text>
+            </Group>
+          ) : (
+            <Group gap={4} align="center">
+              <ThemeIcon size="xs" variant="transparent" color="orange">
+                <IconAlertCircle size={13} />
+              </ThemeIcon>
+              <Text size="xs" c="orange.7">
+                {packagingHint.packageSpec ? <><strong>{packagingHint.packageSpec}</strong>; </> : null}
+                ≈{' '}
+                <strong>{packagingHint.packagesFormatted} {packagingHint.containerLabel}</strong>
+                {" "}— not a whole number of packages
+              </Text>
+            </Group>
+          )
+        )}
+      </Stack>
+
+      {/* Notes */}
+      <div style={{ flex: 1 }}>
+        <input
+          type="text"
+          placeholder="Notes for this destination"
+          value={dest.notes}
+          onChange={(e) => onUpdate({ notes: e.target.value })}
+          disabled={!fieldsEditable}
+          style={{
+            width: "100%",
+            padding: "7px 10px",
+            border: "1px solid var(--mantine-color-gray-4)",
+            borderRadius: 6,
+            fontSize: 14,
+            background: fieldsEditable ? "white" : "var(--mantine-color-gray-1)",
+            color: "var(--mantine-color-dark-9)",
+          }}
+        />
+      </div>
+
+      {/* Remove button */}
+      {fieldsEditable && (
+        <ActionIcon
+          color="gray"
+          variant="subtle"
+          onClick={onRemove}
+          disabled={!canRemove}
+          title="Remove destination"
+        >
+          <IconTrash size={16} />
+        </ActionIcon>
+      )}
+    </Group>
   );
 }
 
